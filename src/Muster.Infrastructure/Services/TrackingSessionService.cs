@@ -21,6 +21,31 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards)
         ulong guildId, ulong voiceChannelId, ulong scheduledEventId, CancellationToken ct = default)
         => await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0, ct);
 
+    /// <summary>Open a session bound to a scheduled event, unless one is already active for it.</summary>
+    public async Task<TrackingSession?> EnsureForScheduledEventAsync(
+        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, CancellationToken ct = default)
+    {
+        var alreadyOpen = await db.TrackingSessions.AnyAsync(
+            s => s.GuildId == guildId && s.ScheduledEventId == scheduledEventId && s.Status == TrackingSessionStatus.Active, ct);
+        if (alreadyOpen)
+        {
+            return null;
+        }
+
+        return await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0, ct);
+    }
+
+    /// <summary>Close the active session bound to a scheduled event, if any.</summary>
+    public async Task CloseForScheduledEventAsync(ulong guildId, ulong scheduledEventId, CancellationToken ct = default)
+    {
+        var session = await db.TrackingSessions.FirstOrDefaultAsync(
+            s => s.GuildId == guildId && s.ScheduledEventId == scheduledEventId && s.Status == TrackingSessionStatus.Active, ct);
+        if (session is not null)
+        {
+            await CloseAsync(session.Id, ct: ct);
+        }
+    }
+
     private async Task<TrackingSession> OpenAsync(
         ulong guildId, ulong voiceChannelId, TrackingSessionSource source, ulong? scheduledEventId,
         ulong openedBy, CancellationToken ct)

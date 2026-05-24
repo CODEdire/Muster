@@ -52,15 +52,15 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Reaction musters** — create + reward on reaction, capacity & idempotency (`MusterService` + `MusterReactionHandler`)
 - [x] **Quests** — claim/submit/approve/reject, reward-on-approve (`MissionService`)
 - [x] **Manual / bulk awards** — `ManualAwardService`
-- [ ] **Tracking sessions** — auto bind to Discord Scheduled Events (gateway handler)
+- [x] **Tracking sessions** — auto bind to Discord Scheduled Events (`ScheduledEventHandler`)
 - [ ] **Reaction check-in** as a session attendance signal (distinct from musters)
-- [ ] **Event ops** — sign-up + attendance flow
+- [x] **Event ops** — sign-up + attendance flow (`OpCommandService` + `/op-*`)
 - [x] **Command-service abstraction** — Discord-independent `*CommandService` returning `CommandResult`; NetCord modules are thin adapters (directly unit-tested, no gateway needed)
 - [x] **Slash-command modules** — `/award`, `/leaderboard`, `/wallet`, `/track-start`, `/track-stop`
 - [x] **Slash-command modules** — `/muster` (REST post+react via `IMusterPublisher`) and `/quest-post|list|claim|submit|approve`
-- [ ] **Slash-command modules** — `/op` (event ops: sign-up + attendance)
+- [x] **Slash-command modules** — `/op-create|list|signup|close` (event ops)
+- [x] Stats-only message activity + daily rollups + dedupe (`ActivityService` + `MessageActivityHandler`)
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
-- [ ] Stats-only message activity + daily rollups + dedupe
 
 ## M4 — Scoring, currency & messaging
 

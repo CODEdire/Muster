@@ -24,12 +24,14 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<MissionService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<ManualAwardService>();
+        builder.Services.AddScoped<ActivityService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<AwardCommandService>();
         builder.Services.AddScoped<ScoreCommandService>();
         builder.Services.AddScoped<TrackingCommandService>();
         builder.Services.AddScoped<QuestCommandService>();
+        builder.Services.AddScoped<OpCommandService>();
         // MusterCommandService depends on IMusterPublisher, which each host registers
         // (the bot provides a NetCord-backed implementation).
         builder.Services.AddScoped<MusterCommandService>();

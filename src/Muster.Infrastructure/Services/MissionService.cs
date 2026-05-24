@@ -117,6 +117,95 @@ public class MissionService(MusterDbContext db, AwardService awards)
         await db.SaveChangesAsync(ct);
     }
 
+    // --- Event ops (scheduled missions with sign-up + attendance) ---
+
+    public async Task<Mission> CreateEventOpPointsAsync(
+        ulong guildId, string name, string description, ulong createdBy, long rewardPoints,
+        DateTimeOffset? scheduledStart = null, DateTimeOffset? scheduledEnd = null, CancellationToken ct = default)
+    {
+        var points = await db.Currencies.FirstOrDefaultAsync(
+            c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
+            ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
+
+        var mission = new Mission
+        {
+            Id = Guid.NewGuid(),
+            GuildId = guildId,
+            Type = MissionType.EventOp,
+            Name = name,
+            Description = description,
+            Status = MissionStatus.Open,
+            CreatedBy = createdBy,
+            CreatedAt = DateTimeOffset.UtcNow,
+            RewardCurrencyId = points.Id,
+            RewardAmount = rewardPoints,
+            ScheduledStart = scheduledStart,
+            ScheduledEnd = scheduledEnd,
+        };
+        db.Missions.Add(mission);
+        await db.SaveChangesAsync(ct);
+        return mission;
+    }
+
+    public async Task<IReadOnlyList<Mission>> ListOpenEventOpsAsync(ulong guildId, CancellationToken ct = default)
+        => await db.Missions
+            .Where(m => m.GuildId == guildId && m.Type == MissionType.EventOp && m.Status == MissionStatus.Open)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync(ct);
+
+    public async Task SignUpAsync(Guid missionId, ulong userId, CancellationToken ct = default)
+    {
+        var mission = await db.Missions.FirstOrDefaultAsync(m => m.Id == missionId && m.Type == MissionType.EventOp, ct)
+            ?? throw new InvalidOperationException("Event op not found.");
+
+        var existing = await db.MissionParticipants.AnyAsync(p => p.MissionId == missionId && p.UserId == userId, ct);
+        if (existing)
+        {
+            return;
+        }
+
+        db.MissionParticipants.Add(new MissionParticipant
+        {
+            Id = Guid.NewGuid(),
+            MissionId = mission.Id,
+            UserId = userId,
+            Status = MissionParticipantStatus.SignedUp,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Close an event op: mark signed-up members attended and award them. Returns members awarded.</summary>
+    public async Task<int> CloseEventOpAsync(Guid missionId, CancellationToken ct = default)
+    {
+        var mission = await db.Missions
+            .Include(m => m.Participants)
+            .FirstOrDefaultAsync(m => m.Id == missionId && m.Type == MissionType.EventOp, ct)
+            ?? throw new InvalidOperationException("Event op not found.");
+
+        mission.Status = MissionStatus.Closed;
+
+        var attendees = mission.Participants
+            .Where(p => p.Status == MissionParticipantStatus.SignedUp || p.Status == MissionParticipantStatus.Attended)
+            .ToList();
+
+        foreach (var participant in attendees)
+        {
+            participant.Status = MissionParticipantStatus.Attended;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        foreach (var participant in attendees)
+        {
+            await awards.AwardAsync(
+                mission.GuildId, participant.UserId, mission.RewardCurrencyId, mission.RewardAmount,
+                LedgerSourceType.Mission, $"op:{missionId}:user:{participant.UserId}",
+                $"Event op attendance: {mission.Name}", ct);
+        }
+
+        return attendees.Count;
+    }
+
     private async Task<MissionParticipant> GetParticipantAsync(Guid missionId, ulong userId, CancellationToken ct) =>
         await db.MissionParticipants.FirstOrDefaultAsync(p => p.MissionId == missionId && p.UserId == userId, ct)
             ?? throw new InvalidOperationException($"User {userId} has not claimed mission {missionId}.");
