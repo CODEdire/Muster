@@ -34,6 +34,9 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// Required for Wolverine.HTTP endpoint mapping below.
+builder.Services.AddWolverineHttp();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

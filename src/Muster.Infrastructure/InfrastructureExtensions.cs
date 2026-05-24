@@ -34,9 +34,8 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<QuestCommandService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
-        // MusterCommandService depends on IMusterPublisher, which each host registers
-        // (the bot provides a NetCord-backed implementation).
-        builder.Services.AddScoped<MusterCommandService>();
+        // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
+        // registered by the bot host alongside its IMusterPublisher implementation — not here.
 
         return builder;
     }
