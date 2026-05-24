@@ -13,7 +13,8 @@ public record RoleMappingView(
     IReadOnlyList<RoleOption> AllRoles,
     IReadOnlyList<ulong> AdminRoleIds,
     IReadOnlyList<ulong> OfficerRoleIds,
-    IReadOnlyList<ulong> ParticipantRoleIds);
+    IReadOnlyList<ulong> ParticipantRoleIds,
+    IReadOnlyList<ulong> QuestManagerRoleIds);
 
 /// <summary>Read models backing the web admin consoles (member pickers, approval queue, role mapping).</summary>
 public class WebAdminService(MusterDbContext db)
@@ -57,7 +58,8 @@ public class WebAdminService(MusterDbContext db)
             roles,
             guild?.Settings.AdminRoleIds ?? [],
             guild?.Settings.OfficerRoleIds ?? [],
-            guild?.Settings.ParticipantRoleIds ?? []);
+            guild?.Settings.ParticipantRoleIds ?? [],
+            guild?.Settings.QuestManagerRoleIds ?? []);
     }
 
     private async Task<Dictionary<ulong, string>> ResolveNamesAsync(IEnumerable<ulong> userIds, CancellationToken ct)

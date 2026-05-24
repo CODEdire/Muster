@@ -40,6 +40,8 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Member sync: lazy upsert on activity + `GuildUserAdd/Update/Remove` (`MemberLifecycleHandler`, `MemberSyncService`)
 - [x] Authorization with lockout-proof bypass: owner **or** Discord Administrator/Manage-Guild **or** mapped admin/officer role (`GuildAuthorizationService`)
 - [x] Participant gate: optional allowlist of Discord roles for who can earn/be tracked; empty = open to all (excludes guests when set)
+- [x] Quest Manager role (`QuestManagerRoleIds`) — create guild quests + arbitrate player bounties (`/config-questmanager-role`)
+- [x] Player bounty board: post (escrow from own balance) → take → submit → owner confirm (payout) / cancel / dispute → Quest Manager arbitrate; expiry sweep. Atomic escrow + state changes (`BountyService`, `/bounty-*`, web bounty board)
 - [x] Application-command framework wired (`AddApplicationCommands`)
 - [x] Admin/officer gating of mutating commands via shared `MusterModuleBase`
 - [x] `/config-admin-role`, `/config-officer-role`, `/config-show` (admin) — role mapping

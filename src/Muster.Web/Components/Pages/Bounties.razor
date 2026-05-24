@@ -1,0 +1,163 @@
+@page "/guilds/{GuildIdRaw}/bounties"
+@inherits GuildMemberComponentBase
+@inject BountyService Board
+@inject BountyCommandService BountyCommands
+@inject MusterDbContext Db
+@using Muster.Domain.Enums
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Bounty board — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId">← Dashboard</a>
+        <h1>Bounty board</h1>
+        <p class="subtitle">Post a request funded from your own balance; coins are escrowed until a member completes it.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Open bounties</h2>
+        @if (_open.Count == 0)
+        {
+            <p class="empty">No open bounties right now.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Id</th><th>Bounty</th><th>Reward</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var b in _open)
+                    {
+                        <tr>
+                            <td><code>@b.Id</code></td>
+                            <td>@b.Name<br /><span class="subtitle">@b.Description</span></td>
+                            <td>@b.RewardAmount @_codes.GetValueOrDefault(b.RewardCurrencyId, "?")</td>
+                            <td>@(b.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) ? "taken" : "open")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
+        <h2>Post a bounty</h2>
+        <EditForm class="form-grid" Model="Post" FormName="post-bounty" OnValidSubmit="PostAsync">
+            <label>What you need <InputText @bind-Value="Post.Name" /></label>
+            <label>Details <InputText @bind-Value="Post.Details" /></label>
+            <label>Reward amount <InputNumber @bind-Value="Post.Amount" /></label>
+            <label>Currency code <InputText @bind-Value="Post.Currency" placeholder="COIN" /></label>
+            <div class="btn-row"><button type="submit">Post bounty</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
+        <h2>Act on a bounty</h2>
+        <EditForm class="form-grid" Model="Act" FormName="act-bounty" OnValidSubmit="ActAsync">
+            <label>Bounty id <InputText @bind-Value="Act.BountyId" /></label>
+            <label>Action
+                <InputSelect @bind-Value="Act.Action">
+                    <option value="take">Take</option>
+                    <option value="submit">Submit (I completed it)</option>
+                    <option value="confirm">Confirm &amp; pay (owner)</option>
+                    <option value="cancel">Cancel &amp; refund (owner)</option>
+                    <option value="dispute">Dispute</option>
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Go</button></div>
+        </EditForm>
+    </div>
+
+    @if (_isManager)
+    {
+        <div class="panel glass">
+            <h2>Arbitrate a dispute (Quest Manager)</h2>
+            <EditForm class="form-grid" Model="Arb" FormName="arbitrate-bounty" OnValidSubmit="ArbitrateAsync">
+                <label>Bounty id <InputText @bind-Value="Arb.BountyId" /></label>
+                <label>Resolution
+                    <InputSelect @bind-Value="Arb.Pay">
+                        <option value="true">Pay the completer</option>
+                        <option value="false">Refund the owner</option>
+                    </InputSelect>
+                </label>
+                <div class="btn-row"><button type="submit">Resolve</button></div>
+            </EditForm>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "post-bounty")] private PostInput Post { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "act-bounty")] private ActInput Act { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "arbitrate-bounty")] private ArbInput Arb { get; set; } = new();
+
+    private IReadOnlyList<Muster.Domain.Entities.Mission> _open = [];
+    private Dictionary<Guid, string> _codes = [];
+    private bool _isManager;
+
+    protected override async Task LoadAsync()
+    {
+        _open = await Board.ListOpenAsync(GuildId);
+        _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
+        _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+    }
+
+    private async Task PostAsync()
+    {
+        Message = (await BountyCommands.PostAsync(GuildId, UserId, Post.Name ?? "", Post.Currency ?? "", Post.Amount, Post.Details ?? "")).Message;
+        Post = new PostInput();
+        await LoadAsync();
+    }
+
+    private async Task ActAsync()
+    {
+        var result = Act.Action switch
+        {
+            "submit" => await BountyCommands.SubmitAsync(GuildId, Act.BountyId ?? "", UserId),
+            "confirm" => await BountyCommands.ConfirmAsync(GuildId, Act.BountyId ?? "", UserId),
+            "cancel" => await BountyCommands.CancelAsync(GuildId, Act.BountyId ?? "", UserId),
+            "dispute" => await BountyCommands.DisputeAsync(GuildId, Act.BountyId ?? "", UserId),
+            _ => await BountyCommands.TakeAsync(GuildId, Act.BountyId ?? "", UserId),
+        };
+        Message = result.Message;
+        Act = new ActInput();
+        await LoadAsync();
+    }
+
+    private async Task ArbitrateAsync()
+    {
+        Message = (await BountyCommands.ArbitrateAsync(GuildId, Arb.BountyId ?? "", Arb.Pay)).Message;
+        Arb = new ArbInput();
+        await LoadAsync();
+    }
+
+    public class PostInput
+    {
+        public string? Name { get; set; }
+        public string? Details { get; set; }
+        public long Amount { get; set; }
+        public string? Currency { get; set; }
+    }
+
+    public class ActInput
+    {
+        public string? BountyId { get; set; }
+        public string Action { get; set; } = "take";
+    }
+
+    public class ArbInput
+    {
+        public string? BountyId { get; set; }
+        public bool Pay { get; set; } = true;
+    }
+}

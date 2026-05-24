@@ -40,6 +40,10 @@ else if (State == AccessState.Ready)
             <div class="label">Participant roles</div>
             <div class="num">@(_mapping is { ParticipantRoleIds.Count: 0 } ? "everyone" : RoleNames(_mapping?.ParticipantRoleIds))</div>
         </div>
+        <div class="stat glass">
+            <div class="label">Quest Manager roles</div>
+            <div class="num">@RoleNames(_mapping?.QuestManagerRoleIds)</div>
+        </div>
     </div>
 
     <p class="subtitle">Participant roles control who can earn rewards. With none set, everyone
@@ -62,6 +66,7 @@ else if (State == AccessState.Ready)
                     <option value="admin">Admin</option>
                     <option value="officer">Officer</option>
                     <option value="participant">Participant</option>
+                    <option value="questmanager">Quest Manager</option>
                 </InputSelect>
             </label>
             <div class="btn-row"><button type="submit">Toggle</button></div>
@@ -89,6 +94,7 @@ else if (State == AccessState.Ready)
         {
             "officer" => await Config.ToggleOfficerRoleAsync(GuildId, Input.RoleId),
             "participant" => await Config.ToggleParticipantRoleAsync(GuildId, Input.RoleId),
+            "questmanager" => await Config.ToggleQuestManagerRoleAsync(GuildId, Input.RoleId),
             _ => await Config.ToggleAdminRoleAsync(GuildId, Input.RoleId),
         };
 

@@ -26,6 +26,11 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleParticipantRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.participantRole");
 
+    [SlashCommand("config-questmanager-role", "Toggle a role that can create guild quests and arbitrate bounties.")]
+    public Task<string> QuestManagerRoleAsync(
+        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleQuestManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.questManagerRole");
+
     [SlashCommand("config-show", "Show the current role mapping.")]
     public Task<string> ShowAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ShowAsync(guildId), RequiredRole.Admin);

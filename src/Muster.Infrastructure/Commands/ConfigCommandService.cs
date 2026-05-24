@@ -7,6 +7,7 @@ public enum RoleKind
     Admin,
     Officer,
     Participant,
+    QuestManager,
 }
 
 /// <summary>
@@ -24,6 +25,9 @@ public class ConfigCommandService(MusterDbContext db)
 
     public Task<CommandResult> ToggleParticipantRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Participant, ct);
+
+    public Task<CommandResult> ToggleQuestManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.QuestManager, ct);
 
     public async Task<CommandResult> ShowAsync(ulong guildId, CancellationToken ct = default)
     {
@@ -55,6 +59,7 @@ public class ConfigCommandService(MusterDbContext db)
         {
             RoleKind.Admin => guild.Settings.AdminRoleIds,
             RoleKind.Officer => guild.Settings.OfficerRoleIds,
+            RoleKind.QuestManager => guild.Settings.QuestManagerRoleIds,
             _ => guild.Settings.ParticipantRoleIds,
         };
 
@@ -70,6 +75,7 @@ public class ConfigCommandService(MusterDbContext db)
         {
             case RoleKind.Admin: guild.Settings.AdminRoleIds = updated; break;
             case RoleKind.Officer: guild.Settings.OfficerRoleIds = updated; break;
+            case RoleKind.QuestManager: guild.Settings.QuestManagerRoleIds = updated; break;
             default: guild.Settings.ParticipantRoleIds = updated; break;
         }
 

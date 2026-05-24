@@ -9,6 +9,7 @@ public enum RequiredRole
 {
     None,
     Officer,
+    QuestManager,
     Admin,
 }
 
@@ -35,15 +36,21 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
         if (required != RequiredRole.None)
         {
             var auth = services.GetRequiredService<GuildAuthorizationService>();
-            var allowed = required == RequiredRole.Admin
-                ? await auth.IsAdminAsync(guild.Id, Context.User.Id)
-                : await auth.IsOfficerAsync(guild.Id, Context.User.Id);
+            var allowed = required switch
+            {
+                RequiredRole.Admin => await auth.IsAdminAsync(guild.Id, Context.User.Id),
+                RequiredRole.QuestManager => await auth.IsQuestManagerAsync(guild.Id, Context.User.Id),
+                _ => await auth.IsOfficerAsync(guild.Id, Context.User.Id),
+            };
 
             if (!allowed)
             {
-                return required == RequiredRole.Admin
-                    ? "You need to be a server admin to use this command."
-                    : "You need to be an officer to use this command.";
+                return required switch
+                {
+                    RequiredRole.Admin => "You need to be a server admin to use this command.",
+                    RequiredRole.QuestManager => "You need to be a quest manager to use this command.",
+                    _ => "You need to be an officer to use this command.",
+                };
             }
         }
 
