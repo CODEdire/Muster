@@ -23,6 +23,27 @@ public class QuestCommandService(MissionService missions)
         return CommandResult.Ok($"Quest **{quest.Name}** posted (`{quest.Id}`) — reward **{reward}** points.");
     }
 
+    /// <summary>Create a guild quest minting a chosen currency (no balance required — the guild issues it).</summary>
+    public async Task<CommandResult> PostGuildQuestAsync(
+        ulong guildId, ulong actorId, string name, string description, string currencyCode, long reward,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return CommandResult.Error("Please provide a quest name.");
+        }
+
+        if (reward <= 0)
+        {
+            return CommandResult.Error("Reward must be greater than zero.");
+        }
+
+        var quest = await missions.CreateGuildQuestAsync(guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId, currencyCode, reward, ct);
+        return quest is null
+            ? CommandResult.Error($"Unknown currency '{currencyCode}'.")
+            : CommandResult.Ok($"Guild quest **{quest.Name}** posted (`{quest.Id}`) — reward **{reward} {currencyCode.Trim().ToUpperInvariant()}** (minted on approval).");
+    }
+
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
     {
         var quests = await missions.ListOpenQuestsAsync(guildId, ct);

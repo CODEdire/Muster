@@ -25,6 +25,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             Description = description,
             Status = MissionStatus.Open,
             CreatedBy = createdBy,
+            OwnerId = createdBy,
             CreatedAt = DateTimeOffset.UtcNow,
             RewardCurrencyId = rewardCurrencyId,
             RewardAmount = rewardAmount,
@@ -35,6 +36,21 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         db.Missions.Add(mission);
         await db.SaveChangesAsync(ct);
         return mission;
+    }
+
+    /// <summary>Create a guild quest minting the given currency (by code). Returns null if the currency is unknown.</summary>
+    public async Task<Mission?> CreateGuildQuestAsync(
+        ulong guildId, string name, string description, ulong createdBy, string currencyCode, long rewardAmount,
+        CancellationToken ct = default)
+    {
+        var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
+        var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
+        if (currency is null)
+        {
+            return null;
+        }
+
+        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, ct: ct);
     }
 
     /// <summary>Create a quest that rewards the guild's POINTS currency.</summary>

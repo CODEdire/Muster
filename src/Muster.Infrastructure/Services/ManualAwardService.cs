@@ -18,6 +18,21 @@ public class ManualAwardService(MusterDbContext db, AwardService awards)
         await AwardAsync(guildId, userId, points.Id, amount, reason, awardedBy, ct);
     }
 
+    /// <summary>Manually award a currency (by code). Returns false if the currency is unknown.</summary>
+    public async Task<bool> AwardByCodeAsync(
+        ulong guildId, ulong userId, string currencyCode, long amount, string reason, ulong awardedBy, CancellationToken ct = default)
+    {
+        var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
+        var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
+        if (currency is null)
+        {
+            return false;
+        }
+
+        await AwardAsync(guildId, userId, currency.Id, amount, reason, awardedBy, ct);
+        return true;
+    }
+
     public async Task AwardAsync(
         ulong guildId, ulong userId, Guid currencyId, long amount, string reason,
         ulong awardedBy, CancellationToken ct = default)

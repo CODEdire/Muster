@@ -2,6 +2,8 @@
 @inherits GuildMemberComponentBase
 @inject BountyService Board
 @inject BountyCommandService BountyCommands
+@inject QuestCommandService Quests
+@inject CurrencyAdminService CurrencyAdmin
 @inject MusterDbContext Db
 @using Muster.Domain.Enums
 @using Microsoft.EntityFrameworkCore
@@ -51,14 +53,31 @@ else if (State == AccessState.Ready)
     </div>
 
     <div class="panel glass">
-        <h2>Post a bounty</h2>
-        <EditForm class="form-grid" Model="Post" FormName="post-bounty" OnValidSubmit="PostAsync">
-            <label>What you need <InputText @bind-Value="Post.Name" /></label>
+        <h2>Create a quest or bounty</h2>
+        <EditForm class="form-grid" Model="Post" FormName="post-quest" OnValidSubmit="PostAsync">
+            <label>Type
+                <InputSelect @bind-Value="Post.Kind">
+                    <option value="bounty">Personal bounty — escrow my own balance</option>
+                    @if (_isManager)
+                    {
+                        <option value="guild">Guild quest — minted reward (no balance needed)</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Name <InputText @bind-Value="Post.Name" /></label>
             <label>Details <InputText @bind-Value="Post.Details" /></label>
             <label>Reward amount <InputNumber @bind-Value="Post.Amount" /></label>
-            <label>Currency code <InputText @bind-Value="Post.Currency" placeholder="COIN" /></label>
-            <div class="btn-row"><button type="submit">Post bounty</button></div>
+            <label>Currency
+                <InputSelect @bind-Value="Post.Currency">
+                    @foreach (var c in _currencies)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Create</button></div>
         </EditForm>
+        <p class="subtitle">Guild quests mint their reward when approved; personal bounties escrow your own balance (a spendable currency).</p>
     </div>
 
     <div class="panel glass">
@@ -103,18 +122,31 @@ else if (State == AccessState.Ready)
 
     private IReadOnlyList<Muster.Domain.Entities.Mission> _open = [];
     private Dictionary<Guid, string> _codes = [];
+    private IReadOnlyList<CurrencyView> _currencies = [];
     private bool _isManager;
 
     protected override async Task LoadAsync()
     {
         _open = await Board.ListOpenAsync(GuildId);
         _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
+        _currencies = await CurrencyAdmin.ListAsync(GuildId);
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
     }
 
     private async Task PostAsync()
     {
-        Message = (await BountyCommands.PostAsync(GuildId, UserId, Post.Name ?? "", Post.Currency ?? "", Post.Amount, Post.Details ?? "")).Message;
+        var currency = Post.Currency ?? "POINTS";
+        if (Post.Kind == "guild")
+        {
+            Message = _isManager
+                ? (await Quests.PostGuildQuestAsync(GuildId, UserId, Post.Name ?? "", Post.Details ?? "", currency, Post.Amount)).Message
+                : "You need to be a quest manager to create guild quests.";
+        }
+        else
+        {
+            Message = (await BountyCommands.PostAsync(GuildId, UserId, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "")).Message;
+        }
+
         Post = new PostInput();
         await LoadAsync();
     }
@@ -143,10 +175,11 @@ else if (State == AccessState.Ready)
 
     public class PostInput
     {
+        public string Kind { get; set; } = "bounty";
         public string? Name { get; set; }
         public string? Details { get; set; }
         public long Amount { get; set; }
-        public string? Currency { get; set; }
+        public string? Currency { get; set; } = "POINTS";
     }
 
     public class ActInput
