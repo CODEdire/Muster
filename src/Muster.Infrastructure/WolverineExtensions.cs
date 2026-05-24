@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Wolverine;
@@ -20,8 +21,15 @@ public static class WolverineExtensions
     {
         var connectionString = builder.Configuration.GetConnectionString(connectionName);
 
+        // AddMusterMessaging lives in Infrastructure, so Wolverine would otherwise infer the application
+        // assembly as Infrastructure and miss the host's Wolverine.HTTP endpoints (in Muster.Web). Point
+        // it at the host's entry assembly and explicitly include Infrastructure for message handlers.
+        var hostAssembly = Assembly.GetEntryAssembly() ?? typeof(WolverineExtensions).Assembly;
+
         builder.UseWolverine(opts =>
         {
+            opts.ApplicationAssembly = hostAssembly;
+            opts.Discovery.IncludeAssembly(hostAssembly);
             opts.Discovery.IncludeAssembly(typeof(WolverineExtensions).Assembly);
 
             if (!string.IsNullOrWhiteSpace(connectionString))

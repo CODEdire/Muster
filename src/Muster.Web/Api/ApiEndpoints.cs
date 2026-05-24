@@ -1,91 +1,90 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Services;
+using Wolverine.Http;
 
 namespace Muster.Web.Api;
 
 public record CurrencyOpRequest(ulong UserId, long Amount, string? Reason);
 
 /// <summary>
-/// Public API under <c>/api/v1</c>, authenticated by an <c>X-Api-Key</c> header scoped to a guild.
-/// Read endpoints expose scores/wallets/ledger; guarded write endpoints mint/spend currency. Endpoints
-/// reuse the same domain services as the bot and web UI.
+/// Public API under <c>/api/v1</c>, authored as Wolverine.HTTP endpoints and authenticated by an
+/// <c>X-Api-Key</c> header scoped to a guild. Reads expose scores/wallets/ledger; writes mint/spend
+/// currency. Endpoints reuse the same domain services as the bot and web UI.
 /// </summary>
 public static class ApiEndpoints
 {
-    public static void MapMusterApi(this WebApplication app)
+    [WolverineGet("/api/v1/guilds/{guildId}/leaderboard")]
+    public static async Task<IResult> Leaderboard(
+        ulong guildId, HttpContext http, ApiClientService clients, ScoreQueryService scores, int top = 25)
     {
-        var v1 = app.MapGroup("/api/v1");
+        var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:leaderboard");
+        return error ?? Results.Ok(await scores.GetSeasonLeaderboardAsync(guildId, top <= 0 ? 25 : Math.Min(top, 100)));
+    }
 
-        v1.MapGet("/guilds/{guildId}/leaderboard", async (
-            ulong guildId, HttpContext http, ApiClientService clients, ScoreQueryService scores, int top = 25) =>
-        {
-            var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:leaderboard");
-            return error ?? Results.Ok(await scores.GetSeasonLeaderboardAsync(guildId, top <= 0 ? 25 : Math.Min(top, 100)));
-        });
+    [WolverineGet("/api/v1/guilds/{guildId}/members/{userId}/wallets")]
+    public static async Task<IResult> Wallets(
+        ulong guildId, ulong userId, HttpContext http, ApiClientService clients, ScoreQueryService scores)
+    {
+        var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:wallets");
+        return error ?? Results.Ok(await scores.GetWalletsAsync(guildId, userId));
+    }
 
-        v1.MapGet("/guilds/{guildId}/members/{userId}/wallets", async (
-            ulong guildId, ulong userId, HttpContext http, ApiClientService clients, ScoreQueryService scores) =>
+    [WolverineGet("/api/v1/guilds/{guildId}/ledger")]
+    public static async Task<IResult> Ledger(
+        ulong guildId, HttpContext http, ApiClientService clients, MusterDbContext db, int skip = 0, int take = 50)
+    {
+        var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:ledger");
+        if (error is not null)
         {
-            var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:wallets");
-            return error ?? Results.Ok(await scores.GetWalletsAsync(guildId, userId));
-        });
+            return error;
+        }
 
-        v1.MapGet("/guilds/{guildId}/ledger", async (
-            ulong guildId, HttpContext http, ApiClientService clients, MusterDbContext db, int skip = 0, int take = 50) =>
-        {
-            var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:ledger");
-            if (error is not null)
+        var entries = await db.LedgerEntries
+            .Where(e => e.GuildId == guildId)
+            .OrderByDescending(e => e.Id)
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new
             {
-                return error;
-            }
+                e.Id,
+                e.UserId,
+                e.CurrencyId,
+                e.SeasonId,
+                e.Amount,
+                SourceType = e.SourceType.ToString(),
+                e.OccurredAt,
+                e.Reason,
+            })
+            .ToListAsync();
 
-            var entries = await db.LedgerEntries
-                .Where(e => e.GuildId == guildId)
-                .OrderByDescending(e => e.Id)
-                .Skip(Math.Max(skip, 0))
-                .Take(Math.Clamp(take, 1, 100))
-                .Select(e => new
-                {
-                    e.Id,
-                    e.UserId,
-                    e.CurrencyId,
-                    e.SeasonId,
-                    e.Amount,
-                    SourceType = e.SourceType.ToString(),
-                    e.OccurredAt,
-                    e.Reason,
-                })
-                .ToListAsync();
+        return Results.Ok(entries);
+    }
 
-            return Results.Ok(entries);
-        });
-
-        v1.MapPost("/guilds/{guildId}/currencies/{code}/mint", async (
-            ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, CurrencyService currency) =>
+    [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/mint")]
+    public static async Task<IResult> Mint(
+        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, CurrencyService currency)
+    {
+        var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
+        if (error is not null)
         {
-            var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
-            if (error is not null)
-            {
-                return error;
-            }
+            return error;
+        }
 
-            var result = await currency.MintAsync(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint");
-            return ToResult(result);
-        });
+        return ToResult(await currency.MintAsync(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint"));
+    }
 
-        v1.MapPost("/guilds/{guildId}/currencies/{code}/spend", async (
-            ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, CurrencyService currency) =>
+    [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/spend")]
+    public static async Task<IResult> Spend(
+        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, CurrencyService currency)
+    {
+        var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
+        if (error is not null)
         {
-            var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
-            if (error is not null)
-            {
-                return error;
-            }
+            return error;
+        }
 
-            var result = await currency.SpendAsync(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend");
-            return ToResult(result);
-        });
+        return ToResult(await currency.SpendAsync(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend"));
     }
 
     private static IResult ToResult(CurrencyOperationResult result) => result.Status switch

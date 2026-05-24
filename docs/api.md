@@ -1,9 +1,17 @@
 # Public API & External Connectors
 
-The public API is hosted in `Muster.Web` under `/api/v1` (minimal API; the Wolverine.HTTP
-pipeline is also mapped for future CQRS-style endpoints). It exists so external systems —
-most importantly **"Coin" loot/economy connectors** — can read participation data and
-mint/spend spendable currencies.
+The public API is hosted in `Muster.Web` under `/api/v1`, authored as **Wolverine.HTTP**
+endpoints (discovered by assembly scanning). It exists so external systems — most importantly
+**"Coin" loot/economy connectors** — can read participation data and mint/spend spendable
+currencies. Currency writes are slated to become Wolverine **commands** (`MintCurrency` /
+`SpendCurrency`) so the whole surface is CQRS end-to-end.
+
+## Connector transports (planned)
+
+External/Hybrid currencies will reach their backing system through a pluggable transport,
+driven by the durable outbox: **Webhook**, **HTTP API**, or **Discord message command**
+(for economy bots that only accept prefix/message commands — note Discord does not allow
+bots to invoke other bots' *slash* commands). Each currency names its transport + settings.
 
 ## Authentication
 

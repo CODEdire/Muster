@@ -1,7 +1,6 @@
 using AspNet.Security.OAuth.Discord;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Muster.Web.Api;
 using Muster.Infrastructure;
 using Muster.Web.Components;
 using Wolverine;
@@ -81,10 +80,8 @@ app.MapGet("/account/logout", async (HttpContext http) =>
 app.MapStaticAssets();
 app.MapRazorComponents<App>();
 
-// Public API under /api/v1 (API-key auth).
-app.MapMusterApi();
-
-// Wolverine.HTTP endpoints (reserved for future CQRS-style endpoints).
+// Public API (/api/v1) and any future CQRS endpoints are Wolverine.HTTP endpoints,
+// discovered by assembly scanning.
 app.MapWolverineEndpoints();
 
 app.MapDefaultEndpoints();
