@@ -23,6 +23,7 @@
   <ItemGroup Label="Data">
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
   </ItemGroup>
 
@@ -36,6 +37,7 @@
   <ItemGroup Label="Discord (NetCord)">
     <PackageVersion Include="NetCord" Version="1.0.0-alpha.490" />
     <PackageVersion Include="NetCord.Hosting" Version="1.0.0-alpha.490" />
+    <PackageVersion Include="NetCord.Hosting.Services" Version="1.0.0-alpha.490" />
     <PackageVersion Include="NetCord.Services" Version="1.0.0-alpha.490" />
   </ItemGroup>
 

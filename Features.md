@@ -28,17 +28,20 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 
 - [x] Core entities and DbContext
 - [x] Initial EF migration
-- [ ] Seed defaults on guild onboarding (POINTS currency, initial season)
-- [ ] Repository / query services over the ledger and wallets
-- [ ] Integration tests against SQL via Testcontainers
+- [x] Seed defaults on guild onboarding (POINTS currency, initial season) — `GuildProvisioningService`
+- [x] Query services over the ledger and wallets — `ScoreQueryService` (leaderboard + wallets)
+- [ ] Integration tests against SQL via Testcontainers (incl. season leaderboard aggregation)
 
 ## M2 — Bot core
 
-- [ ] NetCord gateway connects with correct intents (guilds, voice, reactions, scheduled events)
-- [ ] Guild lifecycle: `GuildCreate`/`GuildDelete` maintain the `Guild` table
+- [x] NetCord gateway configured with non-privileged intents (guilds, voice, reactions, scheduled events, messages)
+- [x] Guild onboarding: `GuildCreate` provisions the guild via `GuildLifecycleHandler`
+- [ ] Guild teardown: `GuildDelete` marks the guild inactive
 - [ ] Member upsert / role snapshot sync
-- [ ] Slash-command framework + registration (guild commands in dev, global in prod)
-- [ ] `/ping` and `/config` (admin) commands
+- [x] Application-command framework wired (`AddApplicationCommands`)
+- [ ] Command registration strategy (guild commands in dev, global in prod)
+- [x] `/ping` command
+- [ ] `/config` (admin) command
 - [ ] Bot install (OAuth2 invite) flow + documentation
 
 ## M3 — Participation methods
