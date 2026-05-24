@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Services;
+using NetCord;
+using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
 
 namespace Muster.Bot.Modules;
@@ -17,17 +19,21 @@ public enum RequiredRole
 /// Base for command modules: enforces the server-only guard and (optionally) role gating, opens a
 /// scope, and returns the command result's message. Gating uses <see cref="GuildAuthorizationService"/>,
 /// so the guild owner and Discord admins always pass even if the role mapping is empty.
+///
+/// Replies default to <b>ephemeral</b> (only the invoker sees them); pass <c>ephemeral: false</c> for
+/// the few commands whose output is meant to be shared with the channel.
 /// </summary>
 public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : ApplicationCommandModule<ApplicationCommandContext>
 {
-    protected async Task<string> RunAsync(
+    protected async Task<Reply> RunAsync(
         Func<IServiceProvider, ulong, Task<CommandResult>> action,
         RequiredRole required = RequiredRole.None,
-        string? auditAction = null)
+        string? auditAction = null,
+        bool ephemeral = true)
     {
         if (Context.Guild is not { } guild)
         {
-            return "This command can only be used in a server.";
+            return Message("This command can only be used in a server.", ephemeral);
         }
 
         using var scope = scopeFactory.CreateScope();
@@ -45,12 +51,12 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
 
             if (!allowed)
             {
-                return required switch
+                return Message(required switch
                 {
                     RequiredRole.Admin => "You need to be a server admin to use this command.",
                     RequiredRole.QuestManager => "You need to be a quest manager to use this command.",
                     _ => "You need to be an officer to use this command.",
-                };
+                }, ephemeral);
             }
         }
 
@@ -63,6 +69,13 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
                 .RecordAsync(guild.Id, Context.User.Id, auditAction, result.Message);
         }
 
-        return result.Message;
+        return Message(result.Message, ephemeral);
     }
+
+    private static Reply Message(string content, bool ephemeral) =>
+        InteractionCallback.Message(new InteractionMessageProperties
+        {
+            Content = content,
+            Flags = ephemeral ? MessageFlags.Ephemeral : null,
+        });
 }

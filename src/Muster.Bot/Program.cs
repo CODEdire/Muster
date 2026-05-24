@@ -46,6 +46,7 @@ builder.Services.AddScoped<MusterCommandService>();
 // Autocomplete providers for slash-command parameters (currency codes, bounty ids).
 builder.Services.AddTransient<Muster.Bot.Autocomplete.CurrencyAutocompleteProvider>();
 builder.Services.AddTransient<Muster.Bot.Autocomplete.BountyAutocompleteProvider>();
+builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestAutocompleteProvider>();
 
 var host = builder.Build();
 

@@ -9,7 +9,7 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
 {
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong ownerId, string name, string currencyCode, long amount, string description = "",
-        CancellationToken ct = default)
+        DateTimeOffset? deadline = null, CancellationToken ct = default)
     {
         var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
         var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
@@ -23,10 +23,14 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
             return CommandResult.Error($"{code} isn't a spendable currency — bounties must offer one (e.g. COIN).");
         }
 
-        var (result, mission) = await bounties.PostAsync(guildId, ownerId, name, description, currency.Id, amount, ct: ct);
-        return result == BountyResult.Ok
-            ? CommandResult.Ok($"Posted bounty **{mission!.Name}** (`{mission.Id}`) — **{amount} {code}** escrowed. It can now be taken.")
-            : Map(result);
+        var (result, mission) = await bounties.PostAsync(guildId, ownerId, name, description, currency.Id, amount, deadline, ct);
+        if (result != BountyResult.Ok)
+        {
+            return Map(result);
+        }
+
+        var until = deadline is { } d ? $" — closes <t:{d.ToUnixTimeSeconds()}:R>" : "";
+        return CommandResult.Ok($"Posted bounty **{mission!.Name}** — **{amount} {code}** escrowed{until}. It can now be taken.");
     }
 
     public Task<CommandResult> TakeAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
@@ -60,9 +64,10 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
         var lines = open.Select(b =>
         {
             var taken = b.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted);
-            return $"`{b.Id}` — **{b.Name}**: {b.RewardAmount} {codes.GetValueOrDefault(b.RewardCurrencyId, "?")}{(taken ? " (taken)" : "")}";
+            var until = b.Deadline is { } d ? $" · closes <t:{d.ToUnixTimeSeconds()}:R>" : "";
+            return $"• **{b.Name}** — {b.RewardAmount} {codes.GetValueOrDefault(b.RewardCurrencyId, "?")}{(taken ? " (taken)" : "")}{until}";
         });
-        return CommandResult.Ok("**Open bounties**\n" + string.Join("\n", lines));
+        return CommandResult.Ok("**Open bounties**\nTake one with `/bounty-take` and pick it from the list.\n" + string.Join("\n", lines));
     }
 
     private static async Task<CommandResult> RunAsync(string idRaw, Func<Guid, Task<BountyResult>> action, string okMessage)

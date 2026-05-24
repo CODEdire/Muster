@@ -41,7 +41,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
     /// <summary>Create a guild quest minting the given currency (by code). Returns null if the currency is unknown.</summary>
     public async Task<Mission?> CreateGuildQuestAsync(
         ulong guildId, string name, string description, ulong createdBy, string currencyCode, long rewardAmount,
-        CancellationToken ct = default)
+        DateTimeOffset? deadline = null, CancellationToken ct = default)
     {
         var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
         var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
@@ -50,7 +50,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             return null;
         }
 
-        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, ct: ct);
+        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, deadline, ct: ct);
     }
 
     /// <summary>Create a quest that rewards the guild's POINTS currency.</summary>
@@ -65,9 +65,11 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         return await CreateQuestAsync(guildId, name, description, createdBy, points.Id, rewardPoints, deadline, repeatable, ct: ct);
     }
 
+    /// <summary>Open guild quests only (player-funded bounties are listed separately by the bounty board).</summary>
     public async Task<IReadOnlyList<Mission>> ListOpenQuestsAsync(ulong guildId, CancellationToken ct = default)
         => await db.Missions
-            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest && m.Status == MissionStatus.Open)
+            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
+                && m.Origin == MissionOrigin.Guild && m.Status == MissionStatus.Open)
             .OrderBy(m => m.CreatedAt)
             .ToListAsync(ct);
 

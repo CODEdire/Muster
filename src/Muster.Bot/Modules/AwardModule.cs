@@ -10,7 +10,7 @@ namespace Muster.Bot.Modules;
 public class AwardModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
     [SlashCommand("award", "Award a currency to a member for an off-platform contribution.")]
-    public Task<string> AwardAsync(
+    public Task<Reply> AwardAsync(
         [SlashCommandParameter(Name = "member", Description = "Member to award")] User member,
         [SlashCommandParameter(Name = "currency", Description = "Currency", AutocompleteProviderType = typeof(CurrencyAutocompleteProvider))] string currency,
         [SlashCommandParameter(Name = "amount", Description = "Amount to award")] long amount,

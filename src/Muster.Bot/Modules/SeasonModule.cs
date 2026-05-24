@@ -8,15 +8,15 @@ namespace Muster.Bot.Modules;
 public class SeasonModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
     [SlashCommand("season-start", "Start a new season (archives the current one).")]
-    public Task<string> StartAsync(
+    public Task<Reply> StartAsync(
         [SlashCommandParameter(Name = "name", Description = "Season name")] string name)
         => RunAsync((sp, guildId) => sp.GetRequiredService<SeasonCommandService>().StartAsync(guildId, name), RequiredRole.Admin, "season.start");
 
     [SlashCommand("season-end", "End the current season.")]
-    public Task<string> EndAsync()
+    public Task<Reply> EndAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<SeasonCommandService>().EndAsync(guildId), RequiredRole.Admin, "season.end");
 
     [SlashCommand("season-status", "Show the active season.")]
-    public Task<string> StatusAsync()
+    public Task<Reply> StatusAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<SeasonCommandService>().StatusAsync(guildId));
 }

@@ -29,7 +29,7 @@ public class CurrencyAwareCommandTests
     {
         using var db = await SeededAsync();
         var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
-        var sut = new QuestCommandService(missions);
+        var sut = new QuestCommandService(missions, db);
 
         // Owner has zero COIN, but a guild quest mints — should succeed.
         var result = await sut.PostGuildQuestAsync(1, actorId: 1, "Patrol", "Run a patrol", "COIN", 100);
@@ -44,7 +44,7 @@ public class CurrencyAwareCommandTests
     public async Task GuildQuest_UnknownCurrency_Errors()
     {
         using var db = await SeededAsync();
-        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)));
+        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)), db);
 
         Assert.True((await sut.PostGuildQuestAsync(1, 1, "Patrol", "", "NOPE", 100)).IsError);
     }

@@ -1,6 +1,7 @@
 @page "/guilds/{GuildIdRaw}/bounties"
 @inherits GuildMemberComponentBase
 @inject BountyService Board
+@inject MissionService Missions
 @inject BountyCommandService BountyCommands
 @inject QuestCommandService Quests
 @inject CurrencyAdminService CurrencyAdmin
@@ -28,7 +29,33 @@ else if (State == AccessState.Ready)
     }
 
     <div class="panel glass">
+        <h2>Open guild quests</h2>
+        <p class="subtitle">Posted by quest managers; the reward is minted when a submission is approved.</p>
+        @if (_quests.Count == 0)
+        {
+            <p class="empty">No open guild quests right now.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Quest</th><th>Reward</th><th>Closes</th></tr></thead>
+                <tbody>
+                    @foreach (var q in _quests)
+                    {
+                        <tr>
+                            <td>@q.Name<br /><span class="subtitle">@q.Description</span></td>
+                            <td>@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")</td>
+                            <td>@(q.Deadline is { } d ? d.UtcDateTime.ToString("yyyy-MM-dd") : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
         <h2>Open bounties</h2>
+        <p class="subtitle">Posted by members and funded from their own balance, escrowed until completed.</p>
         @if (_open.Count == 0)
         {
             <p class="empty">No open bounties right now.</p>
@@ -36,15 +63,15 @@ else if (State == AccessState.Ready)
         else
         {
             <table class="leaderboard">
-                <thead><tr><th>Id</th><th>Bounty</th><th>Reward</th><th>Status</th></tr></thead>
+                <thead><tr><th>Bounty</th><th>Reward</th><th>Status</th><th>Closes</th></tr></thead>
                 <tbody>
                     @foreach (var b in _open)
                     {
                         <tr>
-                            <td><code>@b.Id</code></td>
                             <td>@b.Name<br /><span class="subtitle">@b.Description</span></td>
                             <td>@b.RewardAmount @_codes.GetValueOrDefault(b.RewardCurrencyId, "?")</td>
                             <td>@(b.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) ? "taken" : "open")</td>
+                            <td>@(b.Deadline is { } d ? d.UtcDateTime.ToString("yyyy-MM-dd") : "—")</td>
                         </tr>
                     }
                 </tbody>
@@ -75,6 +102,7 @@ else if (State == AccessState.Ready)
                     }
                 </InputSelect>
             </label>
+            <label>Expires in (days) <InputNumber @bind-Value="Post.ExpiresInDays" /> <span class="subtitle">0 = no deadline</span></label>
             <div class="btn-row"><button type="submit">Create</button></div>
         </EditForm>
         <p class="subtitle">Guild quests mint their reward when approved; personal bounties escrow your own balance (a spendable currency).</p>
@@ -83,7 +111,15 @@ else if (State == AccessState.Ready)
     <div class="panel glass">
         <h2>Act on a bounty</h2>
         <EditForm class="form-grid" Model="Act" FormName="act-bounty" OnValidSubmit="ActAsync">
-            <label>Bounty id <InputText @bind-Value="Act.BountyId" /></label>
+            <label>Bounty
+                <InputSelect @bind-Value="Act.BountyId">
+                    <option value="">— choose a bounty —</option>
+                    @foreach (var b in _open)
+                    {
+                        <option value="@b.Id">@b.Name (@b.RewardAmount @_codes.GetValueOrDefault(b.RewardCurrencyId, "?"))</option>
+                    }
+                </InputSelect>
+            </label>
             <label>Action
                 <InputSelect @bind-Value="Act.Action">
                     <option value="take">Take</option>
@@ -102,7 +138,15 @@ else if (State == AccessState.Ready)
         <div class="panel glass">
             <h2>Arbitrate a dispute (Quest Manager)</h2>
             <EditForm class="form-grid" Model="Arb" FormName="arbitrate-bounty" OnValidSubmit="ArbitrateAsync">
-                <label>Bounty id <InputText @bind-Value="Arb.BountyId" /></label>
+                <label>Disputed bounty
+                    <InputSelect @bind-Value="Arb.BountyId">
+                        <option value="">— choose a disputed bounty —</option>
+                        @foreach (var b in _disputed)
+                        {
+                            <option value="@b.Id">@b.Name (@b.RewardAmount @_codes.GetValueOrDefault(b.RewardCurrencyId, "?"))</option>
+                        }
+                    </InputSelect>
+                </label>
                 <label>Resolution
                     <InputSelect @bind-Value="Arb.Pay">
                         <option value="true">Pay the completer</option>
@@ -121,6 +165,8 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "arbitrate-bounty")] private ArbInput Arb { get; set; } = new();
 
     private IReadOnlyList<Muster.Domain.Entities.Mission> _open = [];
+    private IReadOnlyList<Muster.Domain.Entities.Mission> _quests = [];
+    private IReadOnlyList<Muster.Domain.Entities.Mission> _disputed = [];
     private Dictionary<Guid, string> _codes = [];
     private IReadOnlyList<CurrencyView> _currencies = [];
     private bool _isManager;
@@ -128,23 +174,30 @@ else if (State == AccessState.Ready)
     protected override async Task LoadAsync()
     {
         _open = await Board.ListOpenAsync(GuildId);
+        _quests = await Missions.ListOpenQuestsAsync(GuildId);
         _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
         _currencies = await CurrencyAdmin.ListAsync(GuildId);
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+        _disputed = _isManager
+            ? await Db.Missions.Include(m => m.Participants)
+                .Where(m => m.GuildId == GuildId && m.Origin == MissionOrigin.Player && m.Status == MissionStatus.Disputed)
+                .OrderBy(m => m.CreatedAt).ToListAsync()
+            : [];
     }
 
     private async Task PostAsync()
     {
         var currency = Post.Currency ?? "POINTS";
+        var deadline = Post.ExpiresInDays > 0 ? DateTimeOffset.UtcNow.AddDays(Post.ExpiresInDays) : (DateTimeOffset?)null;
         if (Post.Kind == "guild")
         {
             Message = _isManager
-                ? (await Quests.PostGuildQuestAsync(GuildId, UserId, Post.Name ?? "", Post.Details ?? "", currency, Post.Amount)).Message
+                ? (await Quests.PostGuildQuestAsync(GuildId, UserId, Post.Name ?? "", Post.Details ?? "", currency, Post.Amount, deadline)).Message
                 : "You need to be a quest manager to create guild quests.";
         }
         else
         {
-            Message = (await BountyCommands.PostAsync(GuildId, UserId, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "")).Message;
+            Message = (await BountyCommands.PostAsync(GuildId, UserId, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", deadline)).Message;
         }
 
         Post = new PostInput();
@@ -180,6 +233,7 @@ else if (State == AccessState.Ready)
         public string? Details { get; set; }
         public long Amount { get; set; }
         public string? Currency { get; set; } = "POINTS";
+        public long ExpiresInDays { get; set; }
     }
 
     public class ActInput
