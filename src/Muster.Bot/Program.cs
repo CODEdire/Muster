@@ -43,6 +43,10 @@ builder.Services.AddGatewayHandlers(typeof(Program).Assembly);
 builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();
 builder.Services.AddScoped<MusterCommandService>();
 
+// Autocomplete providers for slash-command parameters (currency codes, bounty ids).
+builder.Services.AddTransient<Muster.Bot.Autocomplete.CurrencyAutocompleteProvider>();
+builder.Services.AddTransient<Muster.Bot.Autocomplete.BountyAutocompleteProvider>();
+
 var host = builder.Build();
 
 // Liveness command plus the participation command modules (award, leaderboard, wallet, track-*).
