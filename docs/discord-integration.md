@@ -35,6 +35,11 @@ Developer Portal (Bot settings); below 100 guilds this needs no approval. We sti
 - **Authorization by role mapping:** `GuildAuthorizationService` derives admin/officer status by
   intersecting a member's `RoleIds` with `GuildSettings.AdminRoleIds` / `OfficerRoleIds` — Discord
   roles, not individual users. Re-syncing role snapshots keeps these answers current.
+- **Participant gate:** `GuildSettings.ParticipantRoleIds` controls who can earn rewards / be tracked.
+  Empty (default) = everyone participates; setting roles restricts earning to org members and excludes
+  guests/newcomers. Enforced at muster reactions, quest claims, op sign-ups, and voice-attendance
+  rewards (attendance is still recorded, just not rewarded for non-participants). Configure via
+  `/config-participant-role` or the web role-mapping page.
 
 ## Install flow
 

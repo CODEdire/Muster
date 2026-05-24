@@ -54,7 +54,7 @@ public class CommandServiceTests
     public async Task TrackStop_InvalidId_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new AwardService(db)));
+        var sut = new TrackingCommandService(new TrackingSessionService(db, new AwardService(db), new GuildAuthorizationService(db)));
 
         var result = await sut.StopAsync(1, "not-a-guid");
 
@@ -65,7 +65,7 @@ public class CommandServiceTests
     public async Task TrackStop_UnknownSession_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new AwardService(db)));
+        var sut = new TrackingCommandService(new TrackingSessionService(db, new AwardService(db), new GuildAuthorizationService(db)));
 
         var result = await sut.StopAsync(1, Guid.NewGuid().ToString());
 
@@ -76,7 +76,7 @@ public class CommandServiceTests
     public async Task TrackStart_ThenStop_Succeeds()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new AwardService(db)));
+        var sut = new TrackingCommandService(new TrackingSessionService(db, new AwardService(db), new GuildAuthorizationService(db)));
 
         var start = await sut.StartAsync(1, actorId: 5, voiceChannelId: 42);
         Assert.False(start.IsError);

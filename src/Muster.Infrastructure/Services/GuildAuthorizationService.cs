@@ -57,6 +57,28 @@ public class GuildAuthorizationService(MusterDbContext db)
         return member.RoleIds.Any(r => guild.Settings.OfficerRoleIds.Contains(r));
     }
 
+    /// <summary>
+    /// Whether the member may earn rewards / be tracked. If no participant roles are configured,
+    /// participation is open to everyone (default); otherwise the member must hold a configured role.
+    /// </summary>
+    public async Task<bool> IsParticipantAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        if (guild is null)
+        {
+            return false;
+        }
+
+        var allowed = guild.Settings.ParticipantRoleIds;
+        if (allowed.Count == 0)
+        {
+            return true; // open by default
+        }
+
+        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
+        return member is not null && member.RoleIds.Any(r => allowed.Contains(r));
+    }
+
     private async Task<bool> HasAdminPermissionAsync(ulong guildId, List<ulong> memberRoleIds, CancellationToken ct)
     {
         // Materialize the member's roles, then test permission bits client-side (SQL Server can't do

@@ -39,6 +39,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Guild teardown: `GuildDelete` marks the guild inactive
 - [x] Member sync: lazy upsert on activity + `GuildUserAdd/Update/Remove` (`MemberLifecycleHandler`, `MemberSyncService`)
 - [x] Authorization with lockout-proof bypass: owner **or** Discord Administrator/Manage-Guild **or** mapped admin/officer role (`GuildAuthorizationService`)
+- [x] Participant gate: optional allowlist of Discord roles for who can earn/be tracked; empty = open to all (excludes guests when set)
 - [x] Application-command framework wired (`AddApplicationCommands`)
 - [x] Admin/officer gating of mutating commands via shared `MusterModuleBase`
 - [x] `/config-admin-role`, `/config-officer-role`, `/config-show` (admin) — role mapping

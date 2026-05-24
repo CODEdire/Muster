@@ -36,7 +36,14 @@ else if (State == AccessState.Ready)
             <div class="label">Officer roles</div>
             <div class="num">@RoleNames(_mapping?.OfficerRoleIds)</div>
         </div>
+        <div class="stat glass">
+            <div class="label">Participant roles</div>
+            <div class="num">@(_mapping is { ParticipantRoleIds.Count: 0 } ? "everyone" : RoleNames(_mapping?.ParticipantRoleIds))</div>
+        </div>
     </div>
+
+    <p class="subtitle">Participant roles control who can earn rewards. With none set, everyone
+        participates; add roles to restrict earning to org members and exclude guests.</p>
 
     <div class="panel glass">
         <h2>Toggle a role</h2>
@@ -54,6 +61,7 @@ else if (State == AccessState.Ready)
                 <InputSelect @bind-Value="Input.Kind">
                     <option value="admin">Admin</option>
                     <option value="officer">Officer</option>
+                    <option value="participant">Participant</option>
                 </InputSelect>
             </label>
             <div class="btn-row"><button type="submit">Toggle</button></div>
@@ -77,13 +85,16 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        var result = Input.Kind == "officer"
-            ? await Config.ToggleOfficerRoleAsync(GuildId, Input.RoleId)
-            : await Config.ToggleAdminRoleAsync(GuildId, Input.RoleId);
+        var result = Input.Kind switch
+        {
+            "officer" => await Config.ToggleOfficerRoleAsync(GuildId, Input.RoleId),
+            "participant" => await Config.ToggleParticipantRoleAsync(GuildId, Input.RoleId),
+            _ => await Config.ToggleAdminRoleAsync(GuildId, Input.RoleId),
+        };
 
         if (!result.IsError)
         {
-            await AuditAsync(Input.Kind == "officer" ? "config.officerRole" : "config.adminRole", result.Message);
+            await AuditAsync($"config.{Input.Kind}Role", result.Message);
         }
 
         Message = await HumanizeAsync(result.Message);

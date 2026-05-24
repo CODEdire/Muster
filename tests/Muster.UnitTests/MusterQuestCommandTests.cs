@@ -42,7 +42,7 @@ public class MusterQuestCommandTests
     {
         using var db = await SeededAsync();
         var publisher = new FakePublisher();
-        var sut = new MusterCommandService(new MusterService(db, new AwardService(db)), publisher);
+        var sut = new MusterCommandService(new MusterService(db, new AwardService(db), new GuildAuthorizationService(db)), publisher);
 
         var result = await sut.CreateAsync(1, channelId: 500, prompt: "Roll call", emoji: "✅", reward: 10, capacity: null);
 
@@ -61,7 +61,7 @@ public class MusterQuestCommandTests
     {
         using var db = await SeededAsync();
         var publisher = new FakePublisher();
-        var sut = new MusterCommandService(new MusterService(db, new AwardService(db)), publisher);
+        var sut = new MusterCommandService(new MusterService(db, new AwardService(db), new GuildAuthorizationService(db)), publisher);
 
         Assert.True((await sut.CreateAsync(1, 500, "", "✅", 10, null)).IsError);
         Assert.True((await sut.CreateAsync(1, 500, "p", "✅", -1, null)).IsError);
@@ -75,7 +75,7 @@ public class MusterQuestCommandTests
     public async Task Quest_PostClaimSubmitApprove_AwardsMember()
     {
         using var db = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
         var sut = new QuestCommandService(missions);
 
         var post = await sut.PostAsync(1, actorId: 5, name: "Recruit", description: "Bring a friend", reward: 100);
@@ -94,7 +94,7 @@ public class MusterQuestCommandTests
     public async Task Quest_Claim_InvalidId_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new QuestCommandService(new MissionService(db, new AwardService(db)));
+        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)));
 
         Assert.True((await sut.ClaimAsync(1, "nope", 10)).IsError);
         Assert.True((await sut.ClaimAsync(1, Guid.NewGuid().ToString(), 10)).IsError); // unknown quest
@@ -104,7 +104,7 @@ public class MusterQuestCommandTests
     public async Task Quest_List_FormatsOpenQuests()
     {
         using var db = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
         var sut = new QuestCommandService(missions);
 
         Assert.Equal("No open quests right now.", (await sut.ListAsync(1)).Message);

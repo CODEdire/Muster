@@ -28,6 +28,13 @@ public class GuildSettings
     /// <summary>Discord role ids allowed to approve quests / run ops.</summary>
     public List<ulong> OfficerRoleIds { get; set; } = [];
 
+    /// <summary>
+    /// Discord role ids whose holders may earn rewards / be tracked. **Empty means everyone
+    /// participates** (the default); set roles to restrict participation to org members and exclude
+    /// guests/newcomers.
+    /// </summary>
+    public List<ulong> ParticipantRoleIds { get; set; } = [];
+
     /// <summary>Channels whose activity is recorded (empty = all).</summary>
     public List<ulong> TrackedChannelIds { get; set; } = [];
 

@@ -9,7 +9,7 @@ namespace Muster.Infrastructure.Services;
 /// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
 /// are opened manually by an admin or bound to a Discord scheduled event.
 /// </summary>
-public class TrackingSessionService(MusterDbContext db, AwardService awards)
+public class TrackingSessionService(MusterDbContext db, AwardService awards, GuildAuthorizationService auth)
 {
     public const int DefaultPointsPerMinute = 1;
 
@@ -151,6 +151,12 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards)
 
         foreach (var attendance in session.Attendance.Where(a => a.TotalMinutes > 0))
         {
+            // Attendance is still recorded for everyone, but only eligible participants are rewarded.
+            if (!await auth.IsParticipantAsync(session.GuildId, attendance.UserId, ct))
+            {
+                continue;
+            }
+
             await awards.AwardPointsAsync(
                 session.GuildId, attendance.UserId, attendance.TotalMinutes * rate,
                 LedgerSourceType.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",

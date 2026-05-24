@@ -9,7 +9,7 @@ namespace Muster.Infrastructure.Services;
 /// event ops (sign-up → attendance). Awards go through <see cref="AwardService"/> and are idempotent
 /// per (mission, user), so approving twice never double-rewards.
 /// </summary>
-public class MissionService(MusterDbContext db, AwardService awards)
+public class MissionService(MusterDbContext db, AwardService awards, GuildAuthorizationService auth)
 {
     public async Task<Mission> CreateQuestAsync(
         ulong guildId, string name, string description, ulong createdBy,
@@ -57,10 +57,12 @@ public class MissionService(MusterDbContext db, AwardService awards)
 
     public async Task<MissionParticipant> ClaimAsync(Guid missionId, ulong userId, CancellationToken ct = default)
     {
-        var missionExists = await db.Missions.AnyAsync(m => m.Id == missionId, ct);
-        if (!missionExists)
+        var mission = await db.Missions.FirstOrDefaultAsync(m => m.Id == missionId, ct)
+            ?? throw new InvalidOperationException("Quest not found.");
+
+        if (!await auth.IsParticipantAsync(mission.GuildId, userId, ct))
         {
-            throw new InvalidOperationException("Quest not found.");
+            throw new InvalidOperationException("You're not eligible to participate in this server.");
         }
 
         var existing = await db.MissionParticipants
@@ -157,6 +159,11 @@ public class MissionService(MusterDbContext db, AwardService awards)
     {
         var mission = await db.Missions.FirstOrDefaultAsync(m => m.Id == missionId && m.Type == MissionType.EventOp, ct)
             ?? throw new InvalidOperationException("Event op not found.");
+
+        if (!await auth.IsParticipantAsync(mission.GuildId, userId, ct))
+        {
+            throw new InvalidOperationException("You're not eligible to participate in this server.");
+        }
 
         var existing = await db.MissionParticipants.AnyAsync(p => p.MissionId == missionId && p.UserId == userId, ct);
         if (existing)

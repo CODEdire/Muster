@@ -11,10 +11,11 @@ public enum ReactionOutcome
     Expired,
     Full,
     NotTracked,
+    NotEligible,
 }
 
 /// <summary>Reaction "muster" check-ins: create the message record and reward members who react.</summary>
-public class MusterService(MusterDbContext db, AwardService awards)
+public class MusterService(MusterDbContext db, AwardService awards, GuildAuthorizationService auth)
 {
     public async Task<ReactionMuster> CreateAsync(
         ulong guildId, ulong channelId, ulong messageId, string prompt,
@@ -77,6 +78,11 @@ public class MusterService(MusterDbContext db, AwardService awards)
         if (muster.Capacity is { } cap && muster.Participants.Count >= cap)
         {
             return ReactionOutcome.Full;
+        }
+
+        if (!await auth.IsParticipantAsync(muster.GuildId, userId, ct))
+        {
+            return ReactionOutcome.NotEligible;
         }
 
         db.ReactionParticipants.Add(new ReactionParticipant

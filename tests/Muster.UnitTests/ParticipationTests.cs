@@ -41,7 +41,7 @@ public class ParticipationTests
     {
         var (db, points) = await SeededAsync();
         var awards = new AwardService(db);
-        var musters = new MusterService(db, awards);
+        var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
 
         var muster = await musters.CreateAsync(1, 100, 999, "Roll call", ["✅"], points.Id, 10, capacity: 1, expiresAt: null);
 
@@ -58,7 +58,7 @@ public class ParticipationTests
     public async Task Quest_AwardsOnApproval_AndNotTwice()
     {
         var (db, points) = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
 
         var quest = await missions.CreateQuestAsync(1, "Recruit", "Bring a friend", 5, points.Id, 100);
         await missions.ClaimAsync(quest.Id, 10);
@@ -74,7 +74,7 @@ public class ParticipationTests
     public async Task TrackingSession_AwardsByVoiceMinutes_OnClose()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new AwardService(db));
+        var sessions = new TrackingSessionService(db, new AwardService(db), new GuildAuthorizationService(db));
 
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
@@ -91,7 +91,7 @@ public class ParticipationTests
     public async Task TrackingSession_ClosingSegment_OnChannelLeave()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new AwardService(db));
+        var sessions = new TrackingSessionService(db, new AwardService(db), new GuildAuthorizationService(db));
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var t0 = DateTimeOffset.UtcNow.AddMinutes(-20);

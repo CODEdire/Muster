@@ -55,7 +55,7 @@ public class MessagingAndSeasonTests
         guild.Settings.PointsPerVoiceMinute = 3;
         await db.SaveChangesAsync();
 
-        var sessions = new TrackingSessionService(db, new AwardService(db));
+        var sessions = new TrackingSessionService(db, new AwardService(db), new GuildAuthorizationService(db));
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var joined = DateTimeOffset.UtcNow.AddMinutes(-10);
