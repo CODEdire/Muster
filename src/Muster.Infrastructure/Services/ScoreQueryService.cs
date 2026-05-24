@@ -24,13 +24,17 @@ public class ScoreQueryService(MusterDbContext db)
             return [];
         }
 
-        return await db.LedgerEntries
+        // Project the grouped aggregate to an anonymous type (translatable on SQL Server), then map
+        // to the record in memory. Projecting straight into the record constructor doesn't translate.
+        var rows = await db.LedgerEntries
             .Where(e => e.GuildId == guildId && e.CurrencyId == points.Id && e.SeasonId == season.Id)
             .GroupBy(e => e.UserId)
-            .Select(g => new LeaderboardEntry(g.Key, g.Sum(x => x.Amount)))
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
             .OrderByDescending(x => x.Total)
             .Take(top)
             .ToListAsync(ct);
+
+        return rows.Select(r => new LeaderboardEntry(r.UserId, r.Total)).ToList();
     }
 
     /// <summary>A member's balances across every currency in the guild (seasonal points use the active season).</summary>
