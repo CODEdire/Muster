@@ -31,6 +31,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<GuildAuthorizationService>();
         builder.Services.AddScoped<WebGuildService>();
         builder.Services.AddScoped<WebAdminService>();
+        builder.Services.AddScoped<WebMemberService>();
         builder.Services.AddScoped<ApiClientService>();
         builder.Services.AddScoped<CurrencyService>();
         builder.Services.AddScoped<AuditService>();

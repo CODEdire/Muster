@@ -1,32 +1,25 @@
 @page "/guilds/{GuildIdRaw}"
-@inject WebGuildService GuildService
+@inherits GuildMemberComponentBase
 @inject SeasonService Seasons
-@inject ScoreQueryService Scores
-@inject GuildAuthorizationService Auth
 
 <PageTitle>Dashboard — Muster</PageTitle>
 
-@if (_userId is null)
-{
-    <div class="panel glass empty">Please <a href="/account/login">log in with Discord</a> to continue.</div>
-}
-else if (!_guildIdValid)
-{
-    <div class="panel glass empty">Unknown server.</div>
-}
-else if (!_canView)
+@if (State == AccessState.Forbidden)
 {
     <div class="panel glass empty">You don't have access to this server.</div>
 }
-else
+else if (State == AccessState.Ready)
 {
     <div class="page-head">
         <a class="back-link" href="/guilds">← My servers</a>
         <h1>Leaderboard</h1>
-        @if (_isOfficer)
-        {
-            <div class="actions"><a class="btn btn-ghost" href="/guilds/@GuildIdRaw/admin">Admin</a></div>
-        }
+        <div class="actions">
+            <a class="btn btn-ghost" href="/guilds/@GuildId/me">My profile</a>
+            @if (_isOfficer)
+            {
+                <a class="btn btn-ghost" href="/guilds/@GuildId/admin">Admin</a>
+            }
+        </div>
     </div>
 
     <div class="stat-grid">
@@ -58,7 +51,16 @@ else
                     {
                         <tr>
                             <td class="rank @(row.Rank <= 3 ? $"rank-{row.Rank}" : null)">@row.Rank</td>
-                            <td>@row.DisplayName</td>
+                            <td>
+                                @if (_isOfficer)
+                                {
+                                    <a href="/guilds/@GuildId/members/@row.UserId">@row.DisplayName</a>
+                                }
+                                else
+                                {
+                                    @row.DisplayName
+                                }
+                            </td>
                             <td>@row.Total</td>
                         </tr>
                     }
@@ -69,43 +71,14 @@ else
 }
 
 @code {
-    [Parameter] public string GuildIdRaw { get; set; } = string.Empty;
-    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
-
-    private ulong? _userId;
-    private bool _guildIdValid;
-    private bool _canView;
     private bool _isOfficer;
     private string? _seasonName;
     private IReadOnlyList<LeaderboardRow>? _leaderboard;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task LoadAsync()
     {
-        if (AuthState is null)
-        {
-            return;
-        }
-
-        _userId = (await AuthState).User.GetDiscordUserId();
-        if (_userId is not { } userId)
-        {
-            return;
-        }
-
-        _guildIdValid = ulong.TryParse(GuildIdRaw, out var guildId);
-        if (!_guildIdValid)
-        {
-            return;
-        }
-
-        _canView = await GuildService.CanViewGuildAsync(guildId, userId);
-        if (!_canView)
-        {
-            return;
-        }
-
-        _isOfficer = await Auth.IsOfficerAsync(guildId, userId);
-        _seasonName = (await Seasons.GetActiveAsync(guildId))?.Name;
-        _leaderboard = await GuildService.GetLeaderboardAsync(guildId);
+        _isOfficer = await Auth.IsOfficerAsync(GuildId, UserId);
+        _seasonName = (await Seasons.GetActiveAsync(GuildId))?.Name;
+        _leaderboard = await Guilds.GetLeaderboardAsync(GuildId);
     }
 }

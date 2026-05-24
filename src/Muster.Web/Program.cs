@@ -67,11 +67,17 @@ app.UseAuthorization();
 // signed-in user; otherwise authenticated form posts fail validation.
 app.UseAntiforgery();
 
-// Discord OAuth login / logout.
-app.MapGet("/account/login", (string? returnUrl) =>
-    Results.Challenge(
-        new Microsoft.AspNetCore.Authentication.AuthenticationProperties { RedirectUri = returnUrl ?? "/guilds" },
-        [DiscordAuthenticationDefaults.AuthenticationScheme]));
+// Discord OAuth login / logout. Only allow local return URLs (avoid open redirects).
+app.MapGet("/account/login", (HttpContext http, string? returnUrl) =>
+{
+    var target = !string.IsNullOrEmpty(returnUrl) && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//")
+        ? returnUrl
+        : "/guilds";
+
+    return Results.Challenge(
+        new Microsoft.AspNetCore.Authentication.AuthenticationProperties { RedirectUri = target },
+        [DiscordAuthenticationDefaults.AuthenticationScheme]);
+});
 
 app.MapGet("/account/logout", async (HttpContext http) =>
 {

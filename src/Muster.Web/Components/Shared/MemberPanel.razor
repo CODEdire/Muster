@@ -1,0 +1,48 @@
+@* Reusable display of a member's balances + recent ledger history. *@
+
+<div class="stat-grid">
+    @if (Detail.Wallets.Count == 0)
+    {
+        <div class="stat glass"><div class="label">Balance</div><div class="num">0</div></div>
+    }
+    else
+    {
+        @foreach (var w in Detail.Wallets)
+        {
+            <div class="stat glass">
+                <div class="label">@w.CurrencyName@(w.IsSeasonal ? " (season)" : "")</div>
+                <div class="num">@w.Balance</div>
+            </div>
+        }
+    }
+</div>
+
+<div class="panel glass">
+    <h2>Recent activity</h2>
+    @if (Detail.History.Count == 0)
+    {
+        <p class="empty">No activity yet.</p>
+    }
+    else
+    {
+        <table class="leaderboard">
+            <thead><tr><th>When</th><th>Currency</th><th>Amount</th><th>Source</th><th>Reason</th></tr></thead>
+            <tbody>
+                @foreach (var h in Detail.History)
+                {
+                    <tr>
+                        <td>@h.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@h.Currency</td>
+                        <td>@(h.Amount > 0 ? "+" : "")@h.Amount</td>
+                        <td>@h.Source</td>
+                        <td>@h.Reason</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MemberDetailView Detail { get; set; } = default!;
+}

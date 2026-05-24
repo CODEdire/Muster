@@ -1,0 +1,27 @@
+@page "/guilds/{GuildIdRaw}/me"
+@inherits GuildMemberComponentBase
+@inject WebMemberService Members
+
+<PageTitle>My profile — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && _detail is not null)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId">← Dashboard</a>
+        <h1>My profile</h1>
+        <p class="subtitle">@_detail.DisplayName</p>
+    </div>
+
+    <MemberPanel Detail="_detail" />
+}
+
+@code {
+    private MemberDetailView? _detail;
+
+    protected override async Task LoadAsync()
+        => _detail = await Members.GetAsync(GuildId, UserId);
+}
