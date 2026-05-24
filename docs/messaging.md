@@ -58,6 +58,23 @@ in the Wolverine configuration and add the resource to the AppHost. Because hand
 the broker-agnostic contracts, no handler code changes — only wiring. Aspire has a
 first-class Service Bus integration for this.
 
+## Implementation
+
+- `WolverineExtensions.AddMusterMessaging(builder)` wires Wolverine into both hosts. When a SQL
+  connection is present it enables `PersistMessagesWithSqlServer` + `UseEntityFrameworkCoreTransactions`
+  (durable outbox/inbox); without one it runs in-memory for local dev.
+- Handlers live in `Muster.Infrastructure.Messaging` and are discovered via
+  `opts.Discovery.IncludeAssembly`. `AwardCurrencyHandler`, `AdjustCurrencyBalanceHandler`, and
+  `MemberParticipatedHandler` award through `AwardService` and **return** a `LedgerEntryRecorded`,
+  which Wolverine publishes as a cascading message through the outbox. `LedgerEntryRecordedHandler`
+  is the outbound subscription seam (logs in v1; forwards to connectors post-v1).
+- Because handlers are plain methods, they're unit-tested by calling them directly with an in-memory
+  database — no bus required.
+
+> Synchronous slash-command awards (muster reactions, quest approvals, tracking close) currently
+> award directly via the services for an immediate reply; routing them through the bus to also emit
+> `LedgerEntryRecorded` is a later refinement.
+
 ## Sagas & scheduled messages
 
 Wolverine sagas and scheduled (delayed) messages drive time-based workflows instead of

@@ -64,14 +64,14 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 
 ## M4 — Scoring, currency & messaging
 
-- [ ] Wolverine command/query bus in bot + web
-- [ ] Wolverine EF Core + SQL Server durable outbox/inbox
-- [ ] Broker-agnostic message contracts wired through handlers
-- [ ] Multi-currency ledger (seasonal POINTS + persistent spendable currencies)
-- [ ] Seasons — `/season start|end|status`, archive on rollover
-- [ ] Wallets / balance projection + leaderboards
-- [ ] Per-guild reward configuration
-- [ ] Sagas / scheduled messages: session auto-close, muster expiry, op reminders, season-end
+- [x] Wolverine command/query bus in bot + web (`AddMusterMessaging`)
+- [x] Wolverine EF Core + SQL Server durable outbox/inbox (wired; runtime-verified with SQL)
+- [x] Broker-agnostic contracts wired through handlers (`AwardCurrency`, `AdjustCurrencyBalance`, `MemberParticipated` → cascade `LedgerEntryRecorded`)
+- [x] Multi-currency ledger (seasonal POINTS + persistent spendable currencies)
+- [x] Seasons — `/season-start|end|status`, archive on rollover (`SeasonService`)
+- [x] Wallets / balance projection + leaderboards (`ScoreQueryService`)
+- [x] Per-guild reward configuration (`GuildSettings.PointsPerVoiceMinute`)
+- [~] Sagas / scheduled messages — event-driven session lifecycle done (scheduled-event bind, reaction/voice); time-based reminders & season-end auto-archive deferred until the bus runs against SQL (needs live verification)
 
 ## M5 — Web UI & API
 

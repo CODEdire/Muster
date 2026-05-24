@@ -9,8 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
-
-builder.Host.UseWolverine();
+builder.AddMusterMessaging();
 
 // Blazor static SSR (no interactive/SignalR render mode).
 builder.Services.AddRazorComponents();

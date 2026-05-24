@@ -30,4 +30,7 @@ public class GuildSettings
 
     /// <summary>When true, quest submissions require officer approval before reward.</summary>
     public bool QuestsRequireApproval { get; set; } = true;
+
+    /// <summary>Points awarded per minute of voice attendance when a tracking session closes.</summary>
+    public int PointsPerVoiceMinute { get; set; } = 1;
 }

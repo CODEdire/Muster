@@ -12,6 +12,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
+builder.AddMusterMessaging();
 
 // NetCord gateway. The bot token is read from configuration key "Discord:Token"
 // (user-secrets locally, Key Vault in Azure). Intents avoid privileged ones: message counts

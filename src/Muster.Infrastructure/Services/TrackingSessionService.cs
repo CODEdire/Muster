@@ -112,10 +112,11 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards)
 
     /// <summary>
     /// Close a session: finalize open presence segments and award points by minutes attended.
+    /// When <paramref name="pointsPerMinute"/> is null the guild's configured rate is used.
     /// Returns false if no such session exists (idempotent: closing an already-closed session returns true).
     /// </summary>
     public async Task<bool> CloseAsync(
-        Guid sessionId, DateTimeOffset? at = null, int pointsPerMinute = DefaultPointsPerMinute, CancellationToken ct = default)
+        Guid sessionId, DateTimeOffset? at = null, int? pointsPerMinute = null, CancellationToken ct = default)
     {
         var now = at ?? DateTimeOffset.UtcNow;
 
@@ -146,15 +147,24 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards)
 
         await db.SaveChangesAsync(ct);
 
+        var rate = pointsPerMinute ?? await ResolvePointsPerMinuteAsync(session.GuildId, ct);
+
         foreach (var attendance in session.Attendance.Where(a => a.TotalMinutes > 0))
         {
             await awards.AwardPointsAsync(
-                session.GuildId, attendance.UserId, attendance.TotalMinutes * pointsPerMinute,
+                session.GuildId, attendance.UserId, attendance.TotalMinutes * rate,
                 LedgerSourceType.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
                 "Voice attendance", ct);
         }
 
         return true;
+    }
+
+    private async Task<int> ResolvePointsPerMinuteAsync(ulong guildId, CancellationToken ct)
+    {
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var rate = guild?.Settings.PointsPerVoiceMinute ?? DefaultPointsPerMinute;
+        return rate > 0 ? rate : DefaultPointsPerMinute;
     }
 
     private static void CloseSegment(VoiceAttendance attendance, DateTimeOffset start, DateTimeOffset end)
