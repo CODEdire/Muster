@@ -57,6 +57,25 @@ public class GuildAuthorizationService(MusterDbContext db)
         return member.RoleIds.Any(r => guild.Settings.OfficerRoleIds.Contains(r));
     }
 
+    /// <summary>Quest managers create guild quests and approve/arbitrate player bounties. Admins are implicitly managers.</summary>
+    public async Task<bool> IsQuestManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        if (await IsAdminAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
+        if (guild is null || member is null)
+        {
+            return false;
+        }
+
+        return member.RoleIds.Any(r =>
+            guild.Settings.QuestManagerRoleIds.Contains(r) || guild.Settings.OfficerRoleIds.Contains(r));
+    }
+
     /// <summary>
     /// Whether the member may earn rewards / be tracked. If no participant roles are configured,
     /// participation is open to everyone (default); otherwise the member must hold a configured role.

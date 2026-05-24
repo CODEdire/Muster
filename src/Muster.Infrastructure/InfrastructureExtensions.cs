@@ -21,6 +21,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<ScoreQueryService>();
         builder.Services.AddScoped<AwardService>();
         builder.Services.AddScoped<EscrowService>();
+        builder.Services.AddScoped<BountyService>();
         builder.Services.AddScoped<MusterService>();
         builder.Services.AddScoped<MissionService>();
         builder.Services.AddScoped<TrackingSessionService>();
@@ -44,6 +45,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<ScoreCommandService>();
         builder.Services.AddScoped<TrackingCommandService>();
         builder.Services.AddScoped<QuestCommandService>();
+        builder.Services.AddScoped<BountyCommandService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();
