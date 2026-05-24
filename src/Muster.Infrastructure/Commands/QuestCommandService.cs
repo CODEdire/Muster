@@ -51,6 +51,14 @@ public class QuestCommandService(MissionService missions)
             return CommandResult.Ok($"Approved <@{memberId}>'s quest and awarded the reward.");
         });
 
+    public async Task<CommandResult> RejectAsync(
+        ulong guildId, string questIdRaw, ulong memberId, ulong reviewerId, CancellationToken ct = default)
+        => await GuardedAsync(questIdRaw, async id =>
+        {
+            await missions.RejectAsync(id, memberId, reviewerId, ct);
+            return CommandResult.Ok($"Rejected <@{memberId}>'s submission.");
+        });
+
     public static string FormatQuests(IReadOnlyList<Mission> quests)
     {
         if (quests.Count == 0)

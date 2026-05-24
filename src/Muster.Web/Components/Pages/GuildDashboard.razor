@@ -2,6 +2,7 @@
 @inject WebGuildService GuildService
 @inject SeasonService Seasons
 @inject ScoreQueryService Scores
+@inject GuildAuthorizationService Auth
 
 <PageTitle>Dashboard — Muster</PageTitle>
 
@@ -19,7 +20,13 @@ else if (!_canView)
 }
 else
 {
-    <p><a href="/guilds">← My servers</a></p>
+    <p>
+        <a href="/guilds">← My servers</a>
+        @if (_isOfficer)
+        {
+            <span> · </span><a href="/guilds/@GuildIdRaw/admin">Admin</a>
+        }
+    </p>
     <h1>Leaderboard</h1>
     <p class="season">Season: <strong>@(_seasonName ?? "none")</strong></p>
 
@@ -56,6 +63,7 @@ else
     private ulong? _userId;
     private bool _guildIdValid;
     private bool _canView;
+    private bool _isOfficer;
     private string? _seasonName;
     private IReadOnlyList<LeaderboardRow>? _leaderboard;
 
@@ -84,6 +92,7 @@ else
             return;
         }
 
+        _isOfficer = await Auth.IsOfficerAsync(guildId, userId);
         _seasonName = (await Seasons.GetActiveAsync(guildId))?.Name;
         _leaderboard = await GuildService.GetLeaderboardAsync(guildId);
     }

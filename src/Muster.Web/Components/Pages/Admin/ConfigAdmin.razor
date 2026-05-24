@@ -1,0 +1,96 @@
+@page "/guilds/{GuildIdRaw}/config"
+@inherits GuildAdminComponentBase
+@inject WebAdminService Admin
+@inject ConfigCommandService Config
+
+<PageTitle>Role mapping — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <p>Please <a href="/account/login">log in</a>.</p>
+}
+else if (State == AccessState.Forbidden)
+{
+    <p>You need admin access for this server.</p>
+}
+else if (State == AccessState.Ready)
+{
+    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
+    <h1>Role mapping</h1>
+    <p>The guild owner and members with the Discord Administrator/Manage&nbsp;Server permission always
+       have admin access. Use this to grant access to additional roles.</p>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <h2>Admin roles</h2>
+    <p>@RoleNames(_mapping?.AdminRoleIds)</p>
+
+    <h2>Officer roles</h2>
+    <p>@RoleNames(_mapping?.OfficerRoleIds)</p>
+
+    <EditForm Model="Input" FormName="toggle-role" OnValidSubmit="SubmitAsync">
+        <AntiforgeryToken />
+        <label>Role
+            <InputSelect @bind-Value="Input.RoleId">
+                <option value="0">— select —</option>
+                @foreach (var r in _mapping?.AllRoles ?? [])
+                {
+                    <option value="@r.RoleId">@r.Name</option>
+                }
+            </InputSelect>
+        </label>
+        <label>Mapping
+            <InputSelect @bind-Value="Input.Kind">
+                <option value="admin">Admin</option>
+                <option value="officer">Officer</option>
+            </InputSelect>
+        </label>
+        <button type="submit">Toggle</button>
+    </EditForm>
+}
+
+@code {
+    [SupplyParameterFromForm] private ToggleInput Input { get; set; } = new();
+
+    private RoleMappingView? _mapping;
+
+    protected override async Task LoadAsync()
+        => _mapping = await Admin.GetRoleMappingAsync(GuildId);
+
+    private async Task SubmitAsync()
+    {
+        if (Input.RoleId == 0)
+        {
+            Message = "Please choose a role.";
+            return;
+        }
+
+        var result = Input.Kind == "officer"
+            ? await Config.ToggleOfficerRoleAsync(GuildId, Input.RoleId)
+            : await Config.ToggleAdminRoleAsync(GuildId, Input.RoleId);
+
+        Message = result.Message;
+        Input = new ToggleInput();
+        await LoadAsync();
+    }
+
+    private string RoleNames(IReadOnlyList<ulong>? ids)
+    {
+        if (_mapping is null || ids is null || ids.Count == 0)
+        {
+            return "none";
+        }
+
+        var names = ids.Select(id => _mapping.AllRoles.FirstOrDefault(r => r.RoleId == id)?.Name ?? id.ToString());
+        return string.Join(", ", names);
+    }
+
+    public class ToggleInput
+    {
+        public ulong RoleId { get; set; }
+        public string Kind { get; set; } = "admin";
+    }
+}

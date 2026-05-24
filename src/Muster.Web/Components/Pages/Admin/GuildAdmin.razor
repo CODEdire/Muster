@@ -1,0 +1,29 @@
+@page "/guilds/{GuildIdRaw}/admin"
+@inherits GuildAdminComponentBase
+
+<PageTitle>Admin — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <p>Please <a href="/account/login">log in</a>.</p>
+}
+else if (State == AccessState.Forbidden)
+{
+    <p>You need officer or admin access for this server.</p>
+}
+else if (State == AccessState.Ready)
+{
+    <p><a href="/guilds/@GuildId">← Dashboard</a></p>
+    <h1>Admin</h1>
+    <ul class="admin-links">
+        <li><a href="/guilds/@GuildId/award">Award points</a></li>
+        <li><a href="/guilds/@GuildId/approvals">Quest approvals</a></li>
+        <li><a href="/guilds/@GuildId/seasons">Seasons</a></li>
+        <li><a href="/guilds/@GuildId/config">Role mapping</a></li>
+    </ul>
+}
+
+@code {
+    // Officer is enough to reach the admin hub; individual pages enforce their own level.
+    protected override bool OfficerSufficient => true;
+}

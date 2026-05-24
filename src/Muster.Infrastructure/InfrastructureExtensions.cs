@@ -30,6 +30,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<RoleSyncService>();
         builder.Services.AddScoped<GuildAuthorizationService>();
         builder.Services.AddScoped<WebGuildService>();
+        builder.Services.AddScoped<WebAdminService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<AwardCommandService>();

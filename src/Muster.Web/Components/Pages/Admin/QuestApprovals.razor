@@ -1,0 +1,98 @@
+@page "/guilds/{GuildIdRaw}/approvals"
+@inherits GuildAdminComponentBase
+@inject WebAdminService Admin
+@inject QuestCommandService Quests
+
+<PageTitle>Quest approvals — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <p>Please <a href="/account/login">log in</a>.</p>
+}
+else if (State == AccessState.Forbidden)
+{
+    <p>You need officer access for this server.</p>
+}
+else if (State == AccessState.Ready)
+{
+    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
+    <h1>Quest approvals</h1>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_pending is null || _pending.Count == 0)
+    {
+        <p>No submissions waiting for approval.</p>
+    }
+    else
+    {
+        <table class="approvals">
+            <thead><tr><th>Quest</th><th>Member</th></tr></thead>
+            <tbody>
+                @foreach (var p in _pending)
+                {
+                    <tr><td>@p.QuestName</td><td>@p.DisplayName</td></tr>
+                }
+            </tbody>
+        </table>
+
+        <EditForm Model="Input" FormName="review" OnValidSubmit="SubmitAsync">
+            <AntiforgeryToken />
+            <label>Submission
+                <InputSelect @bind-Value="Input.Selection">
+                    <option value="">— select —</option>
+                    @foreach (var p in _pending)
+                    {
+                        <option value="@($"{p.MissionId}:{p.UserId}")">@p.QuestName — @p.DisplayName</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Decision
+                <InputSelect @bind-Value="Input.Decision">
+                    <option value="approve">Approve</option>
+                    <option value="reject">Reject</option>
+                </InputSelect>
+            </label>
+            <button type="submit">Submit</button>
+        </EditForm>
+    }
+}
+
+@code {
+    [SupplyParameterFromForm] private ReviewInput Input { get; set; } = new();
+
+    private IReadOnlyList<PendingApproval>? _pending;
+
+    protected override bool OfficerSufficient => true;
+
+    protected override async Task LoadAsync()
+        => _pending = await Admin.GetPendingApprovalsAsync(GuildId);
+
+    private async Task SubmitAsync()
+    {
+        var parts = (Input.Selection ?? string.Empty).Split(':');
+        if (parts.Length != 2 || !ulong.TryParse(parts[1], out var memberId))
+        {
+            Message = "Please choose a submission.";
+            return;
+        }
+
+        var questId = parts[0];
+        var result = Input.Decision == "reject"
+            ? await Quests.RejectAsync(GuildId, questId, memberId, UserId)
+            : await Quests.ApproveAsync(GuildId, questId, memberId, UserId);
+
+        Message = result.Message;
+        Input = new ReviewInput();
+        await LoadAsync();
+    }
+
+    public class ReviewInput
+    {
+        public string? Selection { get; set; }
+        public string Decision { get; set; } = "approve";
+    }
+}

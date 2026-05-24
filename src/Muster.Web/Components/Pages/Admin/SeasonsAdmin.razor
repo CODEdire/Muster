@@ -1,0 +1,69 @@
+@page "/guilds/{GuildIdRaw}/seasons"
+@inherits GuildAdminComponentBase
+@inject SeasonCommandService Seasons
+
+<PageTitle>Seasons — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <p>Please <a href="/account/login">log in</a>.</p>
+}
+else if (State == AccessState.Forbidden)
+{
+    <p>You need admin access for this server.</p>
+}
+else if (State == AccessState.Ready)
+{
+    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
+    <h1>Seasons</h1>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <p>@_status</p>
+
+    <EditForm Model="Input" FormName="season-start" OnValidSubmit="StartAsync">
+        <AntiforgeryToken />
+        <label>New season name <InputText @bind-Value="Input.Name" /></label>
+        <button type="submit">Start new season</button>
+    </EditForm>
+
+    <EditForm Model="EndInput" FormName="season-end" OnValidSubmit="EndAsync">
+        <AntiforgeryToken />
+        <button type="submit">End current season</button>
+    </EditForm>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "season-start")] private StartInput Input { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "season-end")] private EmptyInput EndInput { get; set; } = new();
+
+    private string? _status;
+
+    protected override async Task LoadAsync()
+        => _status = (await Seasons.StatusAsync(GuildId)).Message;
+
+    private async Task StartAsync()
+    {
+        Message = (await Seasons.StartAsync(GuildId, Input.Name ?? string.Empty)).Message;
+        Input = new StartInput();
+        await LoadAsync();
+    }
+
+    private async Task EndAsync()
+    {
+        Message = (await Seasons.EndAsync(GuildId)).Message;
+        await LoadAsync();
+    }
+
+    public class StartInput
+    {
+        public string? Name { get; set; }
+    }
+
+    public class EmptyInput
+    {
+    }
+}

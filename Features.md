@@ -80,10 +80,10 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Discord OAuth login + logout + cookie session; cascading auth state
 - [x] Guild listing + access checks (reusing `GuildAuthorizationService`); SuperAdmin (host) still TODO
 - [x] Guild dashboard + season leaderboard (`WebGuildService`, pinned web port for stable OAuth redirect)
+- [x] Admin consoles: award, quest approval queue, season management, role-mapping config (gated by owner/admin/officer)
 - [ ] Tracking-session management (incl. voice attendance view)
-- [ ] Quest board + approval queue; event-op management
-- [ ] Muster management; manual/bulk award console
-- [ ] Season & currency configuration; guild settings / reward config
+- [ ] Event-op management; muster management consoles
+- [ ] Currency configuration; guild settings / reward config (web)
 - [ ] Member detail with wallets; audit log
 - [ ] Wolverine.HTTP public API (`/api/v1`) — read endpoints + API-key auth
 - [ ] API client management; currency mint/spend endpoints (guarded)

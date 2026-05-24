@@ -1,0 +1,64 @@
+@page "/guilds/{GuildIdRaw}/award"
+@inherits GuildAdminComponentBase
+@inject WebAdminService Admin
+@inject AwardCommandService Awards
+
+<PageTitle>Award points — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <p>Please <a href="/account/login">log in</a>.</p>
+}
+else if (State == AccessState.Forbidden)
+{
+    <p>You need admin access for this server.</p>
+}
+else if (State == AccessState.Ready)
+{
+    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
+    <h1>Award points</h1>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <EditForm Model="Input" FormName="award" OnValidSubmit="SubmitAsync">
+        <AntiforgeryToken />
+        <label>Member
+            <InputSelect @bind-Value="Input.MemberId">
+                <option value="0">— select —</option>
+                @foreach (var m in _members ?? [])
+                {
+                    <option value="@m.UserId">@m.DisplayName</option>
+                }
+            </InputSelect>
+        </label>
+        <label>Amount <InputNumber @bind-Value="Input.Amount" /></label>
+        <label>Reason <InputText @bind-Value="Input.Reason" /></label>
+        <button type="submit">Award</button>
+    </EditForm>
+}
+
+@code {
+    [SupplyParameterFromForm] private AwardInput Input { get; set; } = new();
+
+    private IReadOnlyList<MemberOption>? _members;
+
+    protected override async Task LoadAsync()
+        => _members = await Admin.GetMembersAsync(GuildId);
+
+    private async Task SubmitAsync()
+    {
+        var result = await Awards.AwardPointsAsync(GuildId, UserId, Input.MemberId, Input.Amount, Input.Reason ?? string.Empty);
+        Message = result.Message;
+        Input = new AwardInput();
+    }
+
+    public class AwardInput
+    {
+        public ulong MemberId { get; set; }
+        public long Amount { get; set; }
+        public string? Reason { get; set; }
+    }
+}
