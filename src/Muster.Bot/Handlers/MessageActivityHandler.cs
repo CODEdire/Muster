@@ -16,6 +16,10 @@ public class MessageActivityHandler(IServiceScopeFactory scopeFactory) : IMessag
         }
 
         using var scope = scopeFactory.CreateScope();
+
+        var members = scope.ServiceProvider.GetRequiredService<MemberSyncService>();
+        await members.UpsertAsync(guildId, arg.Author.Id, arg.Author.Username, arg.Author.GlobalName, arg.Author.AvatarHash);
+
         var activity = scope.ServiceProvider.GetRequiredService<ActivityService>();
         await activity.RecordMessageAsync(guildId, arg.ChannelId, arg.Author.Id, arg.Id, arg.CreatedAt);
     }

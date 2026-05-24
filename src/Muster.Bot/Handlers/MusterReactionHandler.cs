@@ -17,6 +17,13 @@ public class MusterReactionHandler(IServiceScopeFactory scopeFactory) : IMessage
         }
 
         using var scope = scopeFactory.CreateScope();
+
+        if (arg.User is { IsBot: false } user)
+        {
+            var members = scope.ServiceProvider.GetRequiredService<MemberSyncService>();
+            await members.UpsertAsync(arg.GuildId.Value, arg.UserId, user.Username, user.GlobalName, user.AvatarHash, user.Nickname, user.RoleIds);
+        }
+
         var musters = scope.ServiceProvider.GetRequiredService<MusterService>();
         await musters.RecordReactionAsync(arg.MessageId, arg.UserId, arg.Emoji.Name ?? string.Empty);
     }

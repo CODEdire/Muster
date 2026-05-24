@@ -16,13 +16,18 @@ builder.AddMusterInfrastructure();
 builder.AddMusterMessaging();
 
 // NetCord gateway. The bot token is read from configuration key "Discord:Token"
-// (user-secrets locally, Key Vault in Azure). Intents avoid privileged ones: message counts
-// don't need MessageContent, and members are upserted lazily rather than via GuildUsers.
+// (user-secrets locally, Key Vault in Azure).
+//
+// GuildUsers is the privileged "Server Members" intent — required to receive member join/leave/
+// update events so the local member tables stay in sync. Enable "Server Members Intent" in the
+// Discord Developer Portal (Bot settings). We still avoid the MessageContent privileged intent
+// (we only count messages, never read their content).
 builder.Services
     .AddDiscordGateway(options =>
     {
         options.Intents =
             GatewayIntents.Guilds
+            | GatewayIntents.GuildUsers
             | GatewayIntents.GuildVoiceStates
             | GatewayIntents.GuildMessages
             | GatewayIntents.GuildMessageReactions

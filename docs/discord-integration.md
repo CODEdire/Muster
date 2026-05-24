@@ -17,12 +17,24 @@ the web app.
 | `GuildMessageReactions` | reaction musters, check-ins, op/quest responses | no |
 | `GuildScheduledEvents` | bind tracking sessions to native Discord events | no |
 | `GuildMessages` | stats-only message activity (counts) | no |
+| `GuildUsers` (Server Members) | member join/leave/nickname/role sync | **privileged** |
 | `MessageContent` | **not used** — counting needs only metadata | privileged |
-| `GuildMembers` | full member roster sync | privileged |
 
-v1 avoids privileged intents: message **counts** don't need `MessageContent`, and member
-data is upserted lazily on interaction instead of requiring `GuildMembers`. Full roster sync
-is a documented post-v1 toggle (requires Discord approval beyond 100 guilds).
+We use the **Server Members** privileged intent (`GuildUsers`) so the local `DiscordUser` /
+`GuildMember` tables stay in sync with Discord. Enable **Server Members Intent** in the Discord
+Developer Portal (Bot settings); below 100 guilds this needs no approval. We still avoid
+`MessageContent` — message activity is counted from metadata only.
+
+### Member & guild sync
+
+- **Lazy upsert:** `MessageActivityHandler`, `MusterReactionHandler`, and `VoiceAttendanceHandler`
+  upsert the acting member via `MemberSyncService`, so anyone who chats/reacts/joins voice is recorded.
+- **Lifecycle:** `MemberLifecycleHandler` handles `GuildUserAdd`/`GuildUserUpdate` (upsert nickname +
+  role snapshot) and `GuildUserRemove` (drop the membership; the shared user + ledger history persist).
+- **Guild:** `GuildLifecycleHandler` handles `GuildCreate` (provision) and `GuildUpdate` (rename/icon).
+- **Authorization by role mapping:** `GuildAuthorizationService` derives admin/officer status by
+  intersecting a member's `RoleIds` with `GuildSettings.AdminRoleIds` / `OfficerRoleIds` — Discord
+  roles, not individual users. Re-syncing role snapshots keeps these answers current.
 
 ## Install flow
 

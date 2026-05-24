@@ -26,6 +26,8 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<ManualAwardService>();
         builder.Services.AddScoped<ActivityService>();
         builder.Services.AddScoped<SeasonService>();
+        builder.Services.AddScoped<MemberSyncService>();
+        builder.Services.AddScoped<GuildAuthorizationService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<AwardCommandService>();
