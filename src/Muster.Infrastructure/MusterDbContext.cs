@@ -8,6 +8,7 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<Guild> Guilds => Set<Guild>();
     public DbSet<DiscordUser> Users => Set<DiscordUser>();
     public DbSet<GuildMember> GuildMembers => Set<GuildMember>();
+    public DbSet<GuildRole> GuildRoles => Set<GuildRole>();
 
     public DbSet<TrackingSession> TrackingSessions => Set<TrackingSession>();
     public DbSet<VoiceAttendance> VoiceAttendance => Set<VoiceAttendance>();
@@ -48,6 +49,11 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
         b.Entity<GuildMember>(e =>
         {
             e.HasKey(x => new { x.GuildId, x.UserId });
+        });
+
+        b.Entity<GuildRole>(e =>
+        {
+            e.HasKey(x => new { x.GuildId, x.RoleId });
         });
 
         b.Entity<TrackingSession>(e =>

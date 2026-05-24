@@ -32,8 +32,17 @@ Three application roles, resolved per guild:
 | **GuildAdmin** | guild owner, Manage-Guild holders, or a configured admin role | configure the guild, manage missions/musters/seasons, issue awards |
 | **Member** | any guild member | view leaderboards, own score/wallet, claim quests, RSVP |
 
-Guild-admin status is derived from the member's synced Discord roles (see
-`GuildSettings.AdminRoleIds` / `OfficerRoleIds`) combined with Discord guild permissions.
+Guild-admin status is resolved by `GuildAuthorizationService` with a **lockout-proof bypass** — a
+member is admin if ANY of these hold, so a bad role mapping can never lock everyone out:
+
+1. they are the **guild owner** (`Guild.OwnerId`);
+2. they hold a Discord role with **Administrator** or **Manage Guild** permission (from the synced
+   `GuildRole` snapshot);
+3. they hold a role configured in `GuildSettings.AdminRoleIds`.
+
+Officer additionally includes `OfficerRoleIds`. The same service gates the bot's mutating slash
+commands (via `MusterModuleBase`) and will back web authorization. The role mapping is configured with
+`/config-admin-role` / `/config-officer-role` (the owner can always run these).
 
 ## Pages (v1 target)
 

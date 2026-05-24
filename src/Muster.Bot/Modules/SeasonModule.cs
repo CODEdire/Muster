@@ -4,34 +4,19 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Muster.Bot.Modules;
 
-/// <summary>Discord adapter for season management. Logic lives in <see cref="SeasonCommandService"/>.</summary>
-public class SeasonModule(IServiceScopeFactory scopeFactory) : ApplicationCommandModule<ApplicationCommandContext>
+/// <summary>Discord adapter for season management (admin-only except status). Logic in <see cref="SeasonCommandService"/>.</summary>
+public class SeasonModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
     [SlashCommand("season-start", "Start a new season (archives the current one).")]
-    public async Task<string> StartAsync(
+    public Task<string> StartAsync(
         [SlashCommandParameter(Name = "name", Description = "Season name")] string name)
-        => await RunAsync(commands => commands.StartAsync(GuildId(), name));
+        => RunAsync((sp, guildId) => sp.GetRequiredService<SeasonCommandService>().StartAsync(guildId, name), RequiredRole.Admin);
 
     [SlashCommand("season-end", "End the current season.")]
-    public async Task<string> EndAsync()
-        => await RunAsync(commands => commands.EndAsync(GuildId()));
+    public Task<string> EndAsync()
+        => RunAsync((sp, guildId) => sp.GetRequiredService<SeasonCommandService>().EndAsync(guildId), RequiredRole.Admin);
 
     [SlashCommand("season-status", "Show the active season.")]
-    public async Task<string> StatusAsync()
-        => await RunAsync(commands => commands.StatusAsync(GuildId()));
-
-    private ulong GuildId() => Context.Guild!.Id;
-
-    private async Task<string> RunAsync(Func<SeasonCommandService, Task<CommandResult>> action)
-    {
-        if (Context.Guild is null)
-        {
-            return "This command can only be used in a server.";
-        }
-
-        using var scope = scopeFactory.CreateScope();
-        var commands = scope.ServiceProvider.GetRequiredService<SeasonCommandService>();
-        var result = await action(commands);
-        return result.Message;
-    }
+    public Task<string> StatusAsync()
+        => RunAsync((sp, guildId) => sp.GetRequiredService<SeasonCommandService>().StatusAsync(guildId));
 }

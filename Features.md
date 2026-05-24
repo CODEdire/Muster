@@ -35,14 +35,15 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 ## M2 — Bot core
 
 - [x] NetCord gateway intents (guilds, voice, reactions, scheduled events, messages, + privileged Server Members for member sync)
-- [x] Guild onboarding + rename/icon sync: `GuildCreate`/`GuildUpdate` via `GuildLifecycleHandler`
-- [ ] Guild teardown: `GuildDelete` marks the guild inactive
+- [x] Guild onboarding + rename/icon/owner + role snapshot sync: `GuildCreate`/`GuildUpdate` (`GuildLifecycleHandler`, `RoleLifecycleHandler`)
+- [x] Guild teardown: `GuildDelete` marks the guild inactive
 - [x] Member sync: lazy upsert on activity + `GuildUserAdd/Update/Remove` (`MemberLifecycleHandler`, `MemberSyncService`)
-- [x] Role-mapping authorization: admin/officer derived from Discord role ids in `GuildSettings` (`GuildAuthorizationService`)
+- [x] Authorization with lockout-proof bypass: owner **or** Discord Administrator/Manage-Guild **or** mapped admin/officer role (`GuildAuthorizationService`)
 - [x] Application-command framework wired (`AddApplicationCommands`)
+- [x] Admin/officer gating of mutating commands via shared `MusterModuleBase`
+- [x] `/config-admin-role`, `/config-officer-role`, `/config-show` (admin) — role mapping
 - [ ] Command registration strategy (guild commands in dev, global in prod)
 - [x] `/ping` command
-- [ ] `/config` (admin) command
 - [ ] Bot install (OAuth2 invite) flow + documentation
 
 ## M3 — Participation methods

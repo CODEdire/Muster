@@ -6,12 +6,13 @@ using NetCord.Hosting.Gateway;
 namespace Muster.Bot.Handlers;
 
 /// <summary>
-/// Onboards guilds as they become available on the gateway. Resolved as a singleton, so it opens a
-/// scope per event to use the scoped <see cref="GuildProvisioningService"/> / DbContext.
+/// Maintains the Guild table across the bot's membership: provisions on join (capturing the owner and
+/// role snapshot), updates on rename, and marks inactive when the bot is removed.
 /// </summary>
 public class GuildLifecycleHandler(
     IServiceScopeFactory scopeFactory,
-    ILogger<GuildLifecycleHandler> logger) : IGuildCreateGatewayHandler, IGuildUpdateGatewayHandler
+    ILogger<GuildLifecycleHandler> logger)
+    : IGuildCreateGatewayHandler, IGuildUpdateGatewayHandler, IGuildDeleteGatewayHandler
 {
     public async ValueTask HandleAsync(GuildCreateEventArgs arg)
     {
@@ -21,17 +22,35 @@ public class GuildLifecycleHandler(
             return;
         }
 
-        await ProvisionAsync(guild.Id, guild.Name, guild.IconHash);
+        using var scope = scopeFactory.CreateScope();
+        var provisioning = scope.ServiceProvider.GetRequiredService<GuildProvisioningService>();
+        await provisioning.EnsureGuildAsync(guild.Id, guild.Name, guild.IconHash, guild.OwnerId);
+
+        var roleSync = scope.ServiceProvider.GetRequiredService<RoleSyncService>();
+        await roleSync.SyncAllAsync(
+            guild.Id, guild.Roles.Values.Select(r => (r.Id, r.Name, (ulong)r.Permissions)));
+
         logger.LogInformation("Provisioned guild {GuildId} ({GuildName})", guild.Id, guild.Name);
     }
 
-    // Guild renamed / icon changed.
-    public ValueTask HandleAsync(Guild guild) => new(ProvisionAsync(guild.Id, guild.Name, guild.IconHash));
-
-    private async Task ProvisionAsync(ulong guildId, string name, string? iconHash)
+    // Guild renamed / icon changed / ownership transferred.
+    public async ValueTask HandleAsync(Guild guild)
     {
         using var scope = scopeFactory.CreateScope();
         var provisioning = scope.ServiceProvider.GetRequiredService<GuildProvisioningService>();
-        await provisioning.EnsureGuildAsync(guildId, name, iconHash);
+        await provisioning.EnsureGuildAsync(guild.Id, guild.Name, guild.IconHash, guild.OwnerId);
+    }
+
+    // Bot removed from the guild (ignore transient unavailability during outages).
+    public async ValueTask HandleAsync(GuildDeleteEventArgs arg)
+    {
+        if (arg.IsUnavailable)
+        {
+            return;
+        }
+
+        using var scope = scopeFactory.CreateScope();
+        var provisioning = scope.ServiceProvider.GetRequiredService<GuildProvisioningService>();
+        await provisioning.MarkInactiveAsync(arg.GuildId);
     }
 }

@@ -10,6 +10,9 @@ public class Guild
     public DateTimeOffset JoinedAt { get; set; }
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Discord id of the guild owner — always treated as a bot admin (lockout-proof bypass).</summary>
+    public ulong OwnerId { get; set; }
+
     /// <summary>IANA time zone id used for scheduling and reporting.</summary>
     public string TimeZoneId { get; set; } = "UTC";
 

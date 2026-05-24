@@ -13,7 +13,8 @@ public class GuildProvisioningService(MusterDbContext db)
 {
     public const string PointsCurrencyCode = "POINTS";
 
-    public async Task EnsureGuildAsync(ulong guildId, string name, string? iconHash, CancellationToken ct = default)
+    public async Task EnsureGuildAsync(
+        ulong guildId, string name, string? iconHash, ulong ownerId = 0, CancellationToken ct = default)
     {
         var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
         if (guild is null)
@@ -23,6 +24,7 @@ public class GuildProvisioningService(MusterDbContext db)
                 Id = guildId,
                 Name = name,
                 IconHash = iconHash,
+                OwnerId = ownerId,
                 JoinedAt = DateTimeOffset.UtcNow,
                 IsActive = true,
             });
@@ -32,6 +34,10 @@ public class GuildProvisioningService(MusterDbContext db)
             guild.Name = name;
             guild.IconHash = iconHash;
             guild.IsActive = true;
+            if (ownerId != 0)
+            {
+                guild.OwnerId = ownerId;
+            }
         }
 
         var hasPoints = await db.Currencies.AnyAsync(c => c.GuildId == guildId && c.Code == PointsCurrencyCode, ct);
@@ -62,5 +68,16 @@ public class GuildProvisioningService(MusterDbContext db)
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Mark a guild inactive when the bot is removed from it.</summary>
+    public async Task MarkInactiveAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        if (guild is not null)
+        {
+            guild.IsActive = false;
+            await db.SaveChangesAsync(ct);
+        }
     }
 }

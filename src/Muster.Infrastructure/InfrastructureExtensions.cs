@@ -27,6 +27,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<ActivityService>();
         builder.Services.AddScoped<SeasonService>();
         builder.Services.AddScoped<MemberSyncService>();
+        builder.Services.AddScoped<RoleSyncService>();
         builder.Services.AddScoped<GuildAuthorizationService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
@@ -36,6 +37,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<QuestCommandService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
+        builder.Services.AddScoped<ConfigCommandService>();
         // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
         // registered by the bot host alongside its IMusterPublisher implementation — not here.
 
