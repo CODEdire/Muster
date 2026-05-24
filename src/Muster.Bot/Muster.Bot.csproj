@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <UserSecretsId>muster-bot</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetCord" />
+    <PackageReference Include="NetCord.Hosting" />
+    <PackageReference Include="NetCord.Services" />
+    <PackageReference Include="WolverineFx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Muster.ServiceDefaults\Muster.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Muster.Infrastructure\Muster.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,53 @@
+<Project>
+
+  <PropertyGroup>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Aspire">
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.Sql" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="13.3.5" />
+  </ItemGroup>
+
+  <ItemGroup Label="ServiceDefaults">
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Data">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Messaging (Wolverine)">
+    <PackageVersion Include="WolverineFx" Version="6.0.1" />
+    <PackageVersion Include="WolverineFx.Http" Version="6.0.1" />
+    <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.0.1" />
+    <PackageVersion Include="WolverineFx.SqlServer" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Discord (NetCord)">
+    <PackageVersion Include="NetCord" Version="1.0.0-alpha.490" />
+    <PackageVersion Include="NetCord.Hosting" Version="1.0.0-alpha.490" />
+    <PackageVersion Include="NetCord.Services" Version="1.0.0-alpha.490" />
+  </ItemGroup>
+
+  <ItemGroup Label="Web / Auth">
+    <PackageVersion Include="AspNet.Security.OAuth.Discord" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.12.0" />
+  </ItemGroup>
+
+</Project>
