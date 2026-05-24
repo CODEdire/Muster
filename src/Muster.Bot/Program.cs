@@ -3,6 +3,7 @@ using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services;
 using NetCord.Hosting.Services.ApplicationCommands;
+using NetCord.Services.ApplicationCommands;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -29,8 +30,8 @@ builder.Services.AddGatewayHandlers(typeof(Program).Assembly);
 
 var host = builder.Build();
 
-// Liveness command. The full participation command set (track/quest/op/muster/award/...) lands
-// in M3 as application-command modules.
+// Liveness command plus the participation command modules (award, leaderboard, wallet, track-*).
 host.AddSlashCommand("ping", "Check that Muster is responding.", () => "Pong!");
+host.AddModules(typeof(Program).Assembly);
 
 host.Run();

@@ -55,7 +55,9 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [ ] **Tracking sessions** — auto bind to Discord Scheduled Events (gateway handler)
 - [ ] **Reaction check-in** as a session attendance signal (distinct from musters)
 - [ ] **Event ops** — sign-up + attendance flow
-- [ ] **Slash-command modules** — `/track`, `/quest`, `/op`, `/muster`, `/award`
+- [x] **Slash-command modules** — `/award`, `/leaderboard`, `/wallet`, `/track-start`, `/track-stop`
+- [ ] **Slash-command modules** — `/quest`, `/op`, `/muster` (need message+reaction posting)
+- [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 - [ ] Stats-only message activity + daily rollups + dedupe
 
 ## M4 — Scoring, currency & messaging

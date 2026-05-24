@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 
@@ -6,6 +7,17 @@ namespace Muster.Infrastructure.Services;
 /// <summary>Admin manual / bulk awards for off-platform contributions.</summary>
 public class ManualAwardService(MusterDbContext db, AwardService awards)
 {
+    /// <summary>Manually award the guild's POINTS currency to a member.</summary>
+    public async Task AwardPointsAsync(
+        ulong guildId, ulong userId, long amount, string reason, ulong awardedBy, CancellationToken ct = default)
+    {
+        var points = await db.Currencies.FirstOrDefaultAsync(
+            c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
+            ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
+
+        await AwardAsync(guildId, userId, points.Id, amount, reason, awardedBy, ct);
+    }
+
     public async Task AwardAsync(
         ulong guildId, ulong userId, Guid currencyId, long amount, string reason,
         ulong awardedBy, CancellationToken ct = default)
