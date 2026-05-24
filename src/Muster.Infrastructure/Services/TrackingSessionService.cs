@@ -85,20 +85,27 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards)
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Close a session: finalize open presence segments and award points by minutes attended.</summary>
-    public async Task CloseAsync(
+    /// <summary>
+    /// Close a session: finalize open presence segments and award points by minutes attended.
+    /// Returns false if no such session exists (idempotent: closing an already-closed session returns true).
+    /// </summary>
+    public async Task<bool> CloseAsync(
         Guid sessionId, DateTimeOffset? at = null, int pointsPerMinute = DefaultPointsPerMinute, CancellationToken ct = default)
     {
         var now = at ?? DateTimeOffset.UtcNow;
 
         var session = await db.TrackingSessions
             .Include(s => s.Attendance)
-            .FirstOrDefaultAsync(s => s.Id == sessionId, ct)
-            ?? throw new InvalidOperationException($"Tracking session {sessionId} not found.");
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+
+        if (session is null)
+        {
+            return false;
+        }
 
         if (session.Status == TrackingSessionStatus.Closed)
         {
-            return;
+            return true;
         }
 
         session.Status = TrackingSessionStatus.Closed;
@@ -121,6 +128,8 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards)
                 LedgerSourceType.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
                 "Voice attendance", ct);
         }
+
+        return true;
     }
 
     private static void CloseSegment(VoiceAttendance attendance, DateTimeOffset start, DateTimeOffset end)

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Services;
 
 namespace Muster.Infrastructure;
@@ -23,6 +24,11 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<MissionService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<ManualAwardService>();
+
+        // Platform-independent command services (used by the bot adapters and, later, the web/API).
+        builder.Services.AddScoped<AwardCommandService>();
+        builder.Services.AddScoped<ScoreCommandService>();
+        builder.Services.AddScoped<TrackingCommandService>();
 
         return builder;
     }

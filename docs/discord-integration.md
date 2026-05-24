@@ -63,6 +63,26 @@ production (~1h propagation).
 Handlers translate events into Wolverine commands (see [messaging.md](./messaging.md)) so
 scoring rules live in one place.
 
+## Testability: thin adapters over command services
+
+Discord-facing code is kept as thin as possible so the real logic can be tested without a
+gateway:
+
+- **Command services** (`Muster.Infrastructure.Commands`, e.g. `AwardCommandService`,
+  `ScoreCommandService`, `TrackingCommandService`) hold all validation, orchestration, and
+  message formatting. They take primitives (guild id, user id, parsed parameters) and return
+  a platform-independent `CommandResult { Message, IsError }`.
+- **NetCord modules** (`Muster.Bot/Modules`) are adapters: they pull ids/parameters off
+  `Context`, handle Discord-specific concerns (e.g. "must be used in a server"), call the
+  command service, and return `result.Message`.
+- **Gateway handlers** (`Muster.Bot/Handlers`) follow the same shape: extract primitives from
+  the event payload and delegate to a service (`TrackingSessionService.ProcessVoiceStateAsync`,
+  `MusterService.RecordReactionAsync`).
+
+This means commands and event handling are exercised in unit tests against an in-memory
+database — validation, idempotency, capacity limits, leaderboard/wallet formatting — with no
+Discord connection. The same command services are reusable by the web UI and API.
+
 ## Caveats
 
 - **Backfill**: the bot cannot see activity before it joins a guild.

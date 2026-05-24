@@ -1,10 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
 
 namespace Muster.Bot.Modules;
 
+/// <summary>Discord adapter for the award command. All logic lives in <see cref="AwardCommandService"/>.</summary>
 public class AwardModule(IServiceScopeFactory scopeFactory) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SlashCommand("award", "Award points to a member for an off-platform contribution.")]
@@ -19,9 +20,8 @@ public class AwardModule(IServiceScopeFactory scopeFactory) : ApplicationCommand
         }
 
         using var scope = scopeFactory.CreateScope();
-        var awards = scope.ServiceProvider.GetRequiredService<ManualAwardService>();
-        await awards.AwardPointsAsync(guild.Id, member.Id, amount, reason, Context.User.Id);
-
-        return $"Awarded **{amount}** points to <@{member.Id}> — {reason}";
+        var commands = scope.ServiceProvider.GetRequiredService<AwardCommandService>();
+        var result = await commands.AwardPointsAsync(guild.Id, Context.User.Id, member.Id, amount, reason);
+        return result.Message;
     }
 }
