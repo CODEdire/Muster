@@ -29,18 +29,20 @@ img { max-width: 100%; }
     --text-muted: #44597b;
     --surface: rgba(255, 255, 255, 0.66);
 
-    --glass-bg: rgba(255, 255, 255, 0.55);
-    --glass-border: rgba(255, 255, 255, 0.75);
-    --glass-shadow: 0 8px 32px rgba(31, 73, 145, 0.18);
-    --glass-blur: 14px;
+    --glass-bg: rgba(255, 255, 255, 0.42);
+    --glass-border: rgba(255, 255, 255, 0.85);
+    --glass-highlight: rgba(255, 255, 255, 0.65);
+    --glass-shadow: 0 10px 34px rgba(31, 73, 145, 0.20);
+    --glass-blur: 18px;
 
-    --bg-base: #cfe8ff;
-    /* Sky with soft "clouds" */
+    --bg-base: #bfe0ff;
+    /* Sky with soft "clouds" + tinted light blooms for the frost to pick up */
     --bg-image:
-        radial-gradient(60% 50% at 15% 12%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 60%),
-        radial-gradient(50% 40% at 85% 18%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 55%),
-        radial-gradient(70% 60% at 70% 90%, rgba(186, 230, 253, 0.8) 0%, rgba(186, 230, 253, 0) 60%),
-        linear-gradient(180deg, #bfe3ff 0%, #e8f5ff 100%);
+        radial-gradient(45% 40% at 12% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 60%),
+        radial-gradient(40% 36% at 88% 16%, rgba(125, 211, 252, 0.55) 0%, transparent 58%),
+        radial-gradient(50% 45% at 95% 85%, rgba(167, 199, 255, 0.6) 0%, transparent 60%),
+        radial-gradient(60% 55% at 30% 100%, rgba(186, 230, 253, 0.85) 0%, transparent 62%),
+        linear-gradient(160deg, #aed6ff 0%, #d9efff 55%, #eaf6ff 100%);
 
     --radius: 16px;
     --radius-sm: 10px;
@@ -54,21 +56,24 @@ img { max-width: 100%; }
     --accent-soft: #3b82f6;
     --text: #e8effc;
     --text-muted: #9fb3d4;
-    --surface: rgba(18, 36, 71, 0.55);
+    --surface: rgba(28, 50, 96, 0.45);
 
-    --glass-bg: rgba(30, 54, 102, 0.38);
-    --glass-border: rgba(120, 160, 230, 0.22);
-    --glass-shadow: 0 10px 36px rgba(0, 8, 28, 0.55);
-    --glass-blur: 16px;
+    --glass-bg: rgba(42, 70, 128, 0.30);
+    --glass-border: rgba(150, 185, 255, 0.30);
+    --glass-highlight: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 12px 40px rgba(0, 8, 28, 0.55);
+    --glass-blur: 20px;
 
     --bg-base: #081225;
+    /* Vivid, multi-hue blooms so the frosted blur has something to reveal */
     --bg-image:
-        radial-gradient(55% 45% at 18% 12%, rgba(56, 102, 196, 0.45) 0%, rgba(56, 102, 196, 0) 60%),
-        radial-gradient(45% 40% at 85% 20%, rgba(37, 99, 235, 0.30) 0%, rgba(37, 99, 235, 0) 55%),
-        radial-gradient(70% 60% at 75% 95%, rgba(14, 35, 80, 0.8) 0%, rgba(14, 35, 80, 0) 60%),
-        linear-gradient(180deg, #07142e 0%, #0d2148 100%);
+        radial-gradient(48% 42% at 10% 6%, rgba(56, 130, 246, 0.55) 0%, transparent 60%),
+        radial-gradient(42% 38% at 90% 12%, rgba(99, 102, 241, 0.45) 0%, transparent 56%),
+        radial-gradient(38% 34% at 96% 78%, rgba(34, 211, 238, 0.22) 0%, transparent 60%),
+        radial-gradient(55% 50% at 35% 108%, rgba(37, 99, 235, 0.35) 0%, transparent 60%),
+        linear-gradient(160deg, #06122b 0%, #0b1f48 55%, #0a1838 100%);
 
-    --border: rgba(159, 179, 212, 0.18);
+    --border: rgba(159, 179, 212, 0.20);
 }
 
 /* System mode (no explicit data-theme) follows the OS dark preference. */
@@ -108,9 +113,10 @@ body::before {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius);
-    box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    /* outer depth shadow + a bright inset top edge sells the "pane of glass" look */
+    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
 }
 
 /* ---- App shell / layout -------------------------------------------------- */

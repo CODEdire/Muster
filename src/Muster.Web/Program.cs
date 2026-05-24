@@ -61,9 +61,11 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
+// Antiforgery must run AFTER authentication/authorization so form tokens correlate with the
+// signed-in user; otherwise authenticated form posts fail validation.
+app.UseAntiforgery();
 
 // Discord OAuth login / logout.
 app.MapGet("/account/login", (string? returnUrl) =>
