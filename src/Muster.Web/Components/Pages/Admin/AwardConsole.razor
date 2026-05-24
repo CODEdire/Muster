@@ -57,6 +57,11 @@ else if (State == AccessState.Ready)
     {
         var result = await Awards.AwardPointsAsync(GuildId, UserId, Input.MemberId, Input.Amount, Input.Reason ?? string.Empty);
         Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("award.points", result.Message);
+        }
+
         Input = new AwardInput();
     }
 

@@ -26,6 +26,12 @@ public abstract class GuildAdminComponentBase : ComponentBase
 
     [Inject] protected GuildAuthorizationService Auth { get; set; } = default!;
 
+    [Inject] protected AuditService Audit { get; set; } = default!;
+
+    /// <summary>Record an admin action to the audit trail (actor = the signed-in user).</summary>
+    protected Task AuditAsync(string action, string? details = null)
+        => Audit.RecordAsync(GuildId, UserId, action, details);
+
     protected AccessState State { get; private set; } = AccessState.Loading;
 
     protected ulong UserId { get; private set; }

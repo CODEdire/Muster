@@ -15,7 +15,8 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "reward", Description = "Points on approval")] long reward)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<QuestCommandService>().PostAsync(guildId, Context.User.Id, name, description, reward),
-            RequiredRole.Officer);
+            RequiredRole.Officer,
+            auditAction: "quest.post");
 
     [SlashCommand("quest-list", "List open quests.")]
     public Task<string> ListAsync()
@@ -37,5 +38,6 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "member", Description = "Member to approve")] User member)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<QuestCommandService>().ApproveAsync(guildId, quest, member.Id, Context.User.Id),
-            RequiredRole.Officer);
+            RequiredRole.Officer,
+            auditAction: "quest.approve");
 }

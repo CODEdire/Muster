@@ -316,6 +316,13 @@ table.leaderboard tbody tr:hover { background: var(--surface); }
     user-select: all;
 }
 
+/* ---- Filter bar / pager (server-driven grid) ----------------------------- */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.filter-bar input, .filter-bar select { width: auto; margin-top: 0; }
+.filter-bar input[type="search"] { min-width: 12rem; flex: 1; }
+.pager { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--text-muted); font-size: 0.9rem; }
+table.leaderboard th a { color: var(--text-muted); }
+
 /* ---- Responsive ---------------------------------------------------------- */
 @media (max-width: 640px) {
     .topbar { flex-wrap: wrap; gap: 0.6rem; }

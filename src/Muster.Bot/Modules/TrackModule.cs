@@ -13,12 +13,14 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "channel", Description = "Voice channel to track")] Channel channel)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<TrackingCommandService>().StartAsync(guildId, Context.User.Id, channel.Id),
-            RequiredRole.Admin);
+            RequiredRole.Admin,
+            auditAction: "track.start");
 
     [SlashCommand("track-stop", "Close a tracking session and award attendance.")]
     public Task<string> StopAsync(
         [SlashCommandParameter(Name = "session", Description = "Session id from /track-start")] string session)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<TrackingCommandService>().StopAsync(guildId, session),
-            RequiredRole.Admin);
+            RequiredRole.Admin,
+            auditAction: "track.stop");
 }

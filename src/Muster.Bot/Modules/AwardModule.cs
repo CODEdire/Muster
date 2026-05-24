@@ -16,5 +16,6 @@ public class AwardModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<AwardCommandService>()
                 .AwardPointsAsync(guildId, Context.User.Id, member.Id, amount, reason),
-            RequiredRole.Admin);
+            RequiredRole.Admin,
+            auditAction: "award.points");
 }

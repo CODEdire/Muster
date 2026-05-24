@@ -1,0 +1,142 @@
+@page "/guilds/{GuildIdRaw}/audit"
+@inherits GuildAdminComponentBase
+@inject AuditService AuditLog
+
+<PageTitle>Audit log — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Audit log</h1>
+        <p class="subtitle">Every admin action, searchable and exportable.</p>
+    </div>
+
+    <div class="panel glass">
+        <form method="get" class="filter-bar">
+            <input type="search" name="search" value="@Search" placeholder="Search action or details" />
+            <select name="action">
+                <option value="">All actions</option>
+                @foreach (var a in _actions)
+                {
+                    <option value="@a" selected="@(a == Action)">@a</option>
+                }
+            </select>
+            <input type="date" name="from" value="@From" />
+            <input type="date" name="to" value="@To" />
+            <input type="hidden" name="sort" value="@Sort" />
+            <input type="hidden" name="desc" value="@Desc.ToString().ToLowerInvariant()" />
+            <button type="submit">Filter</button>
+            <a class="btn btn-ghost" href="@ExportUrl()">Export CSV</a>
+        </form>
+    </div>
+
+    <div class="panel glass">
+        @if (_page is null || _page.Items.Count == 0)
+        {
+            <p class="empty">No matching audit entries.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead>
+                    <tr>
+                        <th><a href="@SortUrl("date")">When @SortIndicator("date")</a></th>
+                        <th>Actor</th>
+                        <th><a href="@SortUrl("action")">Action @SortIndicator("action")</a></th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in _page.Items)
+                    {
+                        <tr>
+                            <td>@e.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@e.ActorName</td>
+                            <td>@e.Action</td>
+                            <td>@e.Details</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="pager">
+                @if (_page.Page > 1)
+                {
+                    <a class="btn btn-ghost" href="@PageUrl(_page.Page - 1)">← Prev</a>
+                }
+                <span>Page @_page.Page of @Math.Max(_page.TotalPages, 1) · @_page.Total entries</span>
+                @if (_page.Page < _page.TotalPages)
+                {
+                    <a class="btn btn-ghost" href="@PageUrl(_page.Page + 1)">Next →</a>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] private string? Search { get; set; }
+    [SupplyParameterFromQuery] private string? Action { get; set; }
+    [SupplyParameterFromQuery] private string? From { get; set; }
+    [SupplyParameterFromQuery] private string? To { get; set; }
+    [SupplyParameterFromQuery] private string? Sort { get; set; }
+    [SupplyParameterFromQuery] private bool Desc { get; set; }
+    [SupplyParameterFromQuery] private int Page { get; set; }
+
+    private AuditPage? _page;
+    private IReadOnlyList<string> _actions = [];
+
+    protected override async Task LoadAsync()
+    {
+        _actions = await AuditLog.GetActionsAsync(GuildId);
+        _page = await AuditLog.SearchAsync(GuildId, BuildQuery());
+    }
+
+    private AuditQuery BuildQuery() => new(
+        Search: Search,
+        Action: Action,
+        From: DateOnly.TryParse(From, out var f) ? f : null,
+        To: DateOnly.TryParse(To, out var t) ? t : null,
+        Sort: string.IsNullOrEmpty(Sort) ? "date" : Sort,
+        Desc: string.IsNullOrEmpty(Sort) ? true : Desc,
+        Page: Page <= 0 ? 1 : Page,
+        PageSize: 25);
+
+    private string BaseQuery(string sort, bool desc, int page)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(Search)) parts.Add($"search={Uri.EscapeDataString(Search)}");
+        if (!string.IsNullOrEmpty(Action)) parts.Add($"action={Uri.EscapeDataString(Action)}");
+        if (!string.IsNullOrEmpty(From)) parts.Add($"from={Uri.EscapeDataString(From)}");
+        if (!string.IsNullOrEmpty(To)) parts.Add($"to={Uri.EscapeDataString(To)}");
+        parts.Add($"sort={sort}");
+        parts.Add($"desc={desc.ToString().ToLowerInvariant()}");
+        parts.Add($"page={page}");
+        return string.Join("&", parts);
+    }
+
+    private string SortUrl(string column)
+    {
+        var current = string.IsNullOrEmpty(Sort) ? "date" : Sort;
+        var desc = current == column ? !Desc : true; // toggle when re-clicking the active column
+        return $"/guilds/{GuildId}/audit?{BaseQuery(column, desc, 1)}";
+    }
+
+    private string SortIndicator(string column)
+        => (string.IsNullOrEmpty(Sort) ? "date" : Sort) == column ? (Desc ? "▼" : "▲") : "";
+
+    private string PageUrl(int page)
+        => $"/guilds/{GuildId}/audit?{BaseQuery(string.IsNullOrEmpty(Sort) ? "date" : Sort, Desc, page)}";
+
+    private string ExportUrl()
+        => $"/guilds/{GuildId}/audit/export.csv?{BaseQuery(string.IsNullOrEmpty(Sort) ? "date" : Sort, Desc, 1)}";
+}

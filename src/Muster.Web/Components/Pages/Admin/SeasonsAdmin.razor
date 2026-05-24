@@ -55,14 +55,26 @@ else if (State == AccessState.Ready)
 
     private async Task StartAsync()
     {
-        Message = (await Seasons.StartAsync(GuildId, Input.Name ?? string.Empty)).Message;
+        var result = await Seasons.StartAsync(GuildId, Input.Name ?? string.Empty);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("season.start", result.Message);
+        }
+
         Input = new StartInput();
         await LoadAsync();
     }
 
     private async Task EndAsync()
     {
-        Message = (await Seasons.EndAsync(GuildId)).Message;
+        var result = await Seasons.EndAsync(GuildId);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("season.end", result.Message);
+        }
+
         await LoadAsync();
     }
 

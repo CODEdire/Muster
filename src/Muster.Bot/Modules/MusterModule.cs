@@ -16,5 +16,6 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<MusterCommandService>()
                 .CreateAsync(guildId, Context.Channel.Id, prompt, emoji, reward, capacity > 0 ? (int)capacity : null),
-            RequiredRole.Admin);
+            RequiredRole.Admin,
+            auditAction: "muster.create");
 }

@@ -20,7 +20,9 @@ public enum RequiredRole
 public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : ApplicationCommandModule<ApplicationCommandContext>
 {
     protected async Task<string> RunAsync(
-        Func<IServiceProvider, ulong, Task<CommandResult>> action, RequiredRole required = RequiredRole.None)
+        Func<IServiceProvider, ulong, Task<CommandResult>> action,
+        RequiredRole required = RequiredRole.None,
+        string? auditAction = null)
     {
         if (Context.Guild is not { } guild)
         {
@@ -46,6 +48,14 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
         }
 
         var result = await action(services, guild.Id);
+
+        // Record successful admin/officer actions to the audit trail (actor = invoking user).
+        if (auditAction is not null && !result.IsError)
+        {
+            await services.GetRequiredService<AuditService>()
+                .RecordAsync(guild.Id, Context.User.Id, auditAction, result.Message);
+        }
+
         return result.Message;
     }
 }

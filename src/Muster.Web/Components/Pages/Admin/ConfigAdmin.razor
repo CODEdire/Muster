@@ -83,6 +83,11 @@ else if (State == AccessState.Ready)
             : await Config.ToggleAdminRoleAsync(GuildId, Input.RoleId);
 
         Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync(Input.Kind == "officer" ? "config.officerRole" : "config.adminRole", result.Message);
+        }
+
         Input = new ToggleInput();
         await LoadAsync();
     }

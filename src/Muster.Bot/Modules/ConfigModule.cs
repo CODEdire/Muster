@@ -14,12 +14,12 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
     [SlashCommand("config-admin-role", "Toggle whether a Discord role grants bot admin.")]
     public Task<string> AdminRoleAsync(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleAdminRoleAsync(guildId, role.Id), RequiredRole.Admin);
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleAdminRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.adminRole");
 
     [SlashCommand("config-officer-role", "Toggle whether a Discord role grants officer permissions.")]
     public Task<string> OfficerRoleAsync(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleOfficerRoleAsync(guildId, role.Id), RequiredRole.Admin);
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleOfficerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.officerRole");
 
     [SlashCommand("config-show", "Show the current admin/officer role mapping.")]
     public Task<string> ShowAsync()

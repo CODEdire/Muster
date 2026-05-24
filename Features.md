@@ -84,7 +84,8 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [ ] Tracking-session management (incl. voice attendance view)
 - [ ] Event-op management; muster management consoles
 - [ ] Currency configuration; guild settings / reward config (web)
-- [ ] Member detail with wallets; audit log
+- [x] Audit log: recorded for admin actions (bot + web) + searchable/filterable/sortable console with CSV export
+- [ ] Member detail with wallets
 - [x] Public API (`/api/v1`) — Wolverine.HTTP endpoints (leaderboard, wallets, ledger) + API-key auth
 - [x] API client management (web) + guarded currency mint/spend with overdraft protection
 - [x] Currency modes (`Internal`/`External`/`Hybrid`) modeled for connector authority
