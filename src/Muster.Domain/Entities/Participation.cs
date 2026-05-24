@@ -40,6 +40,9 @@ public class VoiceAttendance
     public DateTimeOffset? LastLeftAt { get; set; }
     public int TotalMinutes { get; set; }
 
+    /// <summary>Start of the currently-open presence segment, or null when the member isn't present.</summary>
+    public DateTimeOffset? OpenSegmentStart { get; set; }
+
     public TrackingSession? TrackingSession { get; set; }
 }
 

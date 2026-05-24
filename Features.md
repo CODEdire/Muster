@@ -46,14 +46,16 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 
 ## M3 — Participation methods
 
-- [ ] **Tracking sessions** — manual `/track start|stop|status`
-- [ ] **Tracking sessions** — auto bind to Discord Scheduled Events
-- [ ] **Voice attendance** capture from `VoiceStateUpdate` (rewardable signal)
-- [ ] **Reaction check-in** for sessions
-- [ ] **Quests** — `/quest post|claim|submit|approve|list` (submit → officer approve)
-- [ ] **Event ops** — `/op create|signup|close` (RSVP + attendance)
-- [ ] **Reaction musters** — `/muster create` (multi-emoji, optional capacity)
-- [ ] **Manual / bulk awards** — `/award user|voice|reacted`
+- [x] **Awarding engine** — idempotent ledger writes + wallet upsert (`AwardService`)
+- [x] **Tracking sessions** — open/close + voice-minute rewards (`TrackingSessionService`)
+- [x] **Voice attendance** capture from `VoiceStateUpdate` (`VoiceAttendanceHandler`)
+- [x] **Reaction musters** — create + reward on reaction, capacity & idempotency (`MusterService` + `MusterReactionHandler`)
+- [x] **Quests** — claim/submit/approve/reject, reward-on-approve (`MissionService`)
+- [x] **Manual / bulk awards** — `ManualAwardService`
+- [ ] **Tracking sessions** — auto bind to Discord Scheduled Events (gateway handler)
+- [ ] **Reaction check-in** as a session attendance signal (distinct from musters)
+- [ ] **Event ops** — sign-up + attendance flow
+- [ ] **Slash-command modules** — `/track`, `/quest`, `/op`, `/muster`, `/award`
 - [ ] Stats-only message activity + daily rollups + dedupe
 
 ## M4 — Scoring, currency & messaging

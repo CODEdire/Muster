@@ -1,0 +1,132 @@
+using Microsoft.EntityFrameworkCore;
+using Muster.Domain.Entities;
+using Muster.Domain.Enums;
+
+namespace Muster.Infrastructure.Services;
+
+/// <summary>
+/// Channel-activity tracking sessions. While a session is active, members' voice presence in its
+/// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
+/// are opened manually by an admin or bound to a Discord scheduled event.
+/// </summary>
+public class TrackingSessionService(MusterDbContext db, AwardService awards)
+{
+    public const int DefaultPointsPerMinute = 1;
+
+    public async Task<TrackingSession> OpenManualAsync(
+        ulong guildId, ulong voiceChannelId, ulong openedBy, CancellationToken ct = default)
+        => await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.Manual, scheduledEventId: null, openedBy, ct);
+
+    public async Task<TrackingSession> OpenForScheduledEventAsync(
+        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, CancellationToken ct = default)
+        => await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0, ct);
+
+    private async Task<TrackingSession> OpenAsync(
+        ulong guildId, ulong voiceChannelId, TrackingSessionSource source, ulong? scheduledEventId,
+        ulong openedBy, CancellationToken ct)
+    {
+        var session = new TrackingSession
+        {
+            Id = Guid.NewGuid(),
+            GuildId = guildId,
+            Source = source,
+            ScheduledEventId = scheduledEventId,
+            VoiceChannelId = voiceChannelId,
+            StartedAt = DateTimeOffset.UtcNow,
+            Status = TrackingSessionStatus.Active,
+            OpenedBy = openedBy,
+        };
+        db.TrackingSessions.Add(session);
+        await db.SaveChangesAsync(ct);
+        return session;
+    }
+
+    /// <summary>
+    /// Reconcile a member's voice presence against active sessions: close any open segment in a
+    /// session they've left, and open one in the session for the channel they're now in.
+    /// </summary>
+    public async Task ProcessVoiceStateAsync(
+        ulong guildId, ulong userId, ulong? currentChannelId, DateTimeOffset? at = null, CancellationToken ct = default)
+    {
+        var now = at ?? DateTimeOffset.UtcNow;
+
+        var activeSessions = await db.TrackingSessions
+            .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active)
+            .ToListAsync(ct);
+
+        foreach (var session in activeSessions)
+        {
+            var attendance = await db.VoiceAttendance
+                .FirstOrDefaultAsync(a => a.TrackingSessionId == session.Id && a.UserId == userId, ct);
+            var isCurrent = currentChannelId == session.VoiceChannelId;
+
+            if (isCurrent)
+            {
+                if (attendance is null)
+                {
+                    attendance = new VoiceAttendance
+                    {
+                        Id = Guid.NewGuid(),
+                        TrackingSessionId = session.Id,
+                        UserId = userId,
+                        FirstJoinedAt = now,
+                    };
+                    db.VoiceAttendance.Add(attendance);
+                }
+
+                attendance.OpenSegmentStart ??= now;
+            }
+            else if (attendance?.OpenSegmentStart is { } start)
+            {
+                CloseSegment(attendance, start, now);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Close a session: finalize open presence segments and award points by minutes attended.</summary>
+    public async Task CloseAsync(
+        Guid sessionId, DateTimeOffset? at = null, int pointsPerMinute = DefaultPointsPerMinute, CancellationToken ct = default)
+    {
+        var now = at ?? DateTimeOffset.UtcNow;
+
+        var session = await db.TrackingSessions
+            .Include(s => s.Attendance)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct)
+            ?? throw new InvalidOperationException($"Tracking session {sessionId} not found.");
+
+        if (session.Status == TrackingSessionStatus.Closed)
+        {
+            return;
+        }
+
+        session.Status = TrackingSessionStatus.Closed;
+        session.EndedAt = now;
+
+        foreach (var attendance in session.Attendance)
+        {
+            if (attendance.OpenSegmentStart is { } start)
+            {
+                CloseSegment(attendance, start, now);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        foreach (var attendance in session.Attendance.Where(a => a.TotalMinutes > 0))
+        {
+            await awards.AwardPointsAsync(
+                session.GuildId, attendance.UserId, attendance.TotalMinutes * pointsPerMinute,
+                LedgerSourceType.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
+                "Voice attendance", ct);
+        }
+    }
+
+    private static void CloseSegment(VoiceAttendance attendance, DateTimeOffset start, DateTimeOffset end)
+    {
+        attendance.TotalMinutes += (int)(end - start).TotalMinutes;
+        attendance.OpenSegmentStart = null;
+        attendance.LastLeftAt = end;
+    }
+}
