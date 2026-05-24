@@ -28,6 +28,9 @@ public class Currency
 
     public bool IsSeasonal { get; set; }
     public bool IsSpendable { get; set; }
+
+    /// <summary>Where balance authority lives for this currency (see <see cref="CurrencyMode"/>).</summary>
+    public CurrencyMode Mode { get; set; } = CurrencyMode.Internal;
 }
 
 /// <summary>

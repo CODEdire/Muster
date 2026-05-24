@@ -1,0 +1,151 @@
+@page "/guilds/{GuildIdRaw}/api-clients"
+@inherits GuildAdminComponentBase
+@inject ApiClientService Clients
+
+<PageTitle>API clients — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>API clients</h1>
+        <p class="subtitle">Keys for external systems (e.g. a loot/economy connector) to call the Muster API.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_newKey is not null)
+    {
+        <div class="panel glass">
+            <h2>New API key</h2>
+            <p>Copy this now — it won't be shown again.</p>
+            <pre class="apikey">@_newKey</pre>
+        </div>
+    }
+
+    <div class="panel glass">
+        <h2>Clients</h2>
+        @if (_clients is null || _clients.Count == 0)
+        {
+            <p class="empty">No API clients yet.</p>
+        }
+        else
+        {
+            <table class="approvals">
+                <thead><tr><th>Name</th><th>Scopes</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var c in _clients)
+                    {
+                        <tr>
+                            <td>@c.Name</td>
+                            <td>@string.Join(", ", c.Scopes)</td>
+                            <td>@(c.IsActive ? "active" : "revoked")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
+        <h2>Create a client</h2>
+        <EditForm class="form-grid" Model="Input" FormName="create-client" OnValidSubmit="CreateAsync">
+            <AntiforgeryToken />
+            <label>Name <InputText @bind-Value="Input.Name" /></label>
+            <label><InputCheckbox @bind-Value="Input.ReadLeaderboard" /> read:leaderboard</label>
+            <label><InputCheckbox @bind-Value="Input.ReadWallets" /> read:wallets</label>
+            <label><InputCheckbox @bind-Value="Input.ReadLedger" /> read:ledger</label>
+            <label><InputCheckbox @bind-Value="Input.WriteCurrency" /> write:currency</label>
+            <div class="btn-row"><button type="submit">Create key</button></div>
+        </EditForm>
+    </div>
+
+    @if (_clients is { Count: > 0 })
+    {
+        <div class="panel glass">
+            <h2>Revoke a client</h2>
+            <EditForm class="form-grid" Model="RevokeInput" FormName="revoke-client" OnValidSubmit="RevokeAsync">
+                <AntiforgeryToken />
+                <label>Client
+                    <InputSelect @bind-Value="RevokeInput.ClientId">
+                        <option value="">— select —</option>
+                        @foreach (var c in _clients.Where(c => c.IsActive))
+                        {
+                            <option value="@c.Id">@c.Name</option>
+                        }
+                    </InputSelect>
+                </label>
+                <div class="btn-row"><button type="submit">Revoke</button></div>
+            </EditForm>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "create-client")] private CreateInput Input { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "revoke-client")] private RevokeClientInput RevokeInput { get; set; } = new();
+
+    private IReadOnlyList<Muster.Domain.Entities.ApiClient>? _clients;
+    private string? _newKey;
+
+    protected override async Task LoadAsync()
+        => _clients = await Clients.ListAsync(GuildId);
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Input.Name))
+        {
+            Message = "Please provide a name.";
+            return;
+        }
+
+        var scopes = new List<string>();
+        if (Input.ReadLeaderboard) scopes.Add("read:leaderboard");
+        if (Input.ReadWallets) scopes.Add("read:wallets");
+        if (Input.ReadLedger) scopes.Add("read:ledger");
+        if (Input.WriteCurrency) scopes.Add("write:currency");
+
+        var created = await Clients.CreateAsync(GuildId, Input.Name.Trim(), scopes);
+        _newKey = created.ApiKey;
+        Message = $"Created client '{created.Client.Name}'.";
+        Input = new CreateInput();
+        await LoadAsync();
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (Guid.TryParse(RevokeInput.ClientId, out var id))
+        {
+            await Clients.RevokeAsync(GuildId, id);
+            Message = "Client revoked.";
+        }
+
+        RevokeInput = new RevokeClientInput();
+        await LoadAsync();
+    }
+
+    public class CreateInput
+    {
+        public string? Name { get; set; }
+        public bool ReadLeaderboard { get; set; }
+        public bool ReadWallets { get; set; }
+        public bool ReadLedger { get; set; }
+        public bool WriteCurrency { get; set; }
+    }
+
+    public class RevokeClientInput
+    {
+        public string? ClientId { get; set; }
+    }
+}

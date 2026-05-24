@@ -31,6 +31,8 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<GuildAuthorizationService>();
         builder.Services.AddScoped<WebGuildService>();
         builder.Services.AddScoped<WebAdminService>();
+        builder.Services.AddScoped<ApiClientService>();
+        builder.Services.AddScoped<CurrencyService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<AwardCommandService>();

@@ -70,3 +70,16 @@ public enum AppRole
     GuildAdmin = 1,
     SuperAdmin = 2,
 }
+
+/// <summary>How a currency's balance authority is split with external systems.</summary>
+public enum CurrencyMode
+{
+    /// <summary>Muster owns the balance; external systems read and mint/spend via the API. (default)</summary>
+    Internal = 0,
+
+    /// <summary>An external system owns the balance; Muster emits events and keeps a shadow ledger.</summary>
+    External = 1,
+
+    /// <summary>Split authority: Muster mints from participation, external owns spend; reconciled via events.</summary>
+    Hybrid = 2,
+}
