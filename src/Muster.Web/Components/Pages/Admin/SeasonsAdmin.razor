@@ -29,7 +29,6 @@ else if (State == AccessState.Ready)
         <h2>Start a new season</h2>
         <p class="subtitle">Starting a season archives the current one and resets the points leaderboard.</p>
         <EditForm class="form-grid" Model="Input" FormName="season-start" OnValidSubmit="StartAsync">
-            <AntiforgeryToken />
             <label>Season name <InputText @bind-Value="Input.Name" /></label>
             <div class="btn-row"><button type="submit">Start season</button></div>
         </EditForm>
@@ -38,7 +37,6 @@ else if (State == AccessState.Ready)
     <div class="panel glass">
         <h2>End current season</h2>
         <EditForm Model="EndInput" FormName="season-end" OnValidSubmit="EndAsync">
-            <AntiforgeryToken />
             <div class="btn-row"><button type="submit" class="btn-ghost">End season</button></div>
         </EditForm>
     </div>

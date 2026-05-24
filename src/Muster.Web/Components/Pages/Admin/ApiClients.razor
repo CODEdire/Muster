@@ -61,7 +61,6 @@ else if (State == AccessState.Ready)
     <div class="panel glass">
         <h2>Create a client</h2>
         <EditForm class="form-grid" Model="Input" FormName="create-client" OnValidSubmit="CreateAsync">
-            <AntiforgeryToken />
             <label>Name <InputText @bind-Value="Input.Name" /></label>
             <label><InputCheckbox @bind-Value="Input.ReadLeaderboard" /> read:leaderboard</label>
             <label><InputCheckbox @bind-Value="Input.ReadWallets" /> read:wallets</label>
@@ -76,7 +75,6 @@ else if (State == AccessState.Ready)
         <div class="panel glass">
             <h2>Revoke a client</h2>
             <EditForm class="form-grid" Model="RevokeInput" FormName="revoke-client" OnValidSubmit="RevokeAsync">
-                <AntiforgeryToken />
                 <label>Client
                     <InputSelect @bind-Value="RevokeInput.ClientId">
                         <option value="">— select —</option>
