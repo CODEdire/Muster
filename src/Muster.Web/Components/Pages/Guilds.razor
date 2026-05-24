@@ -3,6 +3,7 @@
 
 <PageTitle>My servers — Muster</PageTitle>
 
+<div class="panel glass">
 <h1>My servers</h1>
 
 @if (_userId is null)
@@ -33,6 +34,7 @@ else
         }
     </ul>
 }
+</div>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }

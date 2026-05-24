@@ -6,11 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <title>Muster</title>
+    <link rel="stylesheet" href="app.css" />
+    <!-- Apply the saved theme before first paint to avoid a flash of the wrong theme. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem("muster-theme");
+                if (t === "light" || t === "dark") {
+                    document.documentElement.setAttribute("data-theme", t);
+                }
+            } catch (e) { }
+        })();
+    </script>
     <HeadOutlet />
 </head>
 
 <body>
     <Routes />
+    <script src="js/theme.js"></script>
 </body>
 
 </html>

@@ -1,0 +1,29 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <header class="topbar glass">
+        <a href="/" class="brand">Muster</a>
+        <nav>
+            <a href="/privacy">Privacy</a>
+            <ThemeToggle />
+            <AuthorizeView>
+                <Authorized>
+                    <a class="btn" href="/guilds">My servers</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn" href="/account/login">Log in with Discord</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
+    </header>
+
+    <div class="container">
+        @Body
+    </div>
+
+    <footer class="footer glass">
+        <span>© Muster</span>
+        <a href="/privacy">Privacy Policy</a>
+        <span class="user">Participation tracking for Discord communities.</span>
+    </footer>
+</div>

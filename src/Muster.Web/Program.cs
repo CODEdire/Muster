@@ -17,22 +17,35 @@ builder.Services.AddRazorComponents();
 builder.Services.AddCascadingAuthenticationState();
 
 // Discord OAuth: cookie session, challenge via Discord. Credentials come from configuration
-// (user-secrets locally, Key Vault in Azure).
-builder.Services
+// (user-secrets locally, Key Vault in Azure). Discord is only registered when configured — the
+// OAuth handler validates ClientId on every request, so registering it without credentials would
+// make the whole site error. Without credentials the app still runs; only login is unavailable.
+var discordClientId = builder.Configuration["Discord:ClientId"];
+var discordClientSecret = builder.Configuration["Discord:ClientSecret"];
+var discordConfigured = !string.IsNullOrWhiteSpace(discordClientId) && !string.IsNullOrWhiteSpace(discordClientSecret);
+
+var authentication = builder.Services
     .AddAuthentication(options =>
     {
         options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = DiscordAuthenticationDefaults.AuthenticationScheme;
+        if (discordConfigured)
+        {
+            options.DefaultChallengeScheme = DiscordAuthenticationDefaults.AuthenticationScheme;
+        }
     })
-    .AddCookie()
-    .AddDiscord(options =>
+    .AddCookie();
+
+if (discordConfigured)
+{
+    authentication.AddDiscord(options =>
     {
-        options.ClientId = builder.Configuration["Discord:ClientId"] ?? string.Empty;
-        options.ClientSecret = builder.Configuration["Discord:ClientSecret"] ?? string.Empty;
+        options.ClientId = discordClientId!;
+        options.ClientSecret = discordClientSecret!;
         options.Scope.Add("identify");
         options.Scope.Add("guilds");
         options.SaveTokens = true;
     });
+}
 
 builder.Services.AddAuthorization();
 

@@ -1,18 +1,28 @@
 @page "/"
+@layout PublicLayout
 
-<PageTitle>Muster</PageTitle>
+<PageTitle>Muster — participation tracking for Discord</PageTitle>
 
-<h1>Muster</h1>
+<section class="hero">
+    <h1>Reward the people who show up</h1>
+    <p>Muster tracks voice attendance, missions, musters, and awards across your Discord community —
+       all on a clean multi-currency leaderboard.</p>
 
-<p>Track participation across your Discord community — voice attendance, missions, musters, and awards,
-   all on a multi-currency leaderboard.</p>
+    <AuthorizeView>
+        <Authorized>
+            <a class="btn" href="/guilds">Go to your servers →</a>
+        </Authorized>
+        <NotAuthorized>
+            <a class="btn" href="/account/login">Log in with Discord</a>
+        </NotAuthorized>
+    </AuthorizeView>
+</section>
 
-<AuthorizeView>
-    <Authorized>
-        <p>Welcome back, <strong>@context.User.DisplayName()</strong>.</p>
-        <p><a href="/guilds">Go to your servers →</a></p>
-    </Authorized>
-    <NotAuthorized>
-        <p><a href="/account/login">Log in with Discord</a> to view your servers and leaderboards.</p>
-    </NotAuthorized>
-</AuthorizeView>
+<div class="panel glass">
+    <h2>What you get</h2>
+    <ul>
+        <li><strong>Voice attendance</strong> — reward time spent in tracked sessions and ops.</li>
+        <li><strong>Missions &amp; musters</strong> — quests to claim and reaction check-ins.</li>
+        <li><strong>Seasons &amp; leaderboards</strong> — points reset per season; spendable currencies persist.</li>
+    </ul>
+</div>

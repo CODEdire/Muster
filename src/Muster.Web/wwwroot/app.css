@@ -1,0 +1,276 @@
+/* ============================================================================
+   Muster design system
+   Token-driven theming. All colors/effects read from CSS variables so that:
+     - light / dark / system themes swap one set of tokens,
+     - guild overrides later just set a few variables on the app shell.
+   ============================================================================ */
+
+/* ---- Base reset ---------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg-base);
+    min-height: 100dvh;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { line-height: 1.2; margin: 0 0 0.5em; }
+img { max-width: 100%; }
+
+/* ---- Design tokens: LIGHT (sky / cloud) ---------------------------------- */
+:root {
+    --accent: #2563eb;
+    --accent-soft: #38bdf8;
+    --text: #0f2747;
+    --text-muted: #44597b;
+    --surface: rgba(255, 255, 255, 0.66);
+
+    --glass-bg: rgba(255, 255, 255, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.75);
+    --glass-shadow: 0 8px 32px rgba(31, 73, 145, 0.18);
+    --glass-blur: 14px;
+
+    --bg-base: #cfe8ff;
+    /* Sky with soft "clouds" */
+    --bg-image:
+        radial-gradient(60% 50% at 15% 12%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 60%),
+        radial-gradient(50% 40% at 85% 18%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 55%),
+        radial-gradient(70% 60% at 70% 90%, rgba(186, 230, 253, 0.8) 0%, rgba(186, 230, 253, 0) 60%),
+        linear-gradient(180deg, #bfe3ff 0%, #e8f5ff 100%);
+
+    --radius: 16px;
+    --radius-sm: 10px;
+    --border: rgba(15, 39, 71, 0.12);
+    --danger: #dc2626;
+}
+
+/* ---- Design tokens: DARK (deep blue) ------------------------------------- */
+:root[data-theme="dark"] {
+    --accent: #60a5fa;
+    --accent-soft: #3b82f6;
+    --text: #e8effc;
+    --text-muted: #9fb3d4;
+    --surface: rgba(18, 36, 71, 0.55);
+
+    --glass-bg: rgba(30, 54, 102, 0.38);
+    --glass-border: rgba(120, 160, 230, 0.22);
+    --glass-shadow: 0 10px 36px rgba(0, 8, 28, 0.55);
+    --glass-blur: 16px;
+
+    --bg-base: #081225;
+    --bg-image:
+        radial-gradient(55% 45% at 18% 12%, rgba(56, 102, 196, 0.45) 0%, rgba(56, 102, 196, 0) 60%),
+        radial-gradient(45% 40% at 85% 20%, rgba(37, 99, 235, 0.30) 0%, rgba(37, 99, 235, 0) 55%),
+        radial-gradient(70% 60% at 75% 95%, rgba(14, 35, 80, 0.8) 0%, rgba(14, 35, 80, 0) 60%),
+        linear-gradient(180deg, #07142e 0%, #0d2148 100%);
+
+    --border: rgba(159, 179, 212, 0.18);
+}
+
+/* System mode (no explicit data-theme) follows the OS dark preference. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --accent: #60a5fa;
+        --accent-soft: #3b82f6;
+        --text: #e8effc;
+        --text-muted: #9fb3d4;
+        --surface: rgba(18, 36, 71, 0.55);
+        --glass-bg: rgba(30, 54, 102, 0.38);
+        --glass-border: rgba(120, 160, 230, 0.22);
+        --glass-shadow: 0 10px 36px rgba(0, 8, 28, 0.55);
+        --glass-blur: 16px;
+        --bg-base: #081225;
+        --bg-image:
+            radial-gradient(55% 45% at 18% 12%, rgba(56, 102, 196, 0.45) 0%, rgba(56, 102, 196, 0) 60%),
+            radial-gradient(45% 40% at 85% 20%, rgba(37, 99, 235, 0.30) 0%, rgba(37, 99, 235, 0) 55%),
+            radial-gradient(70% 60% at 75% 95%, rgba(14, 35, 80, 0.8) 0%, rgba(14, 35, 80, 0) 60%),
+            linear-gradient(180deg, #07142e 0%, #0d2148 100%);
+        --border: rgba(159, 179, 212, 0.18);
+    }
+}
+
+/* ---- Fixed background layer --------------------------------------------- */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: var(--bg-image);
+    background-attachment: fixed;
+}
+
+/* ---- Glass utility ------------------------------------------------------- */
+.glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+
+/* ---- App shell / layout -------------------------------------------------- */
+.app-shell { display: flex; flex-direction: column; min-height: 100dvh; }
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem;
+    margin: 0.75rem;
+    border-radius: var(--radius);
+}
+.topbar .brand {
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: 0.02em;
+    color: var(--text);
+}
+.topbar nav {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.topbar nav .user { color: var(--text-muted); font-size: 0.9rem; }
+
+.container {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 3rem;
+    flex: 1;
+}
+
+.panel { padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; }
+
+.footer {
+    padding: 1.25rem;
+    margin: 0.75rem;
+    border-radius: var(--radius);
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.footer a { color: var(--text-muted); }
+
+/* ---- Hero (public) ------------------------------------------------------- */
+.hero { text-align: center; padding: 3rem 1.5rem; }
+.hero h1 { font-size: clamp(2rem, 5vw, 3.25rem); }
+.hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 40ch; margin: 0.5rem auto 1.5rem; }
+
+/* ---- Buttons ------------------------------------------------------------- */
+.btn, button[type="submit"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.05s ease;
+}
+.btn:hover, button[type="submit"]:hover { filter: brightness(1.08); text-decoration: none; }
+.btn:active, button[type="submit"]:active { transform: translateY(1px); }
+.btn-ghost {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text);
+}
+
+/* ---- Theme toggle (segmented) ------------------------------------------- */
+.theme-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.theme-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.3rem 0.7rem;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.theme-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+/* ---- Lists / cards ------------------------------------------------------- */
+.guild-list, .admin-links { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
+.guild-list li, .admin-links li {
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.guild-list a, .admin-links a { font-weight: 600; }
+
+.badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: #04122b;
+}
+
+/* ---- Tables -------------------------------------------------------------- */
+table { width: 100%; border-collapse: collapse; }
+table.leaderboard th, table.leaderboard td,
+table.approvals th, table.approvals td {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+table th { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* ---- Forms --------------------------------------------------------------- */
+form label { display: block; margin-bottom: 0.9rem; color: var(--text-muted); font-size: 0.9rem; }
+form input, form select {
+    display: block;
+    width: 100%;
+    margin-top: 0.3rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+.message {
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+/* ---- Responsive ---------------------------------------------------------- */
+@media (max-width: 640px) {
+    .topbar { flex-wrap: wrap; gap: 0.6rem; }
+    .topbar nav { width: 100%; margin-left: 0; justify-content: space-between; gap: 0.6rem; }
+    .container { padding: 1rem 0.9rem 2.5rem; }
+    .panel { padding: 1.1rem 1.1rem; }
+}
+
+/* Respect reduced motion / transparency preferences. */
+@media (prefers-reduced-transparency: reduce) {
+    .glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
