@@ -23,6 +23,26 @@ public class AwardService(MusterDbContext db)
         string reason,
         CancellationToken ct = default)
     {
+        var entry = await StageAsync(guildId, userId, currencyId, amount, sourceType, sourceId, reason, ct);
+        await db.SaveChangesAsync(ct);
+        return entry;
+    }
+
+    /// <summary>
+    /// Stage a ledger entry + wallet update WITHOUT saving, so callers can commit several legs together
+    /// with a state change in one transaction (used by the escrow engine). Idempotent on (SourceType,
+    /// SourceId): a duplicate returns the existing entry and stages nothing.
+    /// </summary>
+    internal async Task<LedgerEntry> StageAsync(
+        ulong guildId,
+        ulong userId,
+        Guid currencyId,
+        long amount,
+        LedgerSourceType sourceType,
+        string? sourceId,
+        string reason,
+        CancellationToken ct = default)
+    {
         if (sourceId is not null)
         {
             var existing = await db.LedgerEntries
@@ -77,7 +97,6 @@ public class AwardService(MusterDbContext db)
         wallet.Balance += amount;
         wallet.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await db.SaveChangesAsync(ct);
         return entry;
     }
 

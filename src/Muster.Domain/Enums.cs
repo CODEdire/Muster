@@ -26,12 +26,23 @@ public enum MissionType
     EventOp = 1,
 }
 
+/// <summary>Who created a quest and how its reward is funded.</summary>
+public enum MissionOrigin
+{
+    /// <summary>Created by the guild; reward is minted (new currency issued).</summary>
+    Guild = 0,
+    /// <summary>A player bounty; reward is escrowed from the poster's own balance and transferred on completion.</summary>
+    Player = 1,
+}
+
 public enum MissionStatus
 {
     Draft = 0,
     Open = 1,
     Closed = 2,
     Cancelled = 3,
+    Expired = 4,
+    Disputed = 5,
 }
 
 public enum MissionParticipantStatus

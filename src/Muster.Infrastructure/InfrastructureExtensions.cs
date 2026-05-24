@@ -20,6 +20,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<GuildProvisioningService>();
         builder.Services.AddScoped<ScoreQueryService>();
         builder.Services.AddScoped<AwardService>();
+        builder.Services.AddScoped<EscrowService>();
         builder.Services.AddScoped<MusterService>();
         builder.Services.AddScoped<MissionService>();
         builder.Services.AddScoped<TrackingSessionService>();

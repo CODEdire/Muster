@@ -28,6 +28,9 @@ public class GuildSettings
     /// <summary>Discord role ids allowed to approve quests / run ops.</summary>
     public List<ulong> OfficerRoleIds { get; set; } = [];
 
+    /// <summary>Discord role ids allowed to create guild quests and approve/arbitrate player bounties.</summary>
+    public List<ulong> QuestManagerRoleIds { get; set; } = [];
+
     /// <summary>
     /// Discord role ids whose holders may earn rewards / be tracked. **Empty means everyone
     /// participates** (the default); set roles to restrict participation to org members and exclude

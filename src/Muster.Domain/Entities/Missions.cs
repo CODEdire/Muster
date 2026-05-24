@@ -13,15 +13,26 @@ public class Mission
     public ulong GuildId { get; set; }
 
     public MissionType Type { get; set; }
+
+    /// <summary>Guild quest (minted reward) or player bounty (escrowed reward).</summary>
+    public MissionOrigin Origin { get; set; } = MissionOrigin.Guild;
+
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public MissionStatus Status { get; set; } = MissionStatus.Draft;
 
     public ulong CreatedBy { get; set; }
+
+    /// <summary>Owner: creator for guild quests; the bounty poster for player quests (escrow source/refundee).</summary>
+    public ulong OwnerId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public Guid RewardCurrencyId { get; set; }
     public long RewardAmount { get; set; }
+
+    /// <summary>Currency held in escrow for a player bounty (0 when none / refunded / paid out).</summary>
+    public long EscrowAmount { get; set; }
 
     // Quest-specific
     public DateTimeOffset? Deadline { get; set; }
