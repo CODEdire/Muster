@@ -32,6 +32,15 @@ public record AdjustCurrencyBalance(
     long Delta,
     string Reason);
 
+/// <summary>CQRS command to mint a currency (by code) to a member. Returns <see cref="CurrencyChangeResult"/>.</summary>
+public record MintCurrency(ulong GuildId, string CurrencyCode, ulong UserId, long Amount, string Reason);
+
+/// <summary>CQRS command to spend a currency (by code) from a member. Overdraft-checked per currency mode.</summary>
+public record SpendCurrency(ulong GuildId, string CurrencyCode, ulong UserId, long Amount, string Reason);
+
+/// <summary>Result of a mint/spend command. <see cref="Status"/> is a stable string (Ok / CurrencyNotFound / InsufficientFunds).</summary>
+public record CurrencyChangeResult(bool Success, string Status, long Balance);
+
 /// <summary>Emitted after a ledger entry is committed; the hook outbound connectors subscribe to.</summary>
 public record LedgerEntryRecorded(
     long LedgerEntryId,

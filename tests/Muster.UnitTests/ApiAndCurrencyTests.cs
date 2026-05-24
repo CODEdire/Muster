@@ -100,4 +100,27 @@ public class ApiAndCurrencyTests
         Assert.Equal(CurrencyOperationStatus.CurrencyNotFound, (await sut.MintAsync(1, "NOPE", 10, 5, "x")).Status);
         Assert.Null(await sut.GetBalanceAsync(1, "NOPE", 10));
     }
+
+    [Fact]
+    public async Task MintAndSpendCommandHandlers_ReturnCqrsResult()
+    {
+        using var db = await SeededAsync();
+        await AddCoinAsync(db);
+        var currency = new CurrencyService(db, new AwardService(db));
+
+        var minted = await Muster.Infrastructure.Messaging.MintCurrencyHandler.Handle(
+            new Muster.Contracts.MintCurrency(1, "COIN", 10, 100, "drop"), currency, CancellationToken.None);
+        Assert.True(minted.Success);
+        Assert.Equal(100, minted.Balance);
+
+        var spent = await Muster.Infrastructure.Messaging.SpendCurrencyHandler.Handle(
+            new Muster.Contracts.SpendCurrency(1, "COIN", 10, 40, "buy"), currency, CancellationToken.None);
+        Assert.True(spent.Success);
+        Assert.Equal(60, spent.Balance);
+
+        var overdraft = await Muster.Infrastructure.Messaging.SpendCurrencyHandler.Handle(
+            new Muster.Contracts.SpendCurrency(1, "COIN", 10, 1000, "buy"), currency, CancellationToken.None);
+        Assert.False(overdraft.Success);
+        Assert.Equal("InsufficientFunds", overdraft.Status);
+    }
 }

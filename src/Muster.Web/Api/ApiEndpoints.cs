@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Contracts;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Services;
+using Wolverine;
 using Wolverine.Http;
 
 namespace Muster.Web.Api;
@@ -63,7 +65,7 @@ public static class ApiEndpoints
 
     [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/mint")]
     public static async Task<IResult> Mint(
-        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, CurrencyService currency)
+        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, IMessageBus bus)
     {
         var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
         if (error is not null)
@@ -71,12 +73,14 @@ public static class ApiEndpoints
             return error;
         }
 
-        return ToResult(await currency.MintAsync(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint"));
+        var result = await bus.InvokeAsync<CurrencyChangeResult>(
+            new MintCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint"));
+        return ToResult(result);
     }
 
     [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/spend")]
     public static async Task<IResult> Spend(
-        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, CurrencyService currency)
+        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, IMessageBus bus)
     {
         var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
         if (error is not null)
@@ -84,14 +88,16 @@ public static class ApiEndpoints
             return error;
         }
 
-        return ToResult(await currency.SpendAsync(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend"));
+        var result = await bus.InvokeAsync<CurrencyChangeResult>(
+            new SpendCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend"));
+        return ToResult(result);
     }
 
-    private static IResult ToResult(CurrencyOperationResult result) => result.Status switch
+    private static IResult ToResult(CurrencyChangeResult result) => result.Status switch
     {
-        CurrencyOperationStatus.Ok => Results.Ok(new { balance = result.Balance }),
-        CurrencyOperationStatus.CurrencyNotFound => Results.NotFound(new { error = "currency_not_found" }),
-        CurrencyOperationStatus.InsufficientFunds => Results.Json(
+        _ when result.Success => Results.Ok(new { balance = result.Balance }),
+        "CurrencyNotFound" => Results.NotFound(new { error = "currency_not_found" }),
+        "InsufficientFunds" => Results.Json(
             new { error = "insufficient_funds", balance = result.Balance }, statusCode: StatusCodes.Status409Conflict),
         _ => Results.Problem("Unknown error"),
     };
