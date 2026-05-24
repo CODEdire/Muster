@@ -34,6 +34,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<WebMemberService>();
         builder.Services.AddScoped<ApiClientService>();
         builder.Services.AddScoped<CurrencyService>();
+        builder.Services.AddScoped<CurrencyAdminService>();
         builder.Services.AddScoped<AuditService>();
         builder.Services.AddScoped<MentionHumanizer>();
 

@@ -1,0 +1,93 @@
+@page "/guilds/{GuildIdRaw}/currencies"
+@inherits GuildAdminComponentBase
+@inject CurrencyAdminService CurrencyAdmin
+@using Muster.Domain.Enums
+
+<PageTitle>Currencies — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Currencies</h1>
+        <p class="subtitle">POINTS drives the seasonal leaderboard. Create a spendable currency (e.g. COIN)
+            for wallets, bounties, and external loot connectors.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Currencies</h2>
+        <table class="leaderboard">
+            <thead><tr><th>Code</th><th>Name</th><th>Seasonal</th><th>Spendable</th><th>Mode</th></tr></thead>
+            <tbody>
+                @foreach (var c in _currencies)
+                {
+                    <tr>
+                        <td>@c.Code @(c.IsSystem ? "(system)" : "")</td>
+                        <td>@c.Name</td>
+                        <td>@(c.IsSeasonal ? "yes" : "no")</td>
+                        <td>@(c.IsSpendable ? "yes" : "no")</td>
+                        <td>@c.Mode</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel glass">
+        <h2>Create a currency</h2>
+        <EditForm class="form-grid" Model="Input" FormName="create-currency" OnValidSubmit="CreateAsync">
+            <label>Code <InputText @bind-Value="Input.Code" placeholder="COIN" /></label>
+            <label>Name <InputText @bind-Value="Input.Name" placeholder="Coin" /></label>
+            <label><InputCheckbox @bind-Value="Input.IsSpendable" /> Spendable (wallet that persists across seasons)</label>
+            <label><InputCheckbox @bind-Value="Input.IsSeasonal" /> Seasonal (resets each season)</label>
+            <label>Mode
+                <InputSelect @bind-Value="Input.Mode">
+                    <option value="@CurrencyMode.Internal">Internal — Muster owns the balance</option>
+                    <option value="@CurrencyMode.External">External — an outside system owns it</option>
+                    <option value="@CurrencyMode.Hybrid">Hybrid — Muster mints, external owns spend</option>
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Create</button></div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm] private CreateInput Input { get; set; } = new();
+
+    private IReadOnlyList<CurrencyView> _currencies = [];
+
+    protected override async Task LoadAsync()
+        => _currencies = await CurrencyAdmin.ListAsync(GuildId);
+
+    private async Task CreateAsync()
+    {
+        var result = await CurrencyAdmin.CreateAsync(GuildId, Input.Code ?? "", Input.Name ?? "", Input.IsSeasonal, Input.IsSpendable, Input.Mode);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("currency.create", result.Message);
+            Input = new CreateInput();
+        }
+
+        await LoadAsync();
+    }
+
+    public class CreateInput
+    {
+        public string? Code { get; set; }
+        public string? Name { get; set; }
+        public bool IsSpendable { get; set; } = true;
+        public bool IsSeasonal { get; set; }
+        public CurrencyMode Mode { get; set; } = CurrencyMode.Internal;
+    }
+}

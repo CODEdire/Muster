@@ -84,7 +84,8 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Admin consoles: award, quest approval queue, season management, role-mapping config (gated by owner/admin/officer)
 - [ ] Tracking-session management (incl. voice attendance view)
 - [ ] Event-op management; muster management consoles
-- [ ] Currency configuration; guild settings / reward config (web)
+- [x] Currency configuration (web): create/edit currencies — code, name, seasonal, spendable, mode
+- [ ] Guild settings / reward config (web)
 - [x] Audit log: recorded for admin actions (bot + web) + searchable/filterable/sortable console with CSV export
 - [x] Member self view (`/me`) + admin member detail (wallets + ledger history)
 - [x] Error + 404 pages; expired-session redirect to login; friendly 403 with correct status
