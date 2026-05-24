@@ -5,22 +5,38 @@
 
 @if (State == AccessState.NeedLogin)
 {
-    <p>Please <a href="/account/login">log in</a>.</p>
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
 }
 else if (State == AccessState.Forbidden)
 {
-    <p>You need officer or admin access for this server.</p>
+    <div class="panel glass empty">You need officer or admin access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
-    <p><a href="/guilds/@GuildId">← Dashboard</a></p>
-    <h1>Admin</h1>
-    <ul class="admin-links">
-        <li><a href="/guilds/@GuildId/award">Award points</a></li>
-        <li><a href="/guilds/@GuildId/approvals">Quest approvals</a></li>
-        <li><a href="/guilds/@GuildId/seasons">Seasons</a></li>
-        <li><a href="/guilds/@GuildId/config">Role mapping</a></li>
-    </ul>
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId">← Dashboard</a>
+        <h1>Admin</h1>
+        <p class="subtitle">Manage rewards, quests, seasons, and access.</p>
+    </div>
+
+    <div class="card-grid">
+        <a class="card glass" href="/guilds/@GuildId/award">
+            <h3>Award points</h3>
+            <p>Grant points to a member for an off-platform contribution.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/approvals">
+            <h3>Quest approvals</h3>
+            <p>Review and approve submitted quests.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/seasons">
+            <h3>Seasons</h3>
+            <p>Start a new season or end the current one.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/config">
+            <h3>Role mapping</h3>
+            <p>Choose which Discord roles grant admin or officer access.</p>
+        </a>
+    </div>
 }
 
 @code {

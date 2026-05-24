@@ -7,37 +7,42 @@
 
 @if (State == AccessState.NeedLogin)
 {
-    <p>Please <a href="/account/login">log in</a>.</p>
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
 }
 else if (State == AccessState.Forbidden)
 {
-    <p>You need admin access for this server.</p>
+    <div class="panel glass empty">You need admin access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
-    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
-    <h1>Award points</h1>
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Award points</h1>
+        <p class="subtitle">Grant points to a member for an off-platform contribution.</p>
+    </div>
 
-    @if (Message is not null)
-    {
-        <p class="message">@Message</p>
-    }
+    <div class="panel glass">
+        @if (Message is not null)
+        {
+            <p class="message">@Message</p>
+        }
 
-    <EditForm Model="Input" FormName="award" OnValidSubmit="SubmitAsync">
-        <AntiforgeryToken />
-        <label>Member
-            <InputSelect @bind-Value="Input.MemberId">
-                <option value="0">— select —</option>
-                @foreach (var m in _members ?? [])
-                {
-                    <option value="@m.UserId">@m.DisplayName</option>
-                }
-            </InputSelect>
-        </label>
-        <label>Amount <InputNumber @bind-Value="Input.Amount" /></label>
-        <label>Reason <InputText @bind-Value="Input.Reason" /></label>
-        <button type="submit">Award</button>
-    </EditForm>
+        <EditForm class="form-grid" Model="Input" FormName="award" OnValidSubmit="SubmitAsync">
+            <AntiforgeryToken />
+            <label>Member
+                <InputSelect @bind-Value="Input.MemberId">
+                    <option value="0">— select —</option>
+                    @foreach (var m in _members ?? [])
+                    {
+                        <option value="@m.UserId">@m.DisplayName</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Amount <InputNumber @bind-Value="Input.Amount" /></label>
+            <label>Reason <InputText @bind-Value="Input.Reason" /></label>
+            <div class="btn-row"><button type="submit">Award</button></div>
+        </EditForm>
+    </div>
 }
 
 @code {

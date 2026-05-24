@@ -6,34 +6,42 @@
 
 @if (State == AccessState.NeedLogin)
 {
-    <p>Please <a href="/account/login">log in</a>.</p>
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
 }
 else if (State == AccessState.Forbidden)
 {
-    <p>You need admin access for this server.</p>
+    <div class="panel glass empty">You need admin access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
-    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
-    <h1>Seasons</h1>
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Seasons</h1>
+        <p class="subtitle">@_status</p>
+    </div>
 
     @if (Message is not null)
     {
         <p class="message">@Message</p>
     }
 
-    <p>@_status</p>
+    <div class="panel glass">
+        <h2>Start a new season</h2>
+        <p class="subtitle">Starting a season archives the current one and resets the points leaderboard.</p>
+        <EditForm class="form-grid" Model="Input" FormName="season-start" OnValidSubmit="StartAsync">
+            <AntiforgeryToken />
+            <label>Season name <InputText @bind-Value="Input.Name" /></label>
+            <div class="btn-row"><button type="submit">Start season</button></div>
+        </EditForm>
+    </div>
 
-    <EditForm Model="Input" FormName="season-start" OnValidSubmit="StartAsync">
-        <AntiforgeryToken />
-        <label>New season name <InputText @bind-Value="Input.Name" /></label>
-        <button type="submit">Start new season</button>
-    </EditForm>
-
-    <EditForm Model="EndInput" FormName="season-end" OnValidSubmit="EndAsync">
-        <AntiforgeryToken />
-        <button type="submit">End current season</button>
-    </EditForm>
+    <div class="panel glass">
+        <h2>End current season</h2>
+        <EditForm Model="EndInput" FormName="season-end" OnValidSubmit="EndAsync">
+            <AntiforgeryToken />
+            <div class="btn-row"><button type="submit" class="btn-ghost">End season</button></div>
+        </EditForm>
+    </div>
 }
 
 @code {

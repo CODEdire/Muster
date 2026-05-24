@@ -7,49 +7,59 @@
 
 @if (State == AccessState.NeedLogin)
 {
-    <p>Please <a href="/account/login">log in</a>.</p>
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
 }
 else if (State == AccessState.Forbidden)
 {
-    <p>You need admin access for this server.</p>
+    <div class="panel glass empty">You need admin access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
-    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
-    <h1>Role mapping</h1>
-    <p>The guild owner and members with the Discord Administrator/Manage&nbsp;Server permission always
-       have admin access. Use this to grant access to additional roles.</p>
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Role mapping</h1>
+        <p class="subtitle">The guild owner and members with Discord Administrator / Manage&nbsp;Server
+            always have admin access. Grant additional roles below.</p>
+    </div>
 
     @if (Message is not null)
     {
         <p class="message">@Message</p>
     }
 
-    <h2>Admin roles</h2>
-    <p>@RoleNames(_mapping?.AdminRoleIds)</p>
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Admin roles</div>
+            <div class="num">@RoleNames(_mapping?.AdminRoleIds)</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Officer roles</div>
+            <div class="num">@RoleNames(_mapping?.OfficerRoleIds)</div>
+        </div>
+    </div>
 
-    <h2>Officer roles</h2>
-    <p>@RoleNames(_mapping?.OfficerRoleIds)</p>
-
-    <EditForm Model="Input" FormName="toggle-role" OnValidSubmit="SubmitAsync">
-        <AntiforgeryToken />
-        <label>Role
-            <InputSelect @bind-Value="Input.RoleId">
-                <option value="0">— select —</option>
-                @foreach (var r in _mapping?.AllRoles ?? [])
-                {
-                    <option value="@r.RoleId">@r.Name</option>
-                }
-            </InputSelect>
-        </label>
-        <label>Mapping
-            <InputSelect @bind-Value="Input.Kind">
-                <option value="admin">Admin</option>
-                <option value="officer">Officer</option>
-            </InputSelect>
-        </label>
-        <button type="submit">Toggle</button>
-    </EditForm>
+    <div class="panel glass">
+        <h2>Toggle a role</h2>
+        <EditForm class="form-grid" Model="Input" FormName="toggle-role" OnValidSubmit="SubmitAsync">
+            <AntiforgeryToken />
+            <label>Role
+                <InputSelect @bind-Value="Input.RoleId">
+                    <option value="0">— select —</option>
+                    @foreach (var r in _mapping?.AllRoles ?? [])
+                    {
+                        <option value="@r.RoleId">@r.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Mapping
+                <InputSelect @bind-Value="Input.Kind">
+                    <option value="admin">Admin</option>
+                    <option value="officer">Officer</option>
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Toggle</button></div>
+        </EditForm>
+    </div>
 }
 
 @code {

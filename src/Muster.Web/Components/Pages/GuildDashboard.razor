@@ -8,52 +8,64 @@
 
 @if (_userId is null)
 {
-    <p>Please <a href="/account/login">log in with Discord</a> to continue.</p>
+    <div class="panel glass empty">Please <a href="/account/login">log in with Discord</a> to continue.</div>
 }
 else if (!_guildIdValid)
 {
-    <p>Unknown server.</p>
+    <div class="panel glass empty">Unknown server.</div>
 }
 else if (!_canView)
 {
-    <p>You don't have access to this server.</p>
+    <div class="panel glass empty">You don't have access to this server.</div>
 }
 else
 {
-    <p>
-        <a href="/guilds">← My servers</a>
+    <div class="page-head">
+        <a class="back-link" href="/guilds">← My servers</a>
+        <h1>Leaderboard</h1>
         @if (_isOfficer)
         {
-            <span> · </span><a href="/guilds/@GuildIdRaw/admin">Admin</a>
+            <div class="actions"><a class="btn btn-ghost" href="/guilds/@GuildIdRaw/admin">Admin</a></div>
         }
-    </p>
-    <h1>Leaderboard</h1>
-    <p class="season">Season: <strong>@(_seasonName ?? "none")</strong></p>
+    </div>
 
-    @if (_leaderboard is null)
-    {
-        <p>Loading…</p>
-    }
-    else if (_leaderboard.Count == 0)
-    {
-        <p>No scores yet this season.</p>
-    }
-    else
-    {
-        <table class="leaderboard">
-            <thead><tr><th>#</th><th>Member</th><th>Points</th></tr></thead>
-            <tbody>
-                @foreach (var row in _leaderboard)
-                {
-                    <tr>
-                        <td>@row.Rank</td>
-                        <td>@row.DisplayName</td>
-                        <td>@row.Total</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Season</div>
+            <div class="num">@(_seasonName ?? "—")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Ranked members</div>
+            <div class="num">@(_leaderboard?.Count ?? 0)</div>
+        </div>
+    </div>
+
+    <div class="panel glass">
+        @if (_leaderboard is null)
+        {
+            <p class="empty">Loading…</p>
+        }
+        else if (_leaderboard.Count == 0)
+        {
+            <p class="empty">No scores yet this season.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>#</th><th>Member</th><th>Points</th></tr></thead>
+                <tbody>
+                    @foreach (var row in _leaderboard)
+                    {
+                        <tr>
+                            <td class="rank @(row.Rank <= 3 ? $"rank-{row.Rank}" : null)">@row.Rank</td>
+                            <td>@row.DisplayName</td>
+                            <td>@row.Total</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
 }
 
 @code {

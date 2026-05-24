@@ -7,57 +7,68 @@
 
 @if (State == AccessState.NeedLogin)
 {
-    <p>Please <a href="/account/login">log in</a>.</p>
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
 }
 else if (State == AccessState.Forbidden)
 {
-    <p>You need officer access for this server.</p>
+    <div class="panel glass empty">You need officer access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
-    <p><a href="/guilds/@GuildId/admin">← Admin</a></p>
-    <h1>Quest approvals</h1>
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Quest approvals</h1>
+        <p class="subtitle">Review submitted quests and award or reject them.</p>
+    </div>
 
     @if (Message is not null)
     {
         <p class="message">@Message</p>
     }
 
-    @if (_pending is null || _pending.Count == 0)
-    {
-        <p>No submissions waiting for approval.</p>
-    }
-    else
-    {
-        <table class="approvals">
-            <thead><tr><th>Quest</th><th>Member</th></tr></thead>
-            <tbody>
-                @foreach (var p in _pending)
-                {
-                    <tr><td>@p.QuestName</td><td>@p.DisplayName</td></tr>
-                }
-            </tbody>
-        </table>
-
-        <EditForm Model="Input" FormName="review" OnValidSubmit="SubmitAsync">
-            <AntiforgeryToken />
-            <label>Submission
-                <InputSelect @bind-Value="Input.Selection">
-                    <option value="">— select —</option>
+    <div class="panel glass">
+        @if (_pending is null || _pending.Count == 0)
+        {
+            <p class="empty">No submissions waiting for approval.</p>
+        }
+        else
+        {
+            <table class="approvals">
+                <thead><tr><th>Quest</th><th>Member</th></tr></thead>
+                <tbody>
                     @foreach (var p in _pending)
                     {
-                        <option value="@($"{p.MissionId}:{p.UserId}")">@p.QuestName — @p.DisplayName</option>
+                        <tr><td>@p.QuestName</td><td>@p.DisplayName</td></tr>
                     }
-                </InputSelect>
-            </label>
-            <label>Decision
-                <InputSelect @bind-Value="Input.Decision">
-                    <option value="approve">Approve</option>
-                    <option value="reject">Reject</option>
-                </InputSelect>
-            </label>
-            <button type="submit">Submit</button>
-        </EditForm>
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @if (_pending is { Count: > 0 })
+    {
+        <div class="panel glass">
+            <h2>Review a submission</h2>
+            <EditForm class="form-grid" Model="Input" FormName="review" OnValidSubmit="SubmitAsync">
+                <AntiforgeryToken />
+                <label>Submission
+                    <InputSelect @bind-Value="Input.Selection">
+                        <option value="">— select —</option>
+                        @foreach (var p in _pending)
+                        {
+                            <option value="@($"{p.MissionId}:{p.UserId}")">@p.QuestName — @p.DisplayName</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label>Decision
+                    <InputSelect @bind-Value="Input.Decision">
+                        <option value="approve">Approve</option>
+                        <option value="reject">Reject</option>
+                    </InputSelect>
+                </label>
+                <div class="btn-row"><button type="submit">Submit</button></div>
+            </EditForm>
+        </div>
     }
 }
 
