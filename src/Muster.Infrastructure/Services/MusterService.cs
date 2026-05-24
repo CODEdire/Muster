@@ -39,6 +39,18 @@ public class MusterService(MusterDbContext db, AwardService awards)
         return muster;
     }
 
+    /// <summary>Create a muster that rewards the guild's POINTS currency.</summary>
+    public async Task<ReactionMuster> CreatePointsAsync(
+        ulong guildId, ulong channelId, ulong messageId, string prompt, IEnumerable<string> emojis,
+        long rewardPoints, int? capacity, DateTimeOffset? expiresAt, CancellationToken ct = default)
+    {
+        var points = await db.Currencies.FirstOrDefaultAsync(
+            c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
+            ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
+
+        return await CreateAsync(guildId, channelId, messageId, prompt, emojis, points.Id, rewardPoints, capacity, expiresAt, ct);
+    }
+
     /// <summary>Record a reaction on a muster message and reward the member. Idempotent per (muster, user).</summary>
     public async Task<ReactionOutcome> RecordReactionAsync(
         ulong messageId, ulong userId, string emoji, CancellationToken ct = default)

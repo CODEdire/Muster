@@ -57,7 +57,8 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [ ] **Event ops** — sign-up + attendance flow
 - [x] **Command-service abstraction** — Discord-independent `*CommandService` returning `CommandResult`; NetCord modules are thin adapters (directly unit-tested, no gateway needed)
 - [x] **Slash-command modules** — `/award`, `/leaderboard`, `/wallet`, `/track-start`, `/track-stop`
-- [ ] **Slash-command modules** — `/quest`, `/op`, `/muster` (need message+reaction posting)
+- [x] **Slash-command modules** — `/muster` (REST post+react via `IMusterPublisher`) and `/quest-post|list|claim|submit|approve`
+- [ ] **Slash-command modules** — `/op` (event ops: sign-up + attendance)
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 - [ ] Stats-only message activity + daily rollups + dedupe
 

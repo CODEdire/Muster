@@ -1,4 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Muster.Bot;
 using Muster.Infrastructure;
+using Muster.Infrastructure.Discord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services;
@@ -27,6 +30,9 @@ builder.Services
 
 // Gateway event handlers in this assembly (e.g. guild onboarding).
 builder.Services.AddGatewayHandlers(typeof(Program).Assembly);
+
+// NetCord-backed implementation of the muster publisher abstraction.
+builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();
 
 var host = builder.Build();
 

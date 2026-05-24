@@ -37,8 +37,32 @@ public class MissionService(MusterDbContext db, AwardService awards)
         return mission;
     }
 
+    /// <summary>Create a quest that rewards the guild's POINTS currency.</summary>
+    public async Task<Mission> CreateQuestPointsAsync(
+        ulong guildId, string name, string description, ulong createdBy, long rewardPoints,
+        DateTimeOffset? deadline = null, bool repeatable = false, CancellationToken ct = default)
+    {
+        var points = await db.Currencies.FirstOrDefaultAsync(
+            c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
+            ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
+
+        return await CreateQuestAsync(guildId, name, description, createdBy, points.Id, rewardPoints, deadline, repeatable, ct: ct);
+    }
+
+    public async Task<IReadOnlyList<Mission>> ListOpenQuestsAsync(ulong guildId, CancellationToken ct = default)
+        => await db.Missions
+            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest && m.Status == MissionStatus.Open)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync(ct);
+
     public async Task<MissionParticipant> ClaimAsync(Guid missionId, ulong userId, CancellationToken ct = default)
     {
+        var missionExists = await db.Missions.AnyAsync(m => m.Id == missionId, ct);
+        if (!missionExists)
+        {
+            throw new InvalidOperationException("Quest not found.");
+        }
+
         var existing = await db.MissionParticipants
             .FirstOrDefaultAsync(p => p.MissionId == missionId && p.UserId == userId, ct);
         if (existing is not null)

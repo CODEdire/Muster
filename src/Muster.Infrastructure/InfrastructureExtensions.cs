@@ -29,6 +29,10 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<AwardCommandService>();
         builder.Services.AddScoped<ScoreCommandService>();
         builder.Services.AddScoped<TrackingCommandService>();
+        builder.Services.AddScoped<QuestCommandService>();
+        // MusterCommandService depends on IMusterPublisher, which each host registers
+        // (the bot provides a NetCord-backed implementation).
+        builder.Services.AddScoped<MusterCommandService>();
 
         return builder;
     }
