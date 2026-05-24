@@ -1,6 +1,9 @@
 @page "/guilds/{GuildIdRaw}/me"
 @inherits GuildMemberComponentBase
 @inject WebMemberService Members
+@inject TimeZoneService TimeZones
+@inject MusterDbContext Db
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>My profile — Muster</PageTitle>
 
@@ -16,12 +19,74 @@ else if (State == AccessState.Ready && _detail is not null)
         <p class="subtitle">@_detail.DisplayName</p>
     </div>
 
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
     <MemberPanel Detail="_detail" />
+
+    <div class="panel glass">
+        <h2>Time zone</h2>
+        <p class="subtitle">Used to read the start/expiry dates you enter on the quest board. Leave blank to use the server's zone (<strong>@_guildZone</strong>).</p>
+        <EditForm class="form-grid" Model="Tz" FormName="set-timezone" OnValidSubmit="SaveTimeZoneAsync">
+            <label>IANA time zone
+                <InputText @bind-Value="Tz.ZoneId" id="tz-input" list="tz-options" placeholder="e.g. America/New_York" />
+            </label>
+            <div class="btn-row">
+                <button type="button" id="tz-detect" class="btn btn-ghost">Use my browser zone</button>
+                <button type="submit">Save</button>
+            </div>
+        </EditForm>
+        <datalist id="tz-options">
+            @foreach (var z in _commonZones)
+            {
+                <option value="@z"></option>
+            }
+        </datalist>
+        <script>
+            (function () {
+                var btn = document.getElementById('tz-detect');
+                var input = document.getElementById('tz-input');
+                if (!btn || !input) return;
+                var detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                btn.addEventListener('click', function () { if (detected) input.value = detected; });
+                if (!input.value && detected) { input.placeholder = detected + ' (your browser)'; }
+            })();
+        </script>
+    </div>
 }
 
 @code {
+    [SupplyParameterFromForm(FormName = "set-timezone")] private TzInput Tz { get; set; } = new();
+
     private MemberDetailView? _detail;
+    private string _guildZone = TimeZoneService.Utc;
+
+    private static readonly string[] _commonZones =
+    [
+        "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
+        "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Tokyo", "Australia/Sydney", "UTC",
+    ];
 
     protected override async Task LoadAsync()
-        => _detail = await Members.GetAsync(GuildId, UserId);
+    {
+        _detail = await Members.GetAsync(GuildId, UserId);
+        _guildZone = await Db.Guilds.Where(g => g.Id == GuildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync() ?? TimeZoneService.Utc;
+        Tz.ZoneId = await Db.Users.Where(u => u.Id == UserId).Select(u => u.TimeZoneId).FirstOrDefaultAsync() ?? "";
+    }
+
+    private async Task SaveTimeZoneAsync()
+    {
+        var (ok, error) = await TimeZones.SetUserZoneAsync(UserId, Tz.ZoneId);
+        Message = ok
+            ? (string.IsNullOrWhiteSpace(Tz.ZoneId) ? "Time zone cleared — using the server's zone." : $"Time zone set to {Tz.ZoneId.Trim()}.")
+            : error;
+        await LoadAsync();
+    }
+
+    public class TzInput
+    {
+        public string? ZoneId { get; set; }
+    }
 }

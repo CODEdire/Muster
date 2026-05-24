@@ -8,6 +8,10 @@ public class DiscordUser
     public string Username { get; set; } = string.Empty;
     public string? GlobalName { get; set; }
     public string? AvatarHash { get; set; }
+
+    /// <summary>Preferred IANA time zone (e.g. "America/New_York") for interpreting dates the user enters.
+    /// Null falls back to the guild's time zone, then UTC.</summary>
+    public string? TimeZoneId { get; set; }
 }
 
 /// <summary>A user's membership in a specific guild.</summary>

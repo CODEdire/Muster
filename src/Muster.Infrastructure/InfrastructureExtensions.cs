@@ -39,6 +39,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<CurrencyAdminService>();
         builder.Services.AddScoped<AuditService>();
         builder.Services.AddScoped<MentionHumanizer>();
+        builder.Services.AddScoped<TimeZoneService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<AwardCommandService>();
@@ -46,6 +47,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<TrackingCommandService>();
         builder.Services.AddScoped<QuestCommandService>();
         builder.Services.AddScoped<BountyCommandService>();
+        builder.Services.AddScoped<QuestBoardService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();

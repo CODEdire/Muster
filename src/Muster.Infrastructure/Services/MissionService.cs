@@ -13,9 +13,10 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
 {
     public async Task<Mission> CreateQuestAsync(
         ulong guildId, string name, string description, ulong createdBy,
-        Guid rewardCurrencyId, long rewardAmount, DateTimeOffset? deadline = null,
+        Guid rewardCurrencyId, long rewardAmount, DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null,
         bool repeatable = false, bool requiresApproval = true, CancellationToken ct = default)
     {
+        var scheduled = startsAt is { } s && s > DateTimeOffset.UtcNow;
         var mission = new Mission
         {
             Id = Guid.NewGuid(),
@@ -23,12 +24,13 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             Type = MissionType.Quest,
             Name = name,
             Description = description,
-            Status = MissionStatus.Open,
+            Status = scheduled ? MissionStatus.Scheduled : MissionStatus.Open,
             CreatedBy = createdBy,
             OwnerId = createdBy,
             CreatedAt = DateTimeOffset.UtcNow,
             RewardCurrencyId = rewardCurrencyId,
             RewardAmount = rewardAmount,
+            ScheduledStart = startsAt,
             Deadline = deadline,
             IsRepeatable = repeatable,
             RequiresApproval = requiresApproval,
@@ -41,7 +43,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
     /// <summary>Create a guild quest minting the given currency (by code). Returns null if the currency is unknown.</summary>
     public async Task<Mission?> CreateGuildQuestAsync(
         ulong guildId, string name, string description, ulong createdBy, string currencyCode, long rewardAmount,
-        DateTimeOffset? deadline = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
     {
         var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
         var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
@@ -50,7 +52,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             return null;
         }
 
-        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, deadline, ct: ct);
+        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, deadline, startsAt, ct: ct);
     }
 
     /// <summary>Create a quest that rewards the guild's POINTS currency.</summary>
@@ -62,21 +64,63 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
             ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
 
-        return await CreateQuestAsync(guildId, name, description, createdBy, points.Id, rewardPoints, deadline, repeatable, ct: ct);
+        return await CreateQuestAsync(guildId, name, description, createdBy, points.Id, rewardPoints, deadline, repeatable: repeatable, ct: ct);
     }
 
-    /// <summary>Open guild quests only (player-funded bounties are listed separately by the bounty board).</summary>
+    /// <summary>Open or scheduled guild quests (player-funded bounties are listed separately).</summary>
     public async Task<IReadOnlyList<Mission>> ListOpenQuestsAsync(ulong guildId, CancellationToken ct = default)
         => await db.Missions
-            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
-                && m.Origin == MissionOrigin.Guild && m.Status == MissionStatus.Open)
-            .OrderBy(m => m.CreatedAt)
+            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest && m.Origin == MissionOrigin.Guild
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled))
+            .OrderBy(m => m.ScheduledStart ?? m.CreatedAt)
             .ToListAsync(ct);
+
+    /// <summary>Flip scheduled quests (both origins) whose start time has arrived to Open. For a scheduled sweep.</summary>
+    public async Task<int> ActivateScheduledAsync(ulong guildId, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var due = await db.Missions
+            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
+                && m.Status == MissionStatus.Scheduled && m.ScheduledStart != null && m.ScheduledStart <= now)
+            .ToListAsync(ct);
+
+        foreach (var mission in due)
+        {
+            mission.Status = MissionStatus.Open;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return due.Count;
+    }
+
+    /// <summary>Cancel a guild quest that hasn't been completed (no escrow to refund — the reward is minted on approval).</summary>
+    public async Task CancelQuestAsync(Guid missionId, ulong actorId, CancellationToken ct = default)
+    {
+        var mission = await db.Missions.FirstOrDefaultAsync(m => m.Id == missionId, ct)
+            ?? throw new InvalidOperationException("Quest not found.");
+
+        if (mission.Status is not (MissionStatus.Open or MissionStatus.Scheduled))
+        {
+            throw new InvalidOperationException("This quest can't be cancelled in its current state.");
+        }
+
+        mission.Status = MissionStatus.Cancelled;
+        await db.SaveChangesAsync(ct);
+    }
 
     public async Task<MissionParticipant> ClaimAsync(Guid missionId, ulong userId, CancellationToken ct = default)
     {
         var mission = await db.Missions.FirstOrDefaultAsync(m => m.Id == missionId, ct)
             ?? throw new InvalidOperationException("Quest not found.");
+
+        if (mission.Status == MissionStatus.Scheduled)
+        {
+            throw new InvalidOperationException("This quest hasn't started yet.");
+        }
+
+        if (mission.Status != MissionStatus.Open)
+        {
+            throw new InvalidOperationException("This quest isn't open.");
+        }
 
         if (!await auth.IsParticipantAsync(mission.GuildId, userId, ct))
         {

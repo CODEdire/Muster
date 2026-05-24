@@ -9,7 +9,7 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
 {
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong ownerId, string name, string currencyCode, long amount, string description = "",
-        DateTimeOffset? deadline = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
     {
         var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
         var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
@@ -20,30 +20,32 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
 
         if (!currency.IsSpendable)
         {
-            return CommandResult.Error($"{code} isn't a spendable currency — bounties must offer one (e.g. COIN).");
+            return CommandResult.Error($"{code} isn't a spendable currency — a personal quest must offer one (e.g. COIN).");
         }
 
-        var (result, mission) = await bounties.PostAsync(guildId, ownerId, name, description, currency.Id, amount, deadline, ct);
+        var (result, mission) = await bounties.PostAsync(guildId, ownerId, name, description, currency.Id, amount, deadline, startsAt, ct);
         if (result != BountyResult.Ok)
         {
             return Map(result);
         }
 
+        var when = mission!.Status == MissionStatus.Scheduled && startsAt is { } st ? $" — opens <t:{st.ToUnixTimeSeconds()}:R>" : "";
         var until = deadline is { } d ? $" — closes <t:{d.ToUnixTimeSeconds()}:R>" : "";
-        return CommandResult.Ok($"Posted bounty **{mission!.Name}** — **{amount} {code}** escrowed{until}. It can now be taken.");
+        var takeable = mission.Status == MissionStatus.Scheduled ? "It opens for takers then." : "It can now be claimed.";
+        return CommandResult.Ok($"Posted personal quest **{mission.Name}** — **{amount} {code}** escrowed{when}{until}. {takeable}");
     }
 
     public Task<CommandResult> TakeAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
-        => RunAsync(idRaw, id => bounties.TakeAsync(id, userId, ct), "Taken. Complete it, then `/bounty-submit`.");
+        => RunAsync(idRaw, id => bounties.TakeAsync(id, userId, ct), "Claimed. Complete it, then `/quest-submit`.");
 
     public Task<CommandResult> SubmitAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
-        => RunAsync(idRaw, id => bounties.SubmitAsync(id, userId, ct), "Submitted. The owner will confirm completion.");
+        => RunAsync(idRaw, id => bounties.SubmitAsync(id, userId, ct), "Submitted. The owner will confirm completion with `/quest-confirm`.");
 
     public Task<CommandResult> ConfirmAsync(ulong guildId, string idRaw, ulong ownerId, CancellationToken ct = default)
         => RunAsync(idRaw, id => bounties.ConfirmAsync(id, ownerId, ct), "Confirmed — the reward was paid to the completer.");
 
     public Task<CommandResult> CancelAsync(ulong guildId, string idRaw, ulong ownerId, CancellationToken ct = default)
-        => RunAsync(idRaw, id => bounties.CancelAsync(id, ownerId, ct), "Bounty cancelled and your escrow refunded.");
+        => RunAsync(idRaw, id => bounties.CancelAsync(id, ownerId, ct), "Quest cancelled and your escrow refunded.");
 
     public Task<CommandResult> DisputeAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
         => RunAsync(idRaw, id => bounties.DisputeAsync(id, userId, ct), "Dispute raised — a Quest Manager will review it.");

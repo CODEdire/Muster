@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
+using Muster.Domain.Enums;
 using Muster.Infrastructure.Services;
 
 namespace Muster.Infrastructure.Commands;
@@ -27,7 +28,7 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
     /// <summary>Create a guild quest minting a chosen currency (no balance required — the guild issues it).</summary>
     public async Task<CommandResult> PostGuildQuestAsync(
         ulong guildId, ulong actorId, string name, string description, string currencyCode, long reward,
-        DateTimeOffset? deadline = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -39,14 +40,15 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
             return CommandResult.Error("Reward must be greater than zero.");
         }
 
-        var quest = await missions.CreateGuildQuestAsync(guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId, currencyCode, reward, deadline, ct);
+        var quest = await missions.CreateGuildQuestAsync(guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId, currencyCode, reward, deadline, startsAt, ct);
         if (quest is null)
         {
             return CommandResult.Error($"Unknown currency '{currencyCode}'.");
         }
 
-        var until = deadline is { } d ? $" — closes {FormatDeadline(d)}" : "";
-        return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {currencyCode.Trim().ToUpperInvariant()}** (minted on approval){until}.");
+        var when = quest.Status == MissionStatus.Scheduled && startsAt is { } st ? $" — opens {FormatTime(st)}" : "";
+        var until = deadline is { } d ? $" — closes {FormatTime(d)}" : "";
+        return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {currencyCode.Trim().ToUpperInvariant()}** (minted on approval){when}{until}.");
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
@@ -97,13 +99,13 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
         {
             var code = codes.GetValueOrDefault(q.RewardCurrencyId, "");
             var details = string.IsNullOrWhiteSpace(q.Description) ? "" : $" — {q.Description}";
-            var until = q.Deadline is { } d ? $" · closes {FormatDeadline(d)}" : "";
+            var until = q.Deadline is { } d ? $" · closes {FormatTime(d)}" : "";
             return $"• **{q.Name}** (reward {q.RewardAmount} {code}){details}{until}";
         });
         return "**Open quests**\nClaim one with `/quest-claim` and pick it from the list.\n" + string.Join("\n", lines);
     }
 
-    private static string FormatDeadline(DateTimeOffset deadline) => $"<t:{deadline.ToUnixTimeSeconds()}:R>";
+    internal static string FormatTime(DateTimeOffset time) => $"<t:{time.ToUnixTimeSeconds()}:R>";
 
     private static async Task<CommandResult> GuardedAsync(string questIdRaw, Func<Guid, Task<CommandResult>> action)
     {

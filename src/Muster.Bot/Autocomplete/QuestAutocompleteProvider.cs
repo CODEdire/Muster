@@ -8,7 +8,7 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Muster.Bot.Autocomplete;
 
-/// <summary>Suggests open guild quests by name for quest id parameters, so users never type a GUID.</summary>
+/// <summary>Suggests active quests (any origin) by name for quest id parameters, so users never type a GUID.</summary>
 public class QuestAutocompleteProvider(IServiceScopeFactory scopeFactory)
     : IAutocompleteProvider<AutocompleteInteractionContext>
 {
@@ -27,13 +27,14 @@ public class QuestAutocompleteProvider(IServiceScopeFactory scopeFactory)
 
         var quests = await db.Missions
             .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
-                && m.Origin == MissionOrigin.Guild && m.Status == MissionStatus.Open
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed)
                 && m.Name.Contains(input))
             .OrderByDescending(m => m.CreatedAt)
             .Take(25)
-            .Select(m => new { m.Id, m.Name })
+            .Select(m => new { m.Id, m.Name, m.Origin })
             .ToListAsync();
 
-        return quests.Select(q => new ApplicationCommandOptionChoiceProperties(q.Name, q.Id.ToString()));
+        return quests.Select(q => new ApplicationCommandOptionChoiceProperties(
+            $"{q.Name} [{(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")}]", q.Id.ToString()));
     }
 }

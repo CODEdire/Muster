@@ -43,9 +43,8 @@ builder.Services.AddGatewayHandlers(typeof(Program).Assembly);
 builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();
 builder.Services.AddScoped<MusterCommandService>();
 
-// Autocomplete providers for slash-command parameters (currency codes, bounty ids).
+// Autocomplete providers for slash-command parameters (currency codes, quest ids).
 builder.Services.AddTransient<Muster.Bot.Autocomplete.CurrencyAutocompleteProvider>();
-builder.Services.AddTransient<Muster.Bot.Autocomplete.BountyAutocompleteProvider>();
 builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestAutocompleteProvider>();
 
 var host = builder.Build();

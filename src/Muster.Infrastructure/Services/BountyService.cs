@@ -29,7 +29,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
 
     public async Task<(BountyResult Result, Mission? Mission)> PostAsync(
         ulong guildId, ulong ownerId, string name, string description, Guid currencyId, long amount,
-        DateTimeOffset? deadline = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
     {
         if (amount <= 0 || string.IsNullOrWhiteSpace(name))
         {
@@ -41,6 +41,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             return (BountyResult.NotEligible, null);
         }
 
+        var scheduled = startsAt is { } s && s > DateTimeOffset.UtcNow;
         var mission = new Mission
         {
             Id = Guid.NewGuid(),
@@ -49,13 +50,14 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             Origin = MissionOrigin.Player,
             Name = name.Trim(),
             Description = (description ?? string.Empty).Trim(),
-            Status = MissionStatus.Open,
+            Status = scheduled ? MissionStatus.Scheduled : MissionStatus.Open,
             CreatedBy = ownerId,
             OwnerId = ownerId,
             CreatedAt = DateTimeOffset.UtcNow,
             RewardCurrencyId = currencyId,
             RewardAmount = amount,
             EscrowAmount = amount,
+            ScheduledStart = startsAt,
             Deadline = deadline,
         };
 
@@ -179,7 +181,8 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             return BountyResult.Forbidden;
         }
 
-        if (mission.Status != MissionStatus.Open || mission.Participants.Any(p => p.Status == MissionParticipantStatus.Submitted))
+        if (mission.Status is not (MissionStatus.Open or MissionStatus.Scheduled)
+            || mission.Participants.Any(p => p.Status == MissionParticipantStatus.Submitted))
         {
             return BountyResult.InvalidState; // after submission, confirm or dispute instead
         }
@@ -257,7 +260,8 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         var due = await db.Missions
             .Include(m => m.Participants)
             .Where(m => m.GuildId == guildId && m.Origin == MissionOrigin.Player
-                && m.Status == MissionStatus.Open && m.Deadline != null && m.Deadline < now)
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled)
+                && m.Deadline != null && m.Deadline < now)
             .ToListAsync(ct);
 
         var expired = 0;
@@ -277,8 +281,9 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
     public async Task<IReadOnlyList<Mission>> ListOpenAsync(ulong guildId, CancellationToken ct = default)
         => await db.Missions
             .Include(m => m.Participants)
-            .Where(m => m.GuildId == guildId && m.Origin == MissionOrigin.Player && m.Status == MissionStatus.Open)
-            .OrderBy(m => m.CreatedAt)
+            .Where(m => m.GuildId == guildId && m.Origin == MissionOrigin.Player
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled))
+            .OrderBy(m => m.ScheduledStart ?? m.CreatedAt)
             .ToListAsync(ct);
 
     private async Task<(Mission? Mission, BountyResult Result)> LoadBountyAsync(Guid missionId, CancellationToken ct)

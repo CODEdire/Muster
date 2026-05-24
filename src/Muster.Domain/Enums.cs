@@ -43,6 +43,9 @@ public enum MissionStatus
     Cancelled = 3,
     Expired = 4,
     Disputed = 5,
+
+    /// <summary>Created with a future start date; not claimable/takeable until activated at that time.</summary>
+    Scheduled = 6,
 }
 
 public enum MissionParticipantStatus

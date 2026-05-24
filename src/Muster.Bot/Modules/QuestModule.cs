@@ -1,70 +1,75 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Bot.Autocomplete;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Services;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
 
 namespace Muster.Bot.Modules;
 
-/// <summary>Whether a posted quest is funded by the guild (minted) or by the poster's own balance (escrowed).</summary>
-public enum QuestKind
-{
-    Guild,
-    Personal,
-}
-
-/// <summary>Discord adapter for the quest board. Logic lives in <see cref="QuestCommandService"/>.</summary>
+/// <summary>
+/// Discord adapter for the unified quest board. Guild quests (minted) and personal quests (escrowed
+/// from the poster's balance) share one command set; <see cref="QuestBoardService"/> routes each
+/// action by the quest's origin. Dates are entered in the caller's time zone (set with /timezone).
+/// </summary>
 public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
-    [SlashCommand("quest-post", "Post a quest: a guild quest mints its reward, or a personal bounty escrows your own balance.")]
+    [SlashCommand("quest-post", "Post a quest: a guild quest mints its reward, or a personal quest escrows your own balance.")]
     public Task<Reply> PostAsync(
         [SlashCommandParameter(Name = "name", Description = "Quest name")] string name,
         [SlashCommandParameter(Name = "currency", Description = "Reward currency", AutocompleteProviderType = typeof(CurrencyAutocompleteProvider))] string currency,
         [SlashCommandParameter(Name = "reward", Description = "Reward amount")] long reward,
-        [SlashCommandParameter(Name = "type", Description = "Guild quest (minted) or personal bounty (escrowed from your balance)")] QuestKind type = QuestKind.Guild,
+        [SlashCommandParameter(Name = "type", Description = "Guild quest (minted) or personal quest (escrowed from your balance)")] QuestKind type = QuestKind.Guild,
         [SlashCommandParameter(Name = "description", Description = "What to do")] string description = "",
-        [SlashCommandParameter(Name = "expires-in-days", Description = "Auto-close/refund after this many days (optional)")] long expiresInDays = 0)
-        => RunAsync(async (sp, guildId) =>
-        {
-            var deadline = expiresInDays > 0 ? DateTimeOffset.UtcNow.AddDays(expiresInDays) : (DateTimeOffset?)null;
+        [SlashCommandParameter(Name = "starts", Description = "When it opens, in your time zone, e.g. 2026-06-01 18:00 (optional)")] string starts = "",
+        [SlashCommandParameter(Name = "expires", Description = "When it closes, in your time zone, e.g. 2026-06-08 18:00 (optional)")] string expires = "")
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>()
+                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires),
+            auditAction: "quest.post");
 
-            if (type == QuestKind.Guild)
-            {
-                var auth = sp.GetRequiredService<GuildAuthorizationService>();
-                if (!await auth.IsQuestManagerAsync(guildId, Context.User.Id))
-                {
-                    return CommandResult.Error("You need to be a quest manager to post a guild quest. Choose `type: Personal` to fund one from your own balance.");
-                }
-
-                return await sp.GetRequiredService<QuestCommandService>()
-                    .PostGuildQuestAsync(guildId, Context.User.Id, name, description, currency, reward, deadline);
-            }
-
-            return await sp.GetRequiredService<BountyCommandService>()
-                .PostAsync(guildId, Context.User.Id, name, currency, reward, description, deadline);
-        }, auditAction: "quest.post");
-
-    [SlashCommand("quest-list", "List open quests.")]
+    [SlashCommand("quest-list", "List the open quest board.")]
     public Task<Reply> ListAsync()
-        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestCommandService>().ListAsync(guildId));
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().ListAsync(guildId));
 
     [SlashCommand("quest-claim", "Claim a quest to work on it.")]
     public Task<Reply> ClaimAsync(
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestCommandService>().ClaimAsync(guildId, quest, Context.User.Id));
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().ClaimAsync(guildId, quest, Context.User.Id));
 
-    [SlashCommand("quest-submit", "Submit a claimed quest for approval.")]
+    [SlashCommand("quest-submit", "Submit a quest you've completed.")]
     public Task<Reply> SubmitAsync(
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestCommandService>().SubmitAsync(guildId, quest, Context.User.Id));
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().SubmitAsync(guildId, quest, Context.User.Id));
 
-    [SlashCommand("quest-approve", "Approve a member's quest submission and award them.")]
+    [SlashCommand("quest-approve", "Approve a member's guild-quest submission and award them (Quest Manager).")]
     public Task<Reply> ApproveAsync(
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
         [SlashCommandParameter(Name = "member", Description = "Member to approve")] User member)
         => RunAsync(
-            (sp, guildId) => sp.GetRequiredService<QuestCommandService>().ApproveAsync(guildId, quest, member.Id, Context.User.Id),
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().ApproveAsync(guildId, quest, member.Id, Context.User.Id),
             RequiredRole.QuestManager,
             auditAction: "quest.approve");
+
+    [SlashCommand("quest-confirm", "Confirm your personal quest is complete and pay the completer.")]
+    public Task<Reply> ConfirmAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().ConfirmAsync(guildId, quest, Context.User.Id));
+
+    [SlashCommand("quest-cancel", "Cancel a quest (refunds escrow for personal quests).")]
+    public Task<Reply> CancelAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().CancelAsync(guildId, quest, Context.User.Id));
+
+    [SlashCommand("quest-dispute", "Raise a dispute on a submitted personal quest for a Quest Manager to review.")]
+    public Task<Reply> DisputeAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().DisputeAsync(guildId, quest, Context.User.Id));
+
+    [SlashCommand("quest-arbitrate", "Resolve a disputed personal quest (Quest Manager).")]
+    public Task<Reply> ArbitrateAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
+        [SlashCommandParameter(Name = "pay", Description = "Pay the completer (true) or refund the owner (false)")] bool pay)
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().ArbitrateAsync(guildId, quest, pay),
+            RequiredRole.QuestManager, "quest.arbitrate");
 }
