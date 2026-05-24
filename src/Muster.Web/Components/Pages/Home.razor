@@ -4,5 +4,15 @@
 
 <h1>Muster</h1>
 
-<p>Discord participation tracking. The admin dashboard, leaderboards, quest board, and
-   configuration land in milestone M5.</p>
+<p>Track participation across your Discord community — voice attendance, missions, musters, and awards,
+   all on a multi-currency leaderboard.</p>
+
+<AuthorizeView>
+    <Authorized>
+        <p>Welcome back, <strong>@context.User.DisplayName()</strong>.</p>
+        <p><a href="/guilds">Go to your servers →</a></p>
+    </Authorized>
+    <NotAuthorized>
+        <p><a href="/account/login">Log in with Discord</a> to view your servers and leaderboards.</p>
+    </NotAuthorized>
+</AuthorizeView>

@@ -62,3 +62,17 @@ commands (via `MusterModuleBase`) and will back web authorization. The role mapp
 - API keys for external connectors are shown once and stored **hashed** (`ApiClient`).
 - Treat OAuth tokens as secrets; `SaveTokens` is enabled to call Discord on the user's
   behalf where needed (e.g. listing guilds).
+
+## Local OAuth setup
+
+The web app is pinned to **https://localhost:7443** (`Muster.Web/Properties/launchSettings.json`) so the
+OAuth redirect URI is stable. To enable login locally:
+
+1. In the Discord Developer Portal → your app → **OAuth2 → Redirects**, add
+   **`https://localhost:7443/signin-discord`** (the `AspNet.Security.OAuth.Discord` callback path).
+2. Ensure the AppHost user-secrets have `Parameters:discord-clientid` and
+   `Parameters:discord-clientsecret` (see `local-dev.md`); the AppHost injects them into the web app.
+3. Run via the AppHost. `/account/login` issues the Discord challenge; `/account/logout` clears the cookie.
+
+> If the Aspire dashboard shows the web app on a different host/port than 7443, add that
+> `<host>/signin-discord` as an additional redirect URI (Discord allows several).

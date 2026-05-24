@@ -1,0 +1,90 @@
+@page "/guilds/{GuildIdRaw}"
+@inject WebGuildService GuildService
+@inject SeasonService Seasons
+@inject ScoreQueryService Scores
+
+<PageTitle>Dashboard — Muster</PageTitle>
+
+@if (_userId is null)
+{
+    <p>Please <a href="/account/login">log in with Discord</a> to continue.</p>
+}
+else if (!_guildIdValid)
+{
+    <p>Unknown server.</p>
+}
+else if (!_canView)
+{
+    <p>You don't have access to this server.</p>
+}
+else
+{
+    <p><a href="/guilds">← My servers</a></p>
+    <h1>Leaderboard</h1>
+    <p class="season">Season: <strong>@(_seasonName ?? "none")</strong></p>
+
+    @if (_leaderboard is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_leaderboard.Count == 0)
+    {
+        <p>No scores yet this season.</p>
+    }
+    else
+    {
+        <table class="leaderboard">
+            <thead><tr><th>#</th><th>Member</th><th>Points</th></tr></thead>
+            <tbody>
+                @foreach (var row in _leaderboard)
+                {
+                    <tr>
+                        <td>@row.Rank</td>
+                        <td>@row.DisplayName</td>
+                        <td>@row.Total</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [Parameter] public string GuildIdRaw { get; set; } = string.Empty;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ulong? _userId;
+    private bool _guildIdValid;
+    private bool _canView;
+    private string? _seasonName;
+    private IReadOnlyList<LeaderboardRow>? _leaderboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        _userId = (await AuthState).User.GetDiscordUserId();
+        if (_userId is not { } userId)
+        {
+            return;
+        }
+
+        _guildIdValid = ulong.TryParse(GuildIdRaw, out var guildId);
+        if (!_guildIdValid)
+        {
+            return;
+        }
+
+        _canView = await GuildService.CanViewGuildAsync(guildId, userId);
+        if (!_canView)
+        {
+            return;
+        }
+
+        _seasonName = (await Seasons.GetActiveAsync(guildId))?.Name;
+        _leaderboard = await GuildService.GetLeaderboardAsync(guildId);
+    }
+}

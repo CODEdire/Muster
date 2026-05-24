@@ -77,9 +77,9 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 
 ## M5 — Web UI & API
 
-- [ ] Discord OAuth login + cookie session
-- [ ] Authorization: SuperAdmin / GuildAdmin / Member
-- [ ] Guild dashboard + season leaderboards
+- [x] Discord OAuth login + logout + cookie session; cascading auth state
+- [x] Guild listing + access checks (reusing `GuildAuthorizationService`); SuperAdmin (host) still TODO
+- [x] Guild dashboard + season leaderboard (`WebGuildService`, pinned web port for stable OAuth redirect)
 - [ ] Tracking-session management (incl. voice attendance view)
 - [ ] Quest board + approval queue; event-op management
 - [ ] Muster management; manual/bulk award console

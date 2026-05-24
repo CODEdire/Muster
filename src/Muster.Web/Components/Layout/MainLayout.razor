@@ -1,5 +1,21 @@
 @inherits LayoutComponentBase
 
+<header class="topbar">
+    <a href="/" class="brand">Muster</a>
+    <nav>
+        <AuthorizeView>
+            <Authorized>
+                <a href="/guilds">My servers</a>
+                <span class="user">@context.User.DisplayName()</span>
+                <a href="/account/logout">Log out</a>
+            </Authorized>
+            <NotAuthorized>
+                <a href="/account/login">Log in with Discord</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</header>
+
 <main class="container">
     @Body
 </main>

@@ -1,0 +1,56 @@
+@page "/guilds"
+@inject WebGuildService GuildService
+
+<PageTitle>My servers — Muster</PageTitle>
+
+<h1>My servers</h1>
+
+@if (_userId is null)
+{
+    <p>Please <a href="/account/login?returnUrl=/guilds">log in with Discord</a> to continue.</p>
+}
+else if (_guilds is null)
+{
+    <p>Loading…</p>
+}
+else if (_guilds.Count == 0)
+{
+    <p>You're not in any servers that have Muster yet. Once you're active in a server running Muster,
+       it'll show up here.</p>
+}
+else
+{
+    <ul class="guild-list">
+        @foreach (var guild in _guilds)
+        {
+            <li>
+                <a href="/guilds/@guild.GuildId">@guild.Name</a>
+                @if (guild.IsAdmin)
+                {
+                    <span class="badge">admin</span>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ulong? _userId;
+    private IReadOnlyList<UserGuildView>? _guilds;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        _userId = (await AuthState).User.GetDiscordUserId();
+        if (_userId is { } id)
+        {
+            _guilds = await GuildService.GetGuildsForUserAsync(id);
+        }
+    }
+}

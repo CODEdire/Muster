@@ -1,4 +1,5 @@
 using AspNet.Security.OAuth.Discord;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Muster.Infrastructure;
 using Muster.Web.Components;
@@ -13,6 +14,7 @@ builder.AddMusterMessaging();
 
 // Blazor static SSR (no interactive/SignalR render mode).
 builder.Services.AddRazorComponents();
+builder.Services.AddCascadingAuthenticationState();
 
 // Discord OAuth: cookie session, challenge via Discord. Credentials come from configuration
 // (user-secrets locally, Key Vault in Azure).
@@ -49,6 +51,18 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Discord OAuth login / logout.
+app.MapGet("/account/login", (string? returnUrl) =>
+    Results.Challenge(
+        new Microsoft.AspNetCore.Authentication.AuthenticationProperties { RedirectUri = returnUrl ?? "/guilds" },
+        [DiscordAuthenticationDefaults.AuthenticationScheme]));
+
+app.MapGet("/account/logout", async (HttpContext http) =>
+{
+    await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/");
+});
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>();
