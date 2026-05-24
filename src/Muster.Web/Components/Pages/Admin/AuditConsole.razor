@@ -62,7 +62,7 @@ else if (State == AccessState.Ready)
                             <td>@e.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
                             <td>@e.ActorName</td>
                             <td>@e.Action</td>
-                            <td>@e.Details</td>
+                            <td>@_details.GetValueOrDefault(e.Id, e.Details ?? "")</td>
                         </tr>
                     }
                 </tbody>
@@ -94,11 +94,18 @@ else if (State == AccessState.Ready)
 
     private AuditPage? _page;
     private IReadOnlyList<string> _actions = [];
+    private readonly Dictionary<long, string> _details = [];
 
     protected override async Task LoadAsync()
     {
         _actions = await AuditLog.GetActionsAsync(GuildId);
         _page = await AuditLog.SearchAsync(GuildId, BuildQuery());
+
+        _details.Clear();
+        foreach (var e in _page.Items)
+        {
+            _details[e.Id] = await HumanizeAsync(e.Details);
+        }
     }
 
     private AuditQuery BuildQuery() => new(

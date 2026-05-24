@@ -34,6 +34,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<ApiClientService>();
         builder.Services.AddScoped<CurrencyService>();
         builder.Services.AddScoped<AuditService>();
+        builder.Services.AddScoped<MentionHumanizer>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<AwardCommandService>();

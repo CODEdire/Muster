@@ -95,12 +95,12 @@ else if (State == AccessState.Ready)
             ? await Quests.RejectAsync(GuildId, questId, memberId, UserId)
             : await Quests.ApproveAsync(GuildId, questId, memberId, UserId);
 
-        Message = result.Message;
         if (!result.IsError)
         {
             await AuditAsync(Input.Decision == "reject" ? "quest.reject" : "quest.approve", result.Message);
         }
 
+        Message = await HumanizeAsync(result.Message);
         Input = new ReviewInput();
         await LoadAsync();
     }

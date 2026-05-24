@@ -28,9 +28,14 @@ public abstract class GuildAdminComponentBase : ComponentBase
 
     [Inject] protected AuditService Audit { get; set; } = default!;
 
+    [Inject] protected MentionHumanizer Mentions { get; set; } = default!;
+
     /// <summary>Record an admin action to the audit trail (actor = the signed-in user).</summary>
     protected Task AuditAsync(string action, string? details = null)
         => Audit.RecordAsync(GuildId, UserId, action, details);
+
+    /// <summary>Render Discord mention tokens in command output as readable names for the web.</summary>
+    protected Task<string> HumanizeAsync(string? text) => Mentions.HumanizeAsync(GuildId, text);
 
     protected AccessState State { get; private set; } = AccessState.Loading;
 

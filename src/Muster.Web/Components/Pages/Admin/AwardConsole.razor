@@ -55,12 +55,12 @@ else if (State == AccessState.Ready)
     private async Task SubmitAsync()
     {
         var result = await Awards.AwardPointsAsync(GuildId, UserId, Input.MemberId, Input.Amount, Input.Reason ?? string.Empty);
-        Message = result.Message;
         if (!result.IsError)
         {
             await AuditAsync("award.points", result.Message);
         }
 
+        Message = await HumanizeAsync(result.Message);
         Input = new AwardInput();
     }
 
