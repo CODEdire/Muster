@@ -38,6 +38,11 @@ builder.Services
 // Gateway event handlers in this assembly (e.g. guild onboarding).
 builder.Services.AddGatewayHandlers(typeof(Program).Assembly);
 
+// Publishes the periodic quest reconciliation tick (activate scheduled / expire past-deadline).
+// The tick is handled on the cluster leader only (see WolverineExtensions), so this is safe to run
+// here even if the bot scales out.
+builder.Services.AddHostedService<Muster.Infrastructure.Messaging.QuestSweepScheduler>();
+
 // NetCord-backed implementation of the muster publisher abstraction, plus the muster command
 // service that depends on it (a bot-only concern — the web doesn't post muster messages).
 builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();

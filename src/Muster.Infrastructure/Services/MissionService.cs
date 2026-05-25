@@ -75,11 +75,20 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             .OrderBy(m => m.ScheduledStart ?? m.CreatedAt)
             .ToListAsync(ct);
 
-    /// <summary>Flip scheduled quests (both origins) whose start time has arrived to Open. For a scheduled sweep.</summary>
-    public async Task<int> ActivateScheduledAsync(ulong guildId, DateTimeOffset now, CancellationToken ct = default)
+    /// <summary>Flip scheduled quests (both origins) in one guild whose start time has arrived to Open.</summary>
+    public Task<int> ActivateScheduledAsync(ulong guildId, DateTimeOffset now, CancellationToken ct = default)
+        => ActivateAsync(m => m.GuildId == guildId, now, ct);
+
+    /// <summary>Flip scheduled quests across all guilds whose start time has arrived to Open. For the scheduled sweep.</summary>
+    public Task<int> ActivateScheduledAsync(DateTimeOffset now, CancellationToken ct = default)
+        => ActivateAsync(_ => true, now, ct);
+
+    private async Task<int> ActivateAsync(
+        System.Linq.Expressions.Expression<Func<Mission, bool>> scope, DateTimeOffset now, CancellationToken ct)
     {
         var due = await db.Missions
-            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
+            .Where(scope)
+            .Where(m => m.Type == MissionType.Quest
                 && m.Status == MissionStatus.Scheduled && m.ScheduledStart != null && m.ScheduledStart <= now)
             .ToListAsync(ct);
 

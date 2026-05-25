@@ -254,12 +254,21 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         return BountyResult.Ok;
     }
 
-    /// <summary>Refund and expire open, past-deadline bounties that haven't been submitted. For a scheduled sweep.</summary>
-    public async Task<int> ExpireDueAsync(ulong guildId, DateTimeOffset now, CancellationToken ct = default)
+    /// <summary>Refund and expire open, past-deadline bounties that haven't been submitted, in one guild.</summary>
+    public Task<int> ExpireDueAsync(ulong guildId, DateTimeOffset now, CancellationToken ct = default)
+        => ExpireAsync(m => m.GuildId == guildId, now, ct);
+
+    /// <summary>Refund and expire past-deadline bounties across all guilds. For the scheduled sweep.</summary>
+    public Task<int> ExpireDueAsync(DateTimeOffset now, CancellationToken ct = default)
+        => ExpireAsync(_ => true, now, ct);
+
+    private async Task<int> ExpireAsync(
+        System.Linq.Expressions.Expression<Func<Mission, bool>> scope, DateTimeOffset now, CancellationToken ct)
     {
         var due = await db.Missions
             .Include(m => m.Participants)
-            .Where(m => m.GuildId == guildId && m.Origin == MissionOrigin.Player
+            .Where(scope)
+            .Where(m => m.Origin == MissionOrigin.Player
                 && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled)
                 && m.Deadline != null && m.Deadline < now)
             .ToListAsync(ct);

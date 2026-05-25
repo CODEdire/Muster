@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Muster.Contracts;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.SqlServer;
@@ -32,13 +33,28 @@ public static class WolverineExtensions
             opts.Discovery.IncludeAssembly(hostAssembly);
             opts.Discovery.IncludeAssembly(typeof(WolverineExtensions).Assembly);
 
+            // The quest sweep (activate scheduled / expire past-deadline) must run on exactly one node
+            // even as the bot and web scale out. Route the tick to a single local queue processed one
+            // message at a time; when durable messaging is on, pin its listener to the cluster leader so
+            // only one node ever runs it. The work is idempotent, so this is about avoiding wasted work,
+            // not correctness.
+            var sweepQueue = opts.LocalQueue(QuestSweepQueue).Sequential();
+            opts.PublishMessage<SweepDueQuests>().ToLocalQueue(QuestSweepQueue);
+
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
                 opts.PersistMessagesWithSqlServer(connectionString, "muster");
                 opts.UseEntityFrameworkCoreTransactions();
+
+                // Durable so a tick published on any node is stored in SQL and picked up by the leader's
+                // listener; leader-pinned so non-leader nodes don't also process it.
+                sweepQueue.UseDurableInbox().ListenOnlyAtLeader();
             }
         });
 
         return builder;
     }
+
+    /// <summary>Local queue name for the leader-pinned quest reconciliation sweep.</summary>
+    public const string QuestSweepQueue = "quest-sweeps";
 }
