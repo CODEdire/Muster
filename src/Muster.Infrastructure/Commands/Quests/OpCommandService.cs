@@ -1,7 +1,7 @@
 using Muster.Domain.Entities;
 using Muster.Infrastructure.Services.Quests;
 
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Quests;
 
 /// <summary>Platform-independent logic for event-op commands (scheduled missions with sign-up).</summary>
 public class OpCommandService(MissionService missions)

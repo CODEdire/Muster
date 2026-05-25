@@ -5,6 +5,7 @@ using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
 using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Commands.Membership;
 
 namespace Muster.UnitTests;
 

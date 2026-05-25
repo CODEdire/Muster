@@ -8,6 +8,7 @@ using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services;
 using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Services.ApplicationCommands;
+using Muster.Infrastructure.Commands.Musters;
 
 var builder = Host.CreateApplicationBuilder(args);
 

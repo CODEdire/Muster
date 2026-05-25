@@ -1,6 +1,6 @@
 
 using Muster.Infrastructure.Services.Seasons;
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Seasons;
 
 /// <summary>Platform-independent logic for season management commands.</summary>
 public class SeasonCommandService(SeasonService seasons)

@@ -4,7 +4,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Quests;
 
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Quests;
 
 /// <summary>Platform-independent logic for the quest board commands.</summary>
 public class QuestCommandService(MissionService missions, MusterDbContext db)

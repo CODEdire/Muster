@@ -1,6 +1,6 @@
 
 using Muster.Infrastructure.Services.Tracking;
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Tracking;
 
 /// <summary>Platform-independent logic for the tracking-session commands.</summary>
 public class TrackingCommandService(TrackingSessionService sessions)

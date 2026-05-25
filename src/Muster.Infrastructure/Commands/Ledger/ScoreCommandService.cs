@@ -1,6 +1,6 @@
 
 using Muster.Infrastructure.Services.Ledger;
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Ledger;
 
 /// <summary>Platform-independent logic for the score/leaderboard/wallet commands.</summary>
 public class ScoreCommandService(ScoreQueryService queries)

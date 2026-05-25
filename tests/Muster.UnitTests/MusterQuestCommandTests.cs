@@ -8,6 +8,8 @@ using Muster.Infrastructure.Services.Ledger;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Quests;
+using Muster.Infrastructure.Commands.Musters;
+using Muster.Infrastructure.Commands.Quests;
 
 namespace Muster.UnitTests;
 

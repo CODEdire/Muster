@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
+using Muster.Infrastructure.Commands.Membership;
 
 namespace Muster.Bot.Modules;
 

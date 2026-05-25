@@ -52,6 +52,7 @@ else if (State == AccessState.Ready)
 @code {
 @using Muster.Infrastructure.Services.Ledger
 @using Muster.Infrastructure.Services.Web
+@using Muster.Infrastructure.Commands.Ledger
     [SupplyParameterFromForm] private AwardInput Input { get; set; } = new();
 
     private IReadOnlyList<MemberOption> _members = [];

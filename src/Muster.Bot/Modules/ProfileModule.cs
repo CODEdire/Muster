@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Infrastructure.Commands;
 using NetCord.Services.ApplicationCommands;
+using Muster.Infrastructure.Commands.Quests;
 
 namespace Muster.Bot.Modules;
 

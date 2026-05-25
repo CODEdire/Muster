@@ -6,7 +6,7 @@ using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
 
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Quests;
 
 /// <summary>Whether a quest is funded by the guild (minted) or by the poster's own balance (escrowed).</summary>
 public enum QuestKind

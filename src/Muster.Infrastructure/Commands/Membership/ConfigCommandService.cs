@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Enums;
 
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Membership;
 
 public enum RoleKind
 {

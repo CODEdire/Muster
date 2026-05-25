@@ -10,6 +10,7 @@ using Muster.Infrastructure.Services.Ledger;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
+using Muster.Infrastructure.Commands.Seasons;
 
 namespace Muster.UnitTests;
 

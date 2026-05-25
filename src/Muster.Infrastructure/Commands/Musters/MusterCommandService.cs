@@ -1,7 +1,7 @@
 using Muster.Infrastructure.Discord;
 using Muster.Infrastructure.Services.Musters;
 
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Musters;
 
 /// <summary>
 /// Logic for creating a reaction muster. Posting the Discord message + reaction is delegated to

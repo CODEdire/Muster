@@ -1,6 +1,6 @@
 
 using Muster.Infrastructure.Services.Ledger;
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Ledger;
 
 /// <summary>Platform-independent logic for the "award points" command. Fully unit-testable.</summary>
 public class AwardCommandService(ManualAwardService awards)

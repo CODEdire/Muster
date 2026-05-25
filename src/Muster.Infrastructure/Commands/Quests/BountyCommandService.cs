@@ -4,7 +4,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Quests;
 
-namespace Muster.Infrastructure.Commands;
+namespace Muster.Infrastructure.Commands.Quests;
 
 /// <summary>Platform-independent logic for player bounty commands. Maps <see cref="BountyResult"/> to messages.</summary>
 public class BountyCommandService(BountyService bounties, MusterDbContext db)

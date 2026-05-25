@@ -6,6 +6,8 @@ using Xunit;
 using Muster.Infrastructure.Services.Ledger;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Tracking;
+using Muster.Infrastructure.Commands.Ledger;
+using Muster.Infrastructure.Commands.Tracking;
 
 namespace Muster.UnitTests;
 

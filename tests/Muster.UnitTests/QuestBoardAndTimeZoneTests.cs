@@ -9,6 +9,7 @@ using Muster.Infrastructure.Services.Ledger;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
+using Muster.Infrastructure.Commands.Quests;
 
 namespace Muster.UnitTests;
 

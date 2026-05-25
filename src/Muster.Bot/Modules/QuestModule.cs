@@ -4,6 +4,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
+using Muster.Infrastructure.Commands.Quests;
 
 namespace Muster.Bot.Modules;
 
