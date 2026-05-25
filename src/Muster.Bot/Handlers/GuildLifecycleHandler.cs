@@ -22,7 +22,12 @@ public class GuildLifecycleHandler(
             return;
         }
 
-        using var scope = scopeFactory.CreateScope();
+        using var scope = TryCreateScope();
+        if (scope is null)
+        {
+            return;
+        }
+
         var provisioning = scope.ServiceProvider.GetRequiredService<GuildProvisioningService>();
         await provisioning.EnsureGuildAsync(guild.Id, guild.Name, guild.IconHash, guild.OwnerId);
 
@@ -36,7 +41,12 @@ public class GuildLifecycleHandler(
     // Guild renamed / icon changed / ownership transferred.
     public async ValueTask HandleAsync(Guild guild)
     {
-        using var scope = scopeFactory.CreateScope();
+        using var scope = TryCreateScope();
+        if (scope is null)
+        {
+            return;
+        }
+
         var provisioning = scope.ServiceProvider.GetRequiredService<GuildProvisioningService>();
         await provisioning.EnsureGuildAsync(guild.Id, guild.Name, guild.IconHash, guild.OwnerId);
     }
@@ -49,8 +59,30 @@ public class GuildLifecycleHandler(
             return;
         }
 
-        using var scope = scopeFactory.CreateScope();
+        using var scope = TryCreateScope();
+        if (scope is null)
+        {
+            return;
+        }
+
         var provisioning = scope.ServiceProvider.GetRequiredService<GuildProvisioningService>();
         await provisioning.MarkInactiveAsync(arg.GuildId);
+    }
+
+    /// <summary>
+    /// Create a DI scope, tolerating a late gateway event delivered after the host's root provider was
+    /// disposed during shutdown/reconnect teardown (this handler is a singleton holding the root factory).
+    /// </summary>
+    private IServiceScope? TryCreateScope()
+    {
+        try
+        {
+            return scopeFactory.CreateScope();
+        }
+        catch (ObjectDisposedException)
+        {
+            logger.LogDebug("Skipping guild lifecycle event — the host is shutting down.");
+            return null;
+        }
     }
 }

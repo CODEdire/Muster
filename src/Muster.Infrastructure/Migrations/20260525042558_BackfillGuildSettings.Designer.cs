@@ -12,8 +12,8 @@ using Muster.Infrastructure;
 namespace Muster.Infrastructure.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    [Migration("20260525041448_SettingsAsJsonBlob")]
-    partial class SettingsAsJsonBlob
+    [Migration("20260525042558_BackfillGuildSettings")]
+    partial class BackfillGuildSettings
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -235,10 +235,6 @@ namespace Muster.Infrastructure.Migrations
 
                     b.Property<decimal>("OwnerId")
                         .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("Settings")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
@@ -711,6 +707,83 @@ namespace Muster.Infrastructure.Migrations
                         .HasFilter("[SeasonId] IS NOT NULL");
 
                     b.ToTable("Wallets");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Guild", b =>
+                {
+                    b.OwnsOne("Muster.Domain.Entities.GuildSettings", "Settings", b1 =>
+                        {
+                            b1.Property<decimal>("GuildId");
+
+                            b1.PrimitiveCollection<string>("AdminRoleIds")
+                                .IsRequired();
+
+                            b1.Property<int>("ClaimTimeoutHours");
+
+                            b1.Property<int>("FinalApprovalMode");
+
+                            b1.Property<int>("FinalApprovalTimeoutAction");
+
+                            b1.Property<int>("FinalApprovalTimeoutHours");
+
+                            b1.Property<int>("IntakeTimeoutAction");
+
+                            b1.Property<int>("IntakeTimeoutHours");
+
+                            b1.Property<int>("MaxActiveClaimsPerUser");
+
+                            b1.Property<int>("MaxOpenQuestsPerPoster");
+
+                            b1.Property<int>("MaxRevisions");
+
+                            b1.PrimitiveCollection<string>("OfficerRoleIds")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("ParticipantRoleIds")
+                                .IsRequired();
+
+                            b1.Property<bool>("PersonalQuestIntakeApproval");
+
+                            b1.Property<int>("PointsPerVoiceMinute");
+
+                            b1.PrimitiveCollection<string>("QuestManagerRoleIds")
+                                .IsRequired();
+
+                            b1.Property<bool>("QuestsRequireApproval");
+
+                            b1.Property<int>("SubmissionTimeoutAction");
+
+                            b1.Property<int>("SubmissionTimeoutHours");
+
+                            b1.Property<long>("TierAPoints");
+
+                            b1.Property<long>("TierBPoints");
+
+                            b1.Property<long>("TierCPoints");
+
+                            b1.Property<long>("TierDPoints");
+
+                            b1.Property<long>("TierEPoints");
+
+                            b1.Property<long>("TierSPoints");
+
+                            b1.PrimitiveCollection<string>("TrackedChannelIds")
+                                .IsRequired();
+
+                            b1.HasKey("GuildId");
+
+                            b1.ToTable("Guilds");
+
+                            b1
+                                .ToJson("Settings")
+                                .HasColumnType("nvarchar(max)");
+
+                            b1.WithOwner()
+                                .HasForeignKey("GuildId");
+                        });
+
+                    b.Navigation("Settings")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.GuildMember", b =>
