@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Muster.Domain\Muster.Domain.csproj" />
     <ProjectReference Include="..\..\src\Muster.Infrastructure\Muster.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Muster.Bot\Muster.Bot.csproj" />
   </ItemGroup>
 
 </Project>
