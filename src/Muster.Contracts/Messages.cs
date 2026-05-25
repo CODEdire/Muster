@@ -50,11 +50,3 @@ public record LedgerEntryRecorded(
     long Amount,
     DateTimeOffset OccurredAt);
 
-/// <summary>
-/// Periodic tick that reconciles time-based quest state from the database: activates scheduled quests
-/// whose start time has passed and expires (refunds) past-deadline personal quests. Published every
-/// minute; handled on the cluster leader only. Idempotent — its work is derived from durable state, so
-/// duplicate or missed ticks self-heal on the next sweep.
-/// </summary>
-public record SweepDueQuests(DateTimeOffset Now);
-

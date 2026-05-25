@@ -1,10 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
-using Muster.Contracts;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
-using Muster.Infrastructure.Messaging;
 using Muster.Infrastructure.Services;
 using Xunit;
 
@@ -63,15 +60,15 @@ public class QuestSweepTests
     }
 
     [Fact]
-    public async Task Handler_IsIdempotent_AcrossRepeatedTicks()
+    public async Task Sweep_IsIdempotent_AcrossRepeatedRuns()
     {
         var c = await SeededAsync(1);
         await new AwardService(c.Db).AwardAsync(1, 20, c.Coin.Id, 100, LedgerSourceType.Connector, null, "seed");
         await c.Bounties.PostAsync(1, 20, "Escort", "", c.Coin.Id, 40, deadline: DateTimeOffset.UtcNow.AddHours(-1));
 
-        var tick = new SweepDueQuests(DateTimeOffset.UtcNow);
-        await SweepDueQuestsHandler.Handle(tick, c.Missions, c.Bounties, NullLogger<SweepDueQuests>.Instance, default);
-        await SweepDueQuestsHandler.Handle(tick, c.Missions, c.Bounties, NullLogger<SweepDueQuests>.Instance, default);
+        var now = DateTimeOffset.UtcNow;
+        await c.Bounties.ExpireDueAsync(now);
+        await c.Bounties.ExpireDueAsync(now);
 
         // A second sweep must not double-refund.
         Assert.Equal(100, await BalanceAsync(c.Db, 20, c.Coin.Id));

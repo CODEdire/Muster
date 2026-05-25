@@ -1,16 +1,16 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Muster.Contracts;
-using Wolverine;
+using Muster.Infrastructure.Services;
 
 namespace Muster.Infrastructure.Messaging;
 
 /// <summary>
-/// Publishes a <see cref="SweepDueQuests"/> tick on a fixed interval. Every node running this may publish,
-/// but the tick is routed to a leader-pinned queue (see <see cref="WolverineExtensions"/>), so the work
-/// runs on a single node and is idempotent regardless. Hosting this on more than one node only adds
-/// cheap, no-op duplicate ticks — it never double-applies the work.
+/// Reconciles time-based quest state once a minute: activates scheduled quests whose start has passed
+/// and refunds/expires past-deadline personal quests. Runs the work directly (no message hop) so it
+/// executes deterministically. Both operations are idempotent state queries over durable data — guarded
+/// status flips and escrow refunds keyed by a deterministic ledger source — so running it on more than
+/// one node is safe; a missed tick simply self-heals on the next one.
 /// </summary>
 public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<QuestSweepScheduler> logger)
     : BackgroundService
@@ -19,18 +19,29 @@ public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<Ques
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        logger.LogInformation("Quest sweep scheduler started; interval {Interval}.", Interval);
+
         using var timer = new PeriodicTimer(Interval);
         do
         {
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-                await bus.PublishAsync(new SweepDueQuests(DateTimeOffset.UtcNow));
+                var missions = scope.ServiceProvider.GetRequiredService<MissionService>();
+                var bounties = scope.ServiceProvider.GetRequiredService<BountyService>();
+
+                var now = DateTimeOffset.UtcNow;
+                var activated = await missions.ActivateScheduledAsync(now, stoppingToken);
+                var expired = await bounties.ExpireDueAsync(now, stoppingToken);
+
+                if (activated > 0 || expired > 0)
+                {
+                    logger.LogInformation("Quest sweep activated {Activated} and expired {Expired} quests.", activated, expired);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "Failed to publish quest sweep tick.");
+                logger.LogError(ex, "Quest sweep failed.");
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
