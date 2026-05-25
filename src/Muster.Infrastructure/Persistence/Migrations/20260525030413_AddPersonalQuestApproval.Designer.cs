@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Muster.Infrastructure;
+using Muster.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    [Migration("20260524175703_AddOwnerAndRoles")]
-    partial class AddOwnerAndRoles
+    [Migration("20260525030413_AddPersonalQuestApproval")]
+    partial class AddPersonalQuestApproval
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -143,6 +143,9 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<bool>("IsSpendable")
                         .HasColumnType("bit");
 
+                    b.Property<int>("Mode")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -198,6 +201,9 @@ namespace Muster.Infrastructure.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("GlobalName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TimeZoneId")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Username")
@@ -370,6 +376,9 @@ namespace Muster.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<long>("BonusPoints")
+                        .HasColumnType("bigint");
+
                     b.Property<decimal?>("ChannelId")
                         .HasColumnType("decimal(20,0)");
 
@@ -386,6 +395,9 @@ namespace Muster.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long>("EscrowAmount")
+                        .HasColumnType("bigint");
+
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
@@ -399,7 +411,16 @@ namespace Muster.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("Origin")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("OwnerId")
+                        .HasColumnType("decimal(20,0)");
+
                     b.Property<bool>("RequiresApproval")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequiresFinalApproval")
                         .HasColumnType("bit");
 
                     b.Property<long>("RewardAmount")
@@ -415,6 +436,9 @@ namespace Muster.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Tier")
                         .HasColumnType("int");
 
                     b.Property<Guid?>("TrackingSessionId")
@@ -671,12 +695,34 @@ namespace Muster.Infrastructure.Migrations
                             b1.PrimitiveCollection<string>("AdminRoleIds")
                                 .IsRequired();
 
+                            b1.Property<int>("FinalApprovalMode");
+
                             b1.PrimitiveCollection<string>("OfficerRoleIds")
                                 .IsRequired();
 
+                            b1.PrimitiveCollection<string>("ParticipantRoleIds")
+                                .IsRequired();
+
+                            b1.Property<bool>("PersonalQuestIntakeApproval");
+
                             b1.Property<int>("PointsPerVoiceMinute");
 
+                            b1.PrimitiveCollection<string>("QuestManagerRoleIds")
+                                .IsRequired();
+
                             b1.Property<bool>("QuestsRequireApproval");
+
+                            b1.Property<long>("TierAPoints");
+
+                            b1.Property<long>("TierBPoints");
+
+                            b1.Property<long>("TierCPoints");
+
+                            b1.Property<long>("TierDPoints");
+
+                            b1.Property<long>("TierEPoints");
+
+                            b1.Property<long>("TierSPoints");
 
                             b1.PrimitiveCollection<string>("TrackedChannelIds")
                                 .IsRequired();

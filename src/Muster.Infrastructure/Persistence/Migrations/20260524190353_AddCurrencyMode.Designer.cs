@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Muster.Infrastructure;
+using Muster.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    [Migration("20260524153106_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260524190353_AddCurrencyMode")]
+    partial class AddCurrencyMode
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -143,6 +143,9 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<bool>("IsSpendable")
                         .HasColumnType("bit");
 
+                    b.Property<int>("Mode")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -227,6 +230,9 @@ namespace Muster.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal>("OwnerId")
+                        .HasColumnType("decimal(20,0)");
+
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -259,6 +265,26 @@ namespace Muster.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("GuildMembers");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.GuildRole", b =>
+                {
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<decimal>("RoleId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Permissions")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.HasKey("GuildId", "RoleId");
+
+                    b.ToTable("GuildRoles");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.LedgerEntry", b =>
@@ -584,6 +610,9 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LastLeftAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("OpenSegmentStart")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("TotalMinutes")
                         .HasColumnType("int");
 
@@ -647,6 +676,8 @@ namespace Muster.Infrastructure.Migrations
 
                             b1.PrimitiveCollection<string>("OfficerRoleIds")
                                 .IsRequired();
+
+                            b1.Property<int>("PointsPerVoiceMinute");
 
                             b1.Property<bool>("QuestsRequireApproval");
 

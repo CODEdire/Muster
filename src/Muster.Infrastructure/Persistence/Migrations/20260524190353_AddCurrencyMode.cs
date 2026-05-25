@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
     public partial class AddCurrencyMode : Migration

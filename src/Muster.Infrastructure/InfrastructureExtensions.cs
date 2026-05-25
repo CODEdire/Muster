@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Muster.Infrastructure.Persistence;
 using Microsoft.Extensions.Hosting;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Services;

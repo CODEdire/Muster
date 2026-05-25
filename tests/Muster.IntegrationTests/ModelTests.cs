@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Infrastructure.Persistence;
 using Muster.Infrastructure;
 using Xunit;
 

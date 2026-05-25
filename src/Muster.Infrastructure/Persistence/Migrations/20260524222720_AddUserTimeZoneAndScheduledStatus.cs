@@ -2,28 +2,27 @@
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class AddMissionTier : Migration
+    public partial class AddUserTimeZoneAndScheduledStatus : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "Tier",
-                table: "Missions",
-                type: "int",
-                nullable: false,
-                defaultValue: 0);
+            migrationBuilder.AddColumn<string>(
+                name: "TimeZoneId",
+                table: "Users",
+                type: "nvarchar(max)",
+                nullable: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "Tier",
-                table: "Missions");
+                name: "TimeZoneId",
+                table: "Users");
         }
     }
 }

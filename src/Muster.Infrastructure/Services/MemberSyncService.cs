@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 
 namespace Muster.Infrastructure.Services;

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using Muster.Infrastructure.Persistence;
 namespace Muster.Infrastructure.Services;
 
 public record UserGuildView(ulong GuildId, string Name, bool IsAdmin);

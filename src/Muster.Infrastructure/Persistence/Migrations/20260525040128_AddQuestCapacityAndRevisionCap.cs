@@ -2,27 +2,27 @@
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class AddPersonalQuestApproval : Migration
+    public partial class AddQuestCapacityAndRevisionCap : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "RequiresFinalApproval",
+            migrationBuilder.AddColumn<int>(
+                name: "Capacity",
                 table: "Missions",
-                type: "bit",
+                type: "int",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: 1);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "RequiresFinalApproval",
+                name: "Capacity",
                 table: "Missions");
         }
     }

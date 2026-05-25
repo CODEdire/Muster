@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Muster.Infrastructure;
+using Muster.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    [Migration("20260525023511_AddMissionTier")]
-    partial class AddMissionTier
+    [Migration("20260525040128_AddQuestCapacityAndRevisionCap")]
+    partial class AddQuestCapacityAndRevisionCap
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -379,6 +379,9 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<long>("BonusPoints")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("Capacity")
+                        .HasColumnType("int");
+
                     b.Property<decimal?>("ChannelId")
                         .HasColumnType("decimal(20,0)");
 
@@ -420,11 +423,19 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<bool>("RequiresApproval")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("RequiresFinalApproval")
+                        .HasColumnType("bit");
+
                     b.Property<long>("RewardAmount")
                         .HasColumnType("bigint");
 
                     b.Property<Guid>("RewardCurrencyId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTimeOffset?>("ScheduledEnd")
                         .HasColumnType("datetimeoffset");
@@ -434,6 +445,9 @@ namespace Muster.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StatusChangedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<int>("Tier")
                         .HasColumnType("int");
@@ -457,14 +471,26 @@ namespace Muster.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid>("MissionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<decimal?>("ReviewedBy")
                         .HasColumnType("decimal(20,0)");
+
+                    b.Property<int>("RevisionCount")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -692,11 +718,31 @@ namespace Muster.Infrastructure.Migrations
                             b1.PrimitiveCollection<string>("AdminRoleIds")
                                 .IsRequired();
 
+                            b1.Property<int>("ClaimTimeoutHours");
+
+                            b1.Property<int>("FinalApprovalMode");
+
+                            b1.Property<int>("FinalApprovalTimeoutAction");
+
+                            b1.Property<int>("FinalApprovalTimeoutHours");
+
+                            b1.Property<int>("IntakeTimeoutAction");
+
+                            b1.Property<int>("IntakeTimeoutHours");
+
+                            b1.Property<int>("MaxActiveClaimsPerUser");
+
+                            b1.Property<int>("MaxOpenQuestsPerPoster");
+
+                            b1.Property<int>("MaxRevisions");
+
                             b1.PrimitiveCollection<string>("OfficerRoleIds")
                                 .IsRequired();
 
                             b1.PrimitiveCollection<string>("ParticipantRoleIds")
                                 .IsRequired();
+
+                            b1.Property<bool>("PersonalQuestIntakeApproval");
 
                             b1.Property<int>("PointsPerVoiceMinute");
 
@@ -704,6 +750,10 @@ namespace Muster.Infrastructure.Migrations
                                 .IsRequired();
 
                             b1.Property<bool>("QuestsRequireApproval");
+
+                            b1.Property<int>("SubmissionTimeoutAction");
+
+                            b1.Property<int>("SubmissionTimeoutHours");
 
                             b1.Property<long>("TierAPoints");
 

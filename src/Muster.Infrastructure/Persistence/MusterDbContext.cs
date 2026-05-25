@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
 
-namespace Muster.Infrastructure;
+namespace Muster.Infrastructure.Persistence;
 
 public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbContext(options)
 {

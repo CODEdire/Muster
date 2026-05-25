@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Muster.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
 

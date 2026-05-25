@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Muster.Infrastructure;
+using Muster.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace Muster.Infrastructure.Migrations
+namespace Muster.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    [Migration("20260524222720_AddUserTimeZoneAndScheduledStatus")]
-    partial class AddUserTimeZoneAndScheduledStatus
+    [Migration("20260525022433_AddMissionBonusPoints")]
+    partial class AddMissionBonusPoints
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -375,6 +375,9 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("BonusPoints")
+                        .HasColumnType("bigint");
 
                     b.Property<decimal?>("ChannelId")
                         .HasColumnType("decimal(20,0)");
