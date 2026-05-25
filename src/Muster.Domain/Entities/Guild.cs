@@ -49,6 +49,12 @@ public class GuildSettings
     /// <summary>Points awarded per minute of voice attendance when a tracking session closes.</summary>
     public int PointsPerVoiceMinute { get; set; } = 1;
 
+    /// <summary>When true, a personal quest must be accepted + tiered by a quest manager before it opens for takers.</summary>
+    public bool PersonalQuestIntakeApproval { get; set; } = true;
+
+    /// <summary>Whether a personal quest needs a final manager sign-off before payout, and who decides.</summary>
+    public FinalApprovalMode FinalApprovalMode { get; set; } = FinalApprovalMode.OwnerChoice;
+
     /// <summary>Bonus POINTS minted to the completer of a guild quest, by difficulty tier (set by managers).</summary>
     public long TierSPoints { get; set; } = 100;
     public long TierAPoints { get; set; } = 75;

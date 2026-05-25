@@ -34,8 +34,11 @@ public class Mission
     /// <summary>Difficulty tier for a guild quest (drives <see cref="BonusPoints"/> via guild config).</summary>
     public QuestTier Tier { get; set; } = QuestTier.None;
 
-    /// <summary>Bonus POINTS minted to the completer on approval, resolved from the guild's tier config at creation.</summary>
+    /// <summary>Bonus POINTS minted to the completer on settlement, resolved from the guild's tier config.</summary>
     public long BonusPoints { get; set; }
+
+    /// <summary>When true, a personal quest needs a quest manager's final sign-off before the completer is paid.</summary>
+    public bool RequiresFinalApproval { get; set; }
 
     /// <summary>Currency held in escrow for a player bounty (0 when none / refunded / paid out).</summary>
     public long EscrowAmount { get; set; }

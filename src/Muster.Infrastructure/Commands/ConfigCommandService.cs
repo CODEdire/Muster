@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Domain.Enums;
 
 namespace Muster.Infrastructure.Commands;
 
@@ -28,6 +29,25 @@ public class ConfigCommandService(MusterDbContext db)
 
     public Task<CommandResult> ToggleQuestManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.QuestManager, ct);
+
+    /// <summary>Configure the personal-quest approval workflow (intake gate + final sign-off policy).</summary>
+    public async Task<CommandResult> SetQuestApprovalAsync(
+        ulong guildId, bool intakeApproval, FinalApprovalMode finalMode, CancellationToken ct = default)
+    {
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.PersonalQuestIntakeApproval = intakeApproval;
+        settings.FinalApprovalMode = finalMode;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+
+        await db.SaveChangesAsync(ct);
+        return CommandResult.Ok("Quest approval settings updated.");
+    }
 
     /// <summary>Set the bonus POINTS granted per guild-quest difficulty tier.</summary>
     public async Task<CommandResult> SetQuestTierPointsAsync(

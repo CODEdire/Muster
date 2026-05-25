@@ -57,8 +57,12 @@ else if (State == AccessState.Ready)
                         <option value="@t">@t — @_settings.PointsForTier(t) pts</option>
                     }
                 </InputSelect>
-                <span class="subtitle">Guild quests only — mints bonus POINTS from guild config. Configure values in Admin → Settings.</span>
+                <span class="subtitle">Guild quests only. Personal quests are tiered by an approver at intake.</span>
             </label>
+            @if (_settings.FinalApprovalMode == FinalApprovalMode.OwnerChoice)
+            {
+                <label class="checkbox"><InputCheckbox @bind-Value="Post.RequestFinalApproval" /> Personal quest: require a manager's final sign-off before payout</label>
+            }
             <label>Starts (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.StartsAt" /></label>
             <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.ExpiresAt" /></label>
             <div class="btn-row">
@@ -95,7 +99,7 @@ else if (State == AccessState.Ready)
         var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.StartsAt);
         var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.ExpiresAt);
 
-        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline, Post.Tier);
+        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline, Post.Tier, Post.RequestFinalApproval);
         Message = result.Message;
         if (!result.IsError)
         {
@@ -113,6 +117,7 @@ else if (State == AccessState.Ready)
         public long Amount { get; set; }
         public string? Currency { get; set; }
         public QuestTier Tier { get; set; } = QuestTier.None;
+        public bool RequestFinalApproval { get; set; }
         public DateTime? StartsAt { get; set; }
         public DateTime? ExpiresAt { get; set; }
     }

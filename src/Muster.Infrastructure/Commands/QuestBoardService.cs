@@ -30,7 +30,7 @@ public class QuestBoardService(
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
         string description = "", DateTimeOffset? startsAt = null, DateTimeOffset? deadline = null,
-        QuestTier tier = QuestTier.None, CancellationToken ct = default)
+        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, CancellationToken ct = default)
     {
         if (deadline is { } dl && startsAt is { } st && dl <= st)
         {
@@ -44,17 +44,18 @@ public class QuestBoardService(
                 return CommandResult.Error("You need to be a quest manager to post a guild quest. Choose a personal quest to fund one from your own balance.");
             }
 
-            // Tier-based bonus points are a guild (manager) privilege; personal quests can't grant points.
+            // Tier-based bonus points are a guild (manager) privilege; personal quests are tiered by an approver at intake.
             return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, tier, ct);
         }
 
-        return await bounties.PostAsync(guildId, actorId, name, currency, reward, description, deadline, startsAt, ct);
+        return await bounties.PostAsync(guildId, actorId, name, currency, reward, description, deadline, startsAt, requestFinalApproval, ct);
     }
 
     /// <summary>Post a quest, parsing start/expiry date strings the user typed in their own time zone (used by the bot).</summary>
     public async Task<CommandResult> PostParsedAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
-        string description = "", string? startRaw = null, string? expiresRaw = null, QuestTier tier = QuestTier.None, CancellationToken ct = default)
+        string description = "", string? startRaw = null, string? expiresRaw = null,
+        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, CancellationToken ct = default)
     {
         var (startOk, startsAt, startErr) = await timeZones.ParseLocalAsync(guildId, actorId, startRaw, ct);
         if (!startOk)
@@ -68,7 +69,7 @@ public class QuestBoardService(
             return CommandResult.Error(expErr!);
         }
 
-        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, ct);
+        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, requestFinalApproval, ct);
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
@@ -76,7 +77,8 @@ public class QuestBoardService(
         var board = await db.Missions
             .Include(m => m.Participants)
             .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
-                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed))
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed
+                    || m.Status == MissionStatus.PendingApproval || m.Status == MissionStatus.PendingFinal))
             .OrderBy(m => m.ScheduledStart ?? m.CreatedAt)
             .ToListAsync(ct);
 
@@ -93,6 +95,8 @@ public class QuestBoardService(
             var type = m.Origin == MissionOrigin.Guild ? "Guild" : "Personal";
             var state = m.Status switch
             {
+                MissionStatus.PendingApproval => "pending approval",
+                MissionStatus.PendingFinal => "awaiting final sign-off",
                 MissionStatus.Scheduled when m.ScheduledStart is { } s => $"opens {Rel(s)}",
                 MissionStatus.Disputed => "disputed",
                 _ when m.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) => "taken",
@@ -144,13 +148,29 @@ public class QuestBoardService(
             _ => Task.FromResult(CommandResult.Error("Guild quests can't be disputed — ask a quest manager to review the submission.")),
             id => bounties.DisputeAsync(guildId, id, userId, ct));
 
-    /// <summary>Manager (notary) settles a submitted personal quest with a difficulty tier, granting bonus POINTS.</summary>
-    public Task<CommandResult> NotarizeAsync(ulong guildId, string idRaw, QuestTier tier, ulong reviewerId, CancellationToken ct = default)
+    /// <summary>Quest manager accepts a pending personal quest at intake, assigning a difficulty tier.</summary>
+    public Task<CommandResult> AcceptIntakeAsync(ulong guildId, string idRaw, QuestTier tier, bool requireFinalApproval, ulong reviewerId, CancellationToken ct = default)
         => RouteAsync(idRaw,
-            _ => Task.FromResult(CommandResult.Error("Guild quests carry their tier from creation — approve the submission instead.")),
+            _ => Task.FromResult(CommandResult.Error("Guild quests are tiered at creation — approve the submission instead.")),
             async id => await auth.IsQuestManagerAsync(guildId, reviewerId, ct)
-                ? await bounties.NotarizeAsync(guildId, id, tier, reviewerId, ct)
-                : CommandResult.Error("You need to be a quest manager to notarize a personal quest."));
+                ? await bounties.AcceptAsync(guildId, id, tier, requireFinalApproval, reviewerId, ct)
+                : CommandResult.Error("You need to be a quest manager to approve a personal quest."));
+
+    /// <summary>Quest manager rejects a pending personal quest at intake → refund the owner.</summary>
+    public Task<CommandResult> RejectIntakeAsync(ulong guildId, string idRaw, ulong reviewerId, CancellationToken ct = default)
+        => RouteAsync(idRaw,
+            _ => Task.FromResult(CommandResult.Error("Guild quests don't go through intake approval.")),
+            async id => await auth.IsQuestManagerAsync(guildId, reviewerId, ct)
+                ? await bounties.RejectIntakeAsync(guildId, id, reviewerId, ct)
+                : CommandResult.Error("You need to be a quest manager to reject a personal quest."));
+
+    /// <summary>Quest manager finalizes a personal quest awaiting sign-off: pay the completer or refund the owner.</summary>
+    public Task<CommandResult> FinalizeAsync(ulong guildId, string idRaw, bool pay, ulong reviewerId, CancellationToken ct = default)
+        => RouteAsync(idRaw,
+            _ => Task.FromResult(CommandResult.Error("Guild quests are settled with approve, not final sign-off.")),
+            async id => await auth.IsQuestManagerAsync(guildId, reviewerId, ct)
+                ? await bounties.FinalizeAsync(guildId, id, pay, reviewerId, ct)
+                : CommandResult.Error("You need to be a quest manager to finalize a personal quest."));
 
     public Task<CommandResult> ArbitrateAsync(ulong guildId, string idRaw, bool pay, CancellationToken ct = default)
         => bounties.ArbitrateAsync(guildId, idRaw, pay, ct);

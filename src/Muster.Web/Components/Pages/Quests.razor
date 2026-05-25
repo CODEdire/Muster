@@ -97,21 +97,34 @@ else if (State == AccessState.Ready)
                                         }
                                     </EditForm>
                                 }
-                                @if (CanNotarize(q))
+                                @if (CanIntake(q))
                                 {
-                                    <EditForm class="row-actions" Model="this" FormName="@($"notarize-{q.Id}")" OnValidSubmit="ActAsync">
+                                    <EditForm class="row-actions" Model="this" FormName="@($"intake-{q.Id}")" OnValidSubmit="ActAsync">
                                         <input type="hidden" name="QuestId" value="@q.Id" />
-                                        <input type="hidden" name="Action" value="notarize" />
                                         <select name="Tier" class="tier-select">
+                                            <option value="@QuestTier.None">No tier (0 pts)</option>
                                             @foreach (var t in _tiers)
                                             {
                                                 <option value="@t">@t (@_settings.PointsForTier(t) pts)</option>
                                             }
                                         </select>
-                                        <button type="submit" class="btn btn-sm">Notarize &amp; pay</button>
+                                        @if (_settings.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
+                                        {
+                                            <label class="checkbox"><input type="checkbox" name="RequireFinal" value="true" /> final sign-off</label>
+                                        }
+                                        <button type="submit" name="Action" value="accept" class="btn btn-sm">Accept &amp; open</button>
+                                        <button type="submit" name="Action" value="reject-intake" class="btn btn-sm btn-ghost">Reject</button>
                                     </EditForm>
                                 }
-                                @if (actions.Count == 0 && !CanNotarize(q))
+                                @if (CanFinalize(q))
+                                {
+                                    <EditForm class="row-actions" Model="this" FormName="@($"finalize-{q.Id}")" OnValidSubmit="ActAsync">
+                                        <input type="hidden" name="QuestId" value="@q.Id" />
+                                        <button type="submit" name="Action" value="finalize-pay" class="btn btn-sm">Pay completer</button>
+                                        <button type="submit" name="Action" value="finalize-refund" class="btn btn-sm btn-ghost">Refund owner</button>
+                                    </EditForm>
+                                }
+                                @if (actions.Count == 0 && !CanIntake(q) && !CanFinalize(q))
                                 {
                                     <span class="subtitle">—</span>
                                 }
@@ -159,10 +172,13 @@ else if (State == AccessState.Ready)
 
     private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
 
-    /// <summary>Managers may notarize (tier + pay) a submitted personal quest.</summary>
-    private bool CanNotarize(Mission q) =>
-        _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.Open
-        && q.Participants.Any(p => p.Status == MissionParticipantStatus.Submitted);
+    /// <summary>Managers vet + tier a pending personal quest at intake.</summary>
+    private bool CanIntake(Mission q) =>
+        _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.PendingApproval;
+
+    /// <summary>Managers give the final sign-off on a personal quest awaiting it.</summary>
+    private bool CanFinalize(Mission q) =>
+        _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.PendingFinal;
 
     private string CurrentTab => Tab is "mine" or "history" ? Tab : "active";
     private string CurrentType => Type is "guild" or "personal" ? Type : "";
@@ -187,7 +203,10 @@ else if (State == AccessState.Ready)
                 : query.Where(m => (m.Status == MissionStatus.Closed || m.Status == MissionStatus.Cancelled || m.Status == MissionStatus.Expired)
                     && (m.OwnerId == UserId || m.Participants.Any(p => p.UserId == UserId))),
             "mine" => query.Where(m => m.OwnerId == UserId || m.Participants.Any(p => p.UserId == UserId)),
-            _ => query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed),
+            _ => _isManager
+                ? query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed
+                    || m.Status == MissionStatus.PendingApproval || m.Status == MissionStatus.PendingFinal)
+                : query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed),
         };
 
         if (CurrentType == "guild")
@@ -250,10 +269,11 @@ else if (State == AccessState.Ready)
         {
             result = await Board.RejectAsync(GuildId, id, rejectId, UserId);
         }
-        else if (action == "notarize")
+        else if (action == "accept")
         {
             _ = Enum.TryParse<QuestTier>(form?["Tier"].ToString(), out var tier);
-            result = await Board.NotarizeAsync(GuildId, id, tier, UserId);
+            var requireFinal = form?["RequireFinal"].ToString() == "true";
+            result = await Board.AcceptIntakeAsync(GuildId, id, tier, requireFinal, UserId);
         }
         else
         {
@@ -263,6 +283,9 @@ else if (State == AccessState.Ready)
                 "confirm" => await Board.ConfirmAsync(GuildId, id, UserId),
                 "cancel" => await Board.CancelAsync(GuildId, id, UserId),
                 "dispute" => await Board.DisputeAsync(GuildId, id, UserId),
+                "reject-intake" => await Board.RejectIntakeAsync(GuildId, id, UserId),
+                "finalize-pay" => await Board.FinalizeAsync(GuildId, id, true, UserId),
+                "finalize-refund" => await Board.FinalizeAsync(GuildId, id, false, UserId),
                 "resolve-pay" => await Board.ArbitrateAsync(GuildId, id, true),
                 "resolve-refund" => await Board.ArbitrateAsync(GuildId, id, false),
                 _ => await Board.ClaimAsync(GuildId, id, UserId),
@@ -308,7 +331,7 @@ else if (State == AccessState.Ready)
             }
         }
 
-        if (q.Status is MissionStatus.Open or MissionStatus.Scheduled && submitters.Count == 0
+        if (q.Status is MissionStatus.Open or MissionStatus.Scheduled or MissionStatus.PendingApproval && submitters.Count == 0
             && ((isPersonal && iAmOwner) || (!isPersonal && _isManager)))
         {
             yield return new("cancel", "Cancel", false);
@@ -354,6 +377,8 @@ else if (State == AccessState.Ready)
         MissionStatus.Open => "open",
         MissionStatus.Scheduled => "scheduled",
         MissionStatus.Disputed => "disputed",
+        MissionStatus.PendingApproval => "scheduled",
+        MissionStatus.PendingFinal => "disputed",
         MissionStatus.Closed => "closed",
         MissionStatus.Cancelled => "cancelled",
         MissionStatus.Expired => "expired",
@@ -364,6 +389,8 @@ else if (State == AccessState.Ready)
     {
         MissionStatus.Scheduled => "Scheduled",
         MissionStatus.Disputed => "Disputed",
+        MissionStatus.PendingApproval => "Pending approval",
+        MissionStatus.PendingFinal => "Awaiting sign-off",
         MissionStatus.Open when q.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) => "In progress",
         MissionStatus.Open => "Open",
         MissionStatus.Closed => "Completed",

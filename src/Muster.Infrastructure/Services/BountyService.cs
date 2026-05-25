@@ -28,12 +28,12 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
     private static string Key(Guid missionId) => $"bounty:{missionId}";
 
     /// <summary>
-    /// Settle a submitted personal quest as a Quest Manager (notary): pay the completer and mint the
-    /// given bonus POINTS for the assigned difficulty. Lets the guild grant fair points on member-funded
-    /// quests without letting the member self-assign them. Authorization is enforced by the caller.
+    /// Quest manager accepts a pending personal quest at intake: assigns the difficulty tier (and its bonus
+    /// POINTS) and opens it for takers. Optionally sets the final-approval requirement when the guild lets the
+    /// approver decide. No money moves (escrow was already reserved at post). Authorization is enforced by the caller.
     /// </summary>
-    public async Task<BountyResult> NotarizeAsync(
-        Guid missionId, ulong reviewerId, QuestTier tier, long bonusPoints, CancellationToken ct = default)
+    public async Task<BountyResult> AcceptAsync(
+        Guid missionId, ulong reviewerId, QuestTier tier, long bonusPoints, bool? requireFinalApproval, CancellationToken ct = default)
     {
         var (mission, result) = await LoadBountyAsync(missionId, ct);
         if (mission is null)
@@ -41,25 +41,86 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             return result;
         }
 
-        if (mission.Status != MissionStatus.Open)
+        if (mission.Status != MissionStatus.PendingApproval)
+        {
+            return BountyResult.InvalidState;
+        }
+
+        mission.Tier = tier;
+        mission.BonusPoints = bonusPoints;
+        if (requireFinalApproval is { } rf)
+        {
+            mission.RequiresFinalApproval = rf;
+        }
+
+        var scheduled = mission.ScheduledStart is { } s && s > DateTimeOffset.UtcNow;
+        mission.Status = scheduled ? MissionStatus.Scheduled : MissionStatus.Open;
+        await db.SaveChangesAsync(ct);
+        return BountyResult.Ok;
+    }
+
+    /// <summary>Quest manager rejects a personal quest at intake → refund the owner's escrow and cancel.</summary>
+    public async Task<BountyResult> RejectIntakeAsync(Guid missionId, ulong reviewerId, CancellationToken ct = default)
+    {
+        var (mission, result) = await LoadBountyAsync(missionId, ct);
+        if (mission is null)
+        {
+            return result;
+        }
+
+        if (mission.Status != MissionStatus.PendingApproval)
+        {
+            return BountyResult.InvalidState;
+        }
+
+        await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
+        ReleaseTaker(mission);
+        mission.Status = MissionStatus.Cancelled;
+        mission.EscrowAmount = 0;
+        await db.SaveChangesAsync(ct);
+        return BountyResult.Ok;
+    }
+
+    /// <summary>Quest manager finalizes a personal quest awaiting sign-off: pay the completer (+ bonus) or refund the owner.</summary>
+    public async Task<BountyResult> FinalizeAsync(Guid missionId, ulong reviewerId, bool pay, CancellationToken ct = default)
+    {
+        var (mission, result) = await LoadBountyAsync(missionId, ct);
+        if (mission is null)
+        {
+            return result;
+        }
+
+        if (mission.Status != MissionStatus.PendingFinal)
         {
             return BountyResult.InvalidState;
         }
 
         var taker = mission.Participants.FirstOrDefault(p => p.Status == MissionParticipantStatus.Submitted);
-        if (taker is null)
+        if (pay && taker is not null)
         {
-            return BountyResult.InvalidState;
+            await PayAndBonusAsync(mission, taker, reviewerId, ct);
+        }
+        else
+        {
+            await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
+            ReleaseTaker(mission);
+            mission.Status = MissionStatus.Cancelled;
+            mission.EscrowAmount = 0;
         }
 
-        await escrow.PayoutAsync(mission.GuildId, taker.UserId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
-        mission.Tier = tier;
-        mission.BonusPoints = bonusPoints;
-        if (bonusPoints > 0)
+        await db.SaveChangesAsync(ct);
+        return BountyResult.Ok;
+    }
+
+    /// <summary>Pay the completer the escrowed reward plus any tier bonus POINTS, and close the quest. Caller saves.</summary>
+    private async Task PayAndBonusAsync(Mission mission, MissionParticipant taker, ulong reviewerId, CancellationToken ct)
+    {
+        await escrow.PayoutAsync(mission.GuildId, taker.UserId, mission.RewardCurrencyId, mission.EscrowAmount, Key(mission.Id), ct);
+        if (mission.BonusPoints > 0)
         {
             await awards.StagePointsAsync(
-                mission.GuildId, taker.UserId, bonusPoints, LedgerSourceType.Mission,
-                $"bounty:{missionId}:bonus:{taker.UserId}", $"Quest bonus: {mission.Name}", ct);
+                mission.GuildId, taker.UserId, mission.BonusPoints, LedgerSourceType.Mission,
+                $"bounty:{mission.Id}:bonus:{taker.UserId}", $"Quest bonus: {mission.Name}", ct);
         }
 
         taker.Status = MissionParticipantStatus.Approved;
@@ -67,13 +128,12 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         taker.ReviewedAt = DateTimeOffset.UtcNow;
         mission.Status = MissionStatus.Closed;
         mission.EscrowAmount = 0;
-        await db.SaveChangesAsync(ct);
-        return BountyResult.Ok;
     }
 
     public async Task<(BountyResult Result, Mission? Mission)> PostAsync(
         ulong guildId, ulong ownerId, string name, string description, Guid currencyId, long amount,
-        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null,
+        bool requireIntake = false, bool requireFinalApproval = false, CancellationToken ct = default)
     {
         if (amount <= 0 || string.IsNullOrWhiteSpace(name))
         {
@@ -86,6 +146,9 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         }
 
         var scheduled = startsAt is { } s && s > DateTimeOffset.UtcNow;
+        var status = requireIntake
+            ? MissionStatus.PendingApproval
+            : scheduled ? MissionStatus.Scheduled : MissionStatus.Open;
         var mission = new Mission
         {
             Id = Guid.NewGuid(),
@@ -94,13 +157,14 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             Origin = MissionOrigin.Player,
             Name = name.Trim(),
             Description = (description ?? string.Empty).Trim(),
-            Status = scheduled ? MissionStatus.Scheduled : MissionStatus.Open,
+            Status = status,
             CreatedBy = ownerId,
             OwnerId = ownerId,
             CreatedAt = DateTimeOffset.UtcNow,
             RewardCurrencyId = currencyId,
             RewardAmount = amount,
             EscrowAmount = amount,
+            RequiresFinalApproval = requireFinalApproval,
             ScheduledStart = startsAt,
             Deadline = deadline,
         };
@@ -201,12 +265,16 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             return BountyResult.InvalidState; // nothing submitted to confirm
         }
 
-        await escrow.PayoutAsync(mission.GuildId, taker.UserId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
-        taker.Status = MissionParticipantStatus.Approved;
-        taker.ReviewedBy = ownerId;
-        taker.ReviewedAt = DateTimeOffset.UtcNow;
-        mission.Status = MissionStatus.Closed;
-        mission.EscrowAmount = 0;
+        if (mission.RequiresFinalApproval)
+        {
+            // Owner accepts, but a quest manager must sign off before any money or points move.
+            mission.Status = MissionStatus.PendingFinal;
+        }
+        else
+        {
+            await PayAndBonusAsync(mission, taker, ownerId, ct);
+        }
+
         await db.SaveChangesAsync(ct);
         return BountyResult.Ok;
     }
@@ -225,7 +293,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             return BountyResult.Forbidden;
         }
 
-        if (mission.Status is not (MissionStatus.Open or MissionStatus.Scheduled)
+        if (mission.Status is not (MissionStatus.Open or MissionStatus.Scheduled or MissionStatus.PendingApproval)
             || mission.Participants.Any(p => p.Status == MissionParticipantStatus.Submitted))
         {
             return BountyResult.InvalidState; // after submission, confirm or dispute instead
@@ -282,18 +350,16 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
 
         if (payCompleter && taker is not null)
         {
-            await escrow.PayoutAsync(mission.GuildId, taker.UserId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
-            taker.Status = MissionParticipantStatus.Approved;
-            mission.Status = MissionStatus.Closed;
+            await PayAndBonusAsync(mission, taker, mission.OwnerId, ct);
         }
         else
         {
             await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
             ReleaseTaker(mission);
             mission.Status = MissionStatus.Cancelled;
+            mission.EscrowAmount = 0;
         }
 
-        mission.EscrowAmount = 0;
         await db.SaveChangesAsync(ct);
         return BountyResult.Ok;
     }
@@ -313,7 +379,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             .Include(m => m.Participants)
             .Where(scope)
             .Where(m => m.Origin == MissionOrigin.Player
-                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled)
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.PendingApproval)
                 && m.Deadline != null && m.Deadline < now)
             .ToListAsync(ct);
 
@@ -335,7 +401,8 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         => await db.Missions
             .Include(m => m.Participants)
             .Where(m => m.GuildId == guildId && m.Origin == MissionOrigin.Player
-                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled))
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled
+                    || m.Status == MissionStatus.PendingApproval || m.Status == MissionStatus.PendingFinal))
             .OrderBy(m => m.ScheduledStart ?? m.CreatedAt)
             .ToListAsync(ct);
 

@@ -23,10 +23,11 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "description", Description = "What to do")] string description = "",
         [SlashCommandParameter(Name = "starts", Description = "When it opens, in your time zone, e.g. 2026-06-01 18:00 (optional)")] string starts = "",
         [SlashCommandParameter(Name = "expires", Description = "When it closes, in your time zone, e.g. 2026-06-08 18:00 (optional)")] string expires = "",
-        [SlashCommandParameter(Name = "tier", Description = "Difficulty tier for a guild quest — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None)
+        [SlashCommandParameter(Name = "tier", Description = "Difficulty tier for a guild quest — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None,
+        [SlashCommandParameter(Name = "require_final_approval", Description = "Personal quest: ask a manager to give a final sign-off before payout")] bool requireFinalApproval = false)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<QuestBoardService>()
-                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier),
+                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier, requireFinalApproval),
             auditAction: "quest.post");
 
     [SlashCommand("quest-list", "List the open quest board.")]
@@ -67,13 +68,29 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
         => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().DisputeAsync(guildId, quest, Context.User.Id));
 
-    [SlashCommand("quest-notarize", "Approve a submitted personal quest with a difficulty tier, granting bonus POINTS (Quest Manager).")]
-    public Task<Reply> NotarizeAsync(
+    [SlashCommand("quest-accept", "Accept a pending personal quest at intake and set its difficulty tier (Quest Manager).")]
+    public Task<Reply> AcceptIntakeAsync(
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
-        [SlashCommandParameter(Name = "tier", Description = "Difficulty tier — sets the bonus POINTS from guild config")] QuestTier tier)
+        [SlashCommandParameter(Name = "tier", Description = "Difficulty tier — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None,
+        [SlashCommandParameter(Name = "require_final_approval", Description = "Require a final manager sign-off before payout (if the guild lets the approver decide)")] bool requireFinalApproval = false)
         => RunAsync(
-            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().NotarizeAsync(guildId, quest, tier, Context.User.Id),
-            RequiredRole.QuestManager, "quest.notarize");
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().AcceptIntakeAsync(guildId, quest, tier, requireFinalApproval, Context.User.Id),
+            RequiredRole.QuestManager, "quest.accept");
+
+    [SlashCommand("quest-reject", "Reject a pending personal quest at intake and refund the owner (Quest Manager).")]
+    public Task<Reply> RejectIntakeAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().RejectIntakeAsync(guildId, quest, Context.User.Id),
+            RequiredRole.QuestManager, "quest.rejectIntake");
+
+    [SlashCommand("quest-finalize", "Give the final sign-off on a personal quest: pay the completer or refund the owner (Quest Manager).")]
+    public Task<Reply> FinalizeAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
+        [SlashCommandParameter(Name = "pay", Description = "Pay the completer (true) or refund the owner (false)")] bool pay)
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().FinalizeAsync(guildId, quest, pay, Context.User.Id),
+            RequiredRole.QuestManager, "quest.finalize");
 
     [SlashCommand("quest-arbitrate", "Resolve a disputed personal quest (Quest Manager).")]
     public Task<Reply> ArbitrateAsync(

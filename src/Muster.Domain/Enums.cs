@@ -46,6 +46,28 @@ public enum MissionStatus
 
     /// <summary>Created with a future start date; not claimable/takeable until activated at that time.</summary>
     Scheduled = 6,
+
+    /// <summary>Personal quest awaiting a quest manager's intake approval + difficulty tiering before it opens.</summary>
+    PendingApproval = 7,
+
+    /// <summary>Personal quest the owner accepted, awaiting a quest manager's final sign-off before payout.</summary>
+    PendingFinal = 8,
+}
+
+/// <summary>Governs whether a personal quest needs a final manager sign-off before payout, and who decides.</summary>
+public enum FinalApprovalMode
+{
+    /// <summary>Never require final approval — the owner's acceptance pays out directly.</summary>
+    Off = 0,
+
+    /// <summary>The owner opts in per-quest when posting.</summary>
+    OwnerChoice = 1,
+
+    /// <summary>The intake approver decides when accepting the quest.</summary>
+    ApproverChoice = 2,
+
+    /// <summary>Always require a final manager sign-off.</summary>
+    Forced = 3,
 }
 
 /// <summary>Difficulty tier for a guild quest, driving the bonus POINTS reward via guild config. S is hardest.</summary>

@@ -27,7 +27,8 @@ public class QuestAutocompleteProvider(IServiceScopeFactory scopeFactory)
 
         var quests = await db.Missions
             .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
-                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed)
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed
+                    || m.Status == MissionStatus.PendingApproval || m.Status == MissionStatus.PendingFinal)
                 && m.Name.Contains(input))
             .OrderByDescending(m => m.CreatedAt)
             .Take(25)

@@ -23,6 +23,7 @@ public class QuestBoardAndTimeZoneTests
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
         var guild = await db.Guilds.SingleAsync();
         guild.TimeZoneId = guildTz;
+        guild.Settings.PersonalQuestIntakeApproval = false; // most flow tests use the direct open->claim path
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
@@ -224,37 +225,107 @@ public class QuestBoardAndTimeZoneTests
         Assert.Equal(50, await PointsAsync(c.Db, 1, 20));          // tier B bonus points
     }
 
-    [Fact]
-    public async Task PersonalQuest_NotarizedByManager_PaysAndAwardsTierPoints()
+    private static async Task SetApprovalAsync(Ctx c, bool intake, FinalApprovalMode mode)
     {
-        var c = await SeededAsync();
-        await FundAsync(c, 10, 100);
-        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
-        var q = await c.Db.Missions.SingleAsync();
-        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
-        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
-
-        Assert.False((await c.Board.NotarizeAsync(1, q.Id.ToString(), QuestTier.C, 1)).IsError);
-
-        Assert.Equal(40, await BalanceAsync(c.Db, 20, c.Coin.Id)); // escrow paid to completer
-        Assert.Equal(30, await PointsAsync(c.Db, 1, 20));          // tier C default
-        var settled = await c.Db.Missions.SingleAsync();
-        Assert.Equal(MissionStatus.Closed, settled.Status);
-        Assert.Equal(QuestTier.C, settled.Tier);
+        var guild = await c.Db.Guilds.SingleAsync();
+        guild.Settings.PersonalQuestIntakeApproval = intake;
+        guild.Settings.FinalApprovalMode = mode;
+        await c.Db.SaveChangesAsync();
     }
 
     [Fact]
-    public async Task Notarize_NonManager_IsRejected()
+    public async Task PersonalQuest_WithIntakeApproval_RequiresAcceptBeforeClaim()
     {
         var c = await SeededAsync();
+        await SetApprovalAsync(c, intake: true, FinalApprovalMode.Off);
         await FundAsync(c, 10, 100);
+
         await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
         var q = await c.Db.Missions.SingleAsync();
+        Assert.Equal(MissionStatus.PendingApproval, q.Status);
+
+        // Not claimable until an approver accepts it.
+        Assert.True((await c.Board.ClaimAsync(1, q.Id.ToString(), 20)).IsError);
+
+        Assert.False((await c.Board.AcceptIntakeAsync(1, q.Id.ToString(), QuestTier.C, false, 1)).IsError);
+        var opened = await c.Db.Missions.SingleAsync();
+        Assert.Equal(MissionStatus.Open, opened.Status);
+        Assert.Equal(QuestTier.C, opened.Tier);
+        Assert.Equal(30, opened.BonusPoints); // tier C default
+    }
+
+    [Fact]
+    public async Task PersonalQuest_IntakeTier_PaysBonusPointsOnConfirm()
+    {
+        var c = await SeededAsync();
+        await SetApprovalAsync(c, intake: true, FinalApprovalMode.Off);
+        await FundAsync(c, 10, 100);
+
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        await c.Board.AcceptIntakeAsync(1, q.Id.ToString(), QuestTier.B, false, 1);
         await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
         await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
 
-        Assert.True((await c.Board.NotarizeAsync(1, q.Id.ToString(), QuestTier.C, 99)).IsError);
-        Assert.Equal(MissionStatus.Open, (await c.Db.Missions.SingleAsync()).Status);
+        Assert.False((await c.Board.ConfirmAsync(1, q.Id.ToString(), 10)).IsError); // owner confirms
+
+        Assert.Equal(40, await BalanceAsync(c.Db, 20, c.Coin.Id)); // escrow paid
+        Assert.Equal(50, await PointsAsync(c.Db, 1, 20));          // tier B default
+        Assert.Equal(MissionStatus.Closed, (await c.Db.Missions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task PersonalQuest_RejectedAtIntake_RefundsOwner()
+    {
+        var c = await SeededAsync();
+        await SetApprovalAsync(c, intake: true, FinalApprovalMode.Off);
+        await FundAsync(c, 10, 100);
+
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        Assert.Equal(60, await BalanceAsync(c.Db, 10, c.Coin.Id)); // 40 escrowed
+
+        Assert.False((await c.Board.RejectIntakeAsync(1, q.Id.ToString(), 1)).IsError);
+        Assert.Equal(100, await BalanceAsync(c.Db, 10, c.Coin.Id)); // refunded
+        Assert.Equal(MissionStatus.Cancelled, (await c.Db.Missions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task PersonalQuest_FinalApproval_HoldsPayoutUntilManagerSignsOff()
+    {
+        var c = await SeededAsync();
+        await SetApprovalAsync(c, intake: true, FinalApprovalMode.Forced);
+        await FundAsync(c, 10, 100);
+
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        Assert.True(q.RequiresFinalApproval); // forced by server
+        await c.Board.AcceptIntakeAsync(1, q.Id.ToString(), QuestTier.D, false, 1);
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+
+        // Owner confirms, but payout is held for a manager's final sign-off.
+        await c.Board.ConfirmAsync(1, q.Id.ToString(), 10);
+        Assert.Equal(MissionStatus.PendingFinal, (await c.Db.Missions.SingleAsync()).Status);
+        Assert.Equal(0, await BalanceAsync(c.Db, 20, c.Coin.Id)); // not paid yet
+
+        Assert.False((await c.Board.FinalizeAsync(1, q.Id.ToString(), true, 1)).IsError);
+        Assert.Equal(40, await BalanceAsync(c.Db, 20, c.Coin.Id)); // now paid
+        Assert.Equal(15, await PointsAsync(c.Db, 1, 20));          // tier D default
+        Assert.Equal(MissionStatus.Closed, (await c.Db.Missions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task IntakeAccept_NonManager_IsRejected()
+    {
+        var c = await SeededAsync();
+        await SetApprovalAsync(c, intake: true, FinalApprovalMode.Off);
+        await FundAsync(c, 10, 100);
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+
+        Assert.True((await c.Board.AcceptIntakeAsync(1, q.Id.ToString(), QuestTier.C, false, 99)).IsError);
+        Assert.Equal(MissionStatus.PendingApproval, (await c.Db.Missions.SingleAsync()).Status);
     }
 
     [Fact]
