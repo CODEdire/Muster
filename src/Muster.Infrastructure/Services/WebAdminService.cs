@@ -5,8 +5,6 @@ namespace Muster.Infrastructure.Services;
 
 public record MemberOption(ulong UserId, string DisplayName);
 
-public record PendingApproval(Guid MissionId, string QuestName, ulong UserId, string DisplayName);
-
 public record RoleOption(ulong RoleId, string Name);
 
 public record RoleMappingView(
@@ -27,21 +25,6 @@ public class WebAdminService(MusterDbContext db)
         return members
             .Select(m => new MemberOption(m.UserId, m.Nickname ?? names.GetValueOrDefault(m.UserId, m.UserId.ToString())))
             .OrderBy(o => o.DisplayName)
-            .ToList();
-    }
-
-    public async Task<IReadOnlyList<PendingApproval>> GetPendingApprovalsAsync(ulong guildId, CancellationToken ct = default)
-    {
-        var pending = await (
-            from p in db.MissionParticipants
-            join m in db.Missions on p.MissionId equals m.Id
-            where m.GuildId == guildId && m.Type == MissionType.Quest && p.Status == MissionParticipantStatus.Submitted
-            select new { p.MissionId, QuestName = m.Name, p.UserId }).ToListAsync(ct);
-
-        var names = await ResolveNamesAsync(pending.Select(p => p.UserId), ct);
-
-        return pending
-            .Select(p => new PendingApproval(p.MissionId, p.QuestName, p.UserId, names.GetValueOrDefault(p.UserId, p.UserId.ToString())))
             .ToList();
     }
 
