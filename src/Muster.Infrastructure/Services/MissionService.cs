@@ -9,7 +9,12 @@ namespace Muster.Infrastructure.Services;
 /// event ops (sign-up → attendance). Awards go through <see cref="AwardService"/> and are idempotent
 /// per (mission, user), so approving twice never double-rewards.
 /// </summary>
-public class MissionService(MusterDbContext db, AwardService awards, GuildAuthorizationService auth)
+public class MissionService(
+    MusterDbContext db,
+    AwardService awards,
+    GuildAuthorizationService auth,
+    IQuestNotifier notifier,
+    IQuestRewardSink rewards)
 {
     private static void SetStatus(Mission mission, MissionStatus status)
     {
@@ -17,11 +22,18 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         mission.StatusChangedAt = DateTimeOffset.UtcNow;
     }
 
+    private Task NotifyAsync(Mission m, QuestLifecycleEvent ev, ulong? target, string detail, CancellationToken ct)
+        => notifier.NotifyAsync(new QuestNotification(m.GuildId, m.Id, m.Name, ev, target, detail), ct);
+
+    private Task RewardAsync(Mission m, ulong completer, CancellationToken ct)
+        => rewards.OnCompletedAsync(new QuestCompletion(
+            m.GuildId, m.Id, m.Name, completer, m.Origin, m.RewardCurrencyId, m.RewardAmount, m.BonusPoints, m.Tier), ct);
+
     public async Task<Mission> CreateQuestAsync(
         ulong guildId, string name, string description, ulong createdBy,
         Guid rewardCurrencyId, long rewardAmount, DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null,
-        long bonusPoints = 0, QuestTier tier = QuestTier.None, bool repeatable = false, bool requiresApproval = true,
-        CancellationToken ct = default)
+        long bonusPoints = 0, QuestTier tier = QuestTier.None, bool repeatable = false, int capacity = 1,
+        bool requiresApproval = true, CancellationToken ct = default)
     {
         var scheduled = startsAt is { } s && s > DateTimeOffset.UtcNow;
         var mission = new Mission
@@ -40,6 +52,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             RewardAmount = rewardAmount,
             BonusPoints = bonusPoints,
             Tier = tier,
+            Capacity = Math.Max(1, capacity),
             ScheduledStart = startsAt,
             Deadline = deadline,
             IsRepeatable = repeatable,
@@ -47,6 +60,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         };
         db.Missions.Add(mission);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Created, null, "Quest created.", ct);
         return mission;
     }
 
@@ -177,6 +191,15 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             return existing;
         }
 
+        // Capacity caps how many members may work on / complete a guild quest at once.
+        var taken = await db.MissionParticipants.CountAsync(p => p.MissionId == missionId
+            && (p.Status == MissionParticipantStatus.Claimed || p.Status == MissionParticipantStatus.Submitted
+                || p.Status == MissionParticipantStatus.RevisionRequested || p.Status == MissionParticipantStatus.Approved), ct);
+        if (taken >= Math.Max(1, mission.Capacity))
+        {
+            throw new InvalidOperationException("This quest is full — all slots are taken.");
+        }
+
         var participant = new MissionParticipant
         {
             Id = Guid.NewGuid(),
@@ -187,6 +210,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         };
         db.MissionParticipants.Add(participant);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Claimed, mission.OwnerId, $"Claimed by <@{userId}>.", ct);
         return participant;
     }
 
@@ -202,6 +226,9 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         participant.SubmittedAt = DateTimeOffset.UtcNow;
         participant.Note = note;
         await db.SaveChangesAsync(ct);
+
+        var mission = await db.Missions.FirstAsync(m => m.Id == missionId, ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Submitted, null, $"<@{userId}> submitted for review.", ct);
     }
 
     /// <summary>Approve a quest submission and award the reward. Idempotent per (mission, user).</summary>
@@ -214,15 +241,17 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         participant.Status = MissionParticipantStatus.Approved;
         participant.ReviewedBy = reviewerId;
         participant.ReviewedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
 
-        // A non-repeatable guild quest is single-completion: close it once approved. A repeatable one
-        // stays open so other members (or the same one again) can complete it for the reward.
-        if (!mission.IsRepeatable)
+        // A guild quest closes once its capacity of completions is reached, unless it's repeatable
+        // (repeatable quests stay open for unlimited completions).
+        var approvedCount = await db.MissionParticipants.CountAsync(
+            p => p.MissionId == missionId && p.Status == MissionParticipantStatus.Approved, ct);
+        if (!mission.IsRepeatable && approvedCount >= Math.Max(1, mission.Capacity))
         {
             SetStatus(mission, MissionStatus.Closed);
+            await db.SaveChangesAsync(ct);
         }
-
-        await db.SaveChangesAsync(ct);
 
         await awards.AwardAsync(
             mission.GuildId, userId, mission.RewardCurrencyId, mission.RewardAmount,
@@ -236,6 +265,9 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
                 LedgerSourceType.Mission, $"mission:{missionId}:bonus:{userId}",
                 $"Quest bonus: {mission.Name}", ct);
         }
+
+        await RewardAsync(mission, userId, ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Settled, userId, $"Approved — reward granted to <@{userId}>.", ct);
     }
 
     /// <summary>Final reject of a guild-quest submission (no reward). The quest stays open for another taker.</summary>
@@ -247,15 +279,26 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         participant.ReviewedAt = DateTimeOffset.UtcNow;
         participant.ReviewNote = note;
         await db.SaveChangesAsync(ct);
+
+        var mission = await db.Missions.FirstAsync(m => m.Id == missionId, ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.RejectedAtIntake, userId, "Submission rejected.", ct);
     }
 
-    /// <summary>Send a guild-quest submission back to the worker to revise and resubmit.</summary>
+    /// <summary>Send a guild-quest submission back to the worker to revise and resubmit (capped by guild config).</summary>
     public async Task RequestRevisionAsync(Guid missionId, ulong userId, ulong reviewerId, string? note = null, CancellationToken ct = default)
     {
+        var mission = await db.Missions.FirstOrDefaultAsync(m => m.Id == missionId, ct)
+            ?? throw new InvalidOperationException($"Mission {missionId} not found.");
         var participant = await GetParticipantAsync(missionId, userId, ct);
         if (participant.Status != MissionParticipantStatus.Submitted)
         {
             throw new InvalidOperationException("Only a submitted quest can be sent back for revision.");
+        }
+
+        var max = (await db.Guilds.FirstOrDefaultAsync(g => g.Id == mission.GuildId, ct))?.Settings.MaxRevisions ?? 0;
+        if (max > 0 && participant.RevisionCount >= max)
+        {
+            throw new InvalidOperationException($"This submission has already used its {max} revision(s) — approve or reject it instead.");
         }
 
         participant.Status = MissionParticipantStatus.RevisionRequested;
@@ -264,6 +307,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         participant.ReviewNote = note;
         participant.RevisionCount++;
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.RevisionRequested, userId, note ?? "Please revise and resubmit.", ct);
     }
 
     // --- Event ops (scheduled missions with sign-up + attendance) ---

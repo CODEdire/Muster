@@ -30,7 +30,7 @@ public class QuestBoardService(
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
         string description = "", DateTimeOffset? startsAt = null, DateTimeOffset? deadline = null,
-        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, bool repeatable = false, CancellationToken ct = default)
+        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, bool repeatable = false, int capacity = 1, CancellationToken ct = default)
     {
         if (deadline is { } dl && startsAt is { } st && dl <= st)
         {
@@ -55,11 +55,91 @@ public class QuestBoardService(
                 return CommandResult.Error("You need to be a quest manager to post a guild quest. Choose a personal quest to fund one from your own balance.");
             }
 
-            // Tier-based bonus points are a guild (manager) privilege; personal quests are tiered by an approver at intake.
-            return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, tier, repeatable, ct);
+            // Tier-based bonus points and multiple slots are guild privileges; personal quests are single-taker
+            // and tiered by an approver at intake.
+            return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, tier, repeatable, capacity, ct);
         }
 
         return await bounties.PostAsync(guildId, actorId, name, currency, reward, description, deadline, startsAt, requestFinalApproval, ct);
+    }
+
+    /// <summary>Edit a quest's basic fields (patch semantics: blank/null keeps the current value). Only before
+    /// anyone is actively working on it. Reward/tier/capacity are guild-quest-only.</summary>
+    public async Task<CommandResult> EditAsync(
+        ulong guildId, string idRaw, ulong actorId, string? name = null, string? description = null,
+        long? reward = null, DateTimeOffset? deadline = null, QuestTier? tier = null, int? capacity = null, CancellationToken ct = default)
+    {
+        if (!Guid.TryParse(idRaw, out var id))
+        {
+            return CommandResult.Error("That doesn't look like a valid quest id.");
+        }
+
+        var mission = await db.Missions.Include(m => m.Participants).FirstOrDefaultAsync(m => m.Id == id && m.GuildId == guildId, ct);
+        if (mission is null)
+        {
+            return CommandResult.Error("Quest not found.");
+        }
+
+        var isGuild = mission.Origin == MissionOrigin.Guild;
+        var canEdit = isGuild ? await auth.IsQuestManagerAsync(guildId, actorId, ct) : mission.OwnerId == actorId;
+        if (!canEdit)
+        {
+            return CommandResult.Error("You can't edit this quest.");
+        }
+
+        if (mission.Status is not (MissionStatus.Open or MissionStatus.Scheduled or MissionStatus.PendingApproval))
+        {
+            return CommandResult.Error("This quest can't be edited in its current state.");
+        }
+
+        if (mission.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted
+            or MissionParticipantStatus.RevisionRequested or MissionParticipantStatus.Approved))
+        {
+            return CommandResult.Error("This quest already has someone working on it — edits are locked after the first claim.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            mission.Name = name.Trim();
+        }
+
+        if (description is not null)
+        {
+            mission.Description = description.Trim();
+        }
+
+        if (deadline.HasValue)
+        {
+            mission.Deadline = deadline;
+        }
+
+        // Reward, tier, and capacity are guild-quest-only edits (personal reward is escrowed — cancel and repost to change it).
+        if (isGuild)
+        {
+            if (reward is { } r)
+            {
+                if (r <= 0)
+                {
+                    return CommandResult.Error("Reward must be greater than zero.");
+                }
+
+                mission.RewardAmount = r;
+            }
+
+            if (tier is { } t)
+            {
+                mission.Tier = t;
+                mission.BonusPoints = (await SettingsAsync(guildId, ct)).PointsForTier(t);
+            }
+
+            if (capacity is { } c)
+            {
+                mission.Capacity = Math.Max(1, c);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return CommandResult.Ok($"Updated **{mission.Name}**.");
     }
 
     private static readonly MissionStatus[] NonTerminal =
@@ -75,7 +155,7 @@ public class QuestBoardService(
     public async Task<CommandResult> PostParsedAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
         string description = "", string? startRaw = null, string? expiresRaw = null,
-        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, bool repeatable = false, CancellationToken ct = default)
+        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, bool repeatable = false, int capacity = 1, CancellationToken ct = default)
     {
         var (startOk, startsAt, startErr) = await timeZones.ParseLocalAsync(guildId, actorId, startRaw, ct);
         if (!startOk)
@@ -89,7 +169,7 @@ public class QuestBoardService(
             return CommandResult.Error(expErr!);
         }
 
-        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, requestFinalApproval, repeatable, ct);
+        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, requestFinalApproval, repeatable, capacity, ct);
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)

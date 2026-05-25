@@ -30,8 +30,8 @@ public class QuestBoardAndTimeZoneTests
 
         var awards = new AwardService(db);
         var auth = new GuildAuthorizationService(db);
-        var missions = new MissionService(db, awards, auth);
-        var bounties = new BountyService(db, new EscrowService(db, awards), auth, awards);
+        var missions = new MissionService(db, awards, auth, new NullQuestNotifier(), new NullQuestRewardSink());
+        var bounties = new BountyService(db, new EscrowService(db, awards), auth, awards, new NullQuestNotifier(), new NullQuestRewardSink());
         var tz = new TimeZoneService(db);
         var quests = new QuestCommandService(missions, db);
         var bountyCmds = new BountyCommandService(bounties, db);
@@ -409,5 +409,75 @@ public class QuestBoardAndTimeZoneTests
         var blocked = await c.Board.PostAsync(1, 10, QuestKind.Personal, "B", c.Coin.Code, 10);
         Assert.True(blocked.IsError);
         Assert.Contains("active quest", blocked.Message);
+    }
+
+    [Fact]
+    public async Task GuildQuest_Capacity_AllowsNCompletionsThenCloses()
+    {
+        var c = await SeededAsync();
+        await c.Board.PostAsync(1, 1, QuestKind.Guild, "Patrol", c.Coin.Code, 50, capacity: 2);
+        var q = await c.Db.Missions.SingleAsync();
+        Assert.Equal(2, q.Capacity);
+
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+        await c.Board.ApproveAsync(1, q.Id.ToString(), 20, 1);
+        Assert.Equal(MissionStatus.Open, (await c.Db.Missions.SingleAsync()).Status); // 1 of 2
+
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 21);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 21);
+        await c.Board.ApproveAsync(1, q.Id.ToString(), 21, 1);
+        Assert.Equal(MissionStatus.Closed, (await c.Db.Missions.SingleAsync()).Status); // 2 of 2 → closed
+
+        // A third claimer can't get in.
+        Assert.True((await c.Board.ClaimAsync(1, q.Id.ToString(), 22)).IsError);
+    }
+
+    [Fact]
+    public async Task GuildQuest_Capacity_BlocksOverfillingSlots()
+    {
+        var c = await SeededAsync();
+        await c.Board.PostAsync(1, 1, QuestKind.Guild, "Patrol", c.Coin.Code, 50, capacity: 1);
+        var q = await c.Db.Missions.SingleAsync();
+        Assert.False((await c.Board.ClaimAsync(1, q.Id.ToString(), 20)).IsError);
+        Assert.True((await c.Board.ClaimAsync(1, q.Id.ToString(), 21)).IsError); // full
+    }
+
+    [Fact]
+    public async Task Edit_BeforeClaim_Succeeds_AfterClaim_Locked()
+    {
+        var c = await SeededAsync();
+        await c.Board.PostAsync(1, 1, QuestKind.Guild, "Patrol", c.Coin.Code, 50);
+        var q = await c.Db.Missions.SingleAsync();
+
+        Assert.False((await c.Board.EditAsync(1, q.Id.ToString(), 1, name: "Patrol v2", reward: 80)).IsError);
+        var edited = await c.Db.Missions.SingleAsync();
+        Assert.Equal("Patrol v2", edited.Name);
+        Assert.Equal(80, edited.RewardAmount);
+
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        var locked = await c.Board.EditAsync(1, q.Id.ToString(), 1, name: "Patrol v3");
+        Assert.True(locked.IsError);
+        Assert.Contains("working on it", locked.Message);
+    }
+
+    [Fact]
+    public async Task RevisionCap_BlocksBeyondLimit()
+    {
+        var c = await SeededAsync();
+        var guild = await c.Db.Guilds.SingleAsync();
+        guild.Settings.MaxRevisions = 1;
+        await FundAsync(c, 10, 100);
+        await c.Db.SaveChangesAsync();
+
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+
+        Assert.False((await c.Board.RequestRevisionAsync(1, q.Id.ToString(), 10, note: "fix")).IsError); // 1st
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+        var second = await c.Board.RequestRevisionAsync(1, q.Id.ToString(), 10, note: "again");
+        Assert.True(second.IsError); // exceeded cap of 1
     }
 }

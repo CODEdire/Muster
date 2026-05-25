@@ -144,7 +144,11 @@ else if (State == AccessState.Ready)
                                         <button type="submit" name="Action" value="finalize-refund" class="btn btn-sm btn-ghost">Refund owner</button>
                                     </EditForm>
                                 }
-                                @if (actions.Count == 0 && !CanIntake(q) && !CanFinalize(q))
+                                @if (CanEdit(q))
+                                {
+                                    <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/quests/@q.Id/edit">Edit</a>
+                                }
+                                @if (actions.Count == 0 && !CanIntake(q) && !CanFinalize(q) && !CanEdit(q))
                                 {
                                     <span class="subtitle">—</span>
                                 }
@@ -199,6 +203,13 @@ else if (State == AccessState.Ready)
     /// <summary>Managers give the final sign-off on a personal quest awaiting it.</summary>
     private bool CanFinalize(Mission q) =>
         _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.PendingFinal;
+
+    /// <summary>Editable only before anyone is working on it: owner (personal) or manager (guild).</summary>
+    private bool CanEdit(Mission q) =>
+        q.Status is MissionStatus.Open or MissionStatus.Scheduled or MissionStatus.PendingApproval
+        && !q.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted
+            or MissionParticipantStatus.RevisionRequested or MissionParticipantStatus.Approved)
+        && (q.Origin == MissionOrigin.Guild ? _isManager : q.OwnerId == UserId);
 
     /// <summary>Whether any available action benefits from an optional note (submit/revise/reject).</summary>
     private static bool Noteable(IReadOnlyList<QuestAction> actions) =>

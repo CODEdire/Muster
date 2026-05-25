@@ -75,7 +75,7 @@ public class MusterQuestCommandTests
     public async Task Quest_PostClaimSubmitApprove_AwardsMember()
     {
         using var db = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink());
         var sut = new QuestCommandService(missions, db);
 
         var post = await sut.PostAsync(1, actorId: 5, name: "Recruit", description: "Bring a friend", reward: 100);
@@ -94,7 +94,7 @@ public class MusterQuestCommandTests
     public async Task Quest_Claim_InvalidId_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)), db);
+        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink()), db);
 
         Assert.True((await sut.ClaimAsync(1, "nope", 10)).IsError);
         Assert.True((await sut.ClaimAsync(1, Guid.NewGuid().ToString(), 10)).IsError); // unknown quest
@@ -104,7 +104,7 @@ public class MusterQuestCommandTests
     public async Task Quest_List_FormatsOpenQuests()
     {
         using var db = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink());
         var sut = new QuestCommandService(missions, db);
 
         Assert.Equal("No open quests right now.", (await sut.ListAsync(1)).Message);

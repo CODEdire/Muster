@@ -29,8 +29,13 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
     public async Task<CommandResult> PostGuildQuestAsync(
         ulong guildId, ulong actorId, string name, string description, string currencyCode, long reward,
         DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, QuestTier tier = QuestTier.None,
-        bool repeatable = false, CancellationToken ct = default)
+        bool repeatable = false, int capacity = 1, CancellationToken ct = default)
     {
+        if (capacity < 1)
+        {
+            return CommandResult.Error("Capacity must be at least 1.");
+        }
+
         if (string.IsNullOrWhiteSpace(name))
         {
             return CommandResult.Error("Please provide a quest name.");
@@ -58,12 +63,12 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
 
         var quest = await missions.CreateQuestAsync(
             guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId,
-            currency.Id, reward, deadline, startsAt, bonusPoints, tier, repeatable, ct: ct);
+            currency.Id, reward, deadline, startsAt, bonusPoints, tier, repeatable, capacity, ct: ct);
 
         var when = quest.Status == MissionStatus.Scheduled && startsAt is { } st ? $" — opens {FormatTime(st)}" : "";
         var until = deadline is { } d ? $" — closes {FormatTime(d)}" : "";
         var bonus = bonusPoints > 0 ? $" + **{bonusPoints} POINTS** (tier {tier})" : "";
-        var repeat = repeatable ? " · repeatable" : "";
+        var repeat = repeatable ? " · repeatable" : capacity > 1 ? $" · {capacity} slots" : "";
         return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {code}**{bonus} (minted on approval){when}{until}{repeat}.");
     }
 

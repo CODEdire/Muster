@@ -23,9 +23,26 @@ public enum BountyResult
 ///
 /// States: Open → (taken) → submitted → Closed (payout) | Cancelled/Expired (refund) | Disputed → resolved.
 /// </summary>
-public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthorizationService auth, AwardService awards)
+public class BountyService(
+    MusterDbContext db,
+    EscrowService escrow,
+    GuildAuthorizationService auth,
+    AwardService awards,
+    IQuestNotifier notifier,
+    IQuestRewardSink rewards)
 {
     private static string Key(Guid missionId) => $"bounty:{missionId}";
+
+    private Task NotifyAsync(Mission m, QuestLifecycleEvent ev, ulong? target, string detail, CancellationToken ct)
+        => notifier.NotifyAsync(new QuestNotification(m.GuildId, m.Id, m.Name, ev, target, detail), ct);
+
+    /// <summary>After a completer is paid: fire the external reward event and notify the completer.</summary>
+    private async Task CompletedAsync(Mission m, ulong completer, CancellationToken ct)
+    {
+        await rewards.OnCompletedAsync(new QuestCompletion(
+            m.GuildId, m.Id, m.Name, completer, m.Origin, m.RewardCurrencyId, m.RewardAmount, m.BonusPoints, m.Tier), ct);
+        await NotifyAsync(m, QuestLifecycleEvent.Settled, completer, "Paid the completer.", ct);
+    }
 
     private static void SetStatus(Mission mission, MissionStatus status)
     {
@@ -58,10 +75,17 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
             return BountyResult.InvalidState;
         }
 
+        var max = (await db.Guilds.FirstOrDefaultAsync(g => g.Id == mission.GuildId, ct))?.Settings.MaxRevisions ?? 0;
+        if (max > 0 && taker.RevisionCount >= max)
+        {
+            return BountyResult.InvalidState; // out of revisions — confirm or dispute instead
+        }
+
         taker.Status = MissionParticipantStatus.RevisionRequested;
         taker.ReviewNote = note;
         taker.RevisionCount++;
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.RevisionRequested, taker.UserId, note ?? "Please revise and resubmit.", ct);
         return BountyResult.Ok;
     }
 
@@ -94,6 +118,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         var scheduled = mission.ScheduledStart is { } s && s > DateTimeOffset.UtcNow;
         SetStatus(mission, scheduled ? MissionStatus.Scheduled : MissionStatus.Open);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Accepted, mission.OwnerId, "Accepted and opened for takers.", ct);
         return BountyResult.Ok;
     }
 
@@ -116,6 +141,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         SetStatus(mission, MissionStatus.Cancelled);
         mission.EscrowAmount = 0;
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.RejectedAtIntake, mission.OwnerId, "Rejected at intake — escrow refunded.", ct);
         return BountyResult.Ok;
     }
 
@@ -137,16 +163,17 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         if (pay && taker is not null)
         {
             await PayAndBonusAsync(mission, taker, reviewerId, ct);
-        }
-        else
-        {
-            await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
-            ReleaseTaker(mission);
-            SetStatus(mission, MissionStatus.Cancelled);
-            mission.EscrowAmount = 0;
+            await db.SaveChangesAsync(ct);
+            await CompletedAsync(mission, taker.UserId, ct);
+            return BountyResult.Ok;
         }
 
+        await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
+        ReleaseTaker(mission);
+        SetStatus(mission, MissionStatus.Cancelled);
+        mission.EscrowAmount = 0;
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Refunded, mission.OwnerId, "Final sign-off declined — owner refunded.", ct);
         return BountyResult.Ok;
     }
 
@@ -217,6 +244,10 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
 
         db.Missions.Add(mission);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission,
+            mission.Status == MissionStatus.PendingApproval ? QuestLifecycleEvent.PendingApproval : QuestLifecycleEvent.Created,
+            mission.Status == MissionStatus.PendingApproval ? null : mission.OwnerId,
+            mission.Status == MissionStatus.PendingApproval ? "Awaiting intake approval." : "Personal quest posted.", ct);
         return (BountyResult.Ok, mission);
     }
 
@@ -279,6 +310,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         taker.SubmittedAt = DateTimeOffset.UtcNow;
         taker.Note = note;
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Submitted, mission.OwnerId, $"<@{userId}> submitted for your review.", ct);
         return BountyResult.Ok;
     }
 
@@ -311,13 +343,14 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         {
             // Owner accepts, but a quest manager must sign off before any money or points move.
             SetStatus(mission, MissionStatus.PendingFinal);
-        }
-        else
-        {
-            await PayAndBonusAsync(mission, taker, ownerId, ct);
+            await db.SaveChangesAsync(ct);
+            await NotifyAsync(mission, QuestLifecycleEvent.AwaitingFinalApproval, null, "Owner accepted — awaiting a manager's final sign-off.", ct);
+            return BountyResult.Ok;
         }
 
+        await PayAndBonusAsync(mission, taker, ownerId, ct);
         await db.SaveChangesAsync(ct);
+        await CompletedAsync(mission, taker.UserId, ct);
         return BountyResult.Ok;
     }
 
@@ -371,6 +404,7 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
 
         SetStatus(mission, MissionStatus.Disputed);
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Disputed, null, "Dispute raised — a quest manager will arbitrate.", ct);
         return BountyResult.Ok;
     }
 
@@ -393,16 +427,17 @@ public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthor
         if (payCompleter && taker is not null)
         {
             await PayAndBonusAsync(mission, taker, mission.OwnerId, ct);
-        }
-        else
-        {
-            await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
-            ReleaseTaker(mission);
-            SetStatus(mission, MissionStatus.Cancelled);
-            mission.EscrowAmount = 0;
+            await db.SaveChangesAsync(ct);
+            await CompletedAsync(mission, taker.UserId, ct);
+            return BountyResult.Ok;
         }
 
+        await escrow.RefundAsync(mission.GuildId, mission.OwnerId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
+        ReleaseTaker(mission);
+        SetStatus(mission, MissionStatus.Cancelled);
+        mission.EscrowAmount = 0;
         await db.SaveChangesAsync(ct);
+        await NotifyAsync(mission, QuestLifecycleEvent.Refunded, mission.OwnerId, "Dispute resolved — owner refunded.", ct);
         return BountyResult.Ok;
     }
 

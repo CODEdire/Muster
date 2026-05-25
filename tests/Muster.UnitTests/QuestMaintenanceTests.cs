@@ -29,8 +29,8 @@ public class QuestMaintenanceTests
 
         var awards = new AwardService(db);
         var auth = new GuildAuthorizationService(db);
-        var bounties = new BountyService(db, new EscrowService(db, awards), auth, awards);
-        var missions = new MissionService(db, awards, auth);
+        var bounties = new BountyService(db, new EscrowService(db, awards), auth, awards, new NullQuestNotifier(), new NullQuestRewardSink());
+        var missions = new MissionService(db, awards, auth, new NullQuestNotifier(), new NullQuestRewardSink());
         var maint = new QuestMaintenanceService(db, bounties, missions, new AuditService(db),
             new LoggingQuestNotifier(NullLogger<LoggingQuestNotifier>.Instance), NullLogger<QuestMaintenanceService>.Instance);
         return new Ctx(db, bounties, missions, maint, coin);

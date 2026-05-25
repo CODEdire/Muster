@@ -58,7 +58,7 @@ public class ParticipationTests
     public async Task Quest_AwardsOnApproval_AndNotTwice()
     {
         var (db, points) = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink());
 
         var quest = await missions.CreateQuestAsync(1, "Recruit", "Bring a friend", 5, points.Id, 100);
         await missions.ClaimAsync(quest.Id, 10);

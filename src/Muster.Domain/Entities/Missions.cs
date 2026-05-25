@@ -46,6 +46,9 @@ public class Mission
     /// <summary>When true, a personal quest needs a quest manager's final sign-off before the completer is paid.</summary>
     public bool RequiresFinalApproval { get; set; }
 
+    /// <summary>How many completers may be rewarded (guild quests). Personal quests are single-taker (1).</summary>
+    public int Capacity { get; set; } = 1;
+
     /// <summary>Currency held in escrow for a player bounty (0 when none / refunded / paid out).</summary>
     public long EscrowAmount { get; set; }
 

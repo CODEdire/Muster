@@ -68,7 +68,7 @@ public class ParticipantGateTests
         Assert.Equal(0, await db.LedgerEntries.CountAsync());
 
         // Quest claim by a guest -> rejected.
-        var missions = new MissionService(db, awards, auth);
+        var missions = new MissionService(db, awards, auth, new NullQuestNotifier(), new NullQuestRewardSink());
         var quest = await missions.CreateQuestPointsAsync(1, "Recruit", "desc", 1, 50);
         await Assert.ThrowsAsync<InvalidOperationException>(() => missions.ClaimAsync(quest.Id, 20));
     }

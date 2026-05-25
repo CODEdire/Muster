@@ -80,6 +80,9 @@ public class GuildSettings
     /// <summary>Cap on quests a single user may have claimed/submitted/in-revision at once.</summary>
     public int MaxActiveClaimsPerUser { get; set; }
 
+    /// <summary>Cap on revision round-trips before a reviewer must approve or reject (0 = unlimited).</summary>
+    public int MaxRevisions { get; set; }
+
     /// <summary>Bonus POINTS minted to the completer of a guild quest, by difficulty tier (set by managers).</summary>
     public long TierSPoints { get; set; } = 100;
     public long TierAPoints { get; set; } = 75;

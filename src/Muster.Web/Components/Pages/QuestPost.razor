@@ -66,6 +66,7 @@ else if (State == AccessState.Ready)
             @if (_isManager)
             {
                 <label class="checkbox"><InputCheckbox @bind-Value="Post.Repeatable" /> Guild quest: repeatable (stays open for repeated completions)</label>
+                <label>Slots (guild quest capacity) <InputNumber @bind-Value="Post.Capacity" /> <span class="subtitle">how many members can complete it</span></label>
             }
             <label>Starts (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.StartsAt" /></label>
             <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.ExpiresAt" /></label>
@@ -103,7 +104,7 @@ else if (State == AccessState.Ready)
         var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.StartsAt);
         var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.ExpiresAt);
 
-        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline, Post.Tier, Post.RequestFinalApproval, Post.Repeatable);
+        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline, Post.Tier, Post.RequestFinalApproval, Post.Repeatable, Post.Capacity < 1 ? 1 : Post.Capacity);
         Message = result.Message;
         if (!result.IsError)
         {
@@ -123,6 +124,7 @@ else if (State == AccessState.Ready)
         public QuestTier Tier { get; set; } = QuestTier.None;
         public bool RequestFinalApproval { get; set; }
         public bool Repeatable { get; set; }
+        public int Capacity { get; set; } = 1;
         public DateTime? StartsAt { get; set; }
         public DateTime? ExpiresAt { get; set; }
     }

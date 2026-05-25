@@ -27,11 +27,25 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "expires", Description = "When it closes, in your time zone, e.g. 2026-06-08 18:00 (optional)")] string expires = "",
         [SlashCommandParameter(Name = "tier", Description = "Difficulty tier for a guild quest — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None,
         [SlashCommandParameter(Name = "require_final_approval", Description = "Personal quest: ask a manager to give a final sign-off before payout")] bool requireFinalApproval = false,
-        [SlashCommandParameter(Name = "repeatable", Description = "Guild quest: stays open for repeated completions instead of closing after the first")] bool repeatable = false)
+        [SlashCommandParameter(Name = "repeatable", Description = "Guild quest: stays open for repeated completions instead of closing after the first")] bool repeatable = false,
+        [SlashCommandParameter(Name = "slots", Description = "Guild quest: how many members can complete it (capacity, default 1)")] long slots = 1)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<QuestBoardService>()
-                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier, requireFinalApproval, repeatable),
+                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier, requireFinalApproval, repeatable, (int)Math.Max(1, slots)),
             auditAction: "quest.post");
+
+    [SlashCommand("quest-edit", "Edit a quest before anyone claims it (owner for personal, manager for guild). Blank fields keep their value.")]
+    public Task<Reply> EditAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
+        [SlashCommandParameter(Name = "name", Description = "New name")] string name = "",
+        [SlashCommandParameter(Name = "description", Description = "New description")] string description = "",
+        [SlashCommandParameter(Name = "reward", Description = "Guild quest: new reward amount")] long reward = 0,
+        [SlashCommandParameter(Name = "slots", Description = "Guild quest: new capacity")] long slots = 0)
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().EditAsync(
+                guildId, quest, Context.User.Id, NullIfBlank(name), NullIfBlank(description),
+                reward > 0 ? reward : null, null, null, slots > 0 ? (int)slots : null),
+            auditAction: "quest.edit");
 
     [SlashCommand("quest-list", "List the open quest board.")]
     public Task<Reply> ListAsync()

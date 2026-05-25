@@ -25,7 +25,7 @@ public class OpAndActivityTests
     public async Task Op_CreateSignupClose_AwardsAttendees()
     {
         using var db = await SeededAsync();
-        var sut = new OpCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)));
+        var sut = new OpCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink()));
 
         await sut.CreateAsync(1, actorId: 5, name: "Raid", description: "Friday raid", reward: 75);
         var opId = (await db.Missions.SingleAsync()).Id.ToString();
@@ -43,7 +43,7 @@ public class OpAndActivityTests
     public async Task Op_Signup_UnknownOp_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new OpCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)));
+        var sut = new OpCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink()));
 
         Assert.True((await sut.SignUpAsync(1, "nope", 10)).IsError);
         Assert.True((await sut.SignUpAsync(1, Guid.NewGuid().ToString(), 10)).IsError);

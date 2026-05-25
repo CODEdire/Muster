@@ -28,7 +28,7 @@ public class CurrencyAwareCommandTests
     public async Task GuildQuest_Mints_NoBalanceRequired()
     {
         using var db = await SeededAsync();
-        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db));
+        var missions = new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink());
         var sut = new QuestCommandService(missions, db);
 
         // Owner has zero COIN, but a guild quest mints — should succeed.
@@ -44,7 +44,7 @@ public class CurrencyAwareCommandTests
     public async Task GuildQuest_UnknownCurrency_Errors()
     {
         using var db = await SeededAsync();
-        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db)), db);
+        var sut = new QuestCommandService(new MissionService(db, new AwardService(db), new GuildAuthorizationService(db), new NullQuestNotifier(), new NullQuestRewardSink()), db);
 
         Assert.True((await sut.PostGuildQuestAsync(1, 1, "Patrol", "", "NOPE", 100)).IsError);
     }

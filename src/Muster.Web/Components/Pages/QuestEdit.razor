@@ -1,0 +1,118 @@
+@page "/guilds/{GuildIdRaw}/quests/{QuestId}/edit"
+@inherits GuildMemberComponentBase
+@inject QuestBoardService Board
+@inject TimeZoneService TimeZones
+@inject MusterDbContext Db
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Edit quest — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
+        <h1>Edit quest</h1>
+        <p class="subtitle">Edits are locked once someone claims the quest.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_mission is null)
+    {
+        <div class="panel glass empty">Quest not found.</div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <EditForm class="form-grid" Model="Edit" FormName="edit-quest" OnValidSubmit="SaveAsync">
+                <input type="hidden" name="Edit.Submitted" value="1" />
+                <label>Name <InputText @bind-Value="Edit.Name" /></label>
+                <label>Details <InputText @bind-Value="Edit.Details" /></label>
+                <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Edit.ExpiresAt" /></label>
+                @if (_isGuild)
+                {
+                    <label>Reward amount <InputNumber @bind-Value="Edit.Amount" /></label>
+                    <label>Difficulty tier
+                        <InputSelect @bind-Value="Edit.Tier">
+                            <option value="@QuestTier.None">None</option>
+                            @foreach (var t in _tiers)
+                            {
+                                <option value="@t">@t</option>
+                            }
+                        </InputSelect>
+                    </label>
+                    <label>Slots (capacity) <InputNumber @bind-Value="Edit.Capacity" /></label>
+                }
+                <div class="btn-row">
+                    <button type="submit">Save</button>
+                    <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Cancel</a>
+                </div>
+            </EditForm>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string QuestId { get; set; } = "";
+    [SupplyParameterFromForm(FormName = "edit-quest")] private EditInput Edit { get; set; } = new();
+
+    private Mission? _mission;
+    private bool _isGuild;
+    private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
+
+    protected override async Task LoadAsync()
+    {
+        if (!Guid.TryParse(QuestId, out var id))
+        {
+            return;
+        }
+
+        _mission = await Db.Missions.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id && m.GuildId == GuildId);
+        if (_mission is null)
+        {
+            return;
+        }
+
+        _isGuild = _mission.Origin == MissionOrigin.Guild;
+        if (string.IsNullOrEmpty(Edit.Submitted))
+        {
+            Edit.Name = _mission.Name;
+            Edit.Details = _mission.Description;
+            Edit.Amount = _mission.RewardAmount;
+            Edit.Tier = _mission.Tier;
+            Edit.Capacity = _mission.Capacity;
+            Edit.ExpiresAt = _mission.Deadline is { } d ? d.UtcDateTime : null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Edit.ExpiresAt);
+        var result = await Board.EditAsync(
+            GuildId, QuestId, UserId, Edit.Name, Edit.Details, _isGuild ? Edit.Amount : null,
+            deadline, _isGuild ? Edit.Tier : null, _isGuild ? Edit.Capacity : null);
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    public class EditInput
+    {
+        public string? Submitted { get; set; }
+        public string? Name { get; set; }
+        public string? Details { get; set; }
+        public long Amount { get; set; }
+        public QuestTier Tier { get; set; }
+        public int Capacity { get; set; } = 1;
+        public DateTime? ExpiresAt { get; set; }
+    }
+}

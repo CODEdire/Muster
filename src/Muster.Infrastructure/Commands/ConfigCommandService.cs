@@ -56,7 +56,7 @@ public class ConfigCommandService(MusterDbContext db)
         int claimHours,
         int submissionHours, StaleSubmissionAction submissionAction,
         int finalHours, StaleFinalAction finalAction,
-        int maxOpenPerPoster, int maxActiveClaims,
+        int maxOpenPerPoster, int maxActiveClaims, int maxRevisions,
         CancellationToken ct = default)
     {
         var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
@@ -65,7 +65,7 @@ public class ConfigCommandService(MusterDbContext db)
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        if (new[] { intakeHours, claimHours, submissionHours, finalHours, maxOpenPerPoster, maxActiveClaims }.Any(v => v < 0))
+        if (new[] { intakeHours, claimHours, submissionHours, finalHours, maxOpenPerPoster, maxActiveClaims, maxRevisions }.Any(v => v < 0))
         {
             return CommandResult.Error("Timeouts and limits can't be negative (0 disables).");
         }
@@ -80,6 +80,7 @@ public class ConfigCommandService(MusterDbContext db)
         s.FinalApprovalTimeoutAction = finalAction;
         s.MaxOpenQuestsPerPoster = maxOpenPerPoster;
         s.MaxActiveClaimsPerUser = maxActiveClaims;
+        s.MaxRevisions = maxRevisions;
         guild.Settings = s; // reassign so the owned JSON column is detected as changed
 
         await db.SaveChangesAsync(ct);

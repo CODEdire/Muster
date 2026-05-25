@@ -127,6 +127,7 @@ else if (State == AccessState.Ready)
             </label>
             <label>Max active quests per poster <InputNumber @bind-Value="Auto.MaxOpenPerPoster" /></label>
             <label>Max active claims per member <InputNumber @bind-Value="Auto.MaxActiveClaims" /></label>
+            <label>Max revision round-trips <InputNumber @bind-Value="Auto.MaxRevisions" /> <span class="subtitle">0 = unlimited</span></label>
             <div class="btn-row"><button type="submit">Save automation</button></div>
         </EditForm>
     </div>
@@ -187,6 +188,7 @@ else if (State == AccessState.Ready)
             Auto.FinalAction = settings.FinalApprovalTimeoutAction;
             Auto.MaxOpenPerPoster = settings.MaxOpenQuestsPerPoster;
             Auto.MaxActiveClaims = settings.MaxActiveClaimsPerUser;
+            Auto.MaxRevisions = settings.MaxRevisions;
         }
     }
 
@@ -195,7 +197,7 @@ else if (State == AccessState.Ready)
         var result = await Config.SetQuestAutomationAsync(
             GuildId, Auto.IntakeHours, Auto.IntakeAction, Auto.ClaimHours,
             Auto.SubmissionHours, Auto.SubmissionAction, Auto.FinalHours, Auto.FinalAction,
-            Auto.MaxOpenPerPoster, Auto.MaxActiveClaims);
+            Auto.MaxOpenPerPoster, Auto.MaxActiveClaims, Auto.MaxRevisions);
         if (!result.IsError)
         {
             await AuditAsync("config.questAutomation", result.Message);
@@ -302,5 +304,6 @@ else if (State == AccessState.Ready)
         public StaleFinalAction FinalAction { get; set; }
         public int MaxOpenPerPoster { get; set; }
         public int MaxActiveClaims { get; set; }
+        public int MaxRevisions { get; set; }
     }
 }
