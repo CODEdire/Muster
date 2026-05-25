@@ -76,6 +76,34 @@ public class QuestSweepTests
     }
 
     [Fact]
+    public async Task GuildQuest_PastDeadline_Expires_WithoutRefund()
+    {
+        var c = await SeededAsync(1);
+        await c.Missions.CreateGuildQuestAsync(1, "Patrol", "", 1, "COIN", 50,
+            deadline: DateTimeOffset.UtcNow.AddHours(-1));
+
+        // The player-quest sweep must ignore it (it's guild-funded)...
+        Assert.Equal(0, await c.Bounties.ExpireDueAsync(DateTimeOffset.UtcNow));
+        // ...and the guild-quest sweep must close it.
+        Assert.Equal(1, await c.Missions.ExpireDueQuestsAsync(DateTimeOffset.UtcNow));
+        Assert.Equal(MissionStatus.Expired, (await c.Db.Missions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task GuildQuest_AwaitingApproval_IsNotExpired()
+    {
+        var c = await SeededAsync(1);
+        await c.Missions.CreateGuildQuestAsync(1, "Patrol", "", 1, "COIN", 50,
+            deadline: DateTimeOffset.UtcNow.AddHours(-1));
+        var quest = await c.Db.Missions.SingleAsync();
+        await c.Missions.ClaimAsync(quest.Id, 20);
+        await c.Missions.SubmitAsync(quest.Id, 20);
+
+        Assert.Equal(0, await c.Missions.ExpireDueQuestsAsync(DateTimeOffset.UtcNow));
+        Assert.Equal(MissionStatus.Open, (await c.Db.Missions.SingleAsync()).Status);
+    }
+
+    [Fact]
     public async Task GlobalActivate_LeavesFutureScheduledQuestsAlone()
     {
         var c = await SeededAsync(1);

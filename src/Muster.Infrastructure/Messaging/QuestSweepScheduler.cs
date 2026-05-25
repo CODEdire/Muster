@@ -32,7 +32,8 @@ public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<Ques
 
                 var now = DateTimeOffset.UtcNow;
                 var activated = await missions.ActivateScheduledAsync(now, stoppingToken);
-                var expired = await bounties.ExpireDueAsync(now, stoppingToken);
+                var expired = await bounties.ExpireDueAsync(now, stoppingToken)       // personal quests (refund escrow)
+                    + await missions.ExpireDueQuestsAsync(now, stoppingToken);        // guild quests (close, nothing to refund)
 
                 if (activated > 0 || expired > 0)
                 {

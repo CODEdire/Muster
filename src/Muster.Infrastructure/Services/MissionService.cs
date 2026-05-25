@@ -101,6 +101,30 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         return due.Count;
     }
 
+    /// <summary>
+    /// Expire past-deadline guild quests across all guilds. Guild quests mint their reward on approval,
+    /// so there's nothing to refund — expiring just closes the unfinished quest. Quests with a submission
+    /// awaiting approval are left alone. Player-funded quests are expired (and refunded) by BountyService.
+    /// </summary>
+    public async Task<int> ExpireDueQuestsAsync(DateTimeOffset now, CancellationToken ct = default)
+    {
+        var due = await db.Missions
+            .Include(m => m.Participants)
+            .Where(m => m.Type == MissionType.Quest && m.Origin == MissionOrigin.Guild
+                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled)
+                && m.Deadline != null && m.Deadline < now)
+            .ToListAsync(ct);
+
+        var expired = due.Where(m => m.Participants.All(p => p.Status != MissionParticipantStatus.Submitted)).ToList();
+        foreach (var mission in expired)
+        {
+            mission.Status = MissionStatus.Expired;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return expired.Count;
+    }
+
     /// <summary>Cancel a guild quest that hasn't been completed (no escrow to refund — the reward is minted on approval).</summary>
     public async Task CancelQuestAsync(Guid missionId, ulong actorId, CancellationToken ct = default)
     {
