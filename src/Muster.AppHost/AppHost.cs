@@ -1,8 +1,12 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Azure SQL in publish; a SQL Server container locally so `dotnet run` works without Azure.
+// Locally, persist data across runs: a named data volume keeps the database when the container is
+// recreated, and a persistent container lifetime keeps the same container between `dotnet run` sessions.
 var sql = builder.AddAzureSqlServer("sql")
-    .RunAsContainer();
+    .RunAsContainer(container => container
+        .WithDataVolume()
+        .WithLifetime(ContainerLifetime.Persistent));
 
 var db = sql.AddDatabase("musterdb");
 
