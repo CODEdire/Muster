@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
-using Muster.Infrastructure.Services;
 using Muster.Web;
+using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Web.Components;
 

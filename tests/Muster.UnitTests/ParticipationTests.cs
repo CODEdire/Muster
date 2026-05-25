@@ -3,8 +3,12 @@ using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
-using Muster.Infrastructure.Services;
 using Xunit;
+using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Musters;
+using Muster.Infrastructure.Services.Quests;
+using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.UnitTests;
 

@@ -2,8 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Membership;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Ledger;
 
 /// <summary>
 /// The single path that writes to the ledger. Every participation method awards through here so that

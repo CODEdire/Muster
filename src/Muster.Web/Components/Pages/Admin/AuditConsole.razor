@@ -84,6 +84,7 @@ else if (State == AccessState.Ready)
 }
 
 @code {
+@using Muster.Infrastructure.Services.Platform
     [SupplyParameterFromQuery] private string? Search { get; set; }
     [SupplyParameterFromQuery] private string? Action { get; set; }
     [SupplyParameterFromQuery] private string? From { get; set; }

@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Membership;
 
 /// <summary>
 /// Keeps the local <see cref="GuildRole"/> snapshot in sync so the admin bypass can tell which roles

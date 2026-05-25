@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Platform;
 
 public record AuditQuery(
     string? Search = null,

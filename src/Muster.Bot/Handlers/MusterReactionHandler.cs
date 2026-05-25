@@ -1,7 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using Muster.Infrastructure.Services;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
+using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Musters;
 
 namespace Muster.Bot.Handlers;
 

@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using Muster.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Platform;
 
 /// <summary>
 /// Turns Discord mention tokens — which the bot uses because Discord renders them — into readable names

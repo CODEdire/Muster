@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Membership;
 
 /// <summary>
 /// Resolves a member's app-level permissions. Admin is granted if ANY of these hold (so a misconfigured

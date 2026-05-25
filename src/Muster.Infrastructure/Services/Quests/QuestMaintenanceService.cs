@@ -3,8 +3,9 @@ using Muster.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Platform;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Quests;
 
 /// <summary>
 /// Anti-staleness auto-resolution. Once a minute the sweep moves stuck quests forward using each guild's

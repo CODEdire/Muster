@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Membership;
 
 /// <summary>
 /// Lazily upserts <see cref="DiscordUser"/> and <see cref="GuildMember"/> records the first time (and

@@ -3,7 +3,7 @@ using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Seasons;
 
 /// <summary>
 /// Manages scoring seasons. Starting a new season archives the current one, so seasonal POINTS

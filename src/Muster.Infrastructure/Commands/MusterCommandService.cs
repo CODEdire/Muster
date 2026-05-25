@@ -1,5 +1,5 @@
 using Muster.Infrastructure.Discord;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Musters;
 
 namespace Muster.Infrastructure.Commands;
 

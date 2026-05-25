@@ -1,5 +1,5 @@
 using Muster.Domain.Entities;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Quests;
 
 namespace Muster.Infrastructure.Commands;
 

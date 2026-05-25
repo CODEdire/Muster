@@ -1,5 +1,5 @@
-using Muster.Infrastructure.Services;
 
+using Muster.Infrastructure.Services.Seasons;
 namespace Muster.Infrastructure.Commands;
 
 /// <summary>Platform-independent logic for season management commands.</summary>

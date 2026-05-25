@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Components;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Web;
 
 namespace Muster.Web.Components;
 

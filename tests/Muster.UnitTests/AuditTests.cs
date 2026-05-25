@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Infrastructure;
-using Muster.Infrastructure.Services;
 using Xunit;
+using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.UnitTests;
 

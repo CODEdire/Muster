@@ -3,7 +3,7 @@ using Muster.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Platform;
 
 public record ApiClientCreated(ApiClient Client, string ApiKey);
 

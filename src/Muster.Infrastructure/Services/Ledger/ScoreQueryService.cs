@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Membership;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Ledger;
 
 public record LeaderboardEntry(ulong UserId, long Total);
 

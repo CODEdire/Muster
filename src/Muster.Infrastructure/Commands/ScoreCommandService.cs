@@ -1,5 +1,5 @@
-using Muster.Infrastructure.Services;
 
+using Muster.Infrastructure.Services.Ledger;
 namespace Muster.Infrastructure.Commands;
 
 /// <summary>Platform-independent logic for the score/leaderboard/wallet commands.</summary>

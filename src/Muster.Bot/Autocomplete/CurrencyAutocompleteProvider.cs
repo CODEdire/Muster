@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using Muster.Infrastructure.Services;
 using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
+using Muster.Infrastructure.Services.Ledger;
 
 namespace Muster.Bot.Autocomplete;
 

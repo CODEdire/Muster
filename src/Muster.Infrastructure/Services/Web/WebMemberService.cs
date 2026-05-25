@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 
 using Muster.Infrastructure.Persistence;
-namespace Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Ledger;
+namespace Muster.Infrastructure.Services.Web;
 
 public record MemberLedgerRow(string Currency, long Amount, string Source, DateTimeOffset OccurredAt, string Reason);
 

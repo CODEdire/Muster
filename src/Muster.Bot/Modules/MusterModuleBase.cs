@@ -1,9 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Services;
 using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
+using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Bot.Modules;
 

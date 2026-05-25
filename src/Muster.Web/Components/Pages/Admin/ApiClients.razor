@@ -91,6 +91,7 @@ else if (State == AccessState.Ready)
 }
 
 @code {
+@using Muster.Infrastructure.Services.Platform
     [SupplyParameterFromForm(FormName = "create-client")] private CreateInput Input { get; set; } = new();
     [SupplyParameterFromForm(FormName = "revoke-client")] private RevokeClientInput RevokeInput { get; set; } = new();
 

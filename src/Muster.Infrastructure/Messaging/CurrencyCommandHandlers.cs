@@ -1,5 +1,5 @@
 using Muster.Contracts;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Ledger;
 
 namespace Muster.Infrastructure.Messaging;
 

@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 
 using Muster.Infrastructure.Persistence;
-namespace Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Membership;
+namespace Muster.Infrastructure.Services.Web;
 
 public record UserGuildView(ulong GuildId, string Name, bool IsAdmin);
 

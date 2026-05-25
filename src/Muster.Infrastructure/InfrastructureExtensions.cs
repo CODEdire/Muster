@@ -2,7 +2,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Muster.Infrastructure.Persistence;
 using Microsoft.Extensions.Hosting;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Musters;
+using Muster.Infrastructure.Services.Platform;
+using Muster.Infrastructure.Services.Quests;
+using Muster.Infrastructure.Services.Seasons;
+using Muster.Infrastructure.Services.Tracking;
+using Muster.Infrastructure.Services.Web;
 
 namespace Muster.Infrastructure;
 

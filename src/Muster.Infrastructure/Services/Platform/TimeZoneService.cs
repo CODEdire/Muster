@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Platform;
 
 /// <summary>
 /// Resolves the time zone to use when interpreting a date a user types, and converts between a user's

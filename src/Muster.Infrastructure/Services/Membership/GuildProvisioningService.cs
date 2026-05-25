@@ -3,7 +3,7 @@ using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Membership;
 
 /// <summary>
 /// Idempotently onboards a guild: upserts the <see cref="Guild"/> row and seeds the defaults a

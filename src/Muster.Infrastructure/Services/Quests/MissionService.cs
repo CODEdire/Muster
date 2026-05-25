@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Membership;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Quests;
 
 /// <summary>
 /// The missions board. Supports both quest tasks (claim → submit → approve, rewarded on approval) and

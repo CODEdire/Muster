@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Ledger;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Quests;
 
 /// <summary>Lifecycle moments worth telling someone about. Wired to Discord later.</summary>
 public enum QuestLifecycleEvent

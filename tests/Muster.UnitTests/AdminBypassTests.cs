@@ -3,8 +3,8 @@ using Muster.Infrastructure.Persistence;
 using Muster.Domain;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Services;
 using Xunit;
+using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.UnitTests;
 

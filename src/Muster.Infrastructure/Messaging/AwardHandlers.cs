@@ -1,6 +1,6 @@
 using Muster.Contracts;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Ledger;
 
 namespace Muster.Infrastructure.Messaging;
 

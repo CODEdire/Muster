@@ -5,7 +5,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Commands;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Ledger;
 
 public record CurrencyView(Guid Id, string Code, string Name, bool IsSeasonal, bool IsSpendable, CurrencyMode Mode, bool IsSystem);
 

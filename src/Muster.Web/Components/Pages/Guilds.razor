@@ -47,6 +47,7 @@ else
 }
 
 @code {
+@using Muster.Infrastructure.Services.Web
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private ulong? _userId;

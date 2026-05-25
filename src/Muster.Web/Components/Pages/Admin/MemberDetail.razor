@@ -20,6 +20,7 @@ else if (State == AccessState.Ready && _detail is not null)
 }
 
 @code {
+@using Muster.Infrastructure.Services.Web
     [Parameter] public string MemberId { get; set; } = string.Empty;
 
     private MemberDetailView? _detail;

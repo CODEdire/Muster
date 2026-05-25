@@ -2,8 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Infrastructure.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Membership;
 
-namespace Muster.Infrastructure.Services;
+namespace Muster.Infrastructure.Services.Ledger;
 
 /// <summary>Admin manual / bulk awards for off-platform contributions.</summary>
 public class ManualAwardService(MusterDbContext db, AwardService awards)

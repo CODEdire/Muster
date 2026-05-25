@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Muster.Infrastructure.Services;
+using Muster.Infrastructure.Services.Quests;
 
 namespace Muster.Infrastructure.Messaging;
 
