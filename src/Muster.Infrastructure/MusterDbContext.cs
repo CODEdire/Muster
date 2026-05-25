@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muster.Domain.Entities;
 
 namespace Muster.Infrastructure;
@@ -37,7 +39,21 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).ValueGeneratedNever();
-            e.OwnsOne(x => x.Settings, s => s.ToJson());
+
+            // Store settings as a whole-document JSON string (not OwnsOne/ToJson). This avoids EF's
+            // per-property JSON_MODIFY updates, which fail on rows whose JSON predates a newly added
+            // setting ("property cannot be found on the specified JSON path"). Deserializing a legacy
+            // document simply falls back to each property's C# default for any absent key.
+            var settingsConverter = new ValueConverter<GuildSettings, string>(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<GuildSettings>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new GuildSettings());
+            var settingsComparer = new ValueComparer<GuildSettings>(
+                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null)
+                    == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                v => System.Text.Json.JsonSerializer.Deserialize<GuildSettings>(
+                    System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null), (System.Text.Json.JsonSerializerOptions?)null)!);
+            e.Property(x => x.Settings).HasConversion(settingsConverter, settingsComparer).HasColumnType("nvarchar(max)");
         });
 
         b.Entity<DiscordUser>(e =>
