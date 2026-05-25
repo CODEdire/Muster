@@ -82,16 +82,12 @@ else if (State == AccessState.Ready)
                         <tr>
                             <td data-label="Quest">@q.Name<br /><span class="subtitle">@q.Description</span></td>
                             <td data-label="Type">@(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")</td>
-                            <td data-label="Reward">@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")</td>
+                            <td data-label="Reward">@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")@(q.Tier != QuestTier.None ? $" · {q.Tier} ({q.BonusPoints} pts)" : "")</td>
                             <td data-label="Status"><span class="badge status-@StatusClass(q)">@StatusLabel(q)</span></td>
                             <td data-label="Opens">@Local(q.ScheduledStart)</td>
                             <td data-label="Closes">@Local(q.Deadline)</td>
                             <td data-label="Actions">
-                                @if (actions.Count == 0)
-                                {
-                                    <span class="subtitle">—</span>
-                                }
-                                else
+                                @if (actions.Count > 0)
                                 {
                                     <EditForm class="row-actions" Model="this" FormName="@($"quest-{q.Id}")" OnValidSubmit="ActAsync">
                                         <input type="hidden" name="QuestId" value="@q.Id" />
@@ -100,6 +96,24 @@ else if (State == AccessState.Ready)
                                             <button type="submit" name="Action" value="@a.Value" class="btn btn-sm @(a.Primary ? "" : "btn-ghost")">@a.Label</button>
                                         }
                                     </EditForm>
+                                }
+                                @if (CanNotarize(q))
+                                {
+                                    <EditForm class="row-actions" Model="this" FormName="@($"notarize-{q.Id}")" OnValidSubmit="ActAsync">
+                                        <input type="hidden" name="QuestId" value="@q.Id" />
+                                        <input type="hidden" name="Action" value="notarize" />
+                                        <select name="Tier" class="tier-select">
+                                            @foreach (var t in _tiers)
+                                            {
+                                                <option value="@t">@t (@_settings.PointsForTier(t) pts)</option>
+                                            }
+                                        </select>
+                                        <button type="submit" class="btn btn-sm">Notarize &amp; pay</button>
+                                    </EditForm>
+                                }
+                                @if (actions.Count == 0 && !CanNotarize(q))
+                                {
+                                    <span class="subtitle">—</span>
                                 }
                             </td>
                         </tr>
@@ -138,9 +152,17 @@ else if (State == AccessState.Ready)
     private Dictionary<ulong, string> _names = [];
     private bool _isManager;
     private string _zoneId = TimeZoneService.Utc;
+    private GuildSettings _settings = new();
     private int _total;
     private int _totalPages;
     private int _page = 1;
+
+    private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
+
+    /// <summary>Managers may notarize (tier + pay) a submitted personal quest.</summary>
+    private bool CanNotarize(Mission q) =>
+        _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.Open
+        && q.Participants.Any(p => p.Status == MissionParticipantStatus.Submitted);
 
     private string CurrentTab => Tab is "mine" or "history" ? Tab : "active";
     private string CurrentType => Type is "guild" or "personal" ? Type : "";
@@ -152,6 +174,7 @@ else if (State == AccessState.Ready)
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
+        _settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
         _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
 
         var query = Db.Missions.Include(m => m.Participants)
@@ -226,6 +249,11 @@ else if (State == AccessState.Ready)
         else if (action.StartsWith("reject:") && ulong.TryParse(action[7..], out var rejectId))
         {
             result = await Board.RejectAsync(GuildId, id, rejectId, UserId);
+        }
+        else if (action == "notarize")
+        {
+            _ = Enum.TryParse<QuestTier>(form?["Tier"].ToString(), out var tier);
+            result = await Board.NotarizeAsync(GuildId, id, tier, UserId);
         }
         else
         {

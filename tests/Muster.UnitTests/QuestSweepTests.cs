@@ -26,7 +26,7 @@ public class QuestSweepTests
 
         var awards = new AwardService(db);
         var auth = new GuildAuthorizationService(db);
-        return new Ctx(db, new MissionService(db, awards, auth), new BountyService(db, new EscrowService(db, awards), auth), coin);
+        return new Ctx(db, new MissionService(db, awards, auth), new BountyService(db, new EscrowService(db, awards), auth, awards), coin);
     }
 
     private static Task<long> BalanceAsync(MusterDbContext db, ulong userId, Guid currencyId) =>

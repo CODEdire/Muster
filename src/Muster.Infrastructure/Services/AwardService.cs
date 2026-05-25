@@ -116,4 +116,16 @@ public class AwardService(MusterDbContext db)
 
         return await AwardAsync(guildId, userId, points.Id, amount, sourceType, sourceId, reason, ct);
     }
+
+    /// <summary>Stage a POINTS award (no save) so it commits in the caller's unit of work.</summary>
+    internal async Task StagePointsAsync(
+        ulong guildId, ulong userId, long amount, LedgerSourceType sourceType, string? sourceId, string reason,
+        CancellationToken ct = default)
+    {
+        var points = await db.Currencies.FirstOrDefaultAsync(
+            c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
+            ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
+
+        await StageAsync(guildId, userId, points.Id, amount, sourceType, sourceId, reason, ct);
+    }
 }

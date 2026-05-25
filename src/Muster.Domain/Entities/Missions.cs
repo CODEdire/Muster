@@ -31,6 +31,12 @@ public class Mission
     public Guid RewardCurrencyId { get; set; }
     public long RewardAmount { get; set; }
 
+    /// <summary>Difficulty tier for a guild quest (drives <see cref="BonusPoints"/> via guild config).</summary>
+    public QuestTier Tier { get; set; } = QuestTier.None;
+
+    /// <summary>Bonus POINTS minted to the completer on approval, resolved from the guild's tier config at creation.</summary>
+    public long BonusPoints { get; set; }
+
     /// <summary>Currency held in escrow for a player bounty (0 when none / refunded / paid out).</summary>
     public long EscrowAmount { get; set; }
 

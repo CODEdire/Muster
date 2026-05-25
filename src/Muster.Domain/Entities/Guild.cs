@@ -1,3 +1,5 @@
+using Muster.Domain.Enums;
+
 namespace Muster.Domain.Entities;
 
 /// <summary>A Discord server (guild) that the bot is installed in. The tenant boundary.</summary>
@@ -46,4 +48,24 @@ public class GuildSettings
 
     /// <summary>Points awarded per minute of voice attendance when a tracking session closes.</summary>
     public int PointsPerVoiceMinute { get; set; } = 1;
+
+    /// <summary>Bonus POINTS minted to the completer of a guild quest, by difficulty tier (set by managers).</summary>
+    public long TierSPoints { get; set; } = 100;
+    public long TierAPoints { get; set; } = 75;
+    public long TierBPoints { get; set; } = 50;
+    public long TierCPoints { get; set; } = 30;
+    public long TierDPoints { get; set; } = 15;
+    public long TierEPoints { get; set; } = 5;
+
+    /// <summary>Bonus POINTS for a difficulty tier (0 for <see cref="QuestTier.None"/>).</summary>
+    public long PointsForTier(QuestTier tier) => tier switch
+    {
+        QuestTier.S => TierSPoints,
+        QuestTier.A => TierAPoints,
+        QuestTier.B => TierBPoints,
+        QuestTier.C => TierCPoints,
+        QuestTier.D => TierDPoints,
+        QuestTier.E => TierEPoints,
+        _ => 0,
+    };
 }

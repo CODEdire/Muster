@@ -30,7 +30,7 @@ public class QuestBoardAndTimeZoneTests
         var awards = new AwardService(db);
         var auth = new GuildAuthorizationService(db);
         var missions = new MissionService(db, awards, auth);
-        var bounties = new BountyService(db, new EscrowService(db, awards), auth);
+        var bounties = new BountyService(db, new EscrowService(db, awards), auth, awards);
         var tz = new TimeZoneService(db);
         var quests = new QuestCommandService(missions, db);
         var bountyCmds = new BountyCommandService(bounties, db);
@@ -193,5 +193,76 @@ public class QuestBoardAndTimeZoneTests
         var guild = await c.Board.PostAsync(1, 50, QuestKind.Guild, "Patrol", c.Coin.Code, 50);
         Assert.True(guild.IsError);
         Assert.Contains("quest manager", guild.Message);
+    }
+
+    // --- Tier-based bonus points ---
+
+    private static async Task<long> BalanceAsync(MusterDbContext db, ulong userId, Guid currencyId)
+        => await db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
+            .SumAsync(e => (long?)e.Amount) ?? 0;
+
+    private static async Task<long> PointsAsync(MusterDbContext db, ulong guildId, ulong userId)
+    {
+        var pointsId = await db.Currencies.Where(cur => cur.GuildId == guildId && cur.Code == "POINTS").Select(cur => cur.Id).FirstAsync();
+        return await db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
+    }
+
+    [Fact]
+    public async Task GuildQuest_WithTier_AwardsBonusPointsOnApproval()
+    {
+        var c = await SeededAsync();
+        await c.Board.PostAsync(1, 1, QuestKind.Guild, "Patrol", c.Coin.Code, 50, tier: QuestTier.B);
+        var q = await c.Db.Missions.SingleAsync();
+        Assert.Equal(QuestTier.B, q.Tier);
+        Assert.Equal(50, q.BonusPoints); // default B tier points
+
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+        Assert.False((await c.Board.ApproveAsync(1, q.Id.ToString(), 20, 1)).IsError);
+
+        Assert.Equal(50, await BalanceAsync(c.Db, 20, c.Coin.Id)); // minted currency reward
+        Assert.Equal(50, await PointsAsync(c.Db, 1, 20));          // tier B bonus points
+    }
+
+    [Fact]
+    public async Task PersonalQuest_NotarizedByManager_PaysAndAwardsTierPoints()
+    {
+        var c = await SeededAsync();
+        await FundAsync(c, 10, 100);
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+
+        Assert.False((await c.Board.NotarizeAsync(1, q.Id.ToString(), QuestTier.C, 1)).IsError);
+
+        Assert.Equal(40, await BalanceAsync(c.Db, 20, c.Coin.Id)); // escrow paid to completer
+        Assert.Equal(30, await PointsAsync(c.Db, 1, 20));          // tier C default
+        var settled = await c.Db.Missions.SingleAsync();
+        Assert.Equal(MissionStatus.Closed, settled.Status);
+        Assert.Equal(QuestTier.C, settled.Tier);
+    }
+
+    [Fact]
+    public async Task Notarize_NonManager_IsRejected()
+    {
+        var c = await SeededAsync();
+        await FundAsync(c, 10, 100);
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20);
+
+        Assert.True((await c.Board.NotarizeAsync(1, q.Id.ToString(), QuestTier.C, 99)).IsError);
+        Assert.Equal(MissionStatus.Open, (await c.Db.Missions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task GuildQuest_NonSpendableCurrency_IsRejected()
+    {
+        var c = await SeededAsync();
+        var result = await c.Board.PostAsync(1, 1, QuestKind.Guild, "Patrol", "POINTS", 10);
+        Assert.True(result.IsError);
+        Assert.Contains("spendable", result.Message);
     }
 }

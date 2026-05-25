@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muster.Infrastructure;
 
@@ -11,9 +12,11 @@ using Muster.Infrastructure;
 namespace Muster.Infrastructure.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    partial class MusterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260525022433_AddMissionBonusPoints")]
+    partial class AddMissionBonusPoints
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -432,9 +435,6 @@ namespace Muster.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
-                    b.Property<int>("Tier")
-                        .HasColumnType("int");
-
                     b.Property<Guid?>("TrackingSessionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -701,18 +701,6 @@ namespace Muster.Infrastructure.Migrations
                                 .IsRequired();
 
                             b1.Property<bool>("QuestsRequireApproval");
-
-                            b1.Property<long>("TierAPoints");
-
-                            b1.Property<long>("TierBPoints");
-
-                            b1.Property<long>("TierCPoints");
-
-                            b1.Property<long>("TierDPoints");
-
-                            b1.Property<long>("TierEPoints");
-
-                            b1.Property<long>("TierSPoints");
 
                             b1.PrimitiveCollection<string>("TrackedChannelIds")
                                 .IsRequired();

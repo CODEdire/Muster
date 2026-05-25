@@ -23,9 +23,53 @@ public enum BountyResult
 ///
 /// States: Open → (taken) → submitted → Closed (payout) | Cancelled/Expired (refund) | Disputed → resolved.
 /// </summary>
-public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthorizationService auth)
+public class BountyService(MusterDbContext db, EscrowService escrow, GuildAuthorizationService auth, AwardService awards)
 {
     private static string Key(Guid missionId) => $"bounty:{missionId}";
+
+    /// <summary>
+    /// Settle a submitted personal quest as a Quest Manager (notary): pay the completer and mint the
+    /// given bonus POINTS for the assigned difficulty. Lets the guild grant fair points on member-funded
+    /// quests without letting the member self-assign them. Authorization is enforced by the caller.
+    /// </summary>
+    public async Task<BountyResult> NotarizeAsync(
+        Guid missionId, ulong reviewerId, QuestTier tier, long bonusPoints, CancellationToken ct = default)
+    {
+        var (mission, result) = await LoadBountyAsync(missionId, ct);
+        if (mission is null)
+        {
+            return result;
+        }
+
+        if (mission.Status != MissionStatus.Open)
+        {
+            return BountyResult.InvalidState;
+        }
+
+        var taker = mission.Participants.FirstOrDefault(p => p.Status == MissionParticipantStatus.Submitted);
+        if (taker is null)
+        {
+            return BountyResult.InvalidState;
+        }
+
+        await escrow.PayoutAsync(mission.GuildId, taker.UserId, mission.RewardCurrencyId, mission.EscrowAmount, Key(missionId), ct);
+        mission.Tier = tier;
+        mission.BonusPoints = bonusPoints;
+        if (bonusPoints > 0)
+        {
+            await awards.StagePointsAsync(
+                mission.GuildId, taker.UserId, bonusPoints, LedgerSourceType.Mission,
+                $"bounty:{missionId}:bonus:{taker.UserId}", $"Quest bonus: {mission.Name}", ct);
+        }
+
+        taker.Status = MissionParticipantStatus.Approved;
+        taker.ReviewedBy = reviewerId;
+        taker.ReviewedAt = DateTimeOffset.UtcNow;
+        mission.Status = MissionStatus.Closed;
+        mission.EscrowAmount = 0;
+        await db.SaveChangesAsync(ct);
+        return BountyResult.Ok;
+    }
 
     public async Task<(BountyResult Result, Mission? Mission)> PostAsync(
         ulong guildId, ulong ownerId, string name, string description, Guid currencyId, long amount,

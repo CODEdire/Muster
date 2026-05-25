@@ -29,7 +29,8 @@ public class QuestBoardService(
     /// <summary>Post a quest with dates already in UTC (used by the web, which converts the browser's local time).</summary>
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
-        string description = "", DateTimeOffset? startsAt = null, DateTimeOffset? deadline = null, CancellationToken ct = default)
+        string description = "", DateTimeOffset? startsAt = null, DateTimeOffset? deadline = null,
+        QuestTier tier = QuestTier.None, CancellationToken ct = default)
     {
         if (deadline is { } dl && startsAt is { } st && dl <= st)
         {
@@ -43,7 +44,8 @@ public class QuestBoardService(
                 return CommandResult.Error("You need to be a quest manager to post a guild quest. Choose a personal quest to fund one from your own balance.");
             }
 
-            return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, ct);
+            // Tier-based bonus points are a guild (manager) privilege; personal quests can't grant points.
+            return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, tier, ct);
         }
 
         return await bounties.PostAsync(guildId, actorId, name, currency, reward, description, deadline, startsAt, ct);
@@ -52,7 +54,7 @@ public class QuestBoardService(
     /// <summary>Post a quest, parsing start/expiry date strings the user typed in their own time zone (used by the bot).</summary>
     public async Task<CommandResult> PostParsedAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
-        string description = "", string? startRaw = null, string? expiresRaw = null, CancellationToken ct = default)
+        string description = "", string? startRaw = null, string? expiresRaw = null, QuestTier tier = QuestTier.None, CancellationToken ct = default)
     {
         var (startOk, startsAt, startErr) = await timeZones.ParseLocalAsync(guildId, actorId, startRaw, ct);
         if (!startOk)
@@ -66,7 +68,7 @@ public class QuestBoardService(
             return CommandResult.Error(expErr!);
         }
 
-        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, ct);
+        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, ct);
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
@@ -141,6 +143,14 @@ public class QuestBoardService(
         => RouteAsync(idRaw,
             _ => Task.FromResult(CommandResult.Error("Guild quests can't be disputed — ask a quest manager to review the submission.")),
             id => bounties.DisputeAsync(guildId, id, userId, ct));
+
+    /// <summary>Manager (notary) settles a submitted personal quest with a difficulty tier, granting bonus POINTS.</summary>
+    public Task<CommandResult> NotarizeAsync(ulong guildId, string idRaw, QuestTier tier, ulong reviewerId, CancellationToken ct = default)
+        => RouteAsync(idRaw,
+            _ => Task.FromResult(CommandResult.Error("Guild quests carry their tier from creation — approve the submission instead.")),
+            async id => await auth.IsQuestManagerAsync(guildId, reviewerId, ct)
+                ? await bounties.NotarizeAsync(guildId, id, tier, reviewerId, ct)
+                : CommandResult.Error("You need to be a quest manager to notarize a personal quest."));
 
     public Task<CommandResult> ArbitrateAsync(ulong guildId, string idRaw, bool pay, CancellationToken ct = default)
         => bounties.ArbitrateAsync(guildId, idRaw, pay, ct);

@@ -25,10 +25,10 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
         return CommandResult.Ok($"Quest **{quest.Name}** posted (`{quest.Id}`) — reward **{reward}** points.");
     }
 
-    /// <summary>Create a guild quest minting a chosen currency (no balance required — the guild issues it).</summary>
+    /// <summary>Create a guild quest minting a chosen spendable currency, with optional tier-based bonus POINTS.</summary>
     public async Task<CommandResult> PostGuildQuestAsync(
         ulong guildId, ulong actorId, string name, string description, string currencyCode, long reward,
-        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, QuestTier tier = QuestTier.None, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -40,15 +40,29 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
             return CommandResult.Error("Reward must be greater than zero.");
         }
 
-        var quest = await missions.CreateGuildQuestAsync(guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId, currencyCode, reward, deadline, startsAt, ct);
-        if (quest is null)
+        var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
+        var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
+        if (currency is null)
         {
-            return CommandResult.Error($"Unknown currency '{currencyCode}'.");
+            return CommandResult.Error($"Unknown currency '{code}'.");
         }
+
+        if (!currency.IsSpendable)
+        {
+            return CommandResult.Error($"{code} can't be a quest reward — choose a spendable currency (e.g. COIN).");
+        }
+
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var bonusPoints = guild?.Settings.PointsForTier(tier) ?? 0;
+
+        var quest = await missions.CreateQuestAsync(
+            guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId,
+            currency.Id, reward, deadline, startsAt, bonusPoints, tier, ct: ct);
 
         var when = quest.Status == MissionStatus.Scheduled && startsAt is { } st ? $" — opens {FormatTime(st)}" : "";
         var until = deadline is { } d ? $" — closes {FormatTime(d)}" : "";
-        return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {currencyCode.Trim().ToUpperInvariant()}** (minted on approval){when}{until}.");
+        var bonus = bonusPoints > 0 ? $" + **{bonusPoints} POINTS** (tier {tier})" : "";
+        return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {code}**{bonus} (minted on approval){when}{until}.");
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)

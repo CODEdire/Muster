@@ -3,7 +3,11 @@
 @inject QuestBoardService Board
 @inject TimeZoneService TimeZones
 @inject CurrencyAdminService CurrencyAdmin
+@inject MusterDbContext Db
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Post a quest — Muster</PageTitle>
 
@@ -46,6 +50,15 @@ else if (State == AccessState.Ready)
                     }
                 </InputSelect>
             </label>
+            <label>Difficulty tier <InputSelect @bind-Value="Post.Tier">
+                    <option value="@QuestTier.None">None — no bonus points</option>
+                    @foreach (var t in _tiers)
+                    {
+                        <option value="@t">@t — @_settings.PointsForTier(t) pts</option>
+                    }
+                </InputSelect>
+                <span class="subtitle">Guild quests only — mints bonus POINTS from guild config. Configure values in Admin → Settings.</span>
+            </label>
             <label>Starts (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.StartsAt" /></label>
             <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.ExpiresAt" /></label>
             <div class="btn-row">
@@ -63,12 +76,16 @@ else if (State == AccessState.Ready)
     private IReadOnlyList<CurrencyView> _currencies = [];
     private bool _isManager;
     private string _zoneId = TimeZoneService.Utc;
+    private GuildSettings _settings = new();
+
+    private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
 
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
-        _currencies = await CurrencyAdmin.ListAsync(GuildId);
+        _currencies = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+        _settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
     }
 
     private async Task PostAsync()
@@ -78,7 +95,7 @@ else if (State == AccessState.Ready)
         var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.StartsAt);
         var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.ExpiresAt);
 
-        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline);
+        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline, Post.Tier);
         Message = result.Message;
         if (!result.IsError)
         {
@@ -94,7 +111,8 @@ else if (State == AccessState.Ready)
         public string? Name { get; set; }
         public string? Details { get; set; }
         public long Amount { get; set; }
-        public string? Currency { get; set; } = "POINTS";
+        public string? Currency { get; set; }
+        public QuestTier Tier { get; set; } = QuestTier.None;
         public DateTime? StartsAt { get; set; }
         public DateTime? ExpiresAt { get; set; }
     }

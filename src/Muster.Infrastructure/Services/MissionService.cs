@@ -14,7 +14,8 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
     public async Task<Mission> CreateQuestAsync(
         ulong guildId, string name, string description, ulong createdBy,
         Guid rewardCurrencyId, long rewardAmount, DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null,
-        bool repeatable = false, bool requiresApproval = true, CancellationToken ct = default)
+        long bonusPoints = 0, QuestTier tier = QuestTier.None, bool repeatable = false, bool requiresApproval = true,
+        CancellationToken ct = default)
     {
         var scheduled = startsAt is { } s && s > DateTimeOffset.UtcNow;
         var mission = new Mission
@@ -30,6 +31,8 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             CreatedAt = DateTimeOffset.UtcNow,
             RewardCurrencyId = rewardCurrencyId,
             RewardAmount = rewardAmount,
+            BonusPoints = bonusPoints,
+            Tier = tier,
             ScheduledStart = startsAt,
             Deadline = deadline,
             IsRepeatable = repeatable,
@@ -43,7 +46,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
     /// <summary>Create a guild quest minting the given currency (by code). Returns null if the currency is unknown.</summary>
     public async Task<Mission?> CreateGuildQuestAsync(
         ulong guildId, string name, string description, ulong createdBy, string currencyCode, long rewardAmount,
-        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, long bonusPoints = 0, CancellationToken ct = default)
     {
         var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
         var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
@@ -52,7 +55,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             return null;
         }
 
-        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, deadline, startsAt, ct: ct);
+        return await CreateQuestAsync(guildId, name, description, createdBy, currency.Id, rewardAmount, deadline, startsAt, bonusPoints, ct: ct);
     }
 
     /// <summary>Create a quest that rewards the guild's POINTS currency.</summary>
@@ -203,6 +206,14 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             mission.GuildId, userId, mission.RewardCurrencyId, mission.RewardAmount,
             LedgerSourceType.Mission, $"mission:{missionId}:user:{userId}",
             $"Quest approved: {mission.Name}", ct);
+
+        if (mission.BonusPoints > 0)
+        {
+            await awards.AwardPointsAsync(
+                mission.GuildId, userId, mission.BonusPoints,
+                LedgerSourceType.Mission, $"mission:{missionId}:bonus:{userId}",
+                $"Quest bonus: {mission.Name}", ct);
+        }
     }
 
     public async Task RejectAsync(Guid missionId, ulong userId, ulong reviewerId, CancellationToken ct = default)

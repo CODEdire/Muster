@@ -48,6 +48,18 @@ public enum MissionStatus
     Scheduled = 6,
 }
 
+/// <summary>Difficulty tier for a guild quest, driving the bonus POINTS reward via guild config. S is hardest.</summary>
+public enum QuestTier
+{
+    None = 0,
+    E = 1,
+    D = 2,
+    C = 3,
+    B = 4,
+    A = 5,
+    S = 6,
+}
+
 public enum MissionParticipantStatus
 {
     // Quest lifecycle

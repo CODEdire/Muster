@@ -26,7 +26,7 @@ public class BountyServiceTests
 
         var awards = new AwardService(db);
         var auth = new GuildAuthorizationService(db);
-        var sut = new BountyService(db, new EscrowService(db, awards), auth);
+        var sut = new BountyService(db, new EscrowService(db, awards), auth, awards);
         return new Ctx(db, sut, coin);
     }
 

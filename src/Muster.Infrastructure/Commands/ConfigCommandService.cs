@@ -29,6 +29,35 @@ public class ConfigCommandService(MusterDbContext db)
     public Task<CommandResult> ToggleQuestManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.QuestManager, ct);
 
+    /// <summary>Set the bonus POINTS granted per guild-quest difficulty tier.</summary>
+    public async Task<CommandResult> SetQuestTierPointsAsync(
+        ulong guildId, long s, long a, long b, long c, long d, long e, CancellationToken ct = default)
+    {
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (new[] { s, a, b, c, d, e }.Any(v => v < 0))
+        {
+            return CommandResult.Error("Tier points can't be negative.");
+        }
+
+        // Reassign Settings so the owned JSON column is detected as changed.
+        var settings = guild.Settings;
+        settings.TierSPoints = s;
+        settings.TierAPoints = a;
+        settings.TierBPoints = b;
+        settings.TierCPoints = c;
+        settings.TierDPoints = d;
+        settings.TierEPoints = e;
+        guild.Settings = settings;
+
+        await db.SaveChangesAsync(ct);
+        return CommandResult.Ok("Quest tier points updated.");
+    }
+
     public async Task<CommandResult> ShowAsync(ulong guildId, CancellationToken ct = default)
     {
         var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);

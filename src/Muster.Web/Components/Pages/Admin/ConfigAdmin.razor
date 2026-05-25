@@ -2,6 +2,9 @@
 @inherits GuildAdminComponentBase
 @inject WebAdminService Admin
 @inject ConfigCommandService Config
+@inject MusterDbContext Db
+@using Muster.Domain.Entities
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Role mapping — Muster</PageTitle>
 
@@ -72,15 +75,56 @@ else if (State == AccessState.Ready)
             <div class="btn-row"><button type="submit">Toggle</button></div>
         </EditForm>
     </div>
+
+    <div class="panel glass">
+        <h2>Quest difficulty tiers</h2>
+        <p class="subtitle">Bonus POINTS minted to the completer of a guild quest (or a personal quest a
+            manager notarizes) by difficulty. S is hardest.</p>
+        <EditForm class="form-grid" Model="Tier" FormName="tier-points" OnValidSubmit="SaveTiersAsync">
+            <label>S — hardest <InputNumber @bind-Value="Tier.S" /></label>
+            <label>A <InputNumber @bind-Value="Tier.A" /></label>
+            <label>B <InputNumber @bind-Value="Tier.B" /></label>
+            <label>C <InputNumber @bind-Value="Tier.C" /></label>
+            <label>D <InputNumber @bind-Value="Tier.D" /></label>
+            <label>E — easiest <InputNumber @bind-Value="Tier.E" /></label>
+            <div class="btn-row"><button type="submit">Save tiers</button></div>
+        </EditForm>
+    </div>
 }
 
 @code {
-    [SupplyParameterFromForm] private ToggleInput Input { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "toggle-role")] private ToggleInput Input { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "tier-points")] private TierInput Tier { get; set; } = new();
 
     private RoleMappingView? _mapping;
 
     protected override async Task LoadAsync()
-        => _mapping = await Admin.GetRoleMappingAsync(GuildId);
+    {
+        _mapping = await Admin.GetRoleMappingAsync(GuildId);
+
+        // Prefill tier values on GET only; on a post the bound values survive (long? stays null on the
+        // other form's post, so we only fill blanks).
+        var settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
+        Tier.S ??= settings.TierSPoints;
+        Tier.A ??= settings.TierAPoints;
+        Tier.B ??= settings.TierBPoints;
+        Tier.C ??= settings.TierCPoints;
+        Tier.D ??= settings.TierDPoints;
+        Tier.E ??= settings.TierEPoints;
+    }
+
+    private async Task SaveTiersAsync()
+    {
+        var result = await Config.SetQuestTierPointsAsync(
+            GuildId, Tier.S ?? 0, Tier.A ?? 0, Tier.B ?? 0, Tier.C ?? 0, Tier.D ?? 0, Tier.E ?? 0);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questTierPoints", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
+    }
 
     private async Task SubmitAsync()
     {
@@ -123,5 +167,15 @@ else if (State == AccessState.Ready)
     {
         public ulong RoleId { get; set; }
         public string Kind { get; set; } = "admin";
+    }
+
+    public class TierInput
+    {
+        public long? S { get; set; }
+        public long? A { get; set; }
+        public long? B { get; set; }
+        public long? C { get; set; }
+        public long? D { get; set; }
+        public long? E { get; set; }
     }
 }

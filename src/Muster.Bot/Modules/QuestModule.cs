@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Bot.Autocomplete;
+using Muster.Domain.Enums;
 using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
@@ -21,10 +22,11 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "type", Description = "Guild quest (minted) or personal quest (escrowed from your balance)")] QuestKind type = QuestKind.Guild,
         [SlashCommandParameter(Name = "description", Description = "What to do")] string description = "",
         [SlashCommandParameter(Name = "starts", Description = "When it opens, in your time zone, e.g. 2026-06-01 18:00 (optional)")] string starts = "",
-        [SlashCommandParameter(Name = "expires", Description = "When it closes, in your time zone, e.g. 2026-06-08 18:00 (optional)")] string expires = "")
+        [SlashCommandParameter(Name = "expires", Description = "When it closes, in your time zone, e.g. 2026-06-08 18:00 (optional)")] string expires = "",
+        [SlashCommandParameter(Name = "tier", Description = "Difficulty tier for a guild quest — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<QuestBoardService>()
-                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires),
+                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier),
             auditAction: "quest.post");
 
     [SlashCommand("quest-list", "List the open quest board.")]
@@ -64,6 +66,14 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
     public Task<Reply> DisputeAsync(
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
         => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().DisputeAsync(guildId, quest, Context.User.Id));
+
+    [SlashCommand("quest-notarize", "Approve a submitted personal quest with a difficulty tier, granting bonus POINTS (Quest Manager).")]
+    public Task<Reply> NotarizeAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
+        [SlashCommandParameter(Name = "tier", Description = "Difficulty tier — sets the bonus POINTS from guild config")] QuestTier tier)
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().NotarizeAsync(guildId, quest, tier, Context.User.Id),
+            RequiredRole.QuestManager, "quest.notarize");
 
     [SlashCommand("quest-arbitrate", "Resolve a disputed personal quest (Quest Manager).")]
     public Task<Reply> ArbitrateAsync(

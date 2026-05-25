@@ -54,6 +54,27 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
         => RunAsync(idRaw, id => bounties.ArbitrateAsync(id, payCompleter, ct),
             payCompleter ? "Resolved: paid the completer." : "Resolved: refunded the owner.");
 
+    /// <summary>Notarize a submitted personal quest as a manager: pay the completer and grant tier-based bonus POINTS.</summary>
+    public async Task<CommandResult> NotarizeAsync(ulong guildId, string idRaw, QuestTier tier, ulong reviewerId, CancellationToken ct = default)
+    {
+        if (!Guid.TryParse(idRaw, out var id))
+        {
+            return CommandResult.Error("That doesn't look like a valid quest id.");
+        }
+
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var points = guild?.Settings.PointsForTier(tier) ?? 0;
+
+        var result = await bounties.NotarizeAsync(id, reviewerId, tier, points, ct);
+        if (result != BountyResult.Ok)
+        {
+            return Map(result);
+        }
+
+        var bonus = points > 0 ? $" + **{points} POINTS** (tier {tier})" : "";
+        return CommandResult.Ok($"Notarized — paid the completer{bonus} and closed the quest.");
+    }
+
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
     {
         var open = await bounties.ListOpenAsync(guildId, ct);
