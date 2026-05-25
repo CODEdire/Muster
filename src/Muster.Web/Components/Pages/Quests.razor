@@ -28,32 +28,55 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
+    <div class="filter-bar quest-tabs">
+        <a href="?tab=active" class="@(CurrentTab == "active" ? "active" : "")">Active</a>
+        <a href="?tab=mine" class="@(CurrentTab == "mine" ? "active" : "")">Mine</a>
+        <a href="?tab=history" class="@(CurrentTab == "history" ? "active" : "")">History</a>
+    </div>
+
     <div class="panel glass">
-        <h2>Open quests</h2>
-        @if (_board.Count == 0)
+        @if (_quests.Count == 0)
         {
-            <p class="empty">No open quests right now.</p>
+            <p class="empty">No quests here.</p>
         }
         else
         {
-            <table class="leaderboard">
-                <thead><tr><th>Quest</th><th>Type</th><th>Reward</th><th>Status</th><th>Opens</th><th>Closes</th></tr></thead>
+            <table class="leaderboard quest-grid">
+                <thead>
+                    <tr><th>Quest</th><th>Type</th><th>Reward</th><th>Status</th><th>Opens</th><th>Closes</th><th>Actions</th></tr>
+                </thead>
                 <tbody>
-                    @foreach (var q in _board)
+                    @foreach (var q in _quests)
                     {
+                        var actions = ActionsFor(q).ToList();
                         <tr>
-                            <td>@q.Name<br /><span class="subtitle">@q.Description</span></td>
-                            <td>@(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")</td>
-                            <td>@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")</td>
-                            <td>@StatusLabel(q)</td>
-                            <td>@Local(q.ScheduledStart)</td>
-                            <td>@Local(q.Deadline)</td>
+                            <td data-label="Quest">@q.Name<br /><span class="subtitle">@q.Description</span></td>
+                            <td data-label="Type">@(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")</td>
+                            <td data-label="Reward">@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")</td>
+                            <td data-label="Status"><span class="badge status-@StatusClass(q)">@StatusLabel(q)</span></td>
+                            <td data-label="Opens">@Local(q.ScheduledStart)</td>
+                            <td data-label="Closes">@Local(q.Deadline)</td>
+                            <td data-label="Actions">
+                                @if (actions.Count == 0)
+                                {
+                                    <span class="subtitle">—</span>
+                                }
+                                else
+                                {
+                                    <EditForm class="row-actions" Model="this" FormName="@($"quest-{q.Id}")" OnValidSubmit="ActAsync">
+                                        <input type="hidden" name="QuestId" value="@q.Id" />
+                                        @foreach (var a in actions)
+                                        {
+                                            <button type="submit" name="Action" value="@a.Value" class="btn btn-sm @(a.Primary ? "" : "btn-ghost")">@a.Label</button>
+                                        }
+                                    </EditForm>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
             </table>
         }
-        <p class="subtitle">Dates are shown in your time zone (<strong>@_zoneId</strong>). Change it on <a href="/guilds/@GuildId/me">your profile</a>.</p>
     </div>
 
     <div class="panel glass">
@@ -85,85 +108,83 @@ else if (State == AccessState.Ready)
         </EditForm>
         <p class="subtitle">Start/expiry are read in your time zone (<strong>@_zoneId</strong>). A future start keeps the quest scheduled until then.</p>
     </div>
-
-    <div class="panel glass">
-        <h2>Act on a quest</h2>
-        <EditForm class="form-grid" Model="Act" FormName="act-quest" OnValidSubmit="ActAsync">
-            <label>Quest
-                <InputSelect @bind-Value="Act.QuestId">
-                    <option value="">— choose a quest —</option>
-                    @foreach (var q in _board)
-                    {
-                        <option value="@q.Id">@q.Name (@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?"))</option>
-                    }
-                </InputSelect>
-            </label>
-            <label>Action
-                <InputSelect @bind-Value="Act.Action">
-                    <option value="claim">Claim / take</option>
-                    <option value="submit">Submit (I completed it)</option>
-                    <option value="confirm">Confirm &amp; pay (personal quest owner)</option>
-                    <option value="cancel">Cancel (refunds personal escrow)</option>
-                    <option value="dispute">Dispute (personal quest)</option>
-                </InputSelect>
-            </label>
-            <div class="btn-row"><button type="submit">Go</button></div>
-        </EditForm>
-        <p class="subtitle">Guild-quest submissions are approved by a quest manager on the <a href="/guilds/@GuildId/admin/quests">approvals</a> page.</p>
-    </div>
-
-    @if (_isManager)
-    {
-        <div class="panel glass">
-            <h2>Arbitrate a dispute (Quest Manager)</h2>
-            <EditForm class="form-grid" Model="Arb" FormName="arbitrate-quest" OnValidSubmit="ArbitrateAsync">
-                <label>Disputed quest
-                    <InputSelect @bind-Value="Arb.QuestId">
-                        <option value="">— choose a disputed quest —</option>
-                        @foreach (var q in _disputed)
-                        {
-                            <option value="@q.Id">@q.Name (@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?"))</option>
-                        }
-                    </InputSelect>
-                </label>
-                <label>Resolution
-                    <InputSelect @bind-Value="Arb.Pay">
-                        <option value="true">Pay the completer</option>
-                        <option value="false">Refund the owner</option>
-                    </InputSelect>
-                </label>
-                <div class="btn-row"><button type="submit">Resolve</button></div>
-            </EditForm>
-        </div>
-    }
 }
 
 @code {
     [SupplyParameterFromForm(FormName = "post-quest")] private PostInput Post { get; set; } = new();
-    [SupplyParameterFromForm(FormName = "act-quest")] private ActInput Act { get; set; } = new();
-    [SupplyParameterFromForm(FormName = "arbitrate-quest")] private ArbInput Arb { get; set; } = new();
+    [SupplyParameterFromQuery] private string? Tab { get; set; }
 
-    private IReadOnlyList<Mission> _board = [];
-    private IReadOnlyList<Mission> _disputed = [];
+    private IReadOnlyList<Mission> _quests = [];
     private Dictionary<Guid, string> _codes = [];
+    private Dictionary<ulong, string> _names = [];
     private IReadOnlyList<CurrencyView> _currencies = [];
     private bool _isManager;
     private string _zoneId = TimeZoneService.Utc;
 
+    private string CurrentTab => Tab is "mine" or "history" ? Tab : "active";
+
     protected override async Task LoadAsync()
     {
-        _board = await Db.Missions.Include(m => m.Participants)
-            .Where(m => m.GuildId == GuildId && m.Type == MissionType.Quest
-                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed))
-            .OrderBy(m => m.ScheduledStart ?? m.CreatedAt)
-            .ToListAsync();
-        _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
-        _currencies = await CurrencyAdmin.ListAsync(GuildId);
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
-        _disputed = _isManager
-            ? _board.Where(m => m.Status == MissionStatus.Disputed && m.Origin == MissionOrigin.Player).ToList()
-            : [];
+        _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
+        _currencies = await CurrencyAdmin.ListAsync(GuildId);
+
+        var query = Db.Missions.Include(m => m.Participants)
+            .Where(m => m.GuildId == GuildId && m.Type == MissionType.Quest);
+
+        query = CurrentTab switch
+        {
+            "history" => _isManager
+                ? query.Where(m => m.Status == MissionStatus.Closed || m.Status == MissionStatus.Cancelled || m.Status == MissionStatus.Expired)
+                : query.Where(m => (m.Status == MissionStatus.Closed || m.Status == MissionStatus.Cancelled || m.Status == MissionStatus.Expired)
+                    && (m.OwnerId == UserId || m.Participants.Any(p => p.UserId == UserId))),
+            "mine" => query.Where(m => m.OwnerId == UserId || m.Participants.Any(p => p.UserId == UserId)),
+            _ => query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed),
+        };
+
+        _quests = await query.OrderBy(m => m.ScheduledStart ?? m.CreatedAt).ToListAsync();
+
+        var ids = _quests.SelectMany(m => m.Participants.Select(p => p.UserId)).Distinct().ToList();
+        _names = await Db.Users.Where(u => ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.GlobalName ?? u.Username);
+    }
+
+    private async Task ActAsync()
+    {
+        var form = Http?.Request.Form;
+        var id = form?["QuestId"].ToString() ?? "";
+        var action = form?["Action"].ToString() ?? "";
+        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(action))
+        {
+            return;
+        }
+
+        CommandResult result;
+        if (action.StartsWith("approve:") && ulong.TryParse(action[8..], out var approveId))
+        {
+            result = await Board.ApproveAsync(GuildId, id, approveId, UserId);
+        }
+        else if (action.StartsWith("reject:") && ulong.TryParse(action[7..], out var rejectId))
+        {
+            result = await Board.RejectAsync(GuildId, id, rejectId, UserId);
+        }
+        else
+        {
+            result = action switch
+            {
+                "submit" => await Board.SubmitAsync(GuildId, id, UserId),
+                "confirm" => await Board.ConfirmAsync(GuildId, id, UserId),
+                "cancel" => await Board.CancelAsync(GuildId, id, UserId),
+                "dispute" => await Board.DisputeAsync(GuildId, id, UserId),
+                "resolve-pay" => await Board.ArbitrateAsync(GuildId, id, true),
+                "resolve-refund" => await Board.ArbitrateAsync(GuildId, id, false),
+                _ => await Board.ClaimAsync(GuildId, id, UserId),
+            };
+        }
+
+        Message = result.Message;
+        await LoadAsync();
     }
 
     private async Task PostAsync()
@@ -178,35 +199,77 @@ else if (State == AccessState.Ready)
         await LoadAsync();
     }
 
-    private async Task ActAsync()
+    /// <summary>The actions this viewer may take on a quest, given its state and their role.</summary>
+    private IEnumerable<QuestAction> ActionsFor(Mission q)
     {
-        var id = Act.QuestId ?? "";
-        var result = Act.Action switch
+        var myPart = q.Participants.FirstOrDefault(p => p.UserId == UserId);
+        var iAmOwner = q.OwnerId == UserId;
+        var submitters = q.Participants.Where(p => p.Status == MissionParticipantStatus.Submitted).ToList();
+        var isPersonal = q.Origin == MissionOrigin.Player;
+
+        if (q.Status == MissionStatus.Open)
         {
-            "submit" => await Board.SubmitAsync(GuildId, id, UserId),
-            "confirm" => await Board.ConfirmAsync(GuildId, id, UserId),
-            "cancel" => await Board.CancelAsync(GuildId, id, UserId),
-            "dispute" => await Board.DisputeAsync(GuildId, id, UserId),
-            _ => await Board.ClaimAsync(GuildId, id, UserId),
-        };
-        Message = result.Message;
-        Act = new ActInput();
-        await LoadAsync();
+            if (!iAmOwner && myPart is null)
+            {
+                yield return new("claim", "Claim", true);
+            }
+
+            if (myPart?.Status == MissionParticipantStatus.Claimed)
+            {
+                yield return new("submit", "Submit", true);
+            }
+
+            if (submitters.Count > 0 && isPersonal && iAmOwner)
+            {
+                yield return new("confirm", "Confirm & pay", true);
+                yield return new("dispute", "Dispute", false);
+            }
+            else if (submitters.Count > 0 && !isPersonal && _isManager)
+            {
+                foreach (var s in submitters)
+                {
+                    yield return new($"approve:{s.UserId}", $"Approve {Name(s.UserId)}", true);
+                    yield return new($"reject:{s.UserId}", $"Reject {Name(s.UserId)}", false);
+                }
+            }
+        }
+
+        if (q.Status is MissionStatus.Open or MissionStatus.Scheduled && submitters.Count == 0
+            && ((isPersonal && iAmOwner) || (!isPersonal && _isManager)))
+        {
+            yield return new("cancel", "Cancel", false);
+        }
+
+        if (q.Status == MissionStatus.Disputed && isPersonal && _isManager)
+        {
+            yield return new("resolve-pay", "Pay completer", true);
+            yield return new("resolve-refund", "Refund owner", false);
+        }
     }
 
-    private async Task ArbitrateAsync()
+    private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"member {userId}");
+
+    private static string StatusClass(Mission q) => q.Status switch
     {
-        Message = (await Board.ArbitrateAsync(GuildId, Arb.QuestId ?? "", Arb.Pay)).Message;
-        Arb = new ArbInput();
-        await LoadAsync();
-    }
+        MissionStatus.Open => "open",
+        MissionStatus.Scheduled => "scheduled",
+        MissionStatus.Disputed => "disputed",
+        MissionStatus.Closed => "closed",
+        MissionStatus.Cancelled => "cancelled",
+        MissionStatus.Expired => "expired",
+        _ => "open",
+    };
 
     private string StatusLabel(Mission q) => q.Status switch
     {
-        MissionStatus.Scheduled => "scheduled",
-        MissionStatus.Disputed => "disputed",
-        _ when q.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) => "taken",
-        _ => "open",
+        MissionStatus.Scheduled => "Scheduled",
+        MissionStatus.Disputed => "Disputed",
+        MissionStatus.Open when q.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) => "In progress",
+        MissionStatus.Open => "Open",
+        MissionStatus.Closed => "Completed",
+        MissionStatus.Cancelled => "Cancelled",
+        MissionStatus.Expired => "Expired",
+        _ => q.Status.ToString(),
     };
 
     private string Local(DateTimeOffset? utc)
@@ -225,6 +288,8 @@ else if (State == AccessState.Ready)
         return TimeZoneInfo.ConvertTime(t, zone).ToString("yyyy-MM-dd HH:mm");
     }
 
+    private sealed record QuestAction(string Value, string Label, bool Primary);
+
     public class PostInput
     {
         public string Kind { get; set; } = "personal";
@@ -234,17 +299,5 @@ else if (State == AccessState.Ready)
         public string? Currency { get; set; } = "POINTS";
         public DateTime? StartsAt { get; set; }
         public DateTime? ExpiresAt { get; set; }
-    }
-
-    public class ActInput
-    {
-        public string? QuestId { get; set; }
-        public string Action { get; set; } = "claim";
-    }
-
-    public class ArbInput
-    {
-        public string? QuestId { get; set; }
-        public bool Pay { get; set; } = true;
     }
 }

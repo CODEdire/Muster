@@ -329,6 +329,51 @@ table.leaderboard tbody tr:hover { background: var(--surface); }
 .pager { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--text-muted); font-size: 0.9rem; }
 table.leaderboard th a { color: var(--text-muted); }
 
+/* ---- Quest board grid ---------------------------------------------------- */
+.btn-sm { padding: 0.32rem 0.62rem; font-size: 0.82rem; }
+.quest-tabs { margin-bottom: 1rem; }
+.quest-tabs a {
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.quest-tabs a.active { background: var(--accent); color: #fff; border-color: transparent; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; max-width: none; margin: 0; }
+.row-actions label { margin: 0; }
+.badge.status-open { background: var(--accent-soft); color: #04122b; }
+.badge.status-scheduled { background: #f6c343; color: #04122b; }
+.badge.status-disputed { background: var(--danger); color: #fff; }
+.badge.status-closed { background: #4ade80; color: #04122b; }
+.badge.status-cancelled, .badge.status-expired { background: var(--text-muted); color: #fff; }
+
+/* Desktop = table; below 760px each row collapses into a card. */
+@media (max-width: 760px) {
+    table.quest-grid thead { display: none; }
+    table.quest-grid, table.quest-grid tbody, table.quest-grid tr, table.quest-grid td { display: block; width: 100%; }
+    table.quest-grid tr {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--surface);
+        padding: 0.6rem 0.85rem;
+        margin-bottom: 0.85rem;
+    }
+    table.quest-grid td { border: 0; padding: 0.25rem 0; display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+    table.quest-grid td::before {
+        content: attr(data-label);
+        color: var(--text-muted);
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        flex: 0 0 auto;
+    }
+    table.quest-grid td[data-label="Actions"],
+    table.quest-grid td[data-label="Quest"] { display: block; }
+    table.quest-grid td[data-label="Actions"]::before,
+    table.quest-grid td[data-label="Quest"]::before { display: block; margin-bottom: 0.35rem; }
+}
+
 /* ---- Responsive ---------------------------------------------------------- */
 @media (max-width: 640px) {
     .topbar { flex-wrap: wrap; gap: 0.6rem; }

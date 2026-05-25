@@ -120,6 +120,12 @@ public class QuestBoardService(
             id => quests.ApproveAsync(guildId, id, memberId, reviewerId, ct),
             _ => Task.FromResult(CommandResult.Error("That's a personal quest — its owner settles it with `/quest-confirm`.")));
 
+    /// <summary>Reject a guild quest submission (quest manager).</summary>
+    public Task<CommandResult> RejectAsync(ulong guildId, string idRaw, ulong memberId, ulong reviewerId, CancellationToken ct = default)
+        => RouteAsync(idRaw,
+            id => quests.RejectAsync(guildId, id, memberId, reviewerId, ct),
+            _ => Task.FromResult(CommandResult.Error("That's a personal quest — its owner settles it with `/quest-confirm` or `/quest-dispute`.")));
+
     /// <summary>Confirm a personal quest (owner pays the completer). Guild quests are settled with approve instead.</summary>
     public Task<CommandResult> ConfirmAsync(ulong guildId, string idRaw, ulong ownerId, CancellationToken ct = default)
         => RouteAsync(idRaw,
