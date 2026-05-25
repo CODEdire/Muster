@@ -1,0 +1,101 @@
+@page "/guilds/{GuildIdRaw}/quests/new"
+@inherits GuildMemberComponentBase
+@inject QuestBoardService Board
+@inject TimeZoneService TimeZones
+@inject CurrencyAdminService CurrencyAdmin
+@using Muster.Infrastructure.Commands
+
+<PageTitle>Post a quest — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
+        <h1>Post a quest</h1>
+        <p class="subtitle">Guild quests mint their reward on approval; personal quests escrow your own balance.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <EditForm class="form-grid" Model="Post" FormName="post-quest" OnValidSubmit="PostAsync">
+            <label>Type
+                <InputSelect @bind-Value="Post.Kind">
+                    <option value="personal">Personal quest — escrow my own balance</option>
+                    @if (_isManager)
+                    {
+                        <option value="guild">Guild quest — minted reward (no balance needed)</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Name <InputText @bind-Value="Post.Name" /></label>
+            <label>Details <InputText @bind-Value="Post.Details" /></label>
+            <label>Reward amount <InputNumber @bind-Value="Post.Amount" /></label>
+            <label>Currency
+                <InputSelect @bind-Value="Post.Currency">
+                    @foreach (var c in _currencies)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Starts (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.StartsAt" /></label>
+            <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.ExpiresAt" /></label>
+            <div class="btn-row">
+                <button type="submit">Post</button>
+                <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Back to board</a>
+            </div>
+        </EditForm>
+        <p class="subtitle">Start/expiry are read in your time zone (<strong>@_zoneId</strong>). A future start keeps the quest scheduled until then.</p>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "post-quest")] private PostInput Post { get; set; } = new();
+
+    private IReadOnlyList<CurrencyView> _currencies = [];
+    private bool _isManager;
+    private string _zoneId = TimeZoneService.Utc;
+
+    protected override async Task LoadAsync()
+    {
+        _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+        _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
+        _currencies = await CurrencyAdmin.ListAsync(GuildId);
+    }
+
+    private async Task PostAsync()
+    {
+        var currency = Post.Currency ?? "POINTS";
+        var kind = Post.Kind == "guild" ? QuestKind.Guild : QuestKind.Personal;
+        var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.StartsAt);
+        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.ExpiresAt);
+
+        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            Post = new PostInput();
+        }
+
+        await LoadAsync();
+    }
+
+    public class PostInput
+    {
+        public string Kind { get; set; } = "personal";
+        public string? Name { get; set; }
+        public string? Details { get; set; }
+        public long Amount { get; set; }
+        public string? Currency { get; set; } = "POINTS";
+        public DateTime? StartsAt { get; set; }
+        public DateTime? ExpiresAt { get; set; }
+    }
+}

@@ -2,7 +2,6 @@
 @inherits GuildMemberComponentBase
 @inject QuestBoardService Board
 @inject TimeZoneService TimeZones
-@inject CurrencyAdminService CurrencyAdmin
 @inject MusterDbContext Db
 @using Muster.Domain.Entities
 @using Muster.Domain.Enums
@@ -21,6 +20,9 @@ else if (State == AccessState.Ready)
         <a class="back-link" href="/guilds/@GuildId">← Dashboard</a>
         <h1>Quest board</h1>
         <p class="subtitle">Guild quests mint their reward on approval; personal quests escrow the poster's own balance until a member completes them.</p>
+        <div class="actions">
+            <a class="btn" href="/guilds/@GuildId/quests/new">Post a quest</a>
+        </div>
     </div>
 
     @if (Message is not null)
@@ -28,10 +30,30 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    <div class="filter-bar quest-tabs">
-        <a href="?tab=active" class="@(CurrentTab == "active" ? "active" : "")">Active</a>
-        <a href="?tab=mine" class="@(CurrentTab == "mine" ? "active" : "")">Mine</a>
-        <a href="?tab=history" class="@(CurrentTab == "history" ? "active" : "")">History</a>
+    <div class="panel glass">
+        <div class="filter-bar quest-tabs">
+            <a href="@TabUrl("active")" class="@(CurrentTab == "active" ? "active" : "")">Active</a>
+            <a href="@TabUrl("mine")" class="@(CurrentTab == "mine" ? "active" : "")">Mine</a>
+            <a href="@TabUrl("history")" class="@(CurrentTab == "history" ? "active" : "")">History</a>
+        </div>
+        <form method="get" class="filter-bar">
+            <input type="search" name="search" value="@Search" placeholder="Search name or details" />
+            <select name="type">
+                <option value="" selected="@string.IsNullOrEmpty(CurrentType)">All types</option>
+                <option value="guild" selected="@(CurrentType == "guild")">Guild</option>
+                <option value="personal" selected="@(CurrentType == "personal")">Personal</option>
+            </select>
+            <select name="size">
+                @foreach (var s in PageSizes)
+                {
+                    <option value="@s" selected="@(s == CurrentSize)">@s / page</option>
+                }
+            </select>
+            <input type="hidden" name="tab" value="@CurrentTab" />
+            <input type="hidden" name="sort" value="@CurrentSort" />
+            <input type="hidden" name="desc" value="@CurrentDesc.ToString().ToLowerInvariant()" />
+            <button type="submit">Filter</button>
+        </form>
     </div>
 
     <div class="panel glass">
@@ -43,7 +65,15 @@ else if (State == AccessState.Ready)
         {
             <table class="leaderboard quest-grid">
                 <thead>
-                    <tr><th>Quest</th><th>Type</th><th>Reward</th><th>Status</th><th>Opens</th><th>Closes</th><th>Actions</th></tr>
+                    <tr>
+                        <th><a href="@SortUrl("name")">Quest @Indicator("name")</a></th>
+                        <th><a href="@SortUrl("type")">Type @Indicator("type")</a></th>
+                        <th><a href="@SortUrl("reward")">Reward @Indicator("reward")</a></th>
+                        <th><a href="@SortUrl("status")">Status @Indicator("status")</a></th>
+                        <th><a href="@SortUrl("opens")">Opens @Indicator("opens")</a></th>
+                        <th><a href="@SortUrl("closes")">Closes @Indicator("closes")</a></th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @foreach (var q in _quests)
@@ -76,59 +106,53 @@ else if (State == AccessState.Ready)
                     }
                 </tbody>
             </table>
-        }
-    </div>
 
-    <div class="panel glass">
-        <h2>Post a quest</h2>
-        <EditForm class="form-grid" Model="Post" FormName="post-quest" OnValidSubmit="PostAsync">
-            <label>Type
-                <InputSelect @bind-Value="Post.Kind">
-                    <option value="personal">Personal quest — escrow my own balance</option>
-                    @if (_isManager)
-                    {
-                        <option value="guild">Guild quest — minted reward (no balance needed)</option>
-                    }
-                </InputSelect>
-            </label>
-            <label>Name <InputText @bind-Value="Post.Name" /></label>
-            <label>Details <InputText @bind-Value="Post.Details" /></label>
-            <label>Reward amount <InputNumber @bind-Value="Post.Amount" /></label>
-            <label>Currency
-                <InputSelect @bind-Value="Post.Currency">
-                    @foreach (var c in _currencies)
-                    {
-                        <option value="@c.Code">@c.Code — @c.Name</option>
-                    }
-                </InputSelect>
-            </label>
-            <label>Starts (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.StartsAt" /></label>
-            <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.ExpiresAt" /></label>
-            <div class="btn-row"><button type="submit">Post</button></div>
-        </EditForm>
-        <p class="subtitle">Start/expiry are read in your time zone (<strong>@_zoneId</strong>). A future start keeps the quest scheduled until then.</p>
+            <div class="pager">
+                @if (_page > 1)
+                {
+                    <a class="btn btn-ghost" href="@PageUrl(_page - 1)">← Prev</a>
+                }
+                <span>Page @_page of @Math.Max(_totalPages, 1) · @_total quests</span>
+                @if (_page < _totalPages)
+                {
+                    <a class="btn btn-ghost" href="@PageUrl(_page + 1)">Next →</a>
+                }
+            </div>
+        }
     </div>
 }
 
 @code {
-    [SupplyParameterFromForm(FormName = "post-quest")] private PostInput Post { get; set; } = new();
     [SupplyParameterFromQuery] private string? Tab { get; set; }
+    [SupplyParameterFromQuery] private string? Search { get; set; }
+    [SupplyParameterFromQuery] private string? Type { get; set; }
+    [SupplyParameterFromQuery] private string? Sort { get; set; }
+    [SupplyParameterFromQuery] private bool Desc { get; set; }
+    [SupplyParameterFromQuery] private int Page { get; set; }
+    [SupplyParameterFromQuery] private int Size { get; set; }
+
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
 
     private IReadOnlyList<Mission> _quests = [];
     private Dictionary<Guid, string> _codes = [];
     private Dictionary<ulong, string> _names = [];
-    private IReadOnlyList<CurrencyView> _currencies = [];
     private bool _isManager;
     private string _zoneId = TimeZoneService.Utc;
+    private int _total;
+    private int _totalPages;
+    private int _page = 1;
 
     private string CurrentTab => Tab is "mine" or "history" ? Tab : "active";
+    private string CurrentType => Type is "guild" or "personal" ? Type : "";
+    private string CurrentSort => string.IsNullOrEmpty(Sort) ? "created" : Sort;
+    private bool CurrentDesc => string.IsNullOrEmpty(Sort) ? true : Desc;
+    private int CurrentSize => PageSizes.Contains(Size) ? Size : 25;
 
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
         _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
-        _currencies = await CurrencyAdmin.ListAsync(GuildId);
 
         var query = Db.Missions.Include(m => m.Participants)
             .Where(m => m.GuildId == GuildId && m.Type == MissionType.Quest);
@@ -143,11 +167,45 @@ else if (State == AccessState.Ready)
             _ => query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed),
         };
 
-        _quests = await query.OrderBy(m => m.ScheduledStart ?? m.CreatedAt).ToListAsync();
+        if (CurrentType == "guild")
+        {
+            query = query.Where(m => m.Origin == MissionOrigin.Guild);
+        }
+        else if (CurrentType == "personal")
+        {
+            query = query.Where(m => m.Origin == MissionOrigin.Player);
+        }
+
+        if (!string.IsNullOrWhiteSpace(Search))
+        {
+            var s = Search.Trim();
+            query = query.Where(m => m.Name.Contains(s) || m.Description.Contains(s));
+        }
+
+        _total = await query.CountAsync();
+        _totalPages = Math.Max(1, (int)Math.Ceiling(_total / (double)CurrentSize));
+        _page = Math.Clamp(Page <= 0 ? 1 : Page, 1, _totalPages);
+
+        _quests = await Sorted(query).Skip((_page - 1) * CurrentSize).Take(CurrentSize).ToListAsync();
 
         var ids = _quests.SelectMany(m => m.Participants.Select(p => p.UserId)).Distinct().ToList();
         _names = await Db.Users.Where(u => ids.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.GlobalName ?? u.Username);
+    }
+
+    private IQueryable<Mission> Sorted(IQueryable<Mission> q)
+    {
+        var d = CurrentDesc;
+        return CurrentSort switch
+        {
+            "name" => d ? q.OrderByDescending(m => m.Name) : q.OrderBy(m => m.Name),
+            "type" => d ? q.OrderByDescending(m => m.Origin) : q.OrderBy(m => m.Origin),
+            "reward" => d ? q.OrderByDescending(m => m.RewardAmount) : q.OrderBy(m => m.RewardAmount),
+            "status" => d ? q.OrderByDescending(m => m.Status) : q.OrderBy(m => m.Status),
+            "opens" => d ? q.OrderByDescending(m => m.ScheduledStart) : q.OrderBy(m => m.ScheduledStart),
+            "closes" => d ? q.OrderByDescending(m => m.Deadline) : q.OrderBy(m => m.Deadline),
+            _ => d ? q.OrderByDescending(m => m.CreatedAt) : q.OrderBy(m => m.CreatedAt),
+        };
     }
 
     private async Task ActAsync()
@@ -184,18 +242,6 @@ else if (State == AccessState.Ready)
         }
 
         Message = result.Message;
-        await LoadAsync();
-    }
-
-    private async Task PostAsync()
-    {
-        var currency = Post.Currency ?? "POINTS";
-        var kind = Post.Kind == "guild" ? QuestKind.Guild : QuestKind.Personal;
-        var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.StartsAt);
-        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.ExpiresAt);
-
-        Message = (await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline)).Message;
-        Post = new PostInput();
         await LoadAsync();
     }
 
@@ -249,6 +295,32 @@ else if (State == AccessState.Ready)
 
     private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"member {userId}");
 
+    private string QPath => $"/guilds/{GuildId}/quests";
+
+    private string BuildQuery(string tab, string sort, bool desc, int page)
+    {
+        var parts = new List<string> { $"tab={tab}" };
+        if (!string.IsNullOrEmpty(Search)) parts.Add($"search={Uri.EscapeDataString(Search)}");
+        if (!string.IsNullOrEmpty(CurrentType)) parts.Add($"type={CurrentType}");
+        parts.Add($"sort={sort}");
+        parts.Add($"desc={desc.ToString().ToLowerInvariant()}");
+        parts.Add($"page={page}");
+        parts.Add($"size={CurrentSize}");
+        return string.Join("&", parts);
+    }
+
+    private string TabUrl(string tab) => $"{QPath}?{BuildQuery(tab, CurrentSort, CurrentDesc, 1)}";
+
+    private string SortUrl(string column)
+    {
+        var desc = CurrentSort == column ? !CurrentDesc : false;
+        return $"{QPath}?{BuildQuery(CurrentTab, column, desc, 1)}";
+    }
+
+    private string PageUrl(int page) => $"{QPath}?{BuildQuery(CurrentTab, CurrentSort, CurrentDesc, page)}";
+
+    private string Indicator(string column) => CurrentSort == column ? (CurrentDesc ? "▼" : "▲") : "";
+
     private static string StatusClass(Mission q) => q.Status switch
     {
         MissionStatus.Open => "open",
@@ -289,15 +361,4 @@ else if (State == AccessState.Ready)
     }
 
     private sealed record QuestAction(string Value, string Label, bool Primary);
-
-    public class PostInput
-    {
-        public string Kind { get; set; } = "personal";
-        public string? Name { get; set; }
-        public string? Details { get; set; }
-        public long Amount { get; set; }
-        public string? Currency { get; set; } = "POINTS";
-        public DateTime? StartsAt { get; set; }
-        public DateTime? ExpiresAt { get; set; }
-    }
 }
