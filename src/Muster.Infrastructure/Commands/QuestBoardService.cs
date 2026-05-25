@@ -30,11 +30,22 @@ public class QuestBoardService(
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
         string description = "", DateTimeOffset? startsAt = null, DateTimeOffset? deadline = null,
-        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, CancellationToken ct = default)
+        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, bool repeatable = false, CancellationToken ct = default)
     {
         if (deadline is { } dl && startsAt is { } st && dl <= st)
         {
             return CommandResult.Error("The expiry must be after the start time.");
+        }
+
+        var settings = await SettingsAsync(guildId, ct);
+        if (settings.MaxOpenQuestsPerPoster > 0)
+        {
+            var openByPoster = await db.Missions.CountAsync(m => m.GuildId == guildId && m.OwnerId == actorId
+                && m.Type == MissionType.Quest && NonTerminal.Contains(m.Status), ct);
+            if (openByPoster >= settings.MaxOpenQuestsPerPoster)
+            {
+                return CommandResult.Error($"You already have {settings.MaxOpenQuestsPerPoster} active quest(s) — settle or cancel one before posting another.");
+            }
         }
 
         if (kind == QuestKind.Guild)
@@ -45,17 +56,26 @@ public class QuestBoardService(
             }
 
             // Tier-based bonus points are a guild (manager) privilege; personal quests are tiered by an approver at intake.
-            return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, tier, ct);
+            return await quests.PostGuildQuestAsync(guildId, actorId, name, description, currency, reward, deadline, startsAt, tier, repeatable, ct);
         }
 
         return await bounties.PostAsync(guildId, actorId, name, currency, reward, description, deadline, startsAt, requestFinalApproval, ct);
     }
 
+    private static readonly MissionStatus[] NonTerminal =
+    [
+        MissionStatus.Open, MissionStatus.Scheduled, MissionStatus.PendingApproval,
+        MissionStatus.PendingFinal, MissionStatus.Disputed,
+    ];
+
+    private async Task<Muster.Domain.Entities.GuildSettings> SettingsAsync(ulong guildId, CancellationToken ct)
+        => (await db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guildId, ct))?.Settings ?? new();
+
     /// <summary>Post a quest, parsing start/expiry date strings the user typed in their own time zone (used by the bot).</summary>
     public async Task<CommandResult> PostParsedAsync(
         ulong guildId, ulong actorId, QuestKind kind, string name, string currency, long reward,
         string description = "", string? startRaw = null, string? expiresRaw = null,
-        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, CancellationToken ct = default)
+        QuestTier tier = QuestTier.None, bool requestFinalApproval = false, bool repeatable = false, CancellationToken ct = default)
     {
         var (startOk, startsAt, startErr) = await timeZones.ParseLocalAsync(guildId, actorId, startRaw, ct);
         if (!startOk)
@@ -69,7 +89,7 @@ public class QuestBoardService(
             return CommandResult.Error(expErr!);
         }
 
-        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, requestFinalApproval, ct);
+        return await PostAsync(guildId, actorId, kind, name, currency, reward, description, startsAt, deadline, tier, requestFinalApproval, repeatable, ct);
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
@@ -110,15 +130,39 @@ public class QuestBoardService(
             "**Quest board**\nClaim one with `/quest-claim` and pick it from the list.\n" + string.Join("\n", lines));
     }
 
-    public Task<CommandResult> ClaimAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
-        => RouteAsync(idRaw,
+    public async Task<CommandResult> ClaimAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
+    {
+        var settings = await SettingsAsync(guildId, ct);
+        if (settings.MaxActiveClaimsPerUser > 0)
+        {
+            var active = await db.MissionParticipants.CountAsync(p => p.Mission!.GuildId == guildId && p.UserId == userId
+                && (p.Status == MissionParticipantStatus.Claimed || p.Status == MissionParticipantStatus.Submitted
+                    || p.Status == MissionParticipantStatus.RevisionRequested), ct);
+            if (active >= settings.MaxActiveClaimsPerUser)
+            {
+                return CommandResult.Error($"You're already working on {settings.MaxActiveClaimsPerUser} quest(s) — finish or drop one first.");
+            }
+        }
+
+        return await RouteAsync(idRaw,
             id => quests.ClaimAsync(guildId, id, userId, ct),
             id => bounties.TakeAsync(guildId, id, userId, ct));
+    }
 
-    public Task<CommandResult> SubmitAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
+    public Task<CommandResult> SubmitAsync(ulong guildId, string idRaw, ulong userId, string? note = null, CancellationToken ct = default)
         => RouteAsync(idRaw,
-            id => quests.SubmitAsync(guildId, id, userId, ct),
-            id => bounties.SubmitAsync(guildId, id, userId, ct));
+            id => quests.SubmitAsync(guildId, id, userId, note, ct),
+            id => bounties.SubmitAsync(guildId, id, userId, note, ct));
+
+    /// <summary>Reviewer sends a submitted quest back to the worker to revise (manager for guild, owner for personal).</summary>
+    public Task<CommandResult> RequestRevisionAsync(ulong guildId, string idRaw, ulong reviewerId, ulong? memberId = null, string? note = null, CancellationToken ct = default)
+        => RouteAsync(idRaw,
+            async id => !await auth.IsQuestManagerAsync(guildId, reviewerId, ct)
+                ? CommandResult.Error("You need to be a quest manager to send a guild-quest submission back.")
+                : memberId is { } mid
+                    ? await quests.RequestRevisionAsync(guildId, id, mid, reviewerId, note, ct)
+                    : CommandResult.Error("Pick which member's submission to send back."),
+            id => bounties.RequestRevisionAsync(guildId, id, reviewerId, note, ct));
 
     /// <summary>Approve a guild quest submission (quest manager). Personal quests are settled with confirm instead.</summary>
     public Task<CommandResult> ApproveAsync(ulong guildId, string idRaw, ulong memberId, ulong reviewerId, CancellationToken ct = default)

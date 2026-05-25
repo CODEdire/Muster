@@ -14,6 +14,8 @@ namespace Muster.Bot.Modules;
 /// </summary>
 public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
+    private static string? NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
     [SlashCommand("quest-post", "Post a quest: a guild quest mints its reward, or a personal quest escrows your own balance.")]
     public Task<Reply> PostAsync(
         [SlashCommandParameter(Name = "name", Description = "Quest name")] string name,
@@ -24,10 +26,11 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "starts", Description = "When it opens, in your time zone, e.g. 2026-06-01 18:00 (optional)")] string starts = "",
         [SlashCommandParameter(Name = "expires", Description = "When it closes, in your time zone, e.g. 2026-06-08 18:00 (optional)")] string expires = "",
         [SlashCommandParameter(Name = "tier", Description = "Difficulty tier for a guild quest — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None,
-        [SlashCommandParameter(Name = "require_final_approval", Description = "Personal quest: ask a manager to give a final sign-off before payout")] bool requireFinalApproval = false)
+        [SlashCommandParameter(Name = "require_final_approval", Description = "Personal quest: ask a manager to give a final sign-off before payout")] bool requireFinalApproval = false,
+        [SlashCommandParameter(Name = "repeatable", Description = "Guild quest: stays open for repeated completions instead of closing after the first")] bool repeatable = false)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<QuestBoardService>()
-                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier, requireFinalApproval),
+                .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier, requireFinalApproval, repeatable),
             auditAction: "quest.post");
 
     [SlashCommand("quest-list", "List the open quest board.")]
@@ -41,8 +44,18 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
 
     [SlashCommand("quest-submit", "Submit a quest you've completed.")]
     public Task<Reply> SubmitAsync(
-        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().SubmitAsync(guildId, quest, Context.User.Id));
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
+        [SlashCommandParameter(Name = "note", Description = "Optional note for the reviewer")] string note = "")
+        => RunAsync((sp, guildId) => sp.GetRequiredService<QuestBoardService>().SubmitAsync(guildId, quest, Context.User.Id, NullIfBlank(note)));
+
+    [SlashCommand("quest-revise", "Send a submitted quest back to the worker to revise (owner for personal, manager for guild).")]
+    public Task<Reply> ReviseAsync(
+        [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
+        [SlashCommandParameter(Name = "member", Description = "For a guild quest, whose submission to send back")] User? member = null,
+        [SlashCommandParameter(Name = "note", Description = "What to fix")] string note = "")
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<QuestBoardService>().RequestRevisionAsync(guildId, quest, Context.User.Id, member?.Id, NullIfBlank(note)),
+            auditAction: "quest.revise");
 
     [SlashCommand("quest-approve", "Approve a member's guild-quest submission and award them (Quest Manager).")]
     public Task<Reply> ApproveAsync(

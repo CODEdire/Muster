@@ -336,4 +336,78 @@ public class QuestBoardAndTimeZoneTests
         Assert.True(result.IsError);
         Assert.Contains("spendable", result.Message);
     }
+
+    [Fact]
+    public async Task RepeatableGuildQuest_StaysOpenAfterApproval_NonRepeatableCloses()
+    {
+        var c = await SeededAsync();
+        await c.Board.PostAsync(1, 1, QuestKind.Guild, "Daily patrol", c.Coin.Code, 50, repeatable: true);
+        var repeatable = await c.Db.Missions.SingleAsync();
+        await c.Board.ClaimAsync(1, repeatable.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, repeatable.Id.ToString(), 20);
+        await c.Board.ApproveAsync(1, repeatable.Id.ToString(), 20, 1);
+        Assert.Equal(MissionStatus.Open, (await c.Db.Missions.SingleAsync(m => m.Id == repeatable.Id)).Status);
+
+        await c.Board.PostAsync(1, 1, QuestKind.Guild, "One off", c.Coin.Code, 50);
+        var once = await c.Db.Missions.SingleAsync(m => m.Name == "One off");
+        await c.Board.ClaimAsync(1, once.Id.ToString(), 21);
+        await c.Board.SubmitAsync(1, once.Id.ToString(), 21);
+        await c.Board.ApproveAsync(1, once.Id.ToString(), 21, 1);
+        Assert.Equal(MissionStatus.Closed, (await c.Db.Missions.SingleAsync(m => m.Id == once.Id)).Status);
+    }
+
+    [Fact]
+    public async Task RequestRevision_SendsBack_ThenWorkerResubmits()
+    {
+        var c = await SeededAsync();
+        await FundAsync(c, 10, 100);
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "Escort", c.Coin.Code, 40);
+        var q = await c.Db.Missions.SingleAsync();
+        await c.Board.ClaimAsync(1, q.Id.ToString(), 20);
+        await c.Board.SubmitAsync(1, q.Id.ToString(), 20, "done");
+
+        Assert.False((await c.Board.RequestRevisionAsync(1, q.Id.ToString(), 10, note: "add detail")).IsError);
+        var p = await c.Db.MissionParticipants.SingleAsync(x => x.UserId == 20);
+        Assert.Equal(MissionParticipantStatus.RevisionRequested, p.Status);
+        Assert.Equal(1, p.RevisionCount);
+
+        Assert.False((await c.Board.SubmitAsync(1, q.Id.ToString(), 20, "fixed")).IsError);
+        Assert.Equal(MissionParticipantStatus.Submitted, (await c.Db.MissionParticipants.SingleAsync(x => x.UserId == 20)).Status);
+        Assert.Equal(0, await BalanceAsync(c.Db, 20, c.Coin.Id)); // not paid until confirmed
+    }
+
+    [Fact]
+    public async Task MaxActiveClaimsPerUser_BlocksSecondClaim()
+    {
+        var c = await SeededAsync();
+        var guild = await c.Db.Guilds.SingleAsync();
+        guild.Settings.MaxActiveClaimsPerUser = 1;
+        await FundAsync(c, 10, 100);
+        await c.Db.SaveChangesAsync();
+
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "A", c.Coin.Code, 10);
+        await c.Board.PostAsync(1, 10, QuestKind.Personal, "B", c.Coin.Code, 10);
+        var a = await c.Db.Missions.SingleAsync(m => m.Name == "A");
+        var b = await c.Db.Missions.SingleAsync(m => m.Name == "B");
+
+        Assert.False((await c.Board.ClaimAsync(1, a.Id.ToString(), 20)).IsError);
+        var second = await c.Board.ClaimAsync(1, b.Id.ToString(), 20);
+        Assert.True(second.IsError);
+        Assert.Contains("working on", second.Message);
+    }
+
+    [Fact]
+    public async Task MaxOpenQuestsPerPoster_BlocksPosting()
+    {
+        var c = await SeededAsync();
+        var guild = await c.Db.Guilds.SingleAsync();
+        guild.Settings.MaxOpenQuestsPerPoster = 1;
+        await FundAsync(c, 10, 100);
+        await c.Db.SaveChangesAsync();
+
+        Assert.False((await c.Board.PostAsync(1, 10, QuestKind.Personal, "A", c.Coin.Code, 10)).IsError);
+        var blocked = await c.Board.PostAsync(1, 10, QuestKind.Personal, "B", c.Coin.Code, 10);
+        Assert.True(blocked.IsError);
+        Assert.Contains("active quest", blocked.Message);
+    }
 }

@@ -86,8 +86,11 @@ public class BountyCommandService(BountyService bounties, MusterDbContext db)
     public Task<CommandResult> TakeAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
         => RunAsync(idRaw, id => bounties.TakeAsync(id, userId, ct), "Claimed. Complete it, then `/quest-submit`.");
 
-    public Task<CommandResult> SubmitAsync(ulong guildId, string idRaw, ulong userId, CancellationToken ct = default)
-        => RunAsync(idRaw, id => bounties.SubmitAsync(id, userId, ct), "Submitted. The owner will confirm completion with `/quest-confirm`.");
+    public Task<CommandResult> SubmitAsync(ulong guildId, string idRaw, ulong userId, string? note = null, CancellationToken ct = default)
+        => RunAsync(idRaw, id => bounties.SubmitAsync(id, userId, note, ct), "Submitted. The owner will confirm completion with `/quest-confirm`.");
+
+    public Task<CommandResult> RequestRevisionAsync(ulong guildId, string idRaw, ulong ownerId, string? note = null, CancellationToken ct = default)
+        => RunAsync(idRaw, id => bounties.RequestRevisionAsync(id, ownerId, note, ct), "Sent back to the worker to revise and resubmit.");
 
     public async Task<CommandResult> ConfirmAsync(ulong guildId, string idRaw, ulong ownerId, CancellationToken ct = default)
     {

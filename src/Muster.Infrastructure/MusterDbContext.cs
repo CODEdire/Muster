@@ -87,6 +87,10 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.GuildId, x.Status });
             e.HasMany(x => x.Participants).WithOne(x => x.Mission!).HasForeignKey(x => x.MissionId);
+            if (Database.IsRelational())
+            {
+                e.Property(x => x.RowVersion).IsRowVersion();
+            }
         });
 
         b.Entity<MissionParticipant>(e =>

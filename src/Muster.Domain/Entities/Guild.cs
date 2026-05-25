@@ -55,6 +55,31 @@ public class GuildSettings
     /// <summary>Whether a personal quest needs a final manager sign-off before payout, and who decides.</summary>
     public FinalApprovalMode FinalApprovalMode { get; set; } = FinalApprovalMode.OwnerChoice;
 
+    // --- Anti-staleness auto-resolve (hours; 0 = disabled) ---
+
+    /// <summary>Hours a personal quest may sit awaiting intake approval before <see cref="IntakeTimeoutAction"/> fires.</summary>
+    public int IntakeTimeoutHours { get; set; }
+    public StaleIntakeAction IntakeTimeoutAction { get; set; } = StaleIntakeAction.Decline;
+
+    /// <summary>Hours a claimed-but-unsubmitted quest may sit idle before the taker is released back to the board.</summary>
+    public int ClaimTimeoutHours { get; set; }
+
+    /// <summary>Hours a submitted quest may wait on its reviewer before <see cref="SubmissionTimeoutAction"/> fires.</summary>
+    public int SubmissionTimeoutHours { get; set; }
+    public StaleSubmissionAction SubmissionTimeoutAction { get; set; } = StaleSubmissionAction.Approve;
+
+    /// <summary>Hours a personal quest may await final sign-off before <see cref="FinalApprovalTimeoutAction"/> fires.</summary>
+    public int FinalApprovalTimeoutHours { get; set; }
+    public StaleFinalAction FinalApprovalTimeoutAction { get; set; } = StaleFinalAction.Approve;
+
+    // --- Player guardrails (0 = unlimited) ---
+
+    /// <summary>Cap on a poster's simultaneously non-terminal quests.</summary>
+    public int MaxOpenQuestsPerPoster { get; set; }
+
+    /// <summary>Cap on quests a single user may have claimed/submitted/in-revision at once.</summary>
+    public int MaxActiveClaimsPerUser { get; set; }
+
     /// <summary>Bonus POINTS minted to the completer of a guild quest, by difficulty tier (set by managers).</summary>
     public long TierSPoints { get; set; } = 100;
     public long TierAPoints { get; set; } = 75;

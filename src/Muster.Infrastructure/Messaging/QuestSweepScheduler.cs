@@ -29,15 +29,19 @@ public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<Ques
                 using var scope = scopeFactory.CreateScope();
                 var missions = scope.ServiceProvider.GetRequiredService<MissionService>();
                 var bounties = scope.ServiceProvider.GetRequiredService<BountyService>();
+                var maintenance = scope.ServiceProvider.GetRequiredService<QuestMaintenanceService>();
 
                 var now = DateTimeOffset.UtcNow;
                 var activated = await missions.ActivateScheduledAsync(now, stoppingToken);
                 var expired = await bounties.ExpireDueAsync(now, stoppingToken)       // personal quests (refund escrow)
                     + await missions.ExpireDueQuestsAsync(now, stoppingToken);        // guild quests (close, nothing to refund)
+                var resolved = await maintenance.SweepAsync(now, stoppingToken);      // anti-staleness auto-resolve
 
-                if (activated > 0 || expired > 0)
+                if (activated > 0 || expired > 0 || resolved > 0)
                 {
-                    logger.LogInformation("Quest sweep activated {Activated} and expired {Expired} quests.", activated, expired);
+                    logger.LogInformation(
+                        "Quest sweep activated {Activated}, expired {Expired}, auto-resolved {Resolved} quests.",
+                        activated, expired, resolved);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

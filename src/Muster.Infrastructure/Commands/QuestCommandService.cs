@@ -28,7 +28,8 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
     /// <summary>Create a guild quest minting a chosen spendable currency, with optional tier-based bonus POINTS.</summary>
     public async Task<CommandResult> PostGuildQuestAsync(
         ulong guildId, ulong actorId, string name, string description, string currencyCode, long reward,
-        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, QuestTier tier = QuestTier.None, CancellationToken ct = default)
+        DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null, QuestTier tier = QuestTier.None,
+        bool repeatable = false, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -57,12 +58,13 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
 
         var quest = await missions.CreateQuestAsync(
             guildId, name.Trim(), (description ?? string.Empty).Trim(), actorId,
-            currency.Id, reward, deadline, startsAt, bonusPoints, tier, ct: ct);
+            currency.Id, reward, deadline, startsAt, bonusPoints, tier, repeatable, ct: ct);
 
         var when = quest.Status == MissionStatus.Scheduled && startsAt is { } st ? $" — opens {FormatTime(st)}" : "";
         var until = deadline is { } d ? $" — closes {FormatTime(d)}" : "";
         var bonus = bonusPoints > 0 ? $" + **{bonusPoints} POINTS** (tier {tier})" : "";
-        return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {code}**{bonus} (minted on approval){when}{until}.");
+        var repeat = repeatable ? " · repeatable" : "";
+        return CommandResult.Ok($"Guild quest **{quest.Name}** posted — reward **{reward} {code}**{bonus} (minted on approval){when}{until}{repeat}.");
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)
@@ -79,11 +81,19 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
             return CommandResult.Ok("Quest claimed. Use `/quest-submit` when you've completed it.");
         });
 
-    public async Task<CommandResult> SubmitAsync(ulong guildId, string questIdRaw, ulong userId, CancellationToken ct = default)
+    public async Task<CommandResult> SubmitAsync(ulong guildId, string questIdRaw, ulong userId, string? note = null, CancellationToken ct = default)
         => await GuardedAsync(questIdRaw, async id =>
         {
-            await missions.SubmitAsync(id, userId, ct);
+            await missions.SubmitAsync(id, userId, note, ct);
             return CommandResult.Ok("Quest submitted for approval.");
+        });
+
+    public async Task<CommandResult> RequestRevisionAsync(
+        ulong guildId, string questIdRaw, ulong memberId, ulong reviewerId, string? note = null, CancellationToken ct = default)
+        => await GuardedAsync(questIdRaw, async id =>
+        {
+            await missions.RequestRevisionAsync(id, memberId, reviewerId, note, ct);
+            return CommandResult.Ok($"Sent <@{memberId}>'s submission back for revision.");
         });
 
     public async Task<CommandResult> ApproveAsync(
@@ -98,7 +108,7 @@ public class QuestCommandService(MissionService missions, MusterDbContext db)
         ulong guildId, string questIdRaw, ulong memberId, ulong reviewerId, CancellationToken ct = default)
         => await GuardedAsync(questIdRaw, async id =>
         {
-            await missions.RejectAsync(id, memberId, reviewerId, ct);
+            await missions.RejectAsync(id, memberId, reviewerId, ct: ct);
             return CommandResult.Ok($"Rejected <@{memberId}>'s submission.");
         });
 

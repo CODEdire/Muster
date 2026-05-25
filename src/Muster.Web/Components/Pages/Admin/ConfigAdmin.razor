@@ -97,6 +97,41 @@ else if (State == AccessState.Ready)
     </div>
 
     <div class="panel glass">
+        <h2>Quest automation &amp; limits</h2>
+        <p class="subtitle">Auto-resolve stuck quests after a number of hours (0 = off), and cap how many quests
+            a member can run at once (0 = unlimited).</p>
+        <EditForm class="form-grid" Model="Auto" FormName="quest-automation" OnValidSubmit="SaveAutomationAsync">
+            <input type="hidden" name="Auto.Submitted" value="1" />
+            <label>Intake timeout (hours) <InputNumber @bind-Value="Auto.IntakeHours" /></label>
+            <label>… then
+                <InputSelect @bind-Value="Auto.IntakeAction">
+                    <option value="@StaleIntakeAction.Decline">Decline (refund owner)</option>
+                    <option value="@StaleIntakeAction.Accept">Accept (open, no tier)</option>
+                </InputSelect>
+            </label>
+            <label>Idle-claim timeout (hours) <InputNumber @bind-Value="Auto.ClaimHours" /> <span class="subtitle">releases the taker</span></label>
+            <label>Submission review timeout (hours) <InputNumber @bind-Value="Auto.SubmissionHours" /></label>
+            <label>… then
+                <InputSelect @bind-Value="Auto.SubmissionAction">
+                    <option value="@StaleSubmissionAction.Approve">Approve (settle)</option>
+                    <option value="@StaleSubmissionAction.Reject">Send back for revision</option>
+                    <option value="@StaleSubmissionAction.Dispute">Escalate to arbitration (personal)</option>
+                </InputSelect>
+            </label>
+            <label>Final sign-off timeout (hours) <InputNumber @bind-Value="Auto.FinalHours" /></label>
+            <label>… then
+                <InputSelect @bind-Value="Auto.FinalAction">
+                    <option value="@StaleFinalAction.Approve">Pay completer</option>
+                    <option value="@StaleFinalAction.Refund">Refund owner</option>
+                </InputSelect>
+            </label>
+            <label>Max active quests per poster <InputNumber @bind-Value="Auto.MaxOpenPerPoster" /></label>
+            <label>Max active claims per member <InputNumber @bind-Value="Auto.MaxActiveClaims" /></label>
+            <div class="btn-row"><button type="submit">Save automation</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
         <h2>Quest difficulty tiers</h2>
         <p class="subtitle">Bonus POINTS minted to the completer of a guild quest (or a personal quest a
             manager notarizes) by difficulty. S is hardest.</p>
@@ -116,6 +151,7 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "toggle-role")] private ToggleInput Input { get; set; } = new();
     [SupplyParameterFromForm(FormName = "tier-points")] private TierInput Tier { get; set; } = new();
     [SupplyParameterFromForm(FormName = "quest-approval")] private ApprovalInput Approval { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "quest-automation")] private AutomationInput Auto { get; set; } = new();
 
     private RoleMappingView? _mapping;
 
@@ -139,6 +175,34 @@ else if (State == AccessState.Ready)
             Approval.IntakeApproval = settings.PersonalQuestIntakeApproval;
             Approval.FinalMode = settings.FinalApprovalMode;
         }
+
+        if (string.IsNullOrEmpty(Auto.Submitted))
+        {
+            Auto.IntakeHours = settings.IntakeTimeoutHours;
+            Auto.IntakeAction = settings.IntakeTimeoutAction;
+            Auto.ClaimHours = settings.ClaimTimeoutHours;
+            Auto.SubmissionHours = settings.SubmissionTimeoutHours;
+            Auto.SubmissionAction = settings.SubmissionTimeoutAction;
+            Auto.FinalHours = settings.FinalApprovalTimeoutHours;
+            Auto.FinalAction = settings.FinalApprovalTimeoutAction;
+            Auto.MaxOpenPerPoster = settings.MaxOpenQuestsPerPoster;
+            Auto.MaxActiveClaims = settings.MaxActiveClaimsPerUser;
+        }
+    }
+
+    private async Task SaveAutomationAsync()
+    {
+        var result = await Config.SetQuestAutomationAsync(
+            GuildId, Auto.IntakeHours, Auto.IntakeAction, Auto.ClaimHours,
+            Auto.SubmissionHours, Auto.SubmissionAction, Auto.FinalHours, Auto.FinalAction,
+            Auto.MaxOpenPerPoster, Auto.MaxActiveClaims);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questAutomation", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
     }
 
     private async Task SaveApprovalAsync()
@@ -224,5 +288,19 @@ else if (State == AccessState.Ready)
         public string? Submitted { get; set; }
         public bool IntakeApproval { get; set; }
         public FinalApprovalMode FinalMode { get; set; }
+    }
+
+    public class AutomationInput
+    {
+        public string? Submitted { get; set; }
+        public int IntakeHours { get; set; }
+        public StaleIntakeAction IntakeAction { get; set; }
+        public int ClaimHours { get; set; }
+        public int SubmissionHours { get; set; }
+        public StaleSubmissionAction SubmissionAction { get; set; }
+        public int FinalHours { get; set; }
+        public StaleFinalAction FinalAction { get; set; }
+        public int MaxOpenPerPoster { get; set; }
+        public int MaxActiveClaims { get; set; }
     }
 }

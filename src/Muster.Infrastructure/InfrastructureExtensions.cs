@@ -51,6 +51,9 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();
+        builder.Services.AddScoped<QuestMaintenanceService>();
+        // Default lifecycle notifier just logs; the bot host replaces it with a Discord-backed one.
+        builder.Services.AddScoped<IQuestNotifier, LoggingQuestNotifier>();
         // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
         // registered by the bot host alongside its IMusterPublisher implementation — not here.
 

@@ -49,6 +49,43 @@ public class ConfigCommandService(MusterDbContext db)
         return CommandResult.Ok("Quest approval settings updated.");
     }
 
+    /// <summary>Configure anti-staleness auto-resolve timeouts and per-player quest limits.</summary>
+    public async Task<CommandResult> SetQuestAutomationAsync(
+        ulong guildId,
+        int intakeHours, StaleIntakeAction intakeAction,
+        int claimHours,
+        int submissionHours, StaleSubmissionAction submissionAction,
+        int finalHours, StaleFinalAction finalAction,
+        int maxOpenPerPoster, int maxActiveClaims,
+        CancellationToken ct = default)
+    {
+        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (new[] { intakeHours, claimHours, submissionHours, finalHours, maxOpenPerPoster, maxActiveClaims }.Any(v => v < 0))
+        {
+            return CommandResult.Error("Timeouts and limits can't be negative (0 disables).");
+        }
+
+        var s = guild.Settings;
+        s.IntakeTimeoutHours = intakeHours;
+        s.IntakeTimeoutAction = intakeAction;
+        s.ClaimTimeoutHours = claimHours;
+        s.SubmissionTimeoutHours = submissionHours;
+        s.SubmissionTimeoutAction = submissionAction;
+        s.FinalApprovalTimeoutHours = finalHours;
+        s.FinalApprovalTimeoutAction = finalAction;
+        s.MaxOpenQuestsPerPoster = maxOpenPerPoster;
+        s.MaxActiveClaimsPerUser = maxActiveClaims;
+        guild.Settings = s; // reassign so the owned JSON column is detected as changed
+
+        await db.SaveChangesAsync(ct);
+        return CommandResult.Ok("Quest automation settings updated.");
+    }
+
     /// <summary>Set the bonus POINTS granted per guild-quest difficulty tier.</summary>
     public async Task<CommandResult> SetQuestTierPointsAsync(
         ulong guildId, long s, long a, long b, long c, long d, long e, CancellationToken ct = default)

@@ -2,10 +2,12 @@
 @inherits GuildMemberComponentBase
 @inject QuestBoardService Board
 @inject TimeZoneService TimeZones
+@inject AuditService Audit
 @inject MusterDbContext Db
 @using Muster.Domain.Entities
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services
 @using Microsoft.EntityFrameworkCore
 
 <PageTitle>Quest board — Muster</PageTitle>
@@ -80,8 +82,22 @@ else if (State == AccessState.Ready)
                     {
                         var actions = ActionsFor(q).ToList();
                         <tr>
-                            <td data-label="Quest">@q.Name<br /><span class="subtitle">@q.Description</span></td>
-                            <td data-label="Type">@(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")</td>
+                            <td data-label="Quest">
+                                @q.Name<br /><span class="subtitle">@q.Description</span>
+                                @{
+                                    var sub = q.Participants.FirstOrDefault(p => p.Status == MissionParticipantStatus.Submitted);
+                                    var rev = q.Participants.FirstOrDefault(p => p.Status == MissionParticipantStatus.RevisionRequested);
+                                }
+                                @if (sub?.Note is { Length: > 0 } sn)
+                                {
+                                    <br /><span class="subtitle">Note: @sn</span>
+                                }
+                                @if (rev?.ReviewNote is { Length: > 0 } rn)
+                                {
+                                    <br /><span class="subtitle">Revision requested: @rn</span>
+                                }
+                            </td>
+                            <td data-label="Type">@(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")@(q.IsRepeatable ? " · repeatable" : "")</td>
                             <td data-label="Reward">@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")@(q.Tier != QuestTier.None ? $" · {q.Tier} ({q.BonusPoints} pts)" : "")</td>
                             <td data-label="Status"><span class="badge status-@StatusClass(q)">@StatusLabel(q)</span></td>
                             <td data-label="Opens">@Local(q.ScheduledStart)</td>
@@ -91,6 +107,10 @@ else if (State == AccessState.Ready)
                                 {
                                     <EditForm class="row-actions" Model="this" FormName="@($"quest-{q.Id}")" OnValidSubmit="ActAsync">
                                         <input type="hidden" name="QuestId" value="@q.Id" />
+                                        @if (Noteable(actions))
+                                        {
+                                            <input name="Note" class="note-input" placeholder="note (optional)" />
+                                        }
                                         @foreach (var a in actions)
                                         {
                                             <button type="submit" name="Action" value="@a.Value" class="btn btn-sm @(a.Primary ? "" : "btn-ghost")">@a.Label</button>
@@ -180,6 +200,12 @@ else if (State == AccessState.Ready)
     private bool CanFinalize(Mission q) =>
         _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.PendingFinal;
 
+    /// <summary>Whether any available action benefits from an optional note (submit/revise/reject).</summary>
+    private static bool Noteable(IReadOnlyList<QuestAction> actions) =>
+        actions.Any(a => a.Value is "submit" or "revise"
+            || a.Value.StartsWith("revise:", StringComparison.Ordinal)
+            || a.Value.StartsWith("reject:", StringComparison.Ordinal));
+
     private string CurrentTab => Tab is "mine" or "history" ? Tab : "active";
     private string CurrentType => Type is "guild" or "personal" ? Type : "";
     private string CurrentSort => string.IsNullOrEmpty(Sort) ? "created" : Sort;
@@ -260,6 +286,8 @@ else if (State == AccessState.Ready)
             return;
         }
 
+        var note = form?["Note"].ToString() is { Length: > 0 } n ? n.Trim() : null;
+
         CommandResult result;
         if (action.StartsWith("approve:") && ulong.TryParse(action[8..], out var approveId))
         {
@@ -268,6 +296,10 @@ else if (State == AccessState.Ready)
         else if (action.StartsWith("reject:") && ulong.TryParse(action[7..], out var rejectId))
         {
             result = await Board.RejectAsync(GuildId, id, rejectId, UserId);
+        }
+        else if (action.StartsWith("revise:") && ulong.TryParse(action[7..], out var reviseId))
+        {
+            result = await Board.RequestRevisionAsync(GuildId, id, UserId, reviseId, note);
         }
         else if (action == "accept")
         {
@@ -279,10 +311,11 @@ else if (State == AccessState.Ready)
         {
             result = action switch
             {
-                "submit" => await Board.SubmitAsync(GuildId, id, UserId),
+                "submit" => await Board.SubmitAsync(GuildId, id, UserId, note),
                 "confirm" => await Board.ConfirmAsync(GuildId, id, UserId),
                 "cancel" => await Board.CancelAsync(GuildId, id, UserId),
                 "dispute" => await Board.DisputeAsync(GuildId, id, UserId),
+                "revise" => await Board.RequestRevisionAsync(GuildId, id, UserId, null, note),
                 "reject-intake" => await Board.RejectIntakeAsync(GuildId, id, UserId),
                 "finalize-pay" => await Board.FinalizeAsync(GuildId, id, true, UserId),
                 "finalize-refund" => await Board.FinalizeAsync(GuildId, id, false, UserId),
@@ -293,6 +326,11 @@ else if (State == AccessState.Ready)
         }
 
         Message = result.Message;
+        if (!result.IsError)
+        {
+            await Audit.RecordAsync(GuildId, UserId, $"quest.{action.Split(':')[0]}", id);
+        }
+
         await LoadAsync();
     }
 
@@ -319,6 +357,7 @@ else if (State == AccessState.Ready)
             if (submitters.Count > 0 && isPersonal && iAmOwner)
             {
                 yield return new("confirm", "Confirm & pay", true);
+                yield return new("revise", "Request revision", false);
                 yield return new("dispute", "Dispute", false);
             }
             else if (submitters.Count > 0 && !isPersonal && _isManager)
@@ -326,6 +365,7 @@ else if (State == AccessState.Ready)
                 foreach (var s in submitters)
                 {
                     yield return new($"approve:{s.UserId}", $"Approve {Name(s.UserId)}", true);
+                    yield return new($"revise:{s.UserId}", $"Revise {Name(s.UserId)}", false);
                     yield return new($"reject:{s.UserId}", $"Reject {Name(s.UserId)}", false);
                 }
             }

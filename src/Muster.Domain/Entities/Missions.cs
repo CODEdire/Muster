@@ -21,6 +21,12 @@ public class Mission
     public string Description { get; set; } = string.Empty;
     public MissionStatus Status { get; set; } = MissionStatus.Draft;
 
+    /// <summary>When the quest last changed status — drives anti-staleness auto-resolve timeouts.</summary>
+    public DateTimeOffset StatusChangedAt { get; set; }
+
+    /// <summary>Optimistic-concurrency token so two actors can't both settle the same quest.</summary>
+    public byte[]? RowVersion { get; set; }
+
     public ulong CreatedBy { get; set; }
 
     /// <summary>Owner: creator for guild quests; the bounty poster for player quests (escrow source/refundee).</summary>
@@ -65,9 +71,19 @@ public class MissionParticipant
     public ulong UserId { get; set; }
 
     public MissionParticipantStatus Status { get; set; }
+    public DateTimeOffset? ClaimedAt { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
     public ulong? ReviewedBy { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
+
+    /// <summary>The worker's submission note.</summary>
+    public string? Note { get; set; }
+
+    /// <summary>The reviewer's reason when sending back for revision or rejecting.</summary>
+    public string? ReviewNote { get; set; }
+
+    /// <summary>How many times this submission has been sent back for revision.</summary>
+    public int RevisionCount { get; set; }
 
     public Mission? Mission { get; set; }
 }

@@ -89,10 +89,45 @@ public enum MissionParticipantStatus
     Submitted = 1,
     Approved = 2,
     Rejected = 3,
+    /// <summary>A reviewer sent the submission back to the same worker to revise and resubmit.</summary>
+    RevisionRequested = 4,
     // Event-op lifecycle
     SignedUp = 10,
     Attended = 11,
     NoShow = 12,
+}
+
+/// <summary>Outcome applied when a personal quest sits in intake (PendingApproval) past the guild's timeout.</summary>
+public enum StaleIntakeAction
+{
+    /// <summary>Reject at intake and refund the owner.</summary>
+    Decline = 0,
+
+    /// <summary>Accept and open the quest with no difficulty tier (no bonus points).</summary>
+    Accept = 1,
+}
+
+/// <summary>Outcome applied when a submitted quest waits on its reviewer past the guild's timeout.</summary>
+public enum StaleSubmissionAction
+{
+    /// <summary>Settle in the completer's favour (pay/mint, respecting any final-approval requirement).</summary>
+    Approve = 0,
+
+    /// <summary>Send the submission back to the worker for revision.</summary>
+    Reject = 1,
+
+    /// <summary>Escalate to manager arbitration (personal quests only).</summary>
+    Dispute = 2,
+}
+
+/// <summary>Outcome applied when a personal quest awaits final sign-off (PendingFinal) past the guild's timeout.</summary>
+public enum StaleFinalAction
+{
+    /// <summary>Pay the completer.</summary>
+    Approve = 0,
+
+    /// <summary>Refund the owner.</summary>
+    Refund = 1,
 }
 
 public enum SeasonStatus

@@ -11,6 +11,12 @@ namespace Muster.Infrastructure.Services;
 /// </summary>
 public class MissionService(MusterDbContext db, AwardService awards, GuildAuthorizationService auth)
 {
+    private static void SetStatus(Mission mission, MissionStatus status)
+    {
+        mission.Status = status;
+        mission.StatusChangedAt = DateTimeOffset.UtcNow;
+    }
+
     public async Task<Mission> CreateQuestAsync(
         ulong guildId, string name, string description, ulong createdBy,
         Guid rewardCurrencyId, long rewardAmount, DateTimeOffset? deadline = null, DateTimeOffset? startsAt = null,
@@ -26,6 +32,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             Name = name,
             Description = description,
             Status = scheduled ? MissionStatus.Scheduled : MissionStatus.Open,
+            StatusChangedAt = DateTimeOffset.UtcNow,
             CreatedBy = createdBy,
             OwnerId = createdBy,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -97,7 +104,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
 
         foreach (var mission in due)
         {
-            mission.Status = MissionStatus.Open;
+            SetStatus(mission, MissionStatus.Open);
         }
 
         await db.SaveChangesAsync(ct);
@@ -121,7 +128,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         var expired = due.Where(m => m.Participants.All(p => p.Status != MissionParticipantStatus.Submitted)).ToList();
         foreach (var mission in expired)
         {
-            mission.Status = MissionStatus.Expired;
+            SetStatus(mission, MissionStatus.Expired);
         }
 
         await db.SaveChangesAsync(ct);
@@ -139,7 +146,7 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             throw new InvalidOperationException("This quest can't be cancelled in its current state.");
         }
 
-        mission.Status = MissionStatus.Cancelled;
+        SetStatus(mission, MissionStatus.Cancelled);
         await db.SaveChangesAsync(ct);
     }
 
@@ -176,17 +183,24 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
             MissionId = missionId,
             UserId = userId,
             Status = MissionParticipantStatus.Claimed,
+            ClaimedAt = DateTimeOffset.UtcNow,
         };
         db.MissionParticipants.Add(participant);
         await db.SaveChangesAsync(ct);
         return participant;
     }
 
-    public async Task SubmitAsync(Guid missionId, ulong userId, CancellationToken ct = default)
+    public async Task SubmitAsync(Guid missionId, ulong userId, string? note = null, CancellationToken ct = default)
     {
         var participant = await GetParticipantAsync(missionId, userId, ct);
+        if (participant.Status is not (MissionParticipantStatus.Claimed or MissionParticipantStatus.RevisionRequested))
+        {
+            throw new InvalidOperationException("This quest isn't claimed by you, or has already been submitted.");
+        }
+
         participant.Status = MissionParticipantStatus.Submitted;
         participant.SubmittedAt = DateTimeOffset.UtcNow;
+        participant.Note = note;
         await db.SaveChangesAsync(ct);
     }
 
@@ -200,6 +214,14 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         participant.Status = MissionParticipantStatus.Approved;
         participant.ReviewedBy = reviewerId;
         participant.ReviewedAt = DateTimeOffset.UtcNow;
+
+        // A non-repeatable guild quest is single-completion: close it once approved. A repeatable one
+        // stays open so other members (or the same one again) can complete it for the reward.
+        if (!mission.IsRepeatable)
+        {
+            SetStatus(mission, MissionStatus.Closed);
+        }
+
         await db.SaveChangesAsync(ct);
 
         await awards.AwardAsync(
@@ -216,12 +238,31 @@ public class MissionService(MusterDbContext db, AwardService awards, GuildAuthor
         }
     }
 
-    public async Task RejectAsync(Guid missionId, ulong userId, ulong reviewerId, CancellationToken ct = default)
+    /// <summary>Final reject of a guild-quest submission (no reward). The quest stays open for another taker.</summary>
+    public async Task RejectAsync(Guid missionId, ulong userId, ulong reviewerId, string? note = null, CancellationToken ct = default)
     {
         var participant = await GetParticipantAsync(missionId, userId, ct);
         participant.Status = MissionParticipantStatus.Rejected;
         participant.ReviewedBy = reviewerId;
         participant.ReviewedAt = DateTimeOffset.UtcNow;
+        participant.ReviewNote = note;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Send a guild-quest submission back to the worker to revise and resubmit.</summary>
+    public async Task RequestRevisionAsync(Guid missionId, ulong userId, ulong reviewerId, string? note = null, CancellationToken ct = default)
+    {
+        var participant = await GetParticipantAsync(missionId, userId, ct);
+        if (participant.Status != MissionParticipantStatus.Submitted)
+        {
+            throw new InvalidOperationException("Only a submitted quest can be sent back for revision.");
+        }
+
+        participant.Status = MissionParticipantStatus.RevisionRequested;
+        participant.ReviewedBy = reviewerId;
+        participant.ReviewedAt = DateTimeOffset.UtcNow;
+        participant.ReviewNote = note;
+        participant.RevisionCount++;
         await db.SaveChangesAsync(ct);
     }
 
