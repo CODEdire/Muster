@@ -123,3 +123,32 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [ ] Peer-to-peer kudos with budgets
 - [ ] Anti-gaming controls (per-period caps, cooldowns)
 - [ ] Privileged member-sync intent (full roster)
+
+## Quest system — remaining work
+
+The quest engine is complete (lifecycle, intake/final approval, auto-resolve, tiers/points, capacity,
+revisions, edit, optimistic concurrency, audits, player limits) with event/notification seams in place.
+What's left, to revisit:
+
+### Wiring the seams (highest value)
+- [ ] Discord notification delivery — implement `IQuestNotifier` to DM the right person per lifecycle
+      event (currently a logging stub)
+- [ ] Formatted quest board post — post/edit/close the Discord message on create + state changes
+      (the `Created` event and `Mission.ChannelId`/`MessageId` are reserved for this)
+- [ ] External reward connector — implement `IQuestRewardSink` so the CurrencyService / loot system
+      resolves rewards on `QuestCompletion` (currently a logging stub)
+
+### Deferred features
+- [ ] Personal-quest multi-taker — needs N× escrow and per-participant settlement/dispute/final state
+      (personal quests are single-taker for now; guild quests already support capacity)
+- [ ] Editing a personal quest's reward (escrowed — cancel/repost only today)
+
+### Polish / consistency
+- [ ] Apply the gateway-handler scope-safety helper to the other singleton handlers
+      (`MemberLifecycleHandler`, `MessageActivityHandler`, `MusterReactionHandler`, `RoleLifecycleHandler`,
+      `ScheduledEventHandler`, `VoiceAttendanceHandler`)
+- [ ] Clear "out of revisions" message on the personal revision-cap path (guild path already has one)
+
+### Verification
+- [ ] Run `BackfillGuildSettings` migration on existing databases before using the settings pages
+- [ ] Live run-through of the web board flows and slash commands (only unit tests + boot so far)
