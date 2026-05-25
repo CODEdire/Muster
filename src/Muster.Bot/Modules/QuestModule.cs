@@ -34,7 +34,7 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                 .PostParsedAsync(guildId, Context.User.Id, type, name, currency, reward, description, starts, expires, tier, requireFinalApproval, repeatable, (int)Math.Max(1, slots)),
             auditAction: "quest.post");
 
-    [SlashCommand("quest-edit", "Edit a quest before anyone claims it (owner for personal, manager for guild). Blank fields keep their value.")]
+    [SlashCommand("quest-edit", "Edit a quest before anyone claims it (owner for personal, manager for guild).")]
     public Task<Reply> EditAsync(
         [SlashCommandParameter(Name = "quest", Description = "Quest", AutocompleteProviderType = typeof(QuestAutocompleteProvider))] string quest,
         [SlashCommandParameter(Name = "name", Description = "New name")] string name = "",
