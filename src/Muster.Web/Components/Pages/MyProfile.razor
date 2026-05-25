@@ -29,12 +29,12 @@ else if (State == AccessState.Ready && _detail is not null)
     <div class="panel glass">
         <h2>Time zone</h2>
         <p class="subtitle">Used to read the start/expiry dates you enter on the quest board. Leave blank to use the server's zone (<strong>@_guildZone</strong>).</p>
-        <EditForm class="form-grid" Model="Tz" FormName="set-timezone" OnValidSubmit="SaveTimeZoneAsync">
+        <EditForm class="form-grid" Model="this" FormName="set-timezone" OnValidSubmit="SaveTimeZoneAsync">
             <label>IANA time zone
-                <InputText @bind-Value="Tz.ZoneId" id="tz-input" list="tz-options" placeholder="e.g. America/New_York" />
+                <InputText @bind-Value="ZoneInput" id="tz-input" list="tz-options" placeholder="e.g. America/New_York" />
             </label>
             <div class="btn-row">
-                <button type="button" id="tz-detect" class="btn btn-ghost">Use my browser zone</button>
+                <button type="button" class="btn btn-ghost" onclick="musterUseBrowserTimeZone()">Use my browser zone</button>
                 <button type="submit">Save</button>
             </div>
         </EditForm>
@@ -44,21 +44,11 @@ else if (State == AccessState.Ready && _detail is not null)
                 <option value="@z"></option>
             }
         </datalist>
-        <script>
-            (function () {
-                var btn = document.getElementById('tz-detect');
-                var input = document.getElementById('tz-input');
-                if (!btn || !input) return;
-                var detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                btn.addEventListener('click', function () { if (detected) input.value = detected; });
-                if (!input.value && detected) { input.placeholder = detected + ' (your browser)'; }
-            })();
-        </script>
     </div>
 }
 
 @code {
-    [SupplyParameterFromForm(FormName = "set-timezone")] private TzInput Tz { get; set; } = new();
+    [SupplyParameterFromForm] public string? ZoneInput { get; set; }
 
     private MemberDetailView? _detail;
     private string _guildZone = TimeZoneService.Utc;
@@ -75,20 +65,15 @@ else if (State == AccessState.Ready && _detail is not null)
         _guildZone = await Db.Guilds.Where(g => g.Id == GuildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync() ?? TimeZoneService.Utc;
         // Prefill from the stored pref on GET only. On a form post the value is already bound from the
         // submission, so leave it — overwriting here would clobber what the user just typed.
-        Tz.ZoneId ??= await Db.Users.Where(u => u.Id == UserId).Select(u => u.TimeZoneId).FirstOrDefaultAsync();
+        ZoneInput ??= await Db.Users.Where(u => u.Id == UserId).Select(u => u.TimeZoneId).FirstOrDefaultAsync();
     }
 
     private async Task SaveTimeZoneAsync()
     {
-        var (ok, error) = await TimeZones.SetUserZoneAsync(UserId, Tz.ZoneId);
+        var (ok, error) = await TimeZones.SetUserZoneAsync(UserId, ZoneInput);
         Message = ok
-            ? (string.IsNullOrWhiteSpace(Tz.ZoneId) ? "Time zone cleared — using the server's zone." : $"Time zone set to {Tz.ZoneId.Trim()}.")
+            ? (string.IsNullOrWhiteSpace(ZoneInput) ? "Time zone cleared — using the server's zone." : $"Time zone set to {ZoneInput.Trim()}.")
             : error;
         await LoadAsync();
-    }
-
-    public class TzInput
-    {
-        public string? ZoneId { get; set; }
     }
 }
