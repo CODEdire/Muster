@@ -73,7 +73,9 @@ else if (State == AccessState.Ready && _detail is not null)
     {
         _detail = await Members.GetAsync(GuildId, UserId);
         _guildZone = await Db.Guilds.Where(g => g.Id == GuildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync() ?? TimeZoneService.Utc;
-        Tz.ZoneId = await Db.Users.Where(u => u.Id == UserId).Select(u => u.TimeZoneId).FirstOrDefaultAsync() ?? "";
+        // Prefill from the stored pref on GET only. On a form post the value is already bound from the
+        // submission, so leave it — overwriting here would clobber what the user just typed.
+        Tz.ZoneId ??= await Db.Users.Where(u => u.Id == UserId).Select(u => u.TimeZoneId).FirstOrDefaultAsync();
     }
 
     private async Task SaveTimeZoneAsync()
