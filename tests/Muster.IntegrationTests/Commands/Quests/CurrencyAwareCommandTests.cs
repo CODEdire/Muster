@@ -7,11 +7,10 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
-using Muster.Infrastructure.Commands.Ledger;
 using Muster.Infrastructure.Commands.Quests;
 
 namespace Muster.IntegrationTests;
@@ -58,34 +57,9 @@ public class CurrencyAwareCommandTests
 
     private static QuestCommandHarness NewBoard(MusterDbContext db)
     {
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         var quests = new QuestService(db, awards, auth, new RecordingMessageBus());
         return new QuestCommandHarness(db, auth, quests, new QuestReadService(db));
-    }
-
-    [Fact]
-    public async Task Award_ByCurrency_CreditsChosenCurrency()
-    {
-        using var db = await SeededAsync();
-        var sut = new AwardCommandService(new ManualAwardService(db, new CurrencyService(db, new NullCurrencyEventSink())));
-
-        var result = await sut.AwardCurrencyAsync(1, actorId: 1, memberId: 10, "COIN", 25, "loot");
-
-        Assert.False(result.IsError);
-        var coin = await db.Currencies.SingleAsync(c => c.Code == "COIN");
-        var balance = await db.LedgerEntries
-            .Where(e => e.UserId == 10 && e.CurrencyId == coin.Id)
-            .SumAsync(e => (long?)e.Amount) ?? 0;
-        Assert.Equal(25, balance);
-    }
-
-    [Fact]
-    public async Task Award_UnknownCurrency_Errors()
-    {
-        using var db = await SeededAsync();
-        var sut = new AwardCommandService(new ManualAwardService(db, new CurrencyService(db, new NullCurrencyEventSink())));
-
-        Assert.True((await sut.AwardCurrencyAsync(1, 1, 10, "NOPE", 25, "loot")).IsError);
     }
 }

@@ -27,7 +27,6 @@ snowflake ids are stored as `ulong` (mapped to `decimal(20,0)` on SQL Server).
 | `EventAttendee` | A member's state on an event (SignedUp/Attended/NoShow). |
 | `ReactionMuster` | A react-to-check-in message. Multi-emoji (distinct responses), optional capacity (first N). |
 | `ReactionParticipant` | A member's reaction on a muster. |
-| `ManualAward` | Admin manual or bulk award for off-platform contributions. |
 
 ## Scoring, currency & seasons
 
@@ -37,8 +36,8 @@ The reward system is a **multi-currency, append-only ledger**.
 | --- | --- |
 | `Season` | A scoring period. Points leaderboards are scoped to a season. |
 | `Currency` | A guild currency. `POINTS` is seeded, seasonal, drives leaderboards. Spendable currencies (e.g. `COIN`) persist across seasons and are mint/spendable by connectors. |
-| `LedgerEntry` | **Single source of truth.** Append-only signed `Amount` tagged with `CurrencyId`, optional `SeasonId`, `SourceType` and `SourceId`. |
-| `Wallet` | Cached balance per `(guild, user, currency, season)`; rebuildable from the ledger. |
+| `CurrencyLedgerEntry` | **Transaction source of truth** (table `CurrencyLedgerEntries`). Append-only signed `Amount` tagged with `CurrencyId`, optional `SeasonId`, `SourceType` (`CurrencyLedgerSource`) and `SourceId`. Admin awards land here as `ManualAward`-source rows — there's no separate award table (the actor is in the audit trail). History beyond `GuildSettings.LedgerRetentionDays` is compacted into per-scope `Checkpoint` carry-forward rows (see Currency.md). |
+| `Wallet` | Per `(guild, user, currency, season)`. `Balance` is a **display cache** (cheap reads), kept in lock-step with the ledger and rebuildable; transaction decisions sum the ledger, not the cache. Also holds `LastSyncedAt` for connector reconciliation. |
 
 ### Why a ledger
 

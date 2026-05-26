@@ -34,7 +34,7 @@ public static class QuestEmbedRenderer
         var reward = $"🪙 {q.RewardAmount} {q.RewardCode}";
         if (q.Tier != QuestTier.None && q.BonusPoints > 0)
         {
-            reward += $"\n✨ +{q.BonusPoints} {Currencies.PointsCode}";
+            reward += $"\n✨ +{q.BonusPoints} {CurrencyCodes.PointsCode}";
         }
 
         fields.Add(new() { Name = "Reward", Value = reward, Inline = false });
@@ -169,7 +169,7 @@ public static class QuestEmbedRenderer
     private static string? OutcomeDetail(QuestDetailView q, QuestLifecycleMoment m) => m switch
     {
         QuestLifecycleMoment.Settled => $"You earned 🪙 {q.RewardAmount} {q.RewardCode}"
-            + (q.Tier != QuestTier.None && q.BonusPoints > 0 ? $" and ✨ +{q.BonusPoints} {Currencies.PointsCode}" : "") + ".",
+            + (q.Tier != QuestTier.None && q.BonusPoints > 0 ? $" and ✨ +{q.BonusPoints} {CurrencyCodes.PointsCode}" : "") + ".",
         QuestLifecycleMoment.Rejected => "No reward this time — see the reviewer's note on the board.",
         QuestLifecycleMoment.RejectedAtIntake => "Your escrow has been refunded.",
         QuestLifecycleMoment.Refunded => "Your escrowed reward has been returned.",

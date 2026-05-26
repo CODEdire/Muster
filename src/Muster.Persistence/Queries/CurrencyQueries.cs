@@ -4,9 +4,25 @@ using Muster.Domain.Entities;
 
 namespace Muster.Persistence.Queries;
 
+/// <summary>A currency projected for the public API / lists (mode flattened to a string).</summary>
+public record CurrencySummary(Guid Id, string Code, string Name, string Mode, bool IsSeasonal, bool IsSpendable);
+
 /// <summary>Queries over guild currencies.</summary>
 public static class CurrencyQueries
 {
+    /// <summary>A guild's currencies (code-ordered) projected for the public API.</summary>
+    public static async Task<List<CurrencySummary>> ListCurrencySummariesAsync(
+        this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+    {
+        var rows = await db.Currencies
+            .Where(c => c.GuildId == guildId)
+            .OrderBy(c => c.Code)
+            .Select(c => new { c.Id, c.Code, c.Name, c.Mode, c.IsSeasonal, c.IsSpendable })
+            .ToListAsync(ct);
+
+        return rows.Select(c => new CurrencySummary(c.Id, c.Code, c.Name, c.Mode.ToString(), c.IsSeasonal, c.IsSpendable)).ToList();
+    }
+
     /// <summary>Find a currency by its (case-insensitive) code within a guild.</summary>
     public static Task<Currency?> FindCurrencyAsync(this MusterDbContext db, ulong guildId, string? code, CancellationToken ct = default)
     {
@@ -20,7 +36,7 @@ public static class CurrencyQueries
 
     /// <summary>The guild's POINTS currency, or null if it isn't provisioned.</summary>
     public static Task<Currency?> FindPointsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
-        => db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == Currencies.PointsCode, ct);
+        => db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == CurrencyCodes.PointsCode, ct);
 
     /// <summary>All currencies in a guild.</summary>
     public static Task<List<Currency>> ListCurrenciesAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)

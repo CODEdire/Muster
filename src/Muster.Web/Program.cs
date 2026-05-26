@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
+builder.AddMusterConnectorProtection(); // Data Protection for connector secrets (web reads/writes them)
 builder.AddMusterMessaging();
 
 // Blazor static SSR (no interactive/SignalR render mode).

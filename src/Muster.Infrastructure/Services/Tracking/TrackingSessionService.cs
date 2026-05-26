@@ -2,7 +2,7 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Infrastructure.Services.Tracking;
@@ -155,7 +155,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
             await awards.AwardPointsAsync(
                 session.GuildId, attendance.UserId, attendance.TotalMinutes * rate,
-                LedgerSourceType.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
+                CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
                 "Voice attendance", ct);
         }
 

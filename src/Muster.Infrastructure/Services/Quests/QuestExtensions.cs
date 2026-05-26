@@ -1,7 +1,7 @@
 using Muster.Contracts;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Wolverine;
 
 namespace Muster.Infrastructure.Services.Quests;

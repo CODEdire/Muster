@@ -43,8 +43,3 @@ public class ReactionParticipantConfiguration : IEntityTypeConfiguration<Reactio
         e.HasIndex(x => new { x.MusterId, x.UserId }).IsUnique();
     }
 }
-
-public class ManualAwardConfiguration : IEntityTypeConfiguration<ManualAward>
-{
-    public void Configure(EntityTypeBuilder<ManualAward> e) => e.HasKey(x => x.Id);
-}

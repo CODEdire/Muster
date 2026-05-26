@@ -127,7 +127,7 @@ public enum SeasonStatus
 }
 
 /// <summary>The participation source that produced a ledger entry.</summary>
-public enum LedgerSourceType
+public enum CurrencyLedgerSource
 {
     TrackingSession = 0,
     Quest = 1,
@@ -135,6 +135,9 @@ public enum LedgerSourceType
     ManualAward = 3,
     Connector = 4,
     Event = 5,
+    Transfer = 6, // member-to-member move (two legs share one source key with :out/:in suffixes)
+    Adjustment = 7, // staff balance correction (mint/adjust outside the connector loop)
+    Checkpoint = 8, // carry-forward opening balance written when pruning history (sum of the pruned rows)
 }
 
 public enum AppRole
@@ -155,4 +158,54 @@ public enum CurrencyMode
 
     /// <summary>Split authority: Muster mints from participation, external owns spend; reconciled via events.</summary>
     Hybrid = 2,
+}
+
+/// <summary>How a currency connector authenticates its outbound HTTP calls. OAuth is a future scheme.</summary>
+public enum ConnectorAuthScheme
+{
+    None = 0,
+    Basic = 1,   // username + password
+    Bearer = 2,  // static token (OAuth client-credentials is a future connector)
+    ApiKey = 3,  // a key in a configurable header or query param
+}
+
+/// <summary>HMAC algorithm used to sign the request body (orthogonal to <see cref="ConnectorAuthScheme"/>).</summary>
+public enum ConnectorSignAlgorithm
+{
+    None = 0,
+    HmacSha256 = 1,
+    HmacSha512 = 2,
+}
+
+/// <summary>Where an API-key secret is placed on the request.</summary>
+public enum ApiKeyLocation
+{
+    Header = 0,
+    Query = 1,
+}
+
+/// <summary>How to read a value (e.g. an updated balance) out of a connector action's HTTP response.</summary>
+public enum ConnectorResponseFormat
+{
+    /// <summary>Ignore the response body (just check the status code).</summary>
+    None = 0,
+
+    /// <summary>Parse JSON and read the value at the configured dotted path.</summary>
+    Json = 1,
+
+    /// <summary>The whole (trimmed) response body is the value.</summary>
+    Text = 2,
+
+    /// <summary>Apply a regex (with one capture group) to the body text and parse the captured number.</summary>
+    Regex = 3,
+}
+
+/// <summary>How a connector action encodes its request body.</summary>
+public enum ConnectorBodyFormat
+{
+    /// <summary>JSON (<c>application/json</c>) — the body template is JSON with quoted tokens.</summary>
+    Json = 0,
+
+    /// <summary>Form (<c>application/x-www-form-urlencoded</c>) — the body template is <c>a=$userId&amp;b=$amount</c>.</summary>
+    Form = 1,
 }

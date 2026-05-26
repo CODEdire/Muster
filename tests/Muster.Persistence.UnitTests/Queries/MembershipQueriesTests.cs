@@ -46,6 +46,24 @@ public class MembershipQueriesTests
     }
 
     [Fact]
+    public async Task CurrencyDmOptOut_RoundTrips_AndDefaultsOff()
+    {
+        using var sqlite = new SqliteDb();
+        var db = sqlite.Context;
+        db.Users.Add(new DiscordUser { Id = 10, Username = "u" });
+        await db.SaveChangesAsync();
+
+        Assert.False(await db.CurrencyDmOptOutAsync(10));          // default = receipts on
+        Assert.False(await db.CurrencyDmOptOutAsync(404));         // unknown user → default
+
+        Assert.True(await db.SetCurrencyDmOptOutAsync(10, true));  // opt out
+        Assert.True(await db.CurrencyDmOptOutAsync(10));
+
+        Assert.False(await db.SetCurrencyDmOptOutAsync(10, false)); // back on
+        Assert.False(await db.CurrencyDmOptOutAsync(10));
+    }
+
+    [Fact]
     public async Task RolePermissionsAsync_ReturnsBitmasksForTheRequestedRolesOnly()
     {
         using var sqlite = new SqliteDb();

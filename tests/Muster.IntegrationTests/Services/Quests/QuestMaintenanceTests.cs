@@ -7,7 +7,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
@@ -33,7 +33,7 @@ public class QuestMaintenanceTests
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
 
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         var quests = new QuestService(db, awards, auth, new RecordingMessageBus());
         var maint = new QuestMaintenanceService(db, quests, new AuditService(db),
@@ -42,10 +42,10 @@ public class QuestMaintenanceTests
     }
 
     private static Task FundAsync(Ctx c, ulong userId, long amount)
-        => new CurrencyService(c.Db, new NullCurrencyEventSink()).AwardAsync(1, userId, c.Coin.Id, amount, LedgerSourceType.Connector, null, "seed");
+        => new CurrencyService(c.Db, new RecordingMessageBus()).AwardAsync(1, userId, c.Coin.Id, amount, CurrencyLedgerSource.Connector, null, "seed");
 
     private static async Task<long> BalanceAsync(MusterDbContext db, ulong userId, Guid currencyId)
-        => await db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
+        => await db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
             .SumAsync(e => (long?)e.Amount) ?? 0;
 
     private static async Task BackdateStatusAsync(Ctx c, Guid missionId, TimeSpan ago)

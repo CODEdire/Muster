@@ -972,3 +972,40 @@ img.avatar-sm { object-fit: cover; }
 @media (prefers-reduced-transparency: reduce) {
     .glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+/* Panel header with an action on the right (e.g. "+ New currency"). */
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.panel-head h2 { margin: 0; }
+
+/* CSS-only tabs (works under static SSR — no JS). Radios drive which panel shows; all inputs stay in
+   the DOM so the single form still posts every field regardless of the visible tab. */
+.tabs > input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.tabs > label {
+    display: inline-block; padding: .45rem .9rem; cursor: pointer;
+    border-bottom: 2px solid transparent; opacity: .7;
+}
+.tabs > input[type="radio"]:checked + label { border-bottom-color: var(--accent); opacity: 1; font-weight: 600; }
+.tabs .tab-panels { padding-top: 1rem; }
+.tabs .tab-panel { display: none; }
+#ct-base:checked    ~ .tab-panels #tp-base,
+#ct-auth:checked    ~ .tab-panels #tp-auth,
+#ct-sec:checked     ~ .tab-panels #tp-sec,
+#ct-credit:checked  ~ .tab-panels #tp-credit,
+#ct-debit:checked   ~ .tab-panels #tp-debit,
+#ct-balance:checked ~ .tab-panels #tp-balance { display: block; }
+
+/* Stacked field: label on its own line, full-width control below (for the JSON body editors). */
+.field-block { display: flex; flex-direction: column; gap: .35rem; margin-top: .75rem; }
+.field-block > label { font-weight: 600; }
+.field-block textarea.json-editor {
+    width: 100%; min-height: 160px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85rem;
+}
+/* CodeMirror JSON editor sizing/skin to match the glass panels. */
+.field-block .CodeMirror {
+    height: auto; border: 1px solid var(--border, rgba(255,255,255,.15)); border-radius: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem;
+}
+
+/* Member "Sync balances" row under the wallet panel. */
+.balance-sync-row { display: flex; align-items: center; gap: .6rem; margin: .25rem 0 1rem; flex-wrap: wrap; }

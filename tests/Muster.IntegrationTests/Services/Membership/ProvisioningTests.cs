@@ -4,7 +4,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.IntegrationTests;
@@ -40,13 +40,16 @@ public class ProvisioningTests
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
         var season = await db.Seasons.SingleAsync(s => s.Status == SeasonStatus.Active);
 
-        db.LedgerEntries.AddRange(
-            new LedgerEntry { GuildId = 1, UserId = 10, CurrencyId = points.Id, SeasonId = season.Id, Amount = 30, SourceType = LedgerSourceType.ManualAward },
-            new LedgerEntry { GuildId = 1, UserId = 10, CurrencyId = points.Id, SeasonId = season.Id, Amount = 20, SourceType = LedgerSourceType.Muster },
-            new LedgerEntry { GuildId = 1, UserId = 99, CurrencyId = points.Id, SeasonId = season.Id, Amount = 40, SourceType = LedgerSourceType.Quest });
+        db.CurrencyLedgerEntries.AddRange(
+            new CurrencyLedgerEntry { GuildId = 1, UserId = 10, CurrencyId = points.Id, SeasonId = season.Id, Amount = 30, SourceType = CurrencyLedgerSource.ManualAward },
+            new CurrencyLedgerEntry { GuildId = 1, UserId = 10, CurrencyId = points.Id, SeasonId = season.Id, Amount = 20, SourceType = CurrencyLedgerSource.Muster },
+            new CurrencyLedgerEntry { GuildId = 1, UserId = 99, CurrencyId = points.Id, SeasonId = season.Id, Amount = 40, SourceType = CurrencyLedgerSource.Quest });
         await db.SaveChangesAsync();
 
-        var wallets = await new ScoreQueryService(db).GetWalletsAsync(1, userId: 10);
+        // GetWallets is a display read off the wallet cache; build the cache from the ledger first.
+        await new CurrencyService(db, new RecordingMessageBus()).RebuildWalletsAsync(1);
+
+        var wallets = await new CurrencyReadService(db).GetWalletsAsync(1, userId: 10);
 
         var pointsWallet = Assert.Single(wallets, w => w.CurrencyCode == "POINTS");
         Assert.True(pointsWallet.IsSeasonal);

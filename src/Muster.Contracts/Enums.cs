@@ -23,3 +23,23 @@ public enum QuestTier
     A = 5,
     S = 6,
 }
+
+/// <summary>A point in a quest's lifecycle worth telling someone about (Discord DM/post, external API, etc.).</summary>
+public enum QuestLifecycleMoment
+{
+    Created,
+    PendingApproval,
+    Accepted,
+    RejectedAtIntake,
+    Claimed,
+    Submitted,
+    RevisionRequested,
+    AwaitingFinalApproval,
+    Settled,
+    Refunded,
+    Disputed,
+    Expired,
+    Released,
+    Reopened,
+    Rejected, // appended (not reordered) — the SQL queue serialises this enum by ordinal
+}

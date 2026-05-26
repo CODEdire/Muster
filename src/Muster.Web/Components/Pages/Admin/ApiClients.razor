@@ -101,7 +101,7 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "create-client")] private CreateInput Input { get; set; } = new();
     [SupplyParameterFromForm(FormName = "revoke-client")] private RevokeClientInput RevokeInput { get; set; } = new();
 
-    private IReadOnlyList<Muster.Domain.Entities.ApiClient>? _clients;
+    private IReadOnlyList<Muster.Domain.Entities.Operations.ApiClient>? _clients;
     private string? _newKey;
 
     protected override async Task LoadAsync()

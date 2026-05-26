@@ -61,7 +61,7 @@ public class AdminBypassTests
     {
         using var db = NewDb();
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
-        var sut = new ConfigCommandService(db);
+        var sut = new ConfigCommandService(db, Microsoft.Extensions.Options.Options.Create(new Muster.Infrastructure.Services.Currencies.CurrencyRetentionOptions()));
 
         var added = await sut.ToggleAdminRoleAsync(1, 700);
         Assert.Contains("Added", added.Message);

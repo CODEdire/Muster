@@ -2,8 +2,9 @@
 @layout GuildLayout
 @inherits GuildMemberComponentBase
 @inject SeasonService Seasons
+@inject Muster.Infrastructure.Services.Currencies.ICurrencyReadService Reader
 
-<PageTitle>Dashboard — Muster</PageTitle>
+<PageTitle>Leaderboard — Muster</PageTitle>
 
 @if (State == AccessState.Forbidden)
 {
@@ -15,7 +16,7 @@ else if (State == AccessState.Ready)
         <a class="back-link" href="/guilds">← My servers</a>
         <h1>Leaderboard</h1>
         <div class="actions">
-            <a class="btn btn-ghost" href="/guilds/@GuildId/me">My profile</a>
+            <a class="btn btn-ghost" href="/guilds/@GuildId/me">My wallet</a>
             <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Quest board</a>
             @if (_isOfficer)
             {
@@ -26,8 +27,8 @@ else if (State == AccessState.Ready)
 
     <div class="stat-grid">
         <div class="stat glass">
-            <div class="label">Season</div>
-            <div class="num">@(_seasonName ?? "—")</div>
+            <div class="label">@(IsPoints ? "Season" : "Currency")</div>
+            <div class="num">@(IsPoints ? (_seasonName ?? "—") : _selectedName)</div>
         </div>
         <div class="stat glass">
             <div class="label">Ranked members</div>
@@ -35,19 +36,31 @@ else if (State == AccessState.Ready)
         </div>
     </div>
 
+    @if (_currencies.Count > 0)
+    {
+        <EditForm class="form-grid" Model="this" FormName="leaderboard-currency" OnValidSubmit="ReloadAsync">
+            <label>Currency
+                <InputSelect @bind-Value="Currency">
+                    <option value="">Points (current season)</option>
+                    @foreach (var c in _currencies)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Show</button></div>
+        </EditForm>
+    }
+
     <div class="panel glass">
-        @if (_leaderboard is null)
+        @if (_leaderboard is null || _leaderboard.Count == 0)
         {
-            <p class="empty">Loading…</p>
-        }
-        else if (_leaderboard.Count == 0)
-        {
-            <p class="empty">No scores yet this season.</p>
+            <p class="empty">@(IsPoints ? "No scores yet this season." : $"No {_selectedName} holders yet.")</p>
         }
         else
         {
             <table class="leaderboard">
-                <thead><tr><th>#</th><th>Member</th><th>Points</th></tr></thead>
+                <thead><tr><th>#</th><th>Member</th><th>@(IsPoints ? "Points" : _selectedCode)</th></tr></thead>
                 <tbody>
                     @foreach (var row in _leaderboard)
                     {
@@ -74,15 +87,39 @@ else if (State == AccessState.Ready)
 
 @code {
 @using Muster.Infrastructure.Services.Seasons
+@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
+    // The selected currency code; blank = the season POINTS leaderboard (the default view).
+    [SupplyParameterFromForm(FormName = "leaderboard-currency")] private string? Currency { get; set; }
+
     private bool _isOfficer;
     private string? _seasonName;
     private IReadOnlyList<LeaderboardRow>? _leaderboard;
+    private IReadOnlyList<CurrencyInfo> _currencies = [];
+    private string _selectedCode = "POINTS";
+    private string _selectedName = "Points";
+
+    private bool IsPoints => string.IsNullOrWhiteSpace(Currency);
 
     protected override async Task LoadAsync()
     {
         _isOfficer = await Auth.IsOfficerAsync(GuildId, UserId);
         _seasonName = (await Seasons.GetActiveAsync(GuildId))?.Name;
-        _leaderboard = await Guilds.GetLeaderboardAsync(GuildId);
+
+        // Non-POINTS currencies populate the selector (POINTS has its own "season" default entry).
+        _currencies = (await Reader.GetCurrenciesAsync(GuildId))
+            .Where(c => !string.Equals(c.Code, "POINTS", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (!IsPoints)
+        {
+            var match = _currencies.FirstOrDefault(c => string.Equals(c.Code, Currency, StringComparison.OrdinalIgnoreCase));
+            _selectedCode = match?.Code ?? Currency!.Trim().ToUpperInvariant();
+            _selectedName = match?.Name ?? _selectedCode;
+        }
+
+        _leaderboard = await Guilds.GetLeaderboardAsync(GuildId, IsPoints ? null : _selectedCode);
     }
+
+    private Task ReloadAsync() => LoadAsync();
 }

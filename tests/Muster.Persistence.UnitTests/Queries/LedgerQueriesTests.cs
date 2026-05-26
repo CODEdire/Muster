@@ -5,16 +5,16 @@ using Xunit;
 
 namespace Muster.Persistence.UnitTests.Queries;
 
-public class LedgerQueriesTests
+public class CurrencyLedgerQueriesTests
 {
-    private static LedgerEntry Entry(Guid currencyId, ulong userId, long amount, Guid? seasonId) => new()
+    private static CurrencyLedgerEntry Entry(Guid currencyId, ulong userId, long amount, Guid? seasonId) => new()
     {
         GuildId = 1,
         UserId = userId,
         CurrencyId = currencyId,
         SeasonId = seasonId,
         Amount = amount,
-        SourceType = LedgerSourceType.Quest,
+        SourceType = CurrencyLedgerSource.Quest,
         SourceId = null,
         OccurredAt = DateTimeOffset.UtcNow,
         Reason = "t",
@@ -28,7 +28,7 @@ public class LedgerQueriesTests
         var coin = Guid.NewGuid();
         var season = Guid.NewGuid();
 
-        db.LedgerEntries.AddRange(
+        db.CurrencyLedgerEntries.AddRange(
             Entry(coin, 10, 50, seasonId: null),
             Entry(coin, 10, -10, seasonId: null),
             Entry(coin, 10, 999, seasonId: season)); // seasonal — excluded from the non-seasonal scope
@@ -46,7 +46,7 @@ public class LedgerQueriesTests
         var db = sqlite.Context;
         var coin = Guid.NewGuid();
 
-        db.LedgerEntries.AddRange(
+        db.CurrencyLedgerEntries.AddRange(
             Entry(coin, 10, 100, null),
             Entry(coin, 20, 50, null),
             Entry(coin, 30, 200, null));

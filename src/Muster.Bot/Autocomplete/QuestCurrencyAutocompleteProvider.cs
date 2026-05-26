@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Domain;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
@@ -30,7 +30,7 @@ public class QuestCurrencyAutocompleteProvider(IServiceScopeFactory scopeFactory
         var currencies = await scope.ServiceProvider.GetRequiredService<CurrencyAdminService>().ListAsync(guildId);
 
         return currencies
-            .Where(c => !string.Equals(c.Code, Currencies.PointsCode, StringComparison.OrdinalIgnoreCase))
+            .Where(c => !string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
             .Where(c => c.Code.Contains(input, StringComparison.OrdinalIgnoreCase)
                 || c.Name.Contains(input, StringComparison.OrdinalIgnoreCase))
             .Take(25)

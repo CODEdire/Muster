@@ -19,8 +19,8 @@ Severity: 🔴 correctness/security · 🟠 functional gap · 🟡 polish/cleanu
 ## 0. Architecture: CQRS alignment (foundational — shapes §1, §4, §5)
 
 We're standardising on CQRS. The **currency** side already does it: command contracts in `Muster.Contracts`
-(`MintCurrency`, `SpendCurrency`, `AwardCurrency`…), **thin static handlers** in `Muster.Infrastructure/Messaging/`
-(`Handle(command, ICurrencyService, ct)` → result / cascading `LedgerEntryRecorded`), dispatched via
+(`MintCurrency`, `SpendCurrency`, `TransferCurrency`…), **thin static handlers** in `Muster.Infrastructure/Messaging/`
+(`Handle(command, ICurrencyService, ct)` → `Result`), dispatched via
 `IMessageBus.InvokeAsync`. The **quest** side does *not*: `QuestModule`/Blazor → `QuestBoardService` →
 `QuestService` are direct DI calls, no command/query messages. This inconsistency is the root of several gaps below.
 

@@ -90,7 +90,7 @@ public class QuestReminderScheduler(
         }
     }
 
-    private async Task NotifyAsync(QuestDetailView detail, Domain.Entities.GuildQuest quest, ulong guildId, string? webBaseUrl)
+    private async Task NotifyAsync(QuestDetailView detail, GuildQuest quest, ulong guildId, string? webBaseUrl)
     {
         var workers = quest.Participants
             .Where(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested)

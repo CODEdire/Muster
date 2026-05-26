@@ -6,7 +6,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Quests;
 
@@ -29,13 +29,13 @@ public class QuestSweepTests
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
 
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         return new Ctx(db, new QuestService(db, awards, auth, new RecordingMessageBus()), coin);
     }
 
     private static Task<long> BalanceAsync(MusterDbContext db, ulong userId, Guid currencyId) =>
-        db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
+        db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
             .SumAsync(e => (long?)e.Amount).ContinueWith(t => t.Result ?? 0);
 
     [Fact]
@@ -52,7 +52,7 @@ public class QuestSweepTests
         await g1.Db.SaveChangesAsync();
 
         // g2: a personal quest past its deadline → should expire and refund.
-        await new CurrencyService(g2.Db, new NullCurrencyEventSink()).AwardAsync(2, 20, g2.Coin.Id, 100, LedgerSourceType.Connector, null, "seed");
+        await new CurrencyService(g2.Db, new RecordingMessageBus()).AwardAsync(2, 20, g2.Coin.Id, 100, CurrencyLedgerSource.Connector, null, "seed");
         await g2.Quests.PostQuestAsync(new QuestDraft(2, 20, QuestOrigin.Player, "Escort", "", g2.Coin.Id, 40, Deadline: DateTimeOffset.UtcNow.AddHours(-1)));
 
         var now = DateTimeOffset.UtcNow;
@@ -68,7 +68,7 @@ public class QuestSweepTests
     public async Task Sweep_IsIdempotent_AcrossRepeatedRuns()
     {
         var c = await SeededAsync(1);
-        await new CurrencyService(c.Db, new NullCurrencyEventSink()).AwardAsync(1, 20, c.Coin.Id, 100, LedgerSourceType.Connector, null, "seed");
+        await new CurrencyService(c.Db, new RecordingMessageBus()).AwardAsync(1, 20, c.Coin.Id, 100, CurrencyLedgerSource.Connector, null, "seed");
         await c.Quests.PostQuestAsync(new QuestDraft(1, 20, QuestOrigin.Player, "Escort", "", c.Coin.Id, 40, Deadline: DateTimeOffset.UtcNow.AddHours(-1)));
 
         var now = DateTimeOffset.UtcNow;

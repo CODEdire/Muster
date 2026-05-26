@@ -5,7 +5,7 @@ using Muster.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Messaging;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Quests;
 using Xunit;
@@ -30,7 +30,7 @@ public class QuestCommandHandlerTests
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
         var auth = new GuildAuthorizationService(db);
         var bus = new RecordingMessageBus();
-        return new Ctx(db, new QuestAuthorizer(auth), new QuestService(db, new CurrencyService(db, new NullCurrencyEventSink()), auth, bus), points, bus);
+        return new Ctx(db, new QuestAuthorizer(auth), new QuestService(db, new CurrencyService(db, new RecordingMessageBus()), auth, bus), points, bus);
     }
 
     private static async Task<GuildQuest> SubmittedGuildQuestAsync(Ctx c)
@@ -79,7 +79,7 @@ public class QuestCommandHandlerTests
 
         Assert.False(result.Ok);
         Assert.Equal(nameof(QuestResult.Forbidden), result.Status);
-        Assert.Equal(0, await c.Db.LedgerEntries.CountAsync());
+        Assert.Equal(0, await c.Db.CurrencyLedgerEntries.CountAsync());
     }
 
     [Fact]

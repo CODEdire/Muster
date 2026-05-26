@@ -17,10 +17,12 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
+builder.AddMusterConnectorProtection(); // Data Protection for connector secrets (bot dispatches via connectors)
 
-// The bot is the only host that listens on the quest-board queue: it renders/updates the Discord channel
-// board in response to quest lifecycle events published from any host.
-builder.AddMusterMessaging(listenForQuestBoard: true);
+// The bot is the only host that listens on the quest-board and currency-events queues: it renders/updates the
+// Discord channel board in response to quest lifecycle events, and DMs currency receipts (grants/staff actions)
+// to recipients — both published from any host.
+builder.AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true);
 
 // NetCord gateway. The bot token is read from configuration key "Discord:Token"
 // (user-secrets locally, Key Vault in Azure).
@@ -60,6 +62,12 @@ builder.Services.AddHostedService<Muster.Bot.QuestBoardCleanupScheduler>();
 
 // DMs "closes soon" deadline nudges to active workers / a taker-less bounty owner (bot-only — needs DM REST).
 builder.Services.AddHostedService<Muster.Bot.QuestReminderScheduler>();
+
+// Periodically reconciles External/Hybrid balances from their connectors (per-currency sync interval).
+builder.Services.AddHostedService<Muster.Bot.CurrencyBalanceSyncScheduler>();
+
+// Daily: compacts ledger history beyond each guild's LedgerRetentionDays into carry-forward checkpoints.
+builder.Services.AddHostedService<Muster.Bot.LedgerPruneScheduler>();
 
 // NetCord-backed implementation of the muster publisher abstraction, plus the muster command
 // service that depends on it (a bot-only concern — the web doesn't post muster messages).

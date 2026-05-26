@@ -6,7 +6,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Quests;
@@ -33,12 +33,12 @@ public class ParticipationTests
     public async Task Award_IsIdempotent_OnSameSource()
     {
         var (db, points) = await SeededAsync();
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
 
-        await awards.AwardAsync(1, 10, points.Id, 50, LedgerSourceType.ManualAward, "src-1", "r");
-        await awards.AwardAsync(1, 10, points.Id, 50, LedgerSourceType.ManualAward, "src-1", "r"); // dup
+        await awards.AwardAsync(1, 10, points.Id, 50, CurrencyLedgerSource.ManualAward, "src-1", "r");
+        await awards.AwardAsync(1, 10, points.Id, 50, CurrencyLedgerSource.ManualAward, "src-1", "r"); // dup
 
-        Assert.Equal(1, await db.LedgerEntries.CountAsync());
+        Assert.Equal(1, await db.CurrencyLedgerEntries.CountAsync());
         var wallet = await db.Wallets.SingleAsync();
         Assert.Equal(50, wallet.Balance);
     }
@@ -47,7 +47,7 @@ public class ParticipationTests
     public async Task Muster_Reaction_RewardsOnce_AndRespectsCapacity()
     {
         var (db, points) = await SeededAsync();
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
 
         var muster = await musters.CreateAsync(1, 100, 999, "Roll call", ["✅"], points.Id, 10, capacity: 1, expiresAt: null);
@@ -56,7 +56,7 @@ public class ParticipationTests
         Assert.Equal(ReactionOutcome.AlreadyParticipated, await musters.RecordReactionAsync(999, 10, "✅"));
         Assert.Equal(ReactionOutcome.Full, await musters.RecordReactionAsync(999, 20, "✅")); // capacity = 1
 
-        Assert.Equal(1, await db.LedgerEntries.CountAsync(e => e.SourceType == LedgerSourceType.Muster));
+        Assert.Equal(1, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster));
         Assert.Equal(10, (await db.Wallets.SingleAsync(w => w.UserId == 10)).Balance);
         _ = muster;
     }
@@ -65,7 +65,7 @@ public class ParticipationTests
     public async Task Quest_AwardsOnApproval_AndNotTwice()
     {
         var (db, points) = await SeededAsync();
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var quests = new QuestService(db, awards, new GuildAuthorizationService(db), new RecordingMessageBus());
 
         var quest = (await quests.PostQuestAsync(new QuestDraft(1, 5, QuestOrigin.Guild, "Recruit", "Bring a friend", points.Id, 100))).Quest!;
@@ -75,14 +75,14 @@ public class ParticipationTests
         await quests.ApproveAsync(quest.Id, 10, reviewerId: 5); // idempotent
 
         Assert.Equal(100, (await db.Wallets.SingleAsync(w => w.UserId == 10)).Balance);
-        Assert.Equal(1, await db.LedgerEntries.CountAsync(e => e.SourceType == LedgerSourceType.Quest));
+        Assert.Equal(1, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Quest));
     }
 
     [Fact]
     public async Task GuildQuest_OwnerCanParticipate_AndOncePerMemberByDefault()
     {
         var (db, points) = await SeededAsync();
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var quests = new QuestService(db, awards, new GuildAuthorizationService(db), new RecordingMessageBus());
 
         // Capacity 2 keeps the quest Open after one completion, so the re-claim hits the one-per-member guard
@@ -101,13 +101,13 @@ public class ParticipationTests
     }
 
     private static async Task<long> PointsLedgerAsync(MusterDbContext db, Guid pointsId, ulong userId)
-        => await db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
+        => await db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
 
     [Fact]
     public async Task TrackingSession_AwardsByVoiceMinutes_OnClose()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
 
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
@@ -124,7 +124,7 @@ public class ParticipationTests
     public async Task TrackingSession_ClosingSegment_OnChannelLeave()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var t0 = DateTimeOffset.UtcNow.AddMinutes(-20);

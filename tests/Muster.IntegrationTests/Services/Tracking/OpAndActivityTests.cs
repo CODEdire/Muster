@@ -4,7 +4,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Events;
@@ -32,7 +32,7 @@ public class OpAndActivityTests
     public async Task Op_CreateSignupClose_AwardsAttendees()
     {
         using var db = await SeededAsync();
-        var sut = new OpCommandService(new GuildEventService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db)));
+        var sut = new OpCommandService(new GuildEventService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)));
 
         await sut.CreateAsync(1, actorId: 5, name: "Raid", description: "Friday raid", reward: 75);
         var opId = (await db.GuildEvents.SingleAsync()).Id.ToString();
@@ -50,7 +50,7 @@ public class OpAndActivityTests
     public async Task Op_Signup_UnknownOp_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new OpCommandService(new GuildEventService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db)));
+        var sut = new OpCommandService(new GuildEventService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)));
 
         Assert.True((await sut.SignUpAsync(1, "nope", 10)).IsError);
         Assert.True((await sut.SignUpAsync(1, Guid.NewGuid().ToString(), 10)).IsError);
@@ -60,7 +60,7 @@ public class OpAndActivityTests
     public async Task ScheduledEvent_OpensOnce_ThenCloses()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
 
         var first = await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001);
         var second = await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001);

@@ -32,6 +32,11 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleQuestManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.questManagerRole");
 
+    [SlashCommand("config-ledger-retention", "Set how many days of detailed ledger history to keep (0 = platform default).")]
+    public Task LedgerRetentionAsync(
+        [SlashCommandParameter(Name = "days", Description = "Days of detail to keep before compacting to checkpoints (0 = platform default)")] int days)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetLedgerRetentionAsync(guildId, days), RequiredRole.Admin, "config.ledgerRetention");
+
     [SlashCommand("config-show", "Show the current role mapping.")]
     public Task ShowAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ShowAsync(guildId), RequiredRole.Admin);

@@ -1,6 +1,6 @@
 using Muster.Persistence;
 using Muster.Persistence.Queries;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 namespace Muster.Infrastructure.Services.Web;
 
@@ -12,7 +12,7 @@ public record UserProfile(string Name, string? AvatarUrl);
 public record LeaderboardRow(int Rank, ulong UserId, string DisplayName, long Total);
 
 /// <summary>Read models for the web UI: a user's guilds and a guild's leaderboard with display names.</summary>
-public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth, ScoreQueryService scores)
+public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth, ICurrencyReadService scores)
 {
     /// <summary>Active guilds the user belongs to (or owns), with their admin status in each.</summary>
     public async Task<IReadOnlyList<UserGuildView>> GetGuildsForUserAsync(ulong userId, CancellationToken ct = default)
@@ -46,10 +46,14 @@ public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth,
         return await db.IsMemberAsync(guildId, userId, ct);
     }
 
-    /// <summary>Season leaderboard with member display names resolved.</summary>
-    public async Task<IReadOnlyList<LeaderboardRow>> GetLeaderboardAsync(ulong guildId, int top = 25, CancellationToken ct = default)
+    /// <summary>Leaderboard with member display names resolved. Null/blank <paramref name="code"/> = season POINTS;
+    /// otherwise the top holders of that currency (seasonal currencies scope to the active season).</summary>
+    public async Task<IReadOnlyList<LeaderboardRow>> GetLeaderboardAsync(
+        ulong guildId, string? code = null, int top = 25, CancellationToken ct = default)
     {
-        var entries = await scores.GetSeasonLeaderboardAsync(guildId, top, ct);
+        var entries = string.IsNullOrWhiteSpace(code)
+            ? await scores.GetSeasonLeaderboardAsync(guildId, top, ct)
+            : await scores.GetLeaderboardAsync(guildId, code, top, ct);
         if (entries.Count == 0)
         {
             return [];

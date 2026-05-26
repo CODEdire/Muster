@@ -36,3 +36,11 @@ SQL Server, and faithfully testing it needs Testcontainers MsSql + a forced mid-
 re-testing Wolverine). Deferred to the Testcontainers suite. Note: `QuestService` calls `SaveChangesAsync` +
 `PublishAsync` itself rather than returning a cascading message — if we ever want belt-and-suspenders atomicity,
 return the lifecycle event as a Wolverine cascading message from the handler instead.
+
+## Currency connector secret at rest
+
+A currency's outbound connector (`Currency.Connector`, owned JSON) stores its `Secret` — the webhook HMAC key
+or the HTTP-API bearer/api-key — as **plaintext in the `Currencies.Connector` JSON column**. Same trust level
+as the bot token in app config, and it's **never returned to the web client** (write-only: the admin UI shows
+only *whether* a secret is set; a blank field on save keeps the existing one). Acceptable for v1; a later pass
+should move connector secrets into a protected store (e.g. Key Vault / data-protection) rather than the row.

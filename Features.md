@@ -29,7 +29,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Core entities and DbContext
 - [x] Initial EF migration
 - [x] Seed defaults on guild onboarding (POINTS currency, initial season) — `GuildProvisioningService`
-- [x] Query services over the ledger and wallets — `ScoreQueryService` (leaderboard + wallets)
+- [x] Query services over the ledger and wallets — `ICurrencyReadService` (leaderboard + wallets)
 - [ ] Integration tests against SQL via Testcontainers (incl. season leaderboard aggregation)
 
 ## M2 — Bot core
@@ -56,12 +56,12 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Voice attendance** capture from `VoiceStateUpdate` (`VoiceAttendanceHandler`)
 - [x] **Reaction musters** — create + reward on reaction, capacity & idempotency (`MusterService` + `MusterReactionHandler`)
 - [x] **Quests** — claim/submit/approve/reject, reward-on-approve (`QuestService`)
-- [x] **Manual / bulk awards** — `ManualAwardService`
+- [x] **Staff awards** — `/currency mint` (Discord) + web Award console, both via the audited `AdjustCurrency` CQRS command (`CurrencyLedgerSource.Adjustment`; actor in the audit trail). The standalone `/award` + `AwardCommandService` were retired into this path.
 - [x] **Tracking sessions** — auto bind to Discord Scheduled Events (`ScheduledEventHandler`)
 - [ ] **Reaction check-in** as a session attendance signal (distinct from musters)
 - [x] **Event ops** — sign-up + attendance flow (`OpCommandService` + `/op-*`)
 - [x] **Command-service abstraction** — Discord-independent `*CommandService` returning `CommandResult`; NetCord modules are thin adapters (directly unit-tested, no gateway needed)
-- [x] **Slash-command modules** — `/award`, `/leaderboard`, `/wallet`, `/track-start`, `/track-stop`
+- [x] **Slash-command modules** — `/currency` (balance/give/mint/adjust), `/leaderboard`, `/track-start`, `/track-stop`
 - [x] **Slash-command modules** — `/muster` (REST post+react via `IMusterPublisher`) and `/quest-post|list|claim|submit|approve`
 - [x] **Slash-command modules** — `/op-create|list|signup|close` (event ops)
 - [x] Stats-only message activity + daily rollups + dedupe (`ActivityService` + `MessageActivityHandler`)
@@ -71,10 +71,10 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 
 - [x] Wolverine command/query bus in bot + web (`AddMusterMessaging`)
 - [x] Wolverine EF Core + SQL Server durable outbox/inbox (wired; runtime-verified with SQL)
-- [x] Broker-agnostic contracts wired through handlers (`AwardCurrency`, `AdjustCurrencyBalance`, `MemberParticipated` → cascade `LedgerEntryRecorded`)
+- [x] Broker-agnostic Wolverine contracts wired through thin handlers; every staged movement publishes `CurrencyMovementRecorded` (the single money-moved seam)
 - [x] Multi-currency ledger (seasonal POINTS + persistent spendable currencies)
 - [x] Seasons — `/season-start|end|status`, archive on rollover (`SeasonService`)
-- [x] Wallets / balance projection + leaderboards (`ScoreQueryService`)
+- [x] Wallets / balance projection + leaderboards (`ICurrencyReadService`)
 - [x] Per-guild reward configuration (`GuildSettings.PointsPerVoiceMinute`)
 - [~] Sagas / scheduled messages — event-driven session lifecycle done (scheduled-event bind, reaction/voice); time-based reminders & season-end auto-archive deferred until the bus runs against SQL (needs live verification)
 
@@ -117,7 +117,9 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 
 - [ ] Enable Azure Service Bus transport (decoupled bot ↔ web messaging)
 - [ ] Discord gateway sharding (scale beyond ~2500 guilds)
-- [ ] Outbound "Coin" loot connectors (mint/spend via API + outbox)
+- [x] Outbound currency connectors — configurable per-currency HTTP economy API (auth/signing/templated Credit/Debit/GetBalance, response parsing, encrypted secrets), called **synchronously before commit** so a failed external push aborts the operation (`CurrencyService.StageAsync`); idempotent inbound mirror mint/spend (`externalId`), loop-guarded; admin UI + test-send + wallet rebuild + balance sync sweep (see `Currency.md`). *(Discord message-command transport + member shop are wishlist.)*
+- [x] **Currency CQRS funnel** — `TransferCurrency` (member→member) + `AdjustCurrency` (staff mint/correct) as authorized (`ICurrencyAuthorizer`) + audited `IGuildCommand`s; `/currency` Discord tree (`balance`/`give`/`mint`/`adjust`) + API (`transfer`/`adjust`/list/balance). One `ICurrencyService` owns transaction + ledger + external call.
+- [x] **Hybrid balance + history pruning** — ledger `SUM` is the transaction authority (overdraft); `Wallet.Balance` is a cheap display cache (dashboard/leaderboard). `LedgerPruneService` folds history beyond the retention window into per-scope `Checkpoint` carry-forward rows (balances preserved, SUM bounded) — daily via `LedgerPruneScheduler` and on **season archive** (`SeasonService` → `CheckpointSeasonAsync`). Retention is per-guild (`LedgerRetentionDays`) combined with a platform cap/default (`Currency:MaxLedgerRetentionDays` in AppSettings); set + validated in web `ConfigAdmin` and `/config-ledger-retention`. Entities reorganized one-per-aggregate under `Muster.Domain.Entities.<Feature>`.
 - [ ] Rank thresholds → auto-assigned Discord roles
 - [ ] Streaks / daily check-in
 - [ ] Peer-to-peer kudos with budgets

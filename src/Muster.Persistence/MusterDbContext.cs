@@ -1,10 +1,16 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
 
 namespace Muster.Persistence;
 
-public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbContext(options)
+public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
+    /// <summary>Data Protection key ring, persisted to the DB so web/bot/migration hosts share keys (and can
+    /// decrypt connector secrets encrypted by another host).</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
     public DbSet<Guild> Guilds => Set<Guild>();
     public DbSet<DiscordUser> Users => Set<DiscordUser>();
     public DbSet<GuildMember> GuildMembers => Set<GuildMember>();
@@ -21,11 +27,10 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<EventAttendee> EventAttendees => Set<EventAttendee>();
     public DbSet<ReactionMuster> ReactionMusters => Set<ReactionMuster>();
     public DbSet<ReactionParticipant> ReactionParticipants => Set<ReactionParticipant>();
-    public DbSet<ManualAward> ManualAwards => Set<ManualAward>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Currency> Currencies => Set<Currency>();
-    public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
+    public DbSet<CurrencyLedgerEntry> CurrencyLedgerEntries => Set<CurrencyLedgerEntry>();
     public DbSet<Wallet> Wallets => Set<Wallet>();
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();

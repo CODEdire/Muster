@@ -2,7 +2,7 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Infrastructure.Services.Events;
@@ -75,7 +75,7 @@ public class GuildEventService(
         {
             await awards.AwardAsync(
                 ev.GuildId, attendee.UserId, ev.RewardCurrencyId, ev.RewardAmount,
-                LedgerSourceType.Event, $"event:{eventId}:user:{attendee.UserId}",
+                CurrencyLedgerSource.Event, $"event:{eventId}:user:{attendee.UserId}",
                 $"Event attendance: {ev.Name}", ct);
         }
 

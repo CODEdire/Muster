@@ -1,0 +1,290 @@
+@page "/guilds/{GuildIdRaw}/quest-settings"
+@inherits GuildAdminComponentBase
+@inject ConfigCommandService Config
+@inject MusterDbContext Db
+@inject Muster.Web.DiscordChannelLookup Channels
+@using Muster.Domain.Entities
+@using Muster.Persistence
+@using Muster.Domain.Enums
+@using Microsoft.EntityFrameworkCore
+@using Muster.Infrastructure.Commands.Membership
+
+<PageTitle>Quest settings — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Quest settings</h1>
+        <p class="subtitle">Configure the quest board channels, the personal-quest approval workflow,
+            auto-resolve timeouts &amp; limits, and difficulty-tier bonus points.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Quest board channel</h2>
+        <p class="subtitle">Post a live, auto-updating card for each quest to a Discord channel — it's edited in
+            place as the quest changes state. Leave unset to keep the board pull-only (<code>/quest list</code>).</p>
+        @if (_channels.Count == 0)
+        {
+            <p class="subtitle">No channels available — check the bot is in this server and has permission to view channels.</p>
+        }
+        <EditForm class="form-grid" Model="Channel" FormName="quest-channel" OnValidSubmit="SaveChannelAsync">
+            <input type="hidden" name="Channel.Submitted" value="1" />
+            <label>Public board channel
+                <InputSelect @bind-Value="Channel.ChannelId">
+                    <option value="0">— none (disabled) —</option>
+                    @foreach (var c in _channels)
+                    {
+                        <option value="@c.Id">#@c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Mod channel (intake / disputes / sign-off)
+                <InputSelect @bind-Value="Channel.ModChannelId">
+                    <option value="0">— none (these states post nowhere) —</option>
+                    @foreach (var c in _channels)
+                    {
+                        <option value="@c.Id">#@c.Name</option>
+                    }
+                </InputSelect>
+                <span class="subtitle">a private staff channel for states the public shouldn't see (lock it down with Discord permissions)</span>
+            </label>
+            <label>Keep completed cards for (hours) <InputNumber @bind-Value="Channel.RetentionHours" />
+                <span class="subtitle">how long a finished quest's card lingers before the bot deletes it (0 = remove immediately; web keeps full history regardless)</span></label>
+            <div class="btn-row"><button type="submit">Save channel</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
+        <h2>Personal quest approval</h2>
+        <p class="subtitle">Personal (member-funded) quests can be vetted and tiered by a quest manager
+            before they open, with an optional final sign-off before payout.</p>
+        <EditForm class="form-grid" Model="Approval" FormName="quest-approval" OnValidSubmit="SaveApprovalAsync">
+            <input type="hidden" name="Approval.Submitted" value="1" />
+            <label class="checkbox"><InputCheckbox @bind-Value="Approval.IntakeApproval" /> Require manager intake approval + tiering before a personal quest opens</label>
+            <label class="checkbox"><InputCheckbox @bind-Value="Approval.AllowSelf" /> Allow a poster to take &amp; complete their own player quest <span class="subtitle">(handy for solo/small guilds &amp; testing)</span></label>
+            <label>Final sign-off before payout
+                <InputSelect @bind-Value="Approval.FinalMode">
+                    <option value="@FinalApprovalMode.Off">Off — owner acceptance pays out directly</option>
+                    <option value="@FinalApprovalMode.OwnerChoice">Owner chooses per quest</option>
+                    <option value="@FinalApprovalMode.ApproverChoice">Intake approver decides</option>
+                    <option value="@FinalApprovalMode.Forced">Always required</option>
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Save approval</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
+        <h2>Quest automation &amp; limits</h2>
+        <p class="subtitle">Auto-resolve stuck quests after a number of hours (0 = off), and cap how many quests
+            a member can run at once (0 = unlimited).</p>
+        <EditForm class="form-grid" Model="Auto" FormName="quest-automation" OnValidSubmit="SaveAutomationAsync">
+            <input type="hidden" name="Auto.Submitted" value="1" />
+            <label>Intake timeout (hours) <InputNumber @bind-Value="Auto.IntakeHours" /></label>
+            <label>… then
+                <InputSelect @bind-Value="Auto.IntakeAction">
+                    <option value="@StaleIntakeAction.Decline">Decline (refund owner)</option>
+                    <option value="@StaleIntakeAction.Accept">Accept (open, no tier)</option>
+                </InputSelect>
+            </label>
+            <label>Idle-claim timeout (hours) <InputNumber @bind-Value="Auto.ClaimHours" /> <span class="subtitle">releases the taker</span></label>
+            <label>Submission review timeout (hours) <InputNumber @bind-Value="Auto.SubmissionHours" /></label>
+            <label>… then
+                <InputSelect @bind-Value="Auto.SubmissionAction">
+                    <option value="@StaleSubmissionAction.Approve">Approve (settle)</option>
+                    <option value="@StaleSubmissionAction.Reject">Send back for revision</option>
+                    <option value="@StaleSubmissionAction.Dispute">Escalate to arbitration (personal)</option>
+                </InputSelect>
+            </label>
+            <label>Final sign-off timeout (hours) <InputNumber @bind-Value="Auto.FinalHours" /></label>
+            <label>… then
+                <InputSelect @bind-Value="Auto.FinalAction">
+                    <option value="@StaleFinalAction.Approve">Pay completer</option>
+                    <option value="@StaleFinalAction.Refund">Refund owner</option>
+                </InputSelect>
+            </label>
+            <label>Max active quests per poster <InputNumber @bind-Value="Auto.MaxOpenPerPoster" /></label>
+            <label>Max active claims per member <InputNumber @bind-Value="Auto.MaxActiveClaims" /></label>
+            <label>Max revision round-trips <InputNumber @bind-Value="Auto.MaxRevisions" /> <span class="subtitle">0 = unlimited</span></label>
+            <label>Deadline reminder (hours before) <InputNumber @bind-Value="Auto.DeadlineReminderHours" /> <span class="subtitle">DMs workers/owner before a quest closes; 0 = off</span></label>
+            <div class="btn-row"><button type="submit">Save automation</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
+        <h2>Quest difficulty tiers</h2>
+        <p class="subtitle">Bonus POINTS minted to the completer of a guild quest (or a personal quest a
+            manager notarizes) by difficulty. S is hardest.</p>
+        <EditForm class="form-grid" Model="Tier" FormName="tier-points" OnValidSubmit="SaveTiersAsync">
+            <label>S — hardest <InputNumber @bind-Value="Tier.S" /></label>
+            <label>A <InputNumber @bind-Value="Tier.A" /></label>
+            <label>B <InputNumber @bind-Value="Tier.B" /></label>
+            <label>C <InputNumber @bind-Value="Tier.C" /></label>
+            <label>D <InputNumber @bind-Value="Tier.D" /></label>
+            <label>E — easiest <InputNumber @bind-Value="Tier.E" /></label>
+            <div class="btn-row"><button type="submit">Save tiers</button></div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "tier-points")] private TierInput Tier { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "quest-approval")] private ApprovalInput Approval { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "quest-automation")] private AutomationInput Auto { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "quest-channel")] private ChannelInput Channel { get; set; } = new();
+
+    private IReadOnlyList<DiscordChannelLookup.ChannelOption> _channels = [];
+
+    protected override async Task LoadAsync()
+    {
+        _channels = await Channels.GetTextChannelsAsync(GuildId);
+
+        var settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
+
+        // Prefill tier values on GET only; on a post the bound values survive (long? stays null on another form's post).
+        Tier.S ??= settings.Quests.TierSPoints;
+        Tier.A ??= settings.Quests.TierAPoints;
+        Tier.B ??= settings.Quests.TierBPoints;
+        Tier.C ??= settings.Quests.TierCPoints;
+        Tier.D ??= settings.Quests.TierDPoints;
+        Tier.E ??= settings.Quests.TierEPoints;
+
+        // Prefill on GET / other-form posts; the hidden sentinel marks this form's own postback so we keep its values.
+        if (string.IsNullOrEmpty(Approval.Submitted))
+        {
+            Approval.IntakeApproval = settings.Quests.PersonalQuestIntakeApproval;
+            Approval.FinalMode = settings.Quests.FinalApprovalMode;
+            Approval.AllowSelf = settings.Quests.AllowSelfParticipation;
+        }
+
+        if (string.IsNullOrEmpty(Auto.Submitted))
+        {
+            Auto.IntakeHours = settings.Quests.IntakeTimeoutHours;
+            Auto.IntakeAction = settings.Quests.IntakeTimeoutAction;
+            Auto.ClaimHours = settings.Quests.ClaimTimeoutHours;
+            Auto.SubmissionHours = settings.Quests.SubmissionTimeoutHours;
+            Auto.SubmissionAction = settings.Quests.SubmissionTimeoutAction;
+            Auto.FinalHours = settings.Quests.FinalApprovalTimeoutHours;
+            Auto.FinalAction = settings.Quests.FinalApprovalTimeoutAction;
+            Auto.MaxOpenPerPoster = settings.Quests.MaxOpenQuestsPerPoster;
+            Auto.MaxActiveClaims = settings.Quests.MaxActiveClaimsPerUser;
+            Auto.MaxRevisions = settings.Quests.MaxRevisions;
+            Auto.DeadlineReminderHours = settings.Quests.DeadlineReminderHours;
+        }
+
+        if (string.IsNullOrEmpty(Channel.Submitted))
+        {
+            Channel.ChannelId = settings.Quests.QuestChannelId;
+            Channel.ModChannelId = settings.Quests.QuestModChannelId;
+            Channel.RetentionHours = settings.Quests.BoardRetentionHours;
+        }
+    }
+
+    private async Task SaveChannelAsync()
+    {
+        var result = await Config.SetQuestBoardAsync(GuildId, Channel.ChannelId, Channel.ModChannelId, Channel.RetentionHours);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questChannel", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    private async Task SaveAutomationAsync()
+    {
+        var result = await Config.SetQuestAutomationAsync(
+            GuildId, Auto.IntakeHours, Auto.IntakeAction, Auto.ClaimHours,
+            Auto.SubmissionHours, Auto.SubmissionAction, Auto.FinalHours, Auto.FinalAction,
+            Auto.MaxOpenPerPoster, Auto.MaxActiveClaims, Auto.MaxRevisions, Auto.DeadlineReminderHours);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questAutomation", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    private async Task SaveApprovalAsync()
+    {
+        var result = await Config.SetQuestApprovalAsync(GuildId, Approval.IntakeApproval, Approval.FinalMode, Approval.AllowSelf);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questApproval", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    private async Task SaveTiersAsync()
+    {
+        var result = await Config.SetQuestTierPointsAsync(
+            GuildId, Tier.S ?? 0, Tier.A ?? 0, Tier.B ?? 0, Tier.C ?? 0, Tier.D ?? 0, Tier.E ?? 0);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questTierPoints", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    public class TierInput
+    {
+        public long? S { get; set; }
+        public long? A { get; set; }
+        public long? B { get; set; }
+        public long? C { get; set; }
+        public long? D { get; set; }
+        public long? E { get; set; }
+    }
+
+    public class ChannelInput
+    {
+        public string? Submitted { get; set; }
+        public ulong ChannelId { get; set; }
+        public ulong ModChannelId { get; set; }
+        public int RetentionHours { get; set; } = 48;
+    }
+
+    public class ApprovalInput
+    {
+        public string? Submitted { get; set; }
+        public bool IntakeApproval { get; set; }
+        public bool AllowSelf { get; set; }
+        public FinalApprovalMode FinalMode { get; set; }
+    }
+
+    public class AutomationInput
+    {
+        public string? Submitted { get; set; }
+        public int IntakeHours { get; set; }
+        public StaleIntakeAction IntakeAction { get; set; }
+        public int ClaimHours { get; set; }
+        public int SubmissionHours { get; set; }
+        public StaleSubmissionAction SubmissionAction { get; set; }
+        public int FinalHours { get; set; }
+        public StaleFinalAction FinalAction { get; set; }
+        public int MaxOpenPerPoster { get; set; }
+        public int MaxActiveClaims { get; set; }
+        public int MaxRevisions { get; set; }
+        public int DeadlineReminderHours { get; set; }
+    }
+}

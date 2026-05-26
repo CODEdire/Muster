@@ -1,7 +1,7 @@
 @page "/guilds/{GuildIdRaw}/award"
 @inherits GuildAdminComponentBase
 @inject WebAdminService Admin
-@inject AwardCommandService Awards
+@inject Wolverine.IMessageBus Bus
 @inject CurrencyAdminService CurrencyAdmin
 
 <PageTitle>Award — Muster</PageTitle>
@@ -50,9 +50,9 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-@using Muster.Infrastructure.Services.Ledger
+@using Muster.Contracts
+@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
-@using Muster.Infrastructure.Commands.Ledger
     [SupplyParameterFromForm] private AwardInput Input { get; set; } = new();
 
     private IReadOnlyList<MemberOption> _members = [];
@@ -66,14 +66,36 @@ else if (State == AccessState.Ready)
 
     private async Task SubmitAsync()
     {
-        var result = await Awards.AwardCurrencyAsync(GuildId, UserId, Input.MemberId, Input.Currency ?? "POINTS", Input.Amount, Input.Reason ?? string.Empty);
-        if (!result.IsError)
+        if (Input.MemberId == 0)
         {
-            await AuditAsync("award", result.Message);
+            Message = "Please choose a member.";
+            return;
         }
 
-        Message = await HumanizeAsync(result.Message);
-        Input = new AwardInput();
+        if (Input.Amount <= 0)
+        {
+            Message = "Amount must be greater than zero.";
+            return;
+        }
+
+        var code = Input.Currency ?? "POINTS";
+        var reason = string.IsNullOrWhiteSpace(Input.Reason) ? "Award" : Input.Reason!.Trim();
+        // Award via the staff CQRS path (authorized + audited by the middleware): a positive Delta is a mint.
+        var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, UserId, code, Input.MemberId, Input.Amount, reason));
+
+        Message = result.Ok
+            ? await HumanizeAsync($"Awarded {Input.Amount} {code.ToUpperInvariant()} to <@{Input.MemberId}> — {reason}")
+            : result.Status switch
+            {
+                "CurrencyNotFound" => $"Unknown currency '{code}'.",
+                "Forbidden" => "You're not allowed to do that.",
+                var other => other,
+            };
+
+        if (result.Ok)
+        {
+            Input = new AwardInput();
+        }
     }
 
     public class AwardInput

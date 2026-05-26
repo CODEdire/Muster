@@ -1,8 +1,9 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Persistence;
 using Microsoft.Extensions.Hosting;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Platform;
@@ -11,7 +12,6 @@ using Muster.Infrastructure.Services.Events;
 using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
-using Muster.Infrastructure.Commands.Ledger;
 using Muster.Infrastructure.Commands.Membership;
 using Muster.Infrastructure.Commands.Musters;
 using Muster.Infrastructure.Commands.Quests;
@@ -34,14 +34,13 @@ public static class InfrastructureExtensions
         builder.AddSqlServerDbContext<MusterDbContext>(connectionName);
 
         builder.Services.AddScoped<GuildProvisioningService>();
-        builder.Services.AddScoped<ScoreQueryService>();
+        builder.Services.AddScoped<ICurrencyReadService, CurrencyReadService>();
         builder.Services.AddScoped<IQuestService, QuestService>();
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
         builder.Services.AddScoped<IQuestReadService, QuestReadService>();
         builder.Services.AddScoped<MusterService>();
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
-        builder.Services.AddScoped<ManualAwardService>();
         builder.Services.AddScoped<ActivityService>();
         builder.Services.AddScoped<SeasonService>();
         builder.Services.AddScoped<MemberSyncService>();
@@ -52,24 +51,55 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<WebMemberService>();
         builder.Services.AddScoped<ApiClientService>();
         builder.Services.AddScoped<ICurrencyService, CurrencyService>();
+        builder.Services.AddScoped<ICurrencyAuthorizer, Services.Currencies.CurrencyAuthorizer>();
+        // Platform-wide ledger retention cap/default (appsettings "Currency:MaxLedgerRetentionDays"; 0 = unlimited).
+        builder.Services.Configure<Services.Currencies.CurrencyRetentionOptions>(builder.Configuration.GetSection("Currency"));
+        builder.Services.AddScoped<LedgerPruneService>();
         builder.Services.AddScoped<CurrencyAdminService>();
         builder.Services.AddScoped<AuditService>();
         builder.Services.AddScoped<MentionHumanizer>();
         builder.Services.AddScoped<TimeZoneService>();
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
-        builder.Services.AddScoped<AwardCommandService>();
-        builder.Services.AddScoped<ScoreCommandService>();
         builder.Services.AddScoped<TrackingCommandService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();
         builder.Services.AddScoped<QuestMaintenanceService>();
-        // Quest lifecycle moments publish as Wolverine messages (QuestLifecycleNotified); a Discord/connector
-        // consumer subscribes later. The currency-event sink default just logs until the outbox connector lands.
-        builder.Services.AddScoped<ICurrencyEventSink, LoggingCurrencyEventSink>();
+        // Quest + currency events publish as Wolverine messages (QuestLifecycleNotified, CurrencyMovementRecorded);
+        // a Discord/connector consumer subscribes later. A logging handler is the default seam (CurrencyService
+        // publishes through IMessageBus, registered by Wolverine in the bot/web hosts).
+
+        // Outbound currency connectors: one configurable HTTP client per currency (auth + signing + Credit/Debit/
+        // GetBalance actions). Secrets are encrypted via Data Protection — registered separately by the hosts that
+        // need it (AddMusterConnectorProtection), NOT here: the migration host also calls this method, and Data
+        // Protection's startup hosted service would query the keys table before migrations create it.
+        // Resilience for connector calls (retries + circuit breaker + concurrency limiter). HttpClient.Timeout is
+        // disabled so the per-connector timeout (a linked CTS in the client) governs the overall budget.
+        builder.Services.AddHttpClient(Connectors.CurrencyConnectorClient.ClientName)
+            .ConfigureHttpClient(c => c.Timeout = System.Threading.Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler();
+        builder.Services.AddScoped<Connectors.ICurrencyConnectorClient, Connectors.CurrencyConnectorClient>();
+        builder.Services.AddScoped<Connectors.CurrencyConnectorSyncService>();
         // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
         // registered by the bot host alongside its IMusterPublisher implementation — not here.
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers Data Protection (key ring persisted to the DB, shared via a fixed application name) + the connector
+    /// secret protector. Call only from hosts that read/write connector secrets — <b>web and bot</b> — which start
+    /// after migrations (the key ring is read at startup, so the <c>DataProtectionKeys</c> table must already exist).
+    /// The migration host deliberately omits it.
+    /// </summary>
+    public static TBuilder AddMusterConnectorProtection<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
+    {
+        builder.Services.AddSingleton<Connectors.IConnectorSecretProtector, Connectors.ConnectorSecretProtector>();
+        builder.Services.AddDataProtection()
+            .PersistKeysToDbContext<MusterDbContext>()
+            .SetApplicationName("Muster");
 
         return builder;
     }

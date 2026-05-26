@@ -10,6 +10,10 @@ public static class MembershipQueries
     public static Task<Guild?> FindGuildAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
 
+    /// <summary>A user's display name (global name, else username), or null if unknown — for connector enrichment.</summary>
+    public static Task<string?> FindDisplayNameAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
+        => db.Users.Where(u => u.Id == userId).Select(u => u.GlobalName ?? u.Username).FirstOrDefaultAsync(ct);
+
     /// <summary>A guild's settings (read-only, untracked); defaults when the guild is unknown.</summary>
     public static async Task<GuildSettings> GetSettingsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => (await db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guildId, ct))?.Settings ?? new();
@@ -51,6 +55,24 @@ public static class MembershipQueries
     /// <summary>A user's stored IANA time zone id (scalar), or null.</summary>
     public static Task<string?> UserTimeZoneIdAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
         => db.Users.Where(u => u.Id == userId).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct);
+
+    /// <summary>Whether the user has opted out of currency-receipt DMs (false = receipts on; default when unknown).</summary>
+    public static Task<bool> CurrencyDmOptOutAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
+        => db.Users.Where(u => u.Id == userId).Select(u => u.CurrencyDmOptOut).FirstOrDefaultAsync(ct);
+
+    /// <summary>Set the user's currency-receipt DM opt-out. No-op if the user is unknown. Returns the saved value.</summary>
+    public static async Task<bool> SetCurrencyDmOptOutAsync(this MusterDbContext db, ulong userId, bool optOut, CancellationToken ct = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+        {
+            return false;
+        }
+
+        user.CurrencyDmOptOut = optOut;
+        await db.SaveChangesAsync(ct);
+        return optOut;
+    }
 
     /// <summary>Map of user id → display name (global name, falling back to username) for the given users.</summary>
     public static Task<Dictionary<ulong, string>> UserDisplayNameMapAsync(this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)

@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Options;
 using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Currencies;
 
 namespace Muster.Infrastructure.Commands.Membership;
 
@@ -18,8 +20,41 @@ public enum RoleKind
 /// The guild owner can always run these even before any role is mapped, so the server can be
 /// configured without being locked out.
 /// </summary>
-public class ConfigCommandService(MusterDbContext db)
+public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention)
 {
+    /// <summary>Set how many days of detailed ledger history this guild keeps before the prune sweep compacts older
+    /// rows into carry-forward checkpoints (0 = inherit the platform default / keep forever). Validated against the
+    /// platform cap; the effective window is the smaller of this and the cap.</summary>
+    public async Task<CommandResult> SetLedgerRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
+    {
+        if (days < 0)
+        {
+            return CommandResult.Error("Retention days can't be negative (0 = inherit the platform default).");
+        }
+
+        var cap = retention.Value.MaxLedgerRetentionDays;
+        if (LedgerRetention.ExceedsCap(days, cap))
+        {
+            return CommandResult.Error($"The platform maximum ledger retention is {cap} days.");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.LedgerRetentionDays = days;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        var effective = LedgerRetention.Effective(days, cap);
+        var window = effective == 0 ? "unlimited (full history kept)" : $"{effective} days";
+        var chosen = days == 0 ? "platform default" : $"{days} days";
+        return CommandResult.Ok($"Ledger retention set to {chosen} — effective window: {window}.");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

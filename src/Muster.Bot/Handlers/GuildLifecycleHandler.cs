@@ -43,7 +43,7 @@ public class GuildLifecycleHandler(
     }
 
     // Guild renamed / icon changed / ownership transferred.
-    public ValueTask HandleAsync(Guild guild)
+    public ValueTask HandleAsync(NetCord.Gateway.Guild guild)
         => RunInScopeAsync(sp => sp.GetRequiredService<GuildProvisioningService>()
             .EnsureGuildAsync(guild.Id, guild.Name, guild.IconHash, guild.OwnerId));
 

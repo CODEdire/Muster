@@ -22,109 +22,26 @@ namespace Muster.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("Muster.Domain.Entities.ActivityRecord", b =>
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<decimal>("ChannelId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<decimal?>("SourceMessageId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("TrackingSessionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Type")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("UserId")
-                        .HasColumnType("decimal(20,0)");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("SourceMessageId")
-                        .IsUnique()
-                        .HasFilter("[SourceMessageId] IS NOT NULL");
-
-                    b.ToTable("ActivityRecords");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.ApiClient", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("ActsAsUserId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("ApiKeyHash")
-                        .IsRequired()
+                    b.Property<string>("FriendlyName")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.PrimitiveCollection<string>("Scopes")
-                        .IsRequired()
+                    b.Property<string>("Xml")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("ApiClients");
+                    b.ToTable("DataProtectionKeys");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.AuditLog", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("ActorUserId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("Details")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AuditLogs");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.Currency", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Currencies.Currency", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -158,7 +75,7 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("Currencies");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.DailyActivityRollup", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Currencies.CurrencyLedgerEntry", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -166,59 +83,113 @@ namespace Muster.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<decimal>("ChannelId")
-                        .HasColumnType("decimal(20,0)");
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
 
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date");
+                    b.Property<Guid>("CurrencyId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<int>("MessageCount")
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("SeasonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("SourceType")
                         .HasColumnType("int");
 
                     b.Property<decimal>("UserId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<int>("VoiceMinutes")
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceType", "SourceId")
+                        .IsUnique()
+                        .HasFilter("[SourceId] IS NOT NULL");
+
+                    b.HasIndex("GuildId", "UserId", "CurrencyId", "SeasonId");
+
+                    b.ToTable("CurrencyLedgerEntries");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Currencies.Season", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("EndsAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Status")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("GuildId", "UserId", "ChannelId", "Date")
-                        .IsUnique();
+                    b.HasIndex("GuildId", "Status");
 
-                    b.ToTable("DailyActivityRollups");
+                    b.ToTable("Seasons");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.DiscordUser", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Currencies.Wallet", b =>
                 {
-                    b.Property<decimal>("Id")
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("Balance")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CurrencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<string>("AvatarHash")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<string>("GlobalName")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<Guid?>("SeasonId")
+                        .HasColumnType("uniqueidentifier");
 
-                    b.Property<bool>("IsBot")
-                        .HasColumnType("bit");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<string>("TimeZoneId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Username")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("decimal(20,0)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Users");
+                    b.HasIndex("GuildId", "UserId", "CurrencyId", "SeasonId")
+                        .IsUnique()
+                        .HasFilter("[SeasonId] IS NOT NULL");
+
+                    b.ToTable("Wallets");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.EventAttendee", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Events.EventAttendee", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -247,37 +218,7 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("EventAttendees");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.Guild", b =>
-                {
-                    b.Property<decimal>("Id")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("IconHash")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTimeOffset>("JoinedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("OwnerId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("TimeZoneId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Guilds");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.GuildEvent", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Events.GuildEvent", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -334,7 +275,66 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("GuildEvents");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.GuildMember", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.Guild", b =>
+                {
+                    b.Property<decimal>("Id")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("IconHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("OwnerId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Guilds");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Members.DiscordUser", b =>
+                {
+                    b.Property<decimal>("Id")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("AvatarHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("CurrencyDmOptOut")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("GlobalName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsBot")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Members.GuildMember", b =>
                 {
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
@@ -359,7 +359,198 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("GuildMembers");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.GuildQuest", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Members.GuildRole", b =>
+                {
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<decimal>("RoleId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Permissions")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.HasKey("GuildId", "RoleId");
+
+                    b.ToTable("GuildRoles");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionMuster", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<Guid>("CurrencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.PrimitiveCollection<string>("Emojis")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<decimal>("MessageId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("RewardAmount")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ReactionMusters");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionParticipant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("MusterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ReactedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MusterId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ReactionParticipants");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Operations.ApiClient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("ActsAsUserId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("ApiKeyHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.PrimitiveCollection<string>("Scopes")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ApiClients");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Operations.AuditLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("ActorUserId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Operations.PostedMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<bool>("EverPublic")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<decimal>("MessageId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityType", "EntityId")
+                        .IsUnique();
+
+                    b.ToTable("PostedMessages");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Quests.GuildQuest", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -442,147 +633,7 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("Quests");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.GuildRole", b =>
-                {
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<decimal>("RoleId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("Permissions")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.HasKey("GuildId", "RoleId");
-
-                    b.ToTable("GuildRoles");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.LedgerEntry", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("Amount")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("CurrencyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("SeasonId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("SourceId")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<int>("SourceType")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("UserId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SourceType", "SourceId")
-                        .IsUnique()
-                        .HasFilter("[SourceId] IS NOT NULL");
-
-                    b.HasIndex("GuildId", "UserId", "CurrencyId", "SeasonId");
-
-                    b.ToTable("LedgerEntries");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.ManualAward", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<long>("Amount")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("AwardedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal>("AwardedBy")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<Guid>("CurrencyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("UserId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ManualAwards");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.PostedMessage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("ChannelId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("EntityId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("EntityType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<bool>("EverPublic")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<decimal>("MessageId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EntityType", "EntityId")
-                        .IsUnique();
-
-                    b.ToTable("PostedMessages");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.QuestParticipant", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Quests.QuestParticipant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -625,103 +676,79 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("QuestParticipants");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.ReactionMuster", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.ActivityRecord", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("bigint");
 
-                    b.Property<int?>("Capacity")
-                        .HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<Guid>("CurrencyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.PrimitiveCollection<string>("Emojis")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<decimal>("MessageId")
+                    b.Property<decimal?>("SourceMessageId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<string>("Prompt")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<long>("RewardAmount")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ReactionMusters");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.ReactionParticipant", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Emoji")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("MusterId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("ReactedAt")
+                    b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("TrackingSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("UserId")
                         .HasColumnType("decimal(20,0)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MusterId", "UserId")
-                        .IsUnique();
+                    b.HasIndex("SourceMessageId")
+                        .IsUnique()
+                        .HasFilter("[SourceMessageId] IS NOT NULL");
 
-                    b.ToTable("ReactionParticipants");
+                    b.ToTable("ActivityRecords");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.Season", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.DailyActivityRollup", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("bigint");
 
-                    b.Property<DateTimeOffset?>("EndsAt")
-                        .HasColumnType("datetimeoffset");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
 
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<int>("MessageCount")
+                        .HasColumnType("int");
 
-                    b.Property<DateTimeOffset>("StartsAt")
-                        .HasColumnType("datetimeoffset");
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("decimal(20,0)");
 
-                    b.Property<int>("Status")
+                    b.Property<int>("VoiceMinutes")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("GuildId", "Status");
+                    b.HasIndex("GuildId", "UserId", "ChannelId", "Date")
+                        .IsUnique();
 
-                    b.ToTable("Seasons");
+                    b.ToTable("DailyActivityRollups");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.TrackingSession", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.TrackingSession", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -758,7 +785,7 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("TrackingSessions");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.VoiceAttendance", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.VoiceAttendance", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -790,44 +817,220 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("VoiceAttendance");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.Wallet", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Currencies.Currency", b =>
                 {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
+                    b.OwnsOne("Muster.Domain.Entities.Currencies.CurrencyConnector", "Connector", b1 =>
+                        {
+                            b1.Property<Guid>("CurrencyId");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                            b1.Property<string>("BaseUrl");
 
-                    b.Property<long>("Balance")
-                        .HasColumnType("bigint");
+                            b1.Property<bool>("Enabled");
 
-                    b.Property<Guid>("CurrencyId")
-                        .HasColumnType("uniqueidentifier");
+                            b1.Property<string>("ErrorPath");
 
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
+                            b1.Property<string>("IdempotencyHeader");
 
-                    b.Property<Guid?>("SeasonId")
-                        .HasColumnType("uniqueidentifier");
+                            b1.Property<DateTimeOffset?>("LastAttemptAt");
 
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
+                            b1.Property<string>("LastError");
 
-                    b.Property<decimal>("UserId")
-                        .HasColumnType("decimal(20,0)");
+                            b1.Property<string>("LastStatus");
 
-                    b.HasKey("Id");
+                            b1.Property<string>("SuccessCodes");
 
-                    b.HasIndex("GuildId", "UserId", "CurrencyId", "SeasonId")
-                        .IsUnique()
-                        .HasFilter("[SeasonId] IS NOT NULL");
+                            b1.Property<int>("SyncIntervalMinutes");
 
-                    b.ToTable("Wallets");
+                            b1.Property<int>("TimeoutSeconds");
+
+                            b1.HasKey("CurrencyId");
+
+                            b1.ToTable("Currencies");
+
+                            b1
+                                .ToJson("Connector")
+                                .HasColumnType("nvarchar(max)");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CurrencyId");
+
+                            b1.OwnsOne("Muster.Domain.Entities.Currencies.ConnectorAuth", "Auth", b2 =>
+                                {
+                                    b2.Property<Guid>("CurrencyConnectorCurrencyId");
+
+                                    b2.Property<int>("ApiKeyIn");
+
+                                    b2.Property<string>("ApiKeyName")
+                                        .IsRequired();
+
+                                    b2.Property<int>("Scheme");
+
+                                    b2.Property<string>("Secret");
+
+                                    b2.Property<string>("Username");
+
+                                    b2.HasKey("CurrencyConnectorCurrencyId");
+
+                                    b2.ToTable("Currencies");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CurrencyConnectorCurrencyId");
+                                });
+
+                            b1.OwnsMany("Muster.Domain.Entities.Currencies.ConnectorHeader", "Headers", b2 =>
+                                {
+                                    b2.Property<Guid>("CurrencyConnectorCurrencyId");
+
+                                    b2.Property<int>("__synthesizedOrdinal")
+                                        .ValueGeneratedOnAddOrUpdate();
+
+                                    b2.Property<string>("Name")
+                                        .IsRequired();
+
+                                    b2.Property<string>("Value")
+                                        .IsRequired();
+
+                                    b2.HasKey("CurrencyConnectorCurrencyId", "__synthesizedOrdinal");
+
+                                    b2.ToTable("Currencies");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CurrencyConnectorCurrencyId");
+                                });
+
+                            b1.OwnsOne("Muster.Domain.Entities.Currencies.ConnectorSigning", "Signing", b2 =>
+                                {
+                                    b2.Property<Guid>("CurrencyConnectorCurrencyId");
+
+                                    b2.Property<int>("Algorithm");
+
+                                    b2.Property<string>("Secret");
+
+                                    b2.Property<string>("SignatureHeader")
+                                        .IsRequired();
+
+                                    b2.Property<string>("TimestampHeader");
+
+                                    b2.HasKey("CurrencyConnectorCurrencyId");
+
+                                    b2.ToTable("Currencies");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CurrencyConnectorCurrencyId");
+                                });
+
+                            b1.OwnsOne("Muster.Domain.Entities.Currencies.ConnectorAction", "Credit", b2 =>
+                                {
+                                    b2.Property<Guid>("CurrencyConnectorCurrencyId");
+
+                                    b2.Property<int>("BodyFormat");
+
+                                    b2.Property<string>("BodyTemplate");
+
+                                    b2.Property<bool>("Enabled");
+
+                                    b2.Property<string>("Method")
+                                        .IsRequired();
+
+                                    b2.Property<string>("Path");
+
+                                    b2.Property<string>("Query");
+
+                                    b2.Property<int>("ResponseFormat");
+
+                                    b2.Property<string>("ResponsePath");
+
+                                    b2.HasKey("CurrencyConnectorCurrencyId");
+
+                                    b2.ToTable("Currencies");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CurrencyConnectorCurrencyId");
+                                });
+
+                            b1.OwnsOne("Muster.Domain.Entities.Currencies.ConnectorAction", "Debit", b2 =>
+                                {
+                                    b2.Property<Guid>("CurrencyConnectorCurrencyId");
+
+                                    b2.Property<int>("BodyFormat");
+
+                                    b2.Property<string>("BodyTemplate");
+
+                                    b2.Property<bool>("Enabled");
+
+                                    b2.Property<string>("Method")
+                                        .IsRequired();
+
+                                    b2.Property<string>("Path");
+
+                                    b2.Property<string>("Query");
+
+                                    b2.Property<int>("ResponseFormat");
+
+                                    b2.Property<string>("ResponsePath");
+
+                                    b2.HasKey("CurrencyConnectorCurrencyId");
+
+                                    b2.ToTable("Currencies");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CurrencyConnectorCurrencyId");
+                                });
+
+                            b1.OwnsOne("Muster.Domain.Entities.Currencies.ConnectorAction", "GetBalance", b2 =>
+                                {
+                                    b2.Property<Guid>("CurrencyConnectorCurrencyId");
+
+                                    b2.Property<int>("BodyFormat");
+
+                                    b2.Property<string>("BodyTemplate");
+
+                                    b2.Property<bool>("Enabled");
+
+                                    b2.Property<string>("Method")
+                                        .IsRequired();
+
+                                    b2.Property<string>("Path");
+
+                                    b2.Property<string>("Query");
+
+                                    b2.Property<int>("ResponseFormat");
+
+                                    b2.Property<string>("ResponsePath");
+
+                                    b2.HasKey("CurrencyConnectorCurrencyId");
+
+                                    b2.ToTable("Currencies");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CurrencyConnectorCurrencyId");
+                                });
+
+                            b1.Navigation("Auth")
+                                .IsRequired();
+
+                            b1.Navigation("Credit")
+                                .IsRequired();
+
+                            b1.Navigation("Debit")
+                                .IsRequired();
+
+                            b1.Navigation("GetBalance")
+                                .IsRequired();
+
+                            b1.Navigation("Headers");
+
+                            b1.Navigation("Signing")
+                                .IsRequired();
+                        });
+
+                    b.Navigation("Connector")
+                        .IsRequired();
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.EventAttendee", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Events.EventAttendee", b =>
                 {
-                    b.HasOne("Muster.Domain.Entities.GuildEvent", "Event")
+                    b.HasOne("Muster.Domain.Entities.Events.GuildEvent", "Event")
                         .WithMany("Attendees")
                         .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -836,14 +1039,16 @@ namespace Muster.Persistence.Migrations
                     b.Navigation("Event");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.Guild", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.Guild", b =>
                 {
-                    b.OwnsOne("Muster.Domain.Entities.GuildSettings", "Settings", b1 =>
+                    b.OwnsOne("Muster.Domain.Entities.Guilds.GuildSettings", "Settings", b1 =>
                         {
                             b1.Property<decimal>("GuildId");
 
                             b1.PrimitiveCollection<string>("AdminRoleIds")
                                 .IsRequired();
+
+                            b1.Property<int>("LedgerRetentionDays");
 
                             b1.PrimitiveCollection<string>("OfficerRoleIds")
                                 .IsRequired();
@@ -870,7 +1075,7 @@ namespace Muster.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("GuildId");
 
-                            b1.OwnsOne("Muster.Domain.Entities.QuestSettings", "Quests", b2 =>
+                            b1.OwnsOne("Muster.Domain.Entities.Guilds.QuestSettings", "Quests", b2 =>
                                 {
                                     b2.Property<decimal>("GuildSettingsGuildId");
 
@@ -940,15 +1145,15 @@ namespace Muster.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.GuildMember", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Members.GuildMember", b =>
                 {
-                    b.HasOne("Muster.Domain.Entities.Guild", "Guild")
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", "Guild")
                         .WithMany()
                         .HasForeignKey("GuildId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Muster.Domain.Entities.DiscordUser", "User")
+                    b.HasOne("Muster.Domain.Entities.Members.DiscordUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -959,20 +1164,9 @@ namespace Muster.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.QuestParticipant", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionParticipant", b =>
                 {
-                    b.HasOne("Muster.Domain.Entities.GuildQuest", "Quest")
-                        .WithMany("Participants")
-                        .HasForeignKey("QuestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Quest");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.ReactionParticipant", b =>
-                {
-                    b.HasOne("Muster.Domain.Entities.ReactionMuster", "Muster")
+                    b.HasOne("Muster.Domain.Entities.Musters.ReactionMuster", "Muster")
                         .WithMany("Participants")
                         .HasForeignKey("MusterId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -981,9 +1175,20 @@ namespace Muster.Persistence.Migrations
                     b.Navigation("Muster");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.VoiceAttendance", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Quests.QuestParticipant", b =>
                 {
-                    b.HasOne("Muster.Domain.Entities.TrackingSession", "TrackingSession")
+                    b.HasOne("Muster.Domain.Entities.Quests.GuildQuest", "Quest")
+                        .WithMany("Participants")
+                        .HasForeignKey("QuestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Quest");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.VoiceAttendance", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Tracking.TrackingSession", "TrackingSession")
                         .WithMany("Attendance")
                         .HasForeignKey("TrackingSessionId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -992,22 +1197,22 @@ namespace Muster.Persistence.Migrations
                     b.Navigation("TrackingSession");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.GuildEvent", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Events.GuildEvent", b =>
                 {
                     b.Navigation("Attendees");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.GuildQuest", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionMuster", b =>
                 {
                     b.Navigation("Participants");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.ReactionMuster", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Quests.GuildQuest", b =>
                 {
                     b.Navigation("Participants");
                 });
 
-            modelBuilder.Entity("Muster.Domain.Entities.TrackingSession", b =>
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.TrackingSession", b =>
                 {
                     b.Navigation("Attendance");
                 });
