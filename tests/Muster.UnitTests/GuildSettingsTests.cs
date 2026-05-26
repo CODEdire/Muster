@@ -16,13 +16,14 @@ public class GuildSettingsTests
 
         var s = JsonSerializer.Deserialize<GuildSettings>(legacy)!;
 
-        Assert.True(s.PersonalQuestIntakeApproval);                 // default on
-        Assert.Equal(FinalApprovalMode.OwnerChoice, s.FinalApprovalMode);
-        Assert.Equal(0, s.IntakeTimeoutHours);                      // disabled
-        Assert.Equal(0, s.MaxRevisions);
-        Assert.Equal(100, s.TierSPoints);                           // tier defaults intact
-        Assert.Equal(5, s.TierEPoints);
-        Assert.Equal(0, s.MaxOpenQuestsPerPoster);
+        // The legacy doc predates the nested Quests object, so it deserializes to QuestSettings defaults.
+        Assert.True(s.Quests.PersonalQuestIntakeApproval);          // default on
+        Assert.Equal(FinalApprovalMode.OwnerChoice, s.Quests.FinalApprovalMode);
+        Assert.Equal(0, s.Quests.IntakeTimeoutHours);               // disabled
+        Assert.Equal(0, s.Quests.MaxRevisions);
+        Assert.Equal(100, s.Quests.TierSPoints);                    // tier defaults intact
+        Assert.Equal(5, s.Quests.TierEPoints);
+        Assert.Equal(0, s.Quests.MaxOpenQuestsPerPoster);
     }
 
     [Fact]
@@ -30,23 +31,26 @@ public class GuildSettingsTests
     {
         var original = new GuildSettings
         {
-            PersonalQuestIntakeApproval = false,
-            FinalApprovalMode = FinalApprovalMode.Forced,
-            IntakeTimeoutHours = 12,
-            SubmissionTimeoutAction = StaleSubmissionAction.Dispute,
-            MaxRevisions = 3,
-            TierBPoints = 999,
             QuestManagerRoleIds = [1, 2, 3],
+            Quests = new QuestSettings
+            {
+                PersonalQuestIntakeApproval = false,
+                FinalApprovalMode = FinalApprovalMode.Forced,
+                IntakeTimeoutHours = 12,
+                SubmissionTimeoutAction = StaleSubmissionAction.Dispute,
+                MaxRevisions = 3,
+                TierBPoints = 999,
+            },
         };
 
         var round = JsonSerializer.Deserialize<GuildSettings>(JsonSerializer.Serialize(original))!;
 
-        Assert.False(round.PersonalQuestIntakeApproval);
-        Assert.Equal(FinalApprovalMode.Forced, round.FinalApprovalMode);
-        Assert.Equal(12, round.IntakeTimeoutHours);
-        Assert.Equal(StaleSubmissionAction.Dispute, round.SubmissionTimeoutAction);
-        Assert.Equal(3, round.MaxRevisions);
-        Assert.Equal(999, round.TierBPoints);
+        Assert.False(round.Quests.PersonalQuestIntakeApproval);
+        Assert.Equal(FinalApprovalMode.Forced, round.Quests.FinalApprovalMode);
+        Assert.Equal(12, round.Quests.IntakeTimeoutHours);
+        Assert.Equal(StaleSubmissionAction.Dispute, round.Quests.SubmissionTimeoutAction);
+        Assert.Equal(3, round.Quests.MaxRevisions);
+        Assert.Equal(999, round.Quests.TierBPoints);
         Assert.Equal([1ul, 2ul, 3ul], round.QuestManagerRoleIds);
     }
 }

@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 
@@ -11,8 +11,8 @@ namespace Muster.Infrastructure.Services.Seasons;
 /// </summary>
 public class SeasonService(MusterDbContext db)
 {
-    public async Task<Season?> GetActiveAsync(ulong guildId, CancellationToken ct = default)
-        => await db.Seasons.FirstOrDefaultAsync(s => s.GuildId == guildId && s.Status == SeasonStatus.Active, ct);
+    public Task<Season?> GetActiveAsync(ulong guildId, CancellationToken ct = default)
+        => db.FindActiveSeasonAsync(guildId, ct);
 
     /// <summary>Archive the current active season (if any) and open a new one.</summary>
     public async Task<Season> StartAsync(ulong guildId, string name, CancellationToken ct = default)

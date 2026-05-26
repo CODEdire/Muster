@@ -10,9 +10,11 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Muster.Domain\Muster.Domain.csproj" />
     <ProjectReference Include="..\..\src\Muster.Infrastructure\Muster.Infrastructure.csproj" />
   </ItemGroup>
 

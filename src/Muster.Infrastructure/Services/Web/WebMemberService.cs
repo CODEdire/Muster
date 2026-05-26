@@ -1,6 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Infrastructure.Services.Ledger;
 namespace Muster.Infrastructure.Services.Web;
 
@@ -19,24 +18,17 @@ public class WebMemberService(MusterDbContext db, ScoreQueryService scores)
     {
         var wallets = await scores.GetWalletsAsync(guildId, userId, ct);
 
-        var currencyCodes = await db.Currencies
-            .Where(c => c.GuildId == guildId)
-            .ToDictionaryAsync(c => c.Id, c => c.Code, ct);
+        var currencyCodes = await db.CurrencyCodeMapAsync(guildId, ct);
 
-        var entries = await db.LedgerEntries
-            .Where(e => e.GuildId == guildId && e.UserId == userId)
-            .OrderByDescending(e => e.Id)
-            .Take(historyCount)
-            .Select(e => new { e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
-            .ToListAsync(ct);
+        var entries = await db.RecentHistoryAsync(guildId, userId, historyCount, ct);
 
         var history = entries
             .Select(e => new MemberLedgerRow(
                 currencyCodes.GetValueOrDefault(e.CurrencyId, "?"), e.Amount, e.SourceType.ToString(), e.OccurredAt, e.Reason))
             .ToList();
 
-        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
+        var user = await db.FindUserAsync(userId, ct);
         var name = member?.Nickname ?? user?.GlobalName ?? user?.Username ?? userId.ToString();
 
         return new MemberDetailView(userId, name, wallets, history);

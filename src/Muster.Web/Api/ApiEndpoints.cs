@@ -1,49 +1,37 @@
 using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
 using Muster.Contracts;
 using Muster.Infrastructure;
 using Wolverine;
 using Wolverine.Http;
 using Muster.Infrastructure.Services.Ledger;
-using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Web.Api;
 
 public record CurrencyOpRequest(ulong UserId, long Amount, string? Reason);
 
 /// <summary>
-/// Public API under <c>/api/v1</c>, authored as Wolverine.HTTP endpoints and authenticated by an
-/// <c>X-Api-Key</c> header scoped to a guild. Reads expose scores/wallets/ledger; writes mint/spend
-/// currency. Endpoints reuse the same domain services as the bot and web UI.
+/// Public API under <c>/api/v1</c>, authored as Wolverine.HTTP endpoints. The <c>X-Api-Key</c> / guild / scope
+/// check is declarative via <see cref="RequireApiScopeAttribute"/> (handled by <see cref="ApiKeyMiddleware"/>),
+/// so each handler is just the work. Reads expose scores/wallets/ledger; writes mint/spend currency. Endpoints
+/// reuse the same domain services as the bot and web UI.
 /// </summary>
 public static class ApiEndpoints
 {
     [WolverineGet("/api/v1/guilds/{guildId}/leaderboard")]
-    public static async Task<IResult> Leaderboard(
-        ulong guildId, HttpContext http, ApiClientService clients, ScoreQueryService scores, int top = 25)
-    {
-        var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:leaderboard");
-        return error ?? Results.Ok(await scores.GetSeasonLeaderboardAsync(guildId, top <= 0 ? 25 : Math.Min(top, 100)));
-    }
+    [RequireApiScope("read:leaderboard")]
+    public static async Task<IResult> Leaderboard(ulong guildId, ScoreQueryService scores, int top = 25) =>
+        Results.Ok(await scores.GetSeasonLeaderboardAsync(guildId, top <= 0 ? 25 : Math.Min(top, 100)));
 
     [WolverineGet("/api/v1/guilds/{guildId}/members/{userId}/wallets")]
-    public static async Task<IResult> Wallets(
-        ulong guildId, ulong userId, HttpContext http, ApiClientService clients, ScoreQueryService scores)
-    {
-        var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:wallets");
-        return error ?? Results.Ok(await scores.GetWalletsAsync(guildId, userId));
-    }
+    [RequireApiScope("read:wallets")]
+    public static async Task<IResult> Wallets(ulong guildId, ulong userId, ScoreQueryService scores) =>
+        Results.Ok(await scores.GetWalletsAsync(guildId, userId));
 
     [WolverineGet("/api/v1/guilds/{guildId}/ledger")]
-    public static async Task<IResult> Ledger(
-        ulong guildId, HttpContext http, ApiClientService clients, MusterDbContext db, int skip = 0, int take = 50)
+    [RequireApiScope("read:ledger")]
+    public static async Task<IResult> Ledger(ulong guildId, MusterDbContext db, int skip = 0, int take = 50)
     {
-        var error = await ApiAuth.CheckAsync(http, clients, guildId, "read:ledger");
-        if (error is not null)
-        {
-            return error;
-        }
-
         var entries = await db.LedgerEntries
             .Where(e => e.GuildId == guildId)
             .OrderByDescending(e => e.Id)
@@ -66,34 +54,16 @@ public static class ApiEndpoints
     }
 
     [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/mint")]
-    public static async Task<IResult> Mint(
-        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, IMessageBus bus)
-    {
-        var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
-        if (error is not null)
-        {
-            return error;
-        }
-
-        var result = await bus.InvokeAsync<CurrencyChangeResult>(
-            new MintCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint"));
-        return ToResult(result);
-    }
+    [RequireApiScope("write:currency")]
+    public static async Task<IResult> Mint(ulong guildId, string code, CurrencyOpRequest body, IMessageBus bus) =>
+        ToResult(await bus.InvokeAsync<CurrencyChangeResult>(
+            new MintCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint")));
 
     [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/spend")]
-    public static async Task<IResult> Spend(
-        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, ApiClientService clients, IMessageBus bus)
-    {
-        var error = await ApiAuth.CheckAsync(http, clients, guildId, "write:currency");
-        if (error is not null)
-        {
-            return error;
-        }
-
-        var result = await bus.InvokeAsync<CurrencyChangeResult>(
-            new SpendCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend"));
-        return ToResult(result);
-    }
+    [RequireApiScope("write:currency")]
+    public static async Task<IResult> Spend(ulong guildId, string code, CurrencyOpRequest body, IMessageBus bus) =>
+        ToResult(await bus.InvokeAsync<CurrencyChangeResult>(
+            new SpendCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend")));
 
     private static IResult ToResult(CurrencyChangeResult result) => result.Status switch
     {

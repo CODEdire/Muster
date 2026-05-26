@@ -1,10 +1,12 @@
+@using Muster.Contracts
 @page "/guilds/{GuildIdRaw}/config"
 @inherits GuildAdminComponentBase
 @inject WebAdminService Admin
 @inject ConfigCommandService Config
 @inject MusterDbContext Db
+@inject Muster.Web.DiscordChannelLookup Channels
 @using Muster.Domain.Entities
-@using Muster.Infrastructure.Persistence
+@using Muster.Persistence
 @using Muster.Domain.Enums
 @using Microsoft.EntityFrameworkCore
 @using Muster.Infrastructure.Services.Web
@@ -81,12 +83,48 @@ else if (State == AccessState.Ready)
     </div>
 
     <div class="panel glass">
+        <h2>Quest board channel</h2>
+        <p class="subtitle">Post a live, auto-updating card for each quest to a Discord channel — it's edited in
+            place as the quest changes state. Leave unset to keep the board pull-only (<code>/quest list</code>).</p>
+        @if (_channels.Count == 0)
+        {
+            <p class="subtitle">No channels available — check the bot is in this server and has permission to view channels.</p>
+        }
+        <EditForm class="form-grid" Model="Channel" FormName="quest-channel" OnValidSubmit="SaveChannelAsync">
+            <input type="hidden" name="Channel.Submitted" value="1" />
+            <label>Public board channel
+                <InputSelect @bind-Value="Channel.ChannelId">
+                    <option value="0">— none (disabled) —</option>
+                    @foreach (var c in _channels)
+                    {
+                        <option value="@c.Id">#@c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Mod channel (intake / disputes / sign-off)
+                <InputSelect @bind-Value="Channel.ModChannelId">
+                    <option value="0">— none (these states post nowhere) —</option>
+                    @foreach (var c in _channels)
+                    {
+                        <option value="@c.Id">#@c.Name</option>
+                    }
+                </InputSelect>
+                <span class="subtitle">a private staff channel for states the public shouldn't see (lock it down with Discord permissions)</span>
+            </label>
+            <label>Keep completed cards for (hours) <InputNumber @bind-Value="Channel.RetentionHours" />
+                <span class="subtitle">how long a finished quest's card lingers before the bot deletes it (0 = remove immediately; web keeps full history regardless)</span></label>
+            <div class="btn-row"><button type="submit">Save channel</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
         <h2>Personal quest approval</h2>
         <p class="subtitle">Personal (member-funded) quests can be vetted and tiered by a quest manager
             before they open, with an optional final sign-off before payout.</p>
         <EditForm class="form-grid" Model="Approval" FormName="quest-approval" OnValidSubmit="SaveApprovalAsync">
             <input type="hidden" name="Approval.Submitted" value="1" />
             <label class="checkbox"><InputCheckbox @bind-Value="Approval.IntakeApproval" /> Require manager intake approval + tiering before a personal quest opens</label>
+            <label class="checkbox"><InputCheckbox @bind-Value="Approval.AllowSelf" /> Allow a poster to take &amp; complete their own player quest <span class="subtitle">(handy for solo/small guilds &amp; testing)</span></label>
             <label>Final sign-off before payout
                 <InputSelect @bind-Value="Approval.FinalMode">
                     <option value="@FinalApprovalMode.Off">Off — owner acceptance pays out directly</option>
@@ -131,6 +169,7 @@ else if (State == AccessState.Ready)
             <label>Max active quests per poster <InputNumber @bind-Value="Auto.MaxOpenPerPoster" /></label>
             <label>Max active claims per member <InputNumber @bind-Value="Auto.MaxActiveClaims" /></label>
             <label>Max revision round-trips <InputNumber @bind-Value="Auto.MaxRevisions" /> <span class="subtitle">0 = unlimited</span></label>
+            <label>Deadline reminder (hours before) <InputNumber @bind-Value="Auto.DeadlineReminderHours" /> <span class="subtitle">DMs workers/owner before a quest closes; 0 = off</span></label>
             <div class="btn-row"><button type="submit">Save automation</button></div>
         </EditForm>
     </div>
@@ -156,43 +195,67 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "tier-points")] private TierInput Tier { get; set; } = new();
     [SupplyParameterFromForm(FormName = "quest-approval")] private ApprovalInput Approval { get; set; } = new();
     [SupplyParameterFromForm(FormName = "quest-automation")] private AutomationInput Auto { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "quest-channel")] private ChannelInput Channel { get; set; } = new();
 
     private RoleMappingView? _mapping;
+    private IReadOnlyList<DiscordChannelLookup.ChannelOption> _channels = [];
 
     protected override async Task LoadAsync()
     {
         _mapping = await Admin.GetRoleMappingAsync(GuildId);
+        _channels = await Channels.GetTextChannelsAsync(GuildId);
 
         // Prefill tier values on GET only; on a post the bound values survive (long? stays null on the
         // other form's post, so we only fill blanks).
         var settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
-        Tier.S ??= settings.TierSPoints;
-        Tier.A ??= settings.TierAPoints;
-        Tier.B ??= settings.TierBPoints;
-        Tier.C ??= settings.TierCPoints;
-        Tier.D ??= settings.TierDPoints;
-        Tier.E ??= settings.TierEPoints;
+        Tier.S ??= settings.Quests.TierSPoints;
+        Tier.A ??= settings.Quests.TierAPoints;
+        Tier.B ??= settings.Quests.TierBPoints;
+        Tier.C ??= settings.Quests.TierCPoints;
+        Tier.D ??= settings.Quests.TierDPoints;
+        Tier.E ??= settings.Quests.TierEPoints;
 
         // Prefill on GET / other-form posts; the hidden sentinel marks this form's own postback so we keep its values.
         if (string.IsNullOrEmpty(Approval.Submitted))
         {
-            Approval.IntakeApproval = settings.PersonalQuestIntakeApproval;
-            Approval.FinalMode = settings.FinalApprovalMode;
+            Approval.IntakeApproval = settings.Quests.PersonalQuestIntakeApproval;
+            Approval.FinalMode = settings.Quests.FinalApprovalMode;
+            Approval.AllowSelf = settings.Quests.AllowSelfParticipation;
         }
 
         if (string.IsNullOrEmpty(Auto.Submitted))
         {
-            Auto.IntakeHours = settings.IntakeTimeoutHours;
-            Auto.IntakeAction = settings.IntakeTimeoutAction;
-            Auto.ClaimHours = settings.ClaimTimeoutHours;
-            Auto.SubmissionHours = settings.SubmissionTimeoutHours;
-            Auto.SubmissionAction = settings.SubmissionTimeoutAction;
-            Auto.FinalHours = settings.FinalApprovalTimeoutHours;
-            Auto.FinalAction = settings.FinalApprovalTimeoutAction;
-            Auto.MaxOpenPerPoster = settings.MaxOpenQuestsPerPoster;
-            Auto.MaxActiveClaims = settings.MaxActiveClaimsPerUser;
-            Auto.MaxRevisions = settings.MaxRevisions;
+            Auto.IntakeHours = settings.Quests.IntakeTimeoutHours;
+            Auto.IntakeAction = settings.Quests.IntakeTimeoutAction;
+            Auto.ClaimHours = settings.Quests.ClaimTimeoutHours;
+            Auto.SubmissionHours = settings.Quests.SubmissionTimeoutHours;
+            Auto.SubmissionAction = settings.Quests.SubmissionTimeoutAction;
+            Auto.FinalHours = settings.Quests.FinalApprovalTimeoutHours;
+            Auto.FinalAction = settings.Quests.FinalApprovalTimeoutAction;
+            Auto.MaxOpenPerPoster = settings.Quests.MaxOpenQuestsPerPoster;
+            Auto.MaxActiveClaims = settings.Quests.MaxActiveClaimsPerUser;
+            Auto.MaxRevisions = settings.Quests.MaxRevisions;
+            Auto.DeadlineReminderHours = settings.Quests.DeadlineReminderHours;
         }
+
+        if (string.IsNullOrEmpty(Channel.Submitted))
+        {
+            Channel.ChannelId = settings.Quests.QuestChannelId;
+            Channel.ModChannelId = settings.Quests.QuestModChannelId;
+            Channel.RetentionHours = settings.Quests.BoardRetentionHours;
+        }
+    }
+
+    private async Task SaveChannelAsync()
+    {
+        var result = await Config.SetQuestBoardAsync(GuildId, Channel.ChannelId, Channel.ModChannelId, Channel.RetentionHours);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.questChannel", result.Message);
+        }
+
+        Message = result.Message;
+        await LoadAsync();
     }
 
     private async Task SaveAutomationAsync()
@@ -200,7 +263,7 @@ else if (State == AccessState.Ready)
         var result = await Config.SetQuestAutomationAsync(
             GuildId, Auto.IntakeHours, Auto.IntakeAction, Auto.ClaimHours,
             Auto.SubmissionHours, Auto.SubmissionAction, Auto.FinalHours, Auto.FinalAction,
-            Auto.MaxOpenPerPoster, Auto.MaxActiveClaims, Auto.MaxRevisions);
+            Auto.MaxOpenPerPoster, Auto.MaxActiveClaims, Auto.MaxRevisions, Auto.DeadlineReminderHours);
         if (!result.IsError)
         {
             await AuditAsync("config.questAutomation", result.Message);
@@ -212,7 +275,7 @@ else if (State == AccessState.Ready)
 
     private async Task SaveApprovalAsync()
     {
-        var result = await Config.SetQuestApprovalAsync(GuildId, Approval.IntakeApproval, Approval.FinalMode);
+        var result = await Config.SetQuestApprovalAsync(GuildId, Approval.IntakeApproval, Approval.FinalMode, Approval.AllowSelf);
         if (!result.IsError)
         {
             await AuditAsync("config.questApproval", result.Message);
@@ -288,10 +351,19 @@ else if (State == AccessState.Ready)
         public long? E { get; set; }
     }
 
+    public class ChannelInput
+    {
+        public string? Submitted { get; set; }
+        public ulong ChannelId { get; set; }
+        public ulong ModChannelId { get; set; }
+        public int RetentionHours { get; set; } = 48;
+    }
+
     public class ApprovalInput
     {
         public string? Submitted { get; set; }
         public bool IntakeApproval { get; set; }
+        public bool AllowSelf { get; set; }
         public FinalApprovalMode FinalMode { get; set; }
     }
 
@@ -308,5 +380,6 @@ else if (State == AccessState.Ready)
         public int MaxOpenPerPoster { get; set; }
         public int MaxActiveClaims { get; set; }
         public int MaxRevisions { get; set; }
+        public int DeadlineReminderHours { get; set; }
     }
 }

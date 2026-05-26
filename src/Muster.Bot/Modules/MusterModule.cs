@@ -9,7 +9,7 @@ namespace Muster.Bot.Modules;
 public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
     [SlashCommand("muster", "Post a reaction check-in that rewards members who react.")]
-    public Task<Reply> CreateAsync(
+    public Task CreateAsync(
         [SlashCommandParameter(Name = "prompt", Description = "What members are checking in for")] string prompt,
         [SlashCommandParameter(Name = "emoji", Description = "Emoji to react with")] string emoji,
         [SlashCommandParameter(Name = "reward", Description = "Points per check-in")] long reward,

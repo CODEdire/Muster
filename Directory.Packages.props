@@ -7,6 +7,7 @@
   <ItemGroup Label="Aspire">
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.3.5" />
     <PackageVersion Include="Aspire.Hosting.Azure.Sql" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.DevTunnels" Version="13.3.5" />
     <PackageVersion Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="13.3.5" />
   </ItemGroup>
 
@@ -24,6 +25,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
   </ItemGroup>
 
@@ -44,6 +46,7 @@
 
   <ItemGroup Label="Web / Auth">
     <PackageVersion Include="AspNet.Security.OAuth.Discord" Version="10.0.0" />
+    <PackageVersion Include="Markdig" Version="0.41.3" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">

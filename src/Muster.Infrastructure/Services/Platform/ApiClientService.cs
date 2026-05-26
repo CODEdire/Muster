@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
-using Muster.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 
 namespace Muster.Infrastructure.Services.Platform;
@@ -15,9 +15,18 @@ public class ApiClientService(MusterDbContext db)
 {
     private const string KeyPrefix = "msk_";
 
+    /// <summary>Create an API client. A key may be bound to act as an actor (<paramref name="actsAsUserId"/>) — but
+    /// only the <paramref name="createdByUserId"/>'s own account or a bot/app member of the guild, never an
+    /// arbitrary member (prevents impersonating a non-consenting user). Throws on an invalid binding.</summary>
     public async Task<ApiClientCreated> CreateAsync(
-        ulong guildId, string name, IEnumerable<string> scopes, CancellationToken ct = default)
+        ulong guildId, string name, IEnumerable<string> scopes, ulong actsAsUserId = 0, ulong createdByUserId = 0, CancellationToken ct = default)
     {
+        if (actsAsUserId != 0 && actsAsUserId != createdByUserId && !await db.IsGuildBotAsync(guildId, actsAsUserId, ct))
+        {
+            throw new InvalidOperationException(
+                "A key can only act as your own account or a bot/app member of this server.");
+        }
+
         var rawKey = KeyPrefix + Base64Url(RandomNumberGenerator.GetBytes(32));
 
         var client = new ApiClient
@@ -27,6 +36,7 @@ public class ApiClientService(MusterDbContext db)
             Name = name,
             ApiKeyHash = Hash(rawKey),
             Scopes = scopes.ToList(),
+            ActsAsUserId = actsAsUserId,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
         };
@@ -44,15 +54,15 @@ public class ApiClientService(MusterDbContext db)
         }
 
         var hash = Hash(rawKey);
-        return await db.ApiClients.FirstOrDefaultAsync(c => c.IsActive && c.ApiKeyHash == hash, ct);
+        return await db.FindActiveApiClientByHashAsync(hash, ct);
     }
 
     public async Task<IReadOnlyList<ApiClient>> ListAsync(ulong guildId, CancellationToken ct = default)
-        => await db.ApiClients.Where(c => c.GuildId == guildId).OrderBy(c => c.Name).ToListAsync(ct);
+        => await db.ListApiClientsAsync(guildId, ct);
 
     public async Task RevokeAsync(ulong guildId, Guid clientId, CancellationToken ct = default)
     {
-        var client = await db.ApiClients.FirstOrDefaultAsync(c => c.Id == clientId && c.GuildId == guildId, ct);
+        var client = await db.FindApiClientAsync(guildId, clientId, ct);
         if (client is not null)
         {
             client.IsActive = false;

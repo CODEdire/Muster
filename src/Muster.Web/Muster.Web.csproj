@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="AspNet.Security.OAuth.Discord" />
     <PackageReference Include="WolverineFx.Http" />
+    <PackageReference Include="Markdig" />
   </ItemGroup>
 
   <ItemGroup>

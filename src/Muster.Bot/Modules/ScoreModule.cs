@@ -9,10 +9,10 @@ namespace Muster.Bot.Modules;
 public class ScoreModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
     [SlashCommand("leaderboard", "Show the current season points leaderboard.")]
-    public Task<Reply> LeaderboardAsync()
+    public Task LeaderboardAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<ScoreCommandService>().LeaderboardAsync(guildId));
 
     [SlashCommand("wallet", "Show your currency balances.")]
-    public Task<Reply> WalletAsync()
+    public Task WalletAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<ScoreCommandService>().WalletAsync(guildId, Context.User.Id));
 }

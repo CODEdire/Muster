@@ -1,17 +1,18 @@
+@using Muster.Contracts
 @page "/guilds/{GuildIdRaw}/quests/new"
+@layout GuildLayout
 @inherits GuildMemberComponentBase
-@inject QuestBoardService Board
+@inject IQuestReadService Reads
 @inject TimeZoneService TimeZones
 @inject CurrencyAdminService CurrencyAdmin
-@inject MusterDbContext Db
+@inject Wolverine.IMessageBus Bus
 @using Muster.Domain.Entities
-@using Muster.Infrastructure.Persistence
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
-@using Microsoft.EntityFrameworkCore
 @using Muster.Infrastructure.Services.Ledger
 @using Muster.Infrastructure.Services.Platform
 @using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Quests
 
 <PageTitle>Post a quest — Muster</PageTitle>
 
@@ -33,49 +34,41 @@ else if (State == AccessState.Ready)
     }
 
     <div class="panel glass">
+        @{
+            var guildHidden = Post.Kind == "guild" ? "" : "is-hidden";
+            var playerHidden = Post.Kind == "guild" ? "is-hidden" : "";
+        }
         <EditForm class="form-grid" Model="Post" FormName="post-quest" OnValidSubmit="PostAsync">
-            <label>Type
-                <InputSelect @bind-Value="Post.Kind">
-                    <option value="personal">Personal quest — escrow my own balance</option>
-                    @if (_isManager)
-                    {
-                        <option value="guild">Guild quest — minted reward (no balance needed)</option>
-                    }
-                </InputSelect>
-            </label>
-            <label>Name <InputText @bind-Value="Post.Name" /></label>
-            <label>Details <InputText @bind-Value="Post.Details" /></label>
-            <label>Reward amount <InputNumber @bind-Value="Post.Amount" /></label>
-            <label>Currency
-                <InputSelect @bind-Value="Post.Currency">
-                    @foreach (var c in _currencies)
-                    {
-                        <option value="@c.Code">@c.Code — @c.Name</option>
-                    }
-                </InputSelect>
-            </label>
-            <label>Difficulty tier <InputSelect @bind-Value="Post.Tier">
-                    <option value="@QuestTier.None">None — no bonus points</option>
-                    @foreach (var t in _tiers)
-                    {
-                        <option value="@t">@t — @_settings.PointsForTier(t) pts</option>
-                    }
-                </InputSelect>
-                <span class="subtitle">Guild quests only. Personal quests are tiered by an approver at intake.</span>
-            </label>
-            @if (_settings.FinalApprovalMode == FinalApprovalMode.OwnerChoice)
-            {
-                <label class="checkbox"><InputCheckbox @bind-Value="Post.RequestFinalApproval" /> Personal quest: require a manager's final sign-off before payout</label>
-            }
             @if (_isManager)
             {
-                <label class="checkbox"><InputCheckbox @bind-Value="Post.Repeatable" /> Guild quest: repeatable (stays open for repeated completions)</label>
-                <label>Slots (guild quest capacity) <InputNumber @bind-Value="Post.Capacity" /> <span class="subtitle">how many members can complete it</span></label>
+                <div class="kind-tabs" role="tablist">
+                    <button type="button" class="kind-tab @(Post.Kind != "guild" ? "active" : "")" data-kind="personal">
+                        <span class="material-symbols-outlined">person</span> Player quest
+                    </button>
+                    <button type="button" class="kind-tab @(Post.Kind == "guild" ? "active" : "")" data-kind="guild">
+                        <span class="material-symbols-outlined">shield</span> Guild quest
+                    </button>
+                </div>
+                <p class="subtitle">
+                    <span class="guild-only @guildHidden">Minted reward — opens immediately, no balance needed.</span>
+                    <span class="personal-only @playerHidden">Escrowed from your balance — goes through manager intake.</span>
+                </p>
             }
-            <label>Starts (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.StartsAt" /></label>
-            <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Post.ExpiresAt" /></label>
+            <input type="hidden" name="Post.Kind" id="quest-kind-value" value="@Post.Kind" />
+
+            <QuestFormFields Model="Post.Fields" NamePrefix="Post.Fields" Settings="_settings"
+                             Currencies="_currencies"
+                             ShowRewardHints="true" GuildHintClass="@guildHidden" PlayerHintClass="@playerHidden"
+                             IncludeGuildFields="_isManager" GuildFieldsClass="@($"guild-only {guildHidden}")"
+                             IncludeStarts="true" />
+
+            @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.OwnerChoice)
+            {
+                <label class="checkbox personal-only @playerHidden"><InputCheckbox @bind-Value="Post.RequestFinalApproval" /> Require a manager's final sign-off before payout</label>
+            }
+
             <div class="btn-row">
-                <button type="submit">Post</button>
+                <button type="submit">Post quest</button>
                 <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Back to board</a>
             </div>
         </EditForm>
@@ -91,24 +84,29 @@ else if (State == AccessState.Ready)
     private string _zoneId = TimeZoneService.Utc;
     private GuildSettings _settings = new();
 
-    private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
-
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
         _currencies = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
-        _settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
+        _settings = await Reads.GetSettingsAsync(GuildId);
     }
 
     private async Task PostAsync()
     {
-        var currency = Post.Currency ?? "POINTS";
-        var kind = Post.Kind == "guild" ? QuestKind.Guild : QuestKind.Personal;
-        var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.StartsAt);
-        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Post.ExpiresAt);
+        // Guild quests are manager-only and carry tier + slots; player quests are single-taker and tiered at intake.
+        var f = Post.Fields;
+        var isGuild = _isManager && Post.Kind == "guild";
+        var origin = isGuild ? QuestOrigin.Guild : QuestOrigin.Player;
+        var tier = isGuild ? f.Tier : QuestTier.None;
+        var capacity = isGuild ? Math.Max(1, f.Capacity) : 1;
 
-        var result = await Board.PostAsync(GuildId, UserId, kind, Post.Name ?? "", currency, Post.Amount, Post.Details ?? "", startsAt, deadline, Post.Tier, Post.RequestFinalApproval, Post.Repeatable, Post.Capacity < 1 ? 1 : Post.Capacity);
+        var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.StartsAt);
+        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.ExpiresAt);
+
+        var command = new PostQuest(GuildId, UserId, origin, f.Name ?? "", f.Currency ?? "POINTS", f.Amount,
+            f.Details ?? "", startsAt, deadline, tier, Post.RequestFinalApproval, capacity);
+        var result = (await Bus.InvokeAsync<Result>(command)).ToCommandResult($"Quest **{f.Name}** posted.");
         Message = result.Message;
         if (!result.IsError)
         {
@@ -121,15 +119,7 @@ else if (State == AccessState.Ready)
     public class PostInput
     {
         public string Kind { get; set; } = "personal";
-        public string? Name { get; set; }
-        public string? Details { get; set; }
-        public long Amount { get; set; }
-        public string? Currency { get; set; }
-        public QuestTier Tier { get; set; } = QuestTier.None;
         public bool RequestFinalApproval { get; set; }
-        public bool Repeatable { get; set; }
-        public int Capacity { get; set; } = 1;
-        public DateTime? StartsAt { get; set; }
-        public DateTime? ExpiresAt { get; set; }
+        public QuestFormModel Fields { get; set; } = new();
     }
 }

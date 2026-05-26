@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
-using Muster.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 
 namespace Muster.Infrastructure.Services.Platform;
 
@@ -28,13 +28,11 @@ public partial class MentionHumanizer(MusterDbContext db)
 
         var roleNames = roleIds.Count == 0
             ? []
-            : await db.GuildRoles.Where(r => r.GuildId == guildId && roleIds.Contains(r.RoleId))
-                .ToDictionaryAsync(r => r.RoleId, r => r.Name, ct);
+            : await db.RoleNameMapAsync(guildId, roleIds, ct);
 
         var userNames = userIds.Count == 0
             ? []
-            : await db.Users.Where(u => userIds.Contains(u.Id))
-                .ToDictionaryAsync(u => u.Id, u => u.GlobalName ?? u.Username, ct);
+            : await db.UserDisplayNameMapAsync(userIds, ct);
 
         text = RoleMention().Replace(text, m =>
             "@" + (roleNames.GetValueOrDefault(ulong.Parse(m.Groups[1].Value)) ?? m.Groups[1].Value));

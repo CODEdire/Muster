@@ -1,3 +1,4 @@
+using Muster.Contracts;
 using Muster.Domain.Enums;
 
 namespace Muster.Domain.Entities;
@@ -21,7 +22,7 @@ public class Guild
     public GuildSettings Settings { get; set; } = new();
 }
 
-/// <summary>Per-guild configuration. Owned by <see cref="Guild"/>.</summary>
+/// <summary>Per-guild configuration. Owned by <see cref="Guild"/> and stored as one JSON document.</summary>
 public class GuildSettings
 {
     /// <summary>Discord role ids treated as bot admins, in addition to Manage-Guild holders.</summary>
@@ -43,14 +44,44 @@ public class GuildSettings
     /// <summary>Channels whose activity is recorded (empty = all).</summary>
     public List<ulong> TrackedChannelIds { get; set; } = [];
 
-    /// <summary>When true, quest submissions require officer approval before reward.</summary>
-    public bool QuestsRequireApproval { get; set; } = true;
-
     /// <summary>Points awarded per minute of voice attendance when a tracking session closes.</summary>
     public int PointsPerVoiceMinute { get; set; } = 1;
 
+    /// <summary>Quest-board configuration: approval workflow, auto-resolve timeouts, limits, and tier rewards.</summary>
+    public QuestSettings Quests { get; set; } = new();
+}
+
+/// <summary>The quest-board slice of a guild's configuration.</summary>
+public class QuestSettings
+{
+    /// <summary>Discord channel the bot posts the live quest board to — one auto-updating message per quest,
+    /// edited in place as the quest changes state. 0 (default) disables the channel board (it stays pull-only).</summary>
+    public ulong QuestChannelId { get; set; }
+
+    /// <summary>Private staff channel for mod-only quest states (pending intake, disputed, awaiting final sign-off) —
+    /// the public can't vet/act on those, so their card lives here instead of the public board. The guild restricts
+    /// who can see it via Discord channel permissions. 0 (default) = those states post nowhere until a channel is set.</summary>
+    public ulong QuestModChannelId { get; set; }
+
+    /// <summary>How long a completed quest's channel card lingers after it goes terminal (Closed/Cancelled/Expired)
+    /// before the bot deletes it — enough to show recent activity without cluttering forever. The quest + ledger
+    /// stay in the DB (web keeps full history); only the Discord message is removed. 0 = delete as soon as terminal.</summary>
+    public int BoardRetentionHours { get; set; } = 48;
+
+    /// <summary>How many hours before a quest's deadline the bot DMs a nudge to its active workers ("closes soon —
+    /// submit before then"), and to a player-bounty owner whose quest is about to expire with no taker. Sent once per
+    /// quest (tracked by <see cref="Muster.Domain.Entities.GuildQuest.DeadlineReminderSentAt"/>). 0 disables reminders.</summary>
+    public int DeadlineReminderHours { get; set; } = 24;
+
+    /// <summary>When true, quest submissions require officer approval before reward (legacy gate).</summary>
+    public bool QuestsRequireApproval { get; set; } = true;
+
     /// <summary>When true, a personal quest must be accepted + tiered by a quest manager before it opens for takers.</summary>
     public bool PersonalQuestIntakeApproval { get; set; } = true;
+
+    /// <summary>When true, the poster may take and complete their own player quest (escrow round-trips to them).
+    /// Off by default — a bounty is normally for others. Handy for solo/small guilds and for testing.</summary>
+    public bool AllowSelfParticipation { get; set; }
 
     /// <summary>Whether a personal quest needs a final manager sign-off before payout, and who decides.</summary>
     public FinalApprovalMode FinalApprovalMode { get; set; } = FinalApprovalMode.OwnerChoice;
@@ -64,13 +95,21 @@ public class GuildSettings
     /// <summary>Hours a claimed-but-unsubmitted quest may sit idle before the taker is released back to the board.</summary>
     public int ClaimTimeoutHours { get; set; }
 
-    /// <summary>Hours a submitted quest may wait on its reviewer before <see cref="SubmissionTimeoutAction"/> fires.</summary>
+    /// <summary>Hours a submitted quest may wait on its reviewer before <see cref="SubmissionTimeoutAction"/> fires.
+    /// 0 disables auto-resolve: a submitted quest then waits on a human verdict indefinitely and may outlive its
+    /// deadline. This is intended — deadline expiry deliberately skips quests with a pending submission (the worker
+    /// did their part; the reviewer owes the verdict). Set non-zero to make unreviewed submissions self-resolve.</summary>
     public int SubmissionTimeoutHours { get; set; }
     public StaleSubmissionAction SubmissionTimeoutAction { get; set; } = StaleSubmissionAction.Approve;
 
     /// <summary>Hours a personal quest may await final sign-off before <see cref="FinalApprovalTimeoutAction"/> fires.</summary>
     public int FinalApprovalTimeoutHours { get; set; }
     public StaleFinalAction FinalApprovalTimeoutAction { get; set; } = StaleFinalAction.Approve;
+
+    /// <summary>Hours a disputed bounty may sit before it auto-resolves. The outcome is fixed and fair —
+    /// the timeout favours the party that did NOT raise the dispute (the disputant bears the burden) — so no
+    /// action enum is needed. 0 = manual-only (a manager must arbitrate).</summary>
+    public int DisputeTimeoutHours { get; set; }
 
     // --- Player guardrails (0 = unlimited) ---
 

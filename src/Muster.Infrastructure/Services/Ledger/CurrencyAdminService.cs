@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
@@ -49,7 +50,7 @@ public partial class CurrencyAdminService(MusterDbContext db)
             return CommandResult.Error("Please provide a name.");
         }
 
-        if (await db.Currencies.AnyAsync(c => c.GuildId == guildId && c.Code == code, ct))
+        if (await db.CurrencyExistsAsync(guildId, code, ct))
         {
             return CommandResult.Error($"A currency with code {code} already exists.");
         }
@@ -73,7 +74,7 @@ public partial class CurrencyAdminService(MusterDbContext db)
     public async Task<CommandResult> UpdateAsync(
         ulong guildId, Guid currencyId, string name, bool isSpendable, CurrencyMode mode, CancellationToken ct = default)
     {
-        var currency = await db.Currencies.FirstOrDefaultAsync(c => c.Id == currencyId && c.GuildId == guildId, ct);
+        var currency = await db.FindCurrencyByIdAsync(guildId, currencyId, ct);
         if (currency is null)
         {
             return CommandResult.Error("Currency not found.");

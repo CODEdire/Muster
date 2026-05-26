@@ -1,20 +1,18 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Infrastructure.Services.Ledger;
 
 /// <summary>Admin manual / bulk awards for off-platform contributions.</summary>
-public class ManualAwardService(MusterDbContext db, AwardService awards)
+public class ManualAwardService(MusterDbContext db, ICurrencyService awards)
 {
     /// <summary>Manually award the guild's POINTS currency to a member.</summary>
     public async Task AwardPointsAsync(
         ulong guildId, ulong userId, long amount, string reason, ulong awardedBy, CancellationToken ct = default)
     {
-        var points = await db.Currencies.FirstOrDefaultAsync(
-            c => c.GuildId == guildId && c.Code == GuildProvisioningService.PointsCurrencyCode, ct)
+        var points = await db.FindPointsAsync(guildId, ct)
             ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
 
         await AwardAsync(guildId, userId, points.Id, amount, reason, awardedBy, ct);
@@ -24,8 +22,7 @@ public class ManualAwardService(MusterDbContext db, AwardService awards)
     public async Task<bool> AwardByCodeAsync(
         ulong guildId, ulong userId, string currencyCode, long amount, string reason, ulong awardedBy, CancellationToken ct = default)
     {
-        var code = (currencyCode ?? string.Empty).Trim().ToUpperInvariant();
-        var currency = await db.Currencies.FirstOrDefaultAsync(c => c.GuildId == guildId && c.Code == code, ct);
+        var currency = await db.FindCurrencyAsync(guildId, currencyCode, ct);
         if (currency is null)
         {
             return false;

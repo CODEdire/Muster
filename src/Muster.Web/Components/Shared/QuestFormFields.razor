@@ -1,0 +1,89 @@
+@using Muster.Contracts
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Ledger
+
+@* Shared field rows for the post + edit quest forms. Inputs use explicit names rooted at NamePrefix
+   so static-SSR model binding maps them onto the parent form model's nested QuestFormModel. *@
+
+<label>Name <input name="@N("Name")" value="@Model.Name" required maxlength="100" /></label>
+
+<label>Details
+    <textarea id="quest-details" data-markdown-editor name="@N("Details")"
+              placeholder="Describe the quest… (markdown supported)">@Model.Details</textarea>
+</label>
+
+@if (IncludeReward)
+{
+    <label class="@RewardClass">Reward amount <input type="number" name="@N("Amount")" value="@Model.Amount" min="1" />
+        @if (ShowRewardHints)
+        {
+            <span class="subtitle guild-only @GuildHintClass">Minted to each completer on approval.</span>
+            <span class="subtitle personal-only @PlayerHintClass">Escrowed from your balance now; paid to the completer on settlement.</span>
+        }
+    </label>
+}
+
+@if (Currencies is not null)
+{
+    <label>Currency
+        <select name="@N("Currency")">
+            @foreach (var c in Currencies)
+            {
+                <option value="@c.Code" selected="@(Model.Currency == c.Code)">@c.Code — @c.Name</option>
+            }
+        </select>
+    </label>
+}
+
+@if (IncludeGuildFields)
+{
+    <label class="@GuildFieldsClass">Difficulty tier
+        <select name="@N("Tier")">
+            <option value="@QuestTier.None" selected="@(Model.Tier == QuestTier.None)">None — no bonus points</option>
+            @foreach (var t in Tiers)
+            {
+                <option value="@t" selected="@(Model.Tier == t)">@t — @Settings.Quests.PointsForTier(t) pts</option>
+            }
+        </select>
+        <span class="subtitle">Sets the bonus POINTS from guild config.</span>
+    </label>
+    <label class="@GuildFieldsClass">Slots <input type="number" name="@N("Capacity")" value="@Model.Capacity" min="1" />
+        <span class="subtitle">How many members can complete it.</span>
+    </label>
+}
+
+@if (IncludeStarts)
+{
+    <label>Starts (optional) <input type="datetime-local" name="@N("StartsAt")" value="@Fmt(Model.StartsAt)" /></label>
+}
+<label>Expires (optional) <input type="datetime-local" name="@N("ExpiresAt")" value="@Fmt(Model.ExpiresAt)" /></label>
+
+@code {
+    [Parameter, EditorRequired] public QuestFormModel Model { get; set; } = new();
+
+    /// <summary>The parent form-model path these fields nest under, e.g. "Post.Fields".</summary>
+    [Parameter, EditorRequired] public string NamePrefix { get; set; } = "";
+
+    [Parameter] public GuildSettings Settings { get; set; } = new();
+
+    /// <summary>When set, renders a currency picker (create only).</summary>
+    [Parameter] public IReadOnlyList<CurrencyView>? Currencies { get; set; }
+
+    [Parameter] public bool IncludeReward { get; set; } = true;
+    [Parameter] public string RewardClass { get; set; } = "";
+    [Parameter] public bool ShowRewardHints { get; set; }
+    [Parameter] public string GuildHintClass { get; set; } = "";
+    [Parameter] public string PlayerHintClass { get; set; } = "";
+
+    [Parameter] public bool IncludeGuildFields { get; set; } = true;
+    [Parameter] public string GuildFieldsClass { get; set; } = "";
+
+    [Parameter] public bool IncludeStarts { get; set; }
+
+    private static readonly QuestTier[] Tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
+
+    private string N(string field) => $"{NamePrefix}.{field}";
+
+    private static string? Fmt(DateTime? d) => d?.ToString("yyyy-MM-ddTHH:mm");
+}

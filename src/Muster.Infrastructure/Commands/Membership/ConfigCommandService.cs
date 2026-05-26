@@ -1,5 +1,6 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Contracts;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Enums;
 
 namespace Muster.Infrastructure.Commands.Membership;
@@ -33,21 +34,73 @@ public class ConfigCommandService(MusterDbContext db)
 
     /// <summary>Configure the personal-quest approval workflow (intake gate + final sign-off policy).</summary>
     public async Task<CommandResult> SetQuestApprovalAsync(
-        ulong guildId, bool intakeApproval, FinalApprovalMode finalMode, CancellationToken ct = default)
+        ulong guildId, bool intakeApproval, FinalApprovalMode finalMode, bool allowSelfParticipation, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
         var settings = guild.Settings;
-        settings.PersonalQuestIntakeApproval = intakeApproval;
-        settings.FinalApprovalMode = finalMode;
+        settings.Quests.PersonalQuestIntakeApproval = intakeApproval;
+        settings.Quests.FinalApprovalMode = finalMode;
+        settings.Quests.AllowSelfParticipation = allowSelfParticipation;
         guild.Settings = settings; // reassign so the owned JSON column is detected as changed
 
         await db.SaveChangesAsync(ct);
         return CommandResult.Ok("Quest approval settings updated.");
+    }
+
+    /// <summary>Point the public quest board at a channel (0 clears it, leaving the board pull-only).</summary>
+    public Task<CommandResult> SetQuestChannelAsync(ulong guildId, ulong channelId, CancellationToken ct = default)
+        => SetQuestBoardAsync(guildId, channelId, modChannelId: null, retentionHours: null, ct);
+
+    /// <summary>Point the mod-only quest states (intake/dispute/final) at a private staff channel (0 clears it).</summary>
+    public Task<CommandResult> SetQuestModChannelAsync(ulong guildId, ulong modChannelId, CancellationToken ct = default)
+        => SetQuestBoardAsync(guildId, channelId: null, modChannelId, retentionHours: null, ct);
+
+    /// <summary>Configure the live quest board. Each argument is null = leave unchanged; for the channels, a non-null
+    /// 0 clears that channel. <paramref name="channelId"/> = public board, <paramref name="modChannelId"/> = private
+    /// staff channel for mod-only states, <paramref name="retentionHours"/> = how long completed cards linger.</summary>
+    public async Task<CommandResult> SetQuestBoardAsync(
+        ulong guildId, ulong? channelId, ulong? modChannelId, int? retentionHours, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (retentionHours is < 0)
+        {
+            return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as completed).");
+        }
+
+        var settings = guild.Settings;
+        if (channelId is { } pub)
+        {
+            settings.Quests.QuestChannelId = pub;
+        }
+
+        if (modChannelId is { } mod)
+        {
+            settings.Quests.QuestModChannelId = mod;
+        }
+
+        if (retentionHours is { } hours)
+        {
+            settings.Quests.BoardRetentionHours = hours;
+        }
+
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+
+        await db.SaveChangesAsync(ct);
+
+        var q = settings.Quests;
+        var pubPart = q.QuestChannelId == 0 ? "Public board off (pull-only)" : $"Public board → <#{q.QuestChannelId}>";
+        var modPart = q.QuestModChannelId == 0 ? "no mod channel" : $"mod states → <#{q.QuestModChannelId}>";
+        return CommandResult.Ok($"{pubPart}; {modPart}; completed cards linger {q.BoardRetentionHours}h.");
     }
 
     /// <summary>Configure anti-staleness auto-resolve timeouts and per-player quest limits.</summary>
@@ -58,30 +111,32 @@ public class ConfigCommandService(MusterDbContext db)
         int submissionHours, StaleSubmissionAction submissionAction,
         int finalHours, StaleFinalAction finalAction,
         int maxOpenPerPoster, int maxActiveClaims, int maxRevisions,
+        int deadlineReminderHours,
         CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        if (new[] { intakeHours, claimHours, submissionHours, finalHours, maxOpenPerPoster, maxActiveClaims, maxRevisions }.Any(v => v < 0))
+        if (new[] { intakeHours, claimHours, submissionHours, finalHours, maxOpenPerPoster, maxActiveClaims, maxRevisions, deadlineReminderHours }.Any(v => v < 0))
         {
             return CommandResult.Error("Timeouts and limits can't be negative (0 disables).");
         }
 
         var s = guild.Settings;
-        s.IntakeTimeoutHours = intakeHours;
-        s.IntakeTimeoutAction = intakeAction;
-        s.ClaimTimeoutHours = claimHours;
-        s.SubmissionTimeoutHours = submissionHours;
-        s.SubmissionTimeoutAction = submissionAction;
-        s.FinalApprovalTimeoutHours = finalHours;
-        s.FinalApprovalTimeoutAction = finalAction;
-        s.MaxOpenQuestsPerPoster = maxOpenPerPoster;
-        s.MaxActiveClaimsPerUser = maxActiveClaims;
-        s.MaxRevisions = maxRevisions;
+        s.Quests.IntakeTimeoutHours = intakeHours;
+        s.Quests.IntakeTimeoutAction = intakeAction;
+        s.Quests.ClaimTimeoutHours = claimHours;
+        s.Quests.SubmissionTimeoutHours = submissionHours;
+        s.Quests.SubmissionTimeoutAction = submissionAction;
+        s.Quests.FinalApprovalTimeoutHours = finalHours;
+        s.Quests.FinalApprovalTimeoutAction = finalAction;
+        s.Quests.MaxOpenQuestsPerPoster = maxOpenPerPoster;
+        s.Quests.MaxActiveClaimsPerUser = maxActiveClaims;
+        s.Quests.MaxRevisions = maxRevisions;
+        s.Quests.DeadlineReminderHours = deadlineReminderHours;
         guild.Settings = s; // reassign so the owned JSON column is detected as changed
 
         await db.SaveChangesAsync(ct);
@@ -92,7 +147,7 @@ public class ConfigCommandService(MusterDbContext db)
     public async Task<CommandResult> SetQuestTierPointsAsync(
         ulong guildId, long s, long a, long b, long c, long d, long e, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
@@ -105,12 +160,12 @@ public class ConfigCommandService(MusterDbContext db)
 
         // Reassign Settings so the owned JSON column is detected as changed.
         var settings = guild.Settings;
-        settings.TierSPoints = s;
-        settings.TierAPoints = a;
-        settings.TierBPoints = b;
-        settings.TierCPoints = c;
-        settings.TierDPoints = d;
-        settings.TierEPoints = e;
+        settings.Quests.TierSPoints = s;
+        settings.Quests.TierAPoints = a;
+        settings.Quests.TierBPoints = b;
+        settings.Quests.TierCPoints = c;
+        settings.Quests.TierDPoints = d;
+        settings.Quests.TierEPoints = e;
         guild.Settings = settings;
 
         await db.SaveChangesAsync(ct);
@@ -119,7 +174,7 @@ public class ConfigCommandService(MusterDbContext db)
 
     public async Task<CommandResult> ShowAsync(ulong guildId, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
@@ -137,7 +192,7 @@ public class ConfigCommandService(MusterDbContext db)
 
     private async Task<CommandResult> ToggleAsync(ulong guildId, ulong roleId, RoleKind kind, CancellationToken ct)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return CommandResult.Error("This server isn't set up yet.");

@@ -1,0 +1,171 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IServiceScopeFactory ScopeFactory
+@using Microsoft.Extensions.DependencyInjection
+@using Muster.Infrastructure.Services.Web
+
+@* Guild-scoped shell: a persistent left sidebar on desktop, a bottom tab bar on mobile.
+   Guild id is read from the route URI (layouts don't receive route params); name + admin
+   come from the user's guild list. Pages render into the .app-main content column. *@
+<div class="guild-shell">
+    <aside class="sidebar glass">
+        <a class="brand" href="/guilds">
+            <span class="brand-mark material-symbols-outlined">hexagon</span>
+            <span>Muster</span>
+        </a>
+
+        <div class="nav-label">Server</div>
+        <a class="server-card" href="/guilds/@_guildId">
+            <span class="server-avatar">@_initials</span>
+            <span class="server-name">@_guildName</span>
+        </a>
+
+        <div class="nav-label">Manage</div>
+        <nav class="side-nav">
+            @foreach (var item in NavItems)
+            {
+                if (item.Href is { } href)
+                {
+                    <a href="@href" class="@(IsActive(item.Match) ? "active" : "")">
+                        <span class="nav-ico material-symbols-outlined">@item.Icon</span>@item.Label
+                    </a>
+                }
+                else
+                {
+                    <span class="nav-soon" title="Coming soon">
+                        <span class="nav-ico material-symbols-outlined">@item.Icon</span>@item.Label<span class="pill">soon</span>
+                    </span>
+                }
+            }
+        </nav>
+
+        <div class="sidebar-foot">
+            <div class="me-card">
+                <UserChip Name="@_userName" AvatarUrl="@_userAvatar" />
+            </div>
+            <div class="foot-row"><ThemeToggle /></div>
+            <a class="btn btn-ghost btn-sm btn-block" href="/account/logout">Log out</a>
+        </div>
+    </aside>
+
+    <main class="app-main">
+        @Body
+    </main>
+
+    <nav class="bottom-tabs glass">
+        @foreach (var tab in BottomTabs)
+        {
+            <a href="@(tab.Href ?? "#")" class="@(tab.Href is not null && IsActive(tab.Match) ? "active" : "") @(tab.Href is null ? "disabled" : "")">
+                <span class="tab-ico material-symbols-outlined">@tab.Icon</span>
+                <span class="tab-label">@tab.Label</span>
+            </a>
+        }
+    </nav>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ulong _guildId;
+    private string _guildName = "Server";
+    private string _initials = "··";
+    private string _userName = "You";
+    private string? _userAvatar;
+
+    private sealed record NavItem(string Label, string Icon, string? Href, string Match);
+
+    private IReadOnlyList<NavItem> NavItems => _guildId == 0 ? [] :
+    [
+        new("Dashboard", "dashboard", $"/guilds/{_guildId}", "$"),
+        new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
+        new("Sessions", "schedule", null, "/sessions"),
+        new("Musters", "groups", null, "/musters"),
+        new("Awards", "emoji_events", _isAdmin ? $"/guilds/{_guildId}/award" : null, "/award"),
+        new("Members", "group", null, "/members"),
+        new("Currencies", "paid", _isAdmin ? $"/guilds/{_guildId}/currencies" : null, "/currencies"),
+        new("Audit log", "receipt_long", _isAdmin ? $"/guilds/{_guildId}/audit" : null, "/audit"),
+    ];
+
+    private IReadOnlyList<NavItem> BottomTabs => _guildId == 0 ? [] :
+    [
+        new("Home", "home", $"/guilds/{_guildId}", "$"),
+        new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
+        new("Sessions", "schedule", null, "/sessions"),
+        new("You", "person", $"/guilds/{_guildId}/me", "/me"),
+    ];
+
+    private bool _isAdmin;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _guildId = ParseGuildId(Nav.Uri);
+        if (_guildId == 0 || AuthState is null)
+        {
+            return;
+        }
+
+        var principal = (await AuthState).User;
+        var userId = principal.GetDiscordUserId();
+        if (userId is null)
+        {
+            return;
+        }
+
+        // Claims always carry the username; the DB profile adds the avatar (and a nicer global name) once synced.
+        _userName = principal.DisplayName();
+
+        // Own DI scope so the layout's lookup never contends with the page on the request-scoped DbContext.
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var web = scope.ServiceProvider.GetRequiredService<WebGuildService>();
+
+        var guilds = await web.GetGuildsForUserAsync(userId.Value);
+        var g = guilds.FirstOrDefault(x => x.GuildId == _guildId);
+        if (g is not null)
+        {
+            _guildName = g.Name;
+            _isAdmin = g.IsAdmin;
+            _initials = Initials(g.Name);
+        }
+
+        var profile = await web.GetUserProfileAsync(userId.Value);
+        if (profile is not null)
+        {
+            _userName = profile.Name;
+            _userAvatar = profile.AvatarUrl;
+        }
+    }
+
+    /// <summary>Extracts the guild id from a /guilds/{id}/… path; 0 when not on a guild page.</summary>
+    private ulong ParseGuildId(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/');
+        var segs = path.Split('/');
+        if (segs.Length >= 2 && segs[0] == "guilds" && ulong.TryParse(segs[1], out var id))
+        {
+            return id;
+        }
+
+        return 0;
+    }
+
+    /// <summary>"$" matches the guild root exactly; otherwise a trailing path segment match.</summary>
+    private bool IsActive(string match)
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+        var root = $"/guilds/{_guildId}";
+        return match == "$" ? path == root : path.StartsWith(root + match, StringComparison.Ordinal);
+    }
+
+    private static string Initials(string name)
+    {
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+        {
+            return "··";
+        }
+
+        return words.Length == 1
+            ? words[0][..Math.Min(2, words[0].Length)].ToUpperInvariant()
+            : $"{words[0][0]}{words[1][0]}".ToUpperInvariant();
+    }
+}

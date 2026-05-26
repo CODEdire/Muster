@@ -1,16 +1,18 @@
 @page "/guilds/{GuildIdRaw}/quests"
+@layout GuildLayout
 @inherits GuildMemberComponentBase
-@inject QuestBoardService Board
 @inject TimeZoneService TimeZones
-@inject AuditService Audit
-@inject MusterDbContext Db
+@inject IQuestReadService Reads
+@inject IQuestAuthorizer Authorizer
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain
 @using Muster.Domain.Entities
-@using Muster.Infrastructure.Persistence
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
-@using Microsoft.EntityFrameworkCore
-@using Muster.Infrastructure.Services.Platform
 @using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Services.Quests
 
 <PageTitle>Quest board — Muster</PageTitle>
 
@@ -20,12 +22,14 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId">← Dashboard</a>
-        <h1>Quest board</h1>
-        <p class="subtitle">Guild quests mint their reward on approval; personal quests escrow the poster's own balance until a member completes them.</p>
-        <div class="actions">
-            <a class="btn" href="/guilds/@GuildId/quests/new">Post a quest</a>
+    <div class="board-head">
+        <div>
+            <div class="eyebrow">Quest board</div>
+            <h1>Quests</h1>
+            <div class="summary">@SummaryText</div>
+        </div>
+        <div class="head-actions">
+            <a class="btn" href="/guilds/@GuildId/quests/new">+ New quest</a>
         </div>
     </div>
 
@@ -34,145 +38,240 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    <div class="panel glass">
-        <div class="filter-bar quest-tabs">
-            <a href="@TabUrl("active")" class="@(CurrentTab == "active" ? "active" : "")">Active</a>
-            <a href="@TabUrl("mine")" class="@(CurrentTab == "mine" ? "active" : "")">Mine</a>
-            <a href="@TabUrl("history")" class="@(CurrentTab == "history" ? "active" : "")">History</a>
-        </div>
-        <form method="get" class="filter-bar">
-            <input type="search" name="search" value="@Search" placeholder="Search name or details" />
-            <select name="type">
-                <option value="" selected="@string.IsNullOrEmpty(CurrentType)">All types</option>
-                <option value="guild" selected="@(CurrentType == "guild")">Guild</option>
-                <option value="personal" selected="@(CurrentType == "personal")">Personal</option>
-            </select>
-            <select name="size">
-                @foreach (var s in PageSizes)
-                {
-                    <option value="@s" selected="@(s == CurrentSize)">@s / page</option>
-                }
-            </select>
+    <div class="board-toolbar glass">
+        <form method="get" class="search">
+            <input type="search" name="search" value="@Search" placeholder="Search missions…" />
             <input type="hidden" name="tab" value="@CurrentTab" />
+            <input type="hidden" name="type" value="@CurrentType" />
             <input type="hidden" name="sort" value="@CurrentSort" />
             <input type="hidden" name="desc" value="@CurrentDesc.ToString().ToLowerInvariant()" />
-            <button type="submit">Filter</button>
         </form>
+        <div class="seg">
+            <a href="@TabUrl("active")" class="@(CurrentTab == "active" ? "active" : "")">Active</a>
+            <a href="@TabUrl("actionneeded")" class="@(CurrentTab == "actionneeded" ? "active" : "")">Action Needed</a>
+            <a href="@TabUrl("history")" class="@(CurrentTab == "history" ? "active" : "")">History</a>
+        </div>
+        <div class="seg">
+            <a href="@TypeUrl("")" class="@(CurrentType == "" ? "active" : "")">All</a>
+            <a href="@TypeUrl("guild")" class="@(CurrentType == "guild" ? "active" : "")">Guild</a>
+            <a href="@TypeUrl("player")" class="@(CurrentType == "player" ? "active" : "")">Player</a>
+            <a href="@TypeUrl("mine")" class="@(CurrentType == "mine" ? "active" : "")">Mine</a>
+        </div>
+        <div class="sort-by">
+            <span class="lbl">Sort</span>
+            <select onchange="location.href=this.value">
+                <option value="@SortValueUrl("reward", true)" selected="@(CurrentSort == "reward" && CurrentDesc)">Reward · high → low</option>
+                <option value="@SortValueUrl("reward", false)" selected="@(CurrentSort == "reward" && !CurrentDesc)">Reward · low → high</option>
+                <option value="@SortValueUrl("closes", false)" selected="@(CurrentSort == "closes")">Closing soonest</option>
+                <option value="@SortValueUrl("created", true)" selected="@(CurrentSort == "created")">Newest</option>
+            </select>
+        </div>
     </div>
 
-    <div class="panel glass">
-        @if (_quests.Count == 0)
-        {
-            <p class="empty">No quests here.</p>
-        }
-        else
-        {
-            <table class="leaderboard quest-grid">
-                <thead>
-                    <tr>
-                        <th><a href="@SortUrl("name")">Quest @Indicator("name")</a></th>
-                        <th><a href="@SortUrl("type")">Type @Indicator("type")</a></th>
-                        <th><a href="@SortUrl("reward")">Reward @Indicator("reward")</a></th>
-                        <th><a href="@SortUrl("status")">Status @Indicator("status")</a></th>
-                        <th><a href="@SortUrl("opens")">Opens @Indicator("opens")</a></th>
-                        <th><a href="@SortUrl("closes")">Closes @Indicator("closes")</a></th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var q in _quests)
+    @if (_quests.Count == 0)
+    {
+        <div class="panel glass empty">No missions here.</div>
+    }
+    else
+    {
+        <div class="quest-board">
+            @foreach (var q in _quests)
+            {
+                var actions = ActionsFor(q).ToList();
+                var rewardCode = _codes.GetValueOrDefault(q.RewardCurrencyId, "?");
+                var sub = q.Participants.FirstOrDefault(p => p.Status == QuestParticipantStatus.Submitted);
+                var rev = q.Participants.FirstOrDefault(p => p.Status == QuestParticipantStatus.RevisionRequested);
+                <article class="quest-card glass @(q.Tier != QuestTier.None ? $"tier-accent tier-edge-{q.Tier}" : "")">
+                    <div class="qc-top">
+                        <div class="qc-chips">
+                            @if (q.Tier != QuestTier.None)
+                            {
+                                <span class="tier-badge tier-@q.Tier" title="Difficulty @q.Tier · +@q.BonusPoints bonus points">@q.Tier</span>
+                            }
+                            @if (q.Origin == QuestOrigin.Guild)
+                            {
+                                <span class="chip chip-quest">Guild</span>
+                            }
+                            else
+                            {
+                                <span class="chip chip-player">Player</span>
+                            }
+                            @if (StatusChip(q) is { } sc)
+                            {
+                                <span class="chip @sc.Class">@sc.Text</span>
+                            }
+                        </div>
+                        <span class="qc-time">@DueText(q)</span>
+                    </div>
+
+                    <h3><a class="qc-title" href="/guilds/@GuildId/quests/@q.Id">@q.Name</a></h3>
+                    @if (!string.IsNullOrWhiteSpace(q.Description))
                     {
-                        var actions = ActionsFor(q).ToList();
-                        <tr>
-                            <td data-label="Quest">
-                                @q.Name<br /><span class="subtitle">@q.Description</span>
-                                @{
-                                    var sub = q.Participants.FirstOrDefault(p => p.Status == MissionParticipantStatus.Submitted);
-                                    var rev = q.Participants.FirstOrDefault(p => p.Status == MissionParticipantStatus.RevisionRequested);
-                                }
-                                @if (sub?.Note is { Length: > 0 } sn)
-                                {
-                                    <br /><span class="subtitle">Note: @sn</span>
-                                }
-                                @if (rev?.ReviewNote is { Length: > 0 } rn)
-                                {
-                                    <br /><span class="subtitle">Revision requested: @rn</span>
-                                }
-                            </td>
-                            <td data-label="Type">@(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")@(q.IsRepeatable ? " · repeatable" : "")</td>
-                            <td data-label="Reward">@q.RewardAmount @_codes.GetValueOrDefault(q.RewardCurrencyId, "?")@(q.Tier != QuestTier.None ? $" · {q.Tier} ({q.BonusPoints} pts)" : "")</td>
-                            <td data-label="Status"><span class="badge status-@StatusClass(q)">@StatusLabel(q)</span></td>
-                            <td data-label="Opens">@Local(q.ScheduledStart)</td>
-                            <td data-label="Closes">@Local(q.Deadline)</td>
-                            <td data-label="Actions">
-                                @if (actions.Count > 0)
-                                {
-                                    <EditForm class="row-actions" Model="this" FormName="@($"quest-{q.Id}")" OnValidSubmit="ActAsync">
-                                        <input type="hidden" name="QuestId" value="@q.Id" />
-                                        @if (Noteable(actions))
+                        <div class="qc-desc markdown">@DiscordMarkdown.ToHtml(q.Description)</div>
+                    }
+                    <div class="qc-detail-row">
+                        <a class="qc-details" href="/guilds/@GuildId/quests/@q.Id">Details →</a>
+                        <span class="qc-reward @RewardTextClass(rewardCode)">
+                            +@q.RewardAmount @rewardCode
+                            @if (q.Origin == QuestOrigin.Player)
+                            {
+                                <span class="material-symbols-outlined esc-lock" title="Reward held in escrow">lock</span>
+                            }
+                        </span>
+                    </div>
+
+                    @if (sub?.Note is { Length: > 0 } sn)
+                    {
+                        <p class="qc-note">Note: @sn</p>
+                    }
+                    @if (rev?.ReviewNote is { Length: > 0 } rn)
+                    {
+                        <p class="qc-note">Revision: @rn</p>
+                    }
+
+                    <div class="qc-foot">
+                        @if (q.Origin == QuestOrigin.Guild)
+                        {
+                            <div class="qc-owner">
+                                <span class="issuer-mark"><span class="material-symbols-outlined">shield</span></span>
+                                <span class="who"><b>Guild issued</b></span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="qc-owner">
+                                <UserChip Name="@Name(q.OwnerId)" AvatarUrl="@Avatar(q.OwnerId)" />
+                            </div>
+                        }
+                        @{
+                            var workers = ActiveWorkers(q);
+                            var roster = RosterParticipants(q);
+                        }
+                        <div class="qc-claimers @(roster.Count > 0 ? "has-pop" : "")" tabindex="@(roster.Count > 0 ? "0" : null)">
+                            @if (workers.Count > 0)
+                            {
+                                <div class="stack">
+                                    @foreach (var p in workers.Take(3))
+                                    {
+                                        @if (Avatar(p.UserId) is { } wurl)
                                         {
-                                            <input name="Note" class="note-input" placeholder="note (optional)" />
+                                            <img class="avatar-xs ring-@RingClass(p.Status)" src="@wurl" alt="" loading="lazy" />
                                         }
-                                        @foreach (var a in actions)
+                                        else
                                         {
-                                            <button type="submit" name="Action" value="@a.Value" class="btn btn-sm @(a.Primary ? "" : "btn-ghost")">@a.Label</button>
+                                            <span class="avatar-xs ring-@RingClass(p.Status)">@InitialOf(p.UserId)</span>
                                         }
-                                    </EditForm>
+                                    }
+                                    @if (workers.Count > 3)
+                                    {
+                                        <span class="avatar-xs more">+@(workers.Count - 3)</span>
+                                    }
+                                </div>
+                            }
+                            <span class="qc-claimed">@ClaimedCount(q)/@q.Capacity</span>
+
+                            @if (roster.Count > 0)
+                            {
+                                <div class="roster-pop glass">
+                                    <div class="roster-head">Participants</div>
+                                    @foreach (var p in roster)
+                                    {
+                                        <div class="roster-row">
+                                            @if (Avatar(p.UserId) is { } rurl)
+                                            {
+                                                <img class="avatar-xs ring-@RingClass(p.Status)" src="@rurl" alt="" loading="lazy" />
+                                            }
+                                            else
+                                            {
+                                                <span class="avatar-xs ring-@RingClass(p.Status)">@InitialOf(p.UserId)</span>
+                                            }
+                                            <span class="roster-name">@Name(p.UserId)</span>
+                                            <span class="chip @ParticipantChip(p.Status)">@ParticipantLabel(p.Status)</span>
+                                            @if (p.ReviewedBy is { } rb)
+                                            {
+                                                <span class="roster-by">by @Name(rb)</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @{
+                        var primary = actions.Where(a => a.Value != "cancel").ToList();
+                        var cancel = actions.FirstOrDefault(a => a.Value == "cancel");
+                        var hasBar = primary.Count > 0 || cancel is not null || CanIntake(q) || CanFinalize(q) || CanEdit(q);
+                    }
+                    @if (hasBar)
+                    {
+                        <EditForm class="action-bar" Model="this" FormName="@($"quest-{q.Id}")" OnValidSubmit="ActAsync">
+                            <input type="hidden" name="QuestId" value="@q.Id" />
+
+                            <div class="action-left">
+                                @if (CanIntake(q))
+                                {
+                                    <select name="Tier" class="tier-select">
+                                        <option value="@QuestTier.None">No tier (0 pts)</option>
+                                        @foreach (var t in _tiers)
+                                        {
+                                            <option value="@t">@t (@_settings.Quests.PointsForTier(t) pts)</option>
+                                        }
+                                    </select>
+                                    @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
+                                    {
+                                        <label class="checkbox"><input type="checkbox" name="RequireFinal" value="true" /> final sign-off</label>
+                                    }
+                                }
+                                @if (Noteable(actions))
+                                {
+                                    <input name="Note" class="note-input" placeholder="note (optional)" />
+                                }
+                            </div>
+
+                            <div class="action-right">
+                                @foreach (var a in primary)
+                                {
+                                    <button type="submit" name="Action" value="@a.Value" title="@a.Label" aria-label="@a.Label"
+                                            class="icon-btn @IconColor(a.Value)"><span class="material-symbols-outlined">@IconFor(a.Value)</span></button>
                                 }
                                 @if (CanIntake(q))
                                 {
-                                    <EditForm class="row-actions" Model="this" FormName="@($"intake-{q.Id}")" OnValidSubmit="ActAsync">
-                                        <input type="hidden" name="QuestId" value="@q.Id" />
-                                        <select name="Tier" class="tier-select">
-                                            <option value="@QuestTier.None">No tier (0 pts)</option>
-                                            @foreach (var t in _tiers)
-                                            {
-                                                <option value="@t">@t (@_settings.PointsForTier(t) pts)</option>
-                                            }
-                                        </select>
-                                        @if (_settings.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
-                                        {
-                                            <label class="checkbox"><input type="checkbox" name="RequireFinal" value="true" /> final sign-off</label>
-                                        }
-                                        <button type="submit" name="Action" value="accept" class="btn btn-sm">Accept &amp; open</button>
-                                        <button type="submit" name="Action" value="reject-intake" class="btn btn-sm btn-ghost">Reject</button>
-                                    </EditForm>
+                                    <button type="submit" name="Action" value="accept" title="Accept &amp; open" aria-label="Accept and open" class="icon-btn success"><span class="material-symbols-outlined">thumb_up</span></button>
+                                    <button type="submit" name="Action" value="reject-intake" title="Reject intake (refund owner)" aria-label="Reject intake" class="icon-btn danger"><span class="material-symbols-outlined">thumb_down</span></button>
                                 }
                                 @if (CanFinalize(q))
                                 {
-                                    <EditForm class="row-actions" Model="this" FormName="@($"finalize-{q.Id}")" OnValidSubmit="ActAsync">
-                                        <input type="hidden" name="QuestId" value="@q.Id" />
-                                        <button type="submit" name="Action" value="finalize-pay" class="btn btn-sm">Pay completer</button>
-                                        <button type="submit" name="Action" value="finalize-refund" class="btn btn-sm btn-ghost">Refund owner</button>
-                                    </EditForm>
+                                    <button type="submit" name="Action" value="finalize-pay" title="Pay completer" aria-label="Pay completer" class="icon-btn success"><span class="material-symbols-outlined">paid</span></button>
+                                    <button type="submit" name="Action" value="finalize-refund" title="Refund owner" aria-label="Refund owner" class="icon-btn warn"><span class="material-symbols-outlined">undo</span></button>
                                 }
                                 @if (CanEdit(q))
                                 {
-                                    <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/quests/@q.Id/edit">Edit</a>
+                                    <a class="icon-btn" title="Edit" aria-label="Edit" href="/guilds/@GuildId/quests/@q.Id/edit"><span class="material-symbols-outlined">edit</span></a>
                                 }
-                                @if (actions.Count == 0 && !CanIntake(q) && !CanFinalize(q) && !CanEdit(q))
+                                @if (cancel is not null)
                                 {
-                                    <span class="subtitle">—</span>
+                                    <button type="submit" name="Action" value="cancel" title="@cancel.Label" aria-label="@cancel.Label" class="icon-btn danger far-right"><span class="material-symbols-outlined">delete</span></button>
                                 }
-                            </td>
-                        </tr>
+                            </div>
+                        </EditForm>
                     }
-                </tbody>
-            </table>
+                </article>
+            }
+        </div>
 
-            <div class="pager">
-                @if (_page > 1)
-                {
-                    <a class="btn btn-ghost" href="@PageUrl(_page - 1)">← Prev</a>
-                }
-                <span>Page @_page of @Math.Max(_totalPages, 1) · @_total quests</span>
-                @if (_page < _totalPages)
-                {
-                    <a class="btn btn-ghost" href="@PageUrl(_page + 1)">Next →</a>
-                }
-            </div>
-        }
-    </div>
+        <div class="pager">
+            @if (_page > 1)
+            {
+                <a class="btn btn-ghost" href="@PageUrl(_page - 1)">← Prev</a>
+            }
+            <span>Page @_page of @Math.Max(_totalPages, 1) · @_total missions</span>
+            @if (_page < _totalPages)
+            {
+                <a class="btn btn-ghost" href="@PageUrl(_page + 1)">Next →</a>
+            }
+        </div>
+    }
 }
 
 @code {
@@ -186,9 +285,10 @@ else if (State == AccessState.Ready)
 
     private static readonly int[] PageSizes = [10, 25, 50, 100];
 
-    private IReadOnlyList<Mission> _quests = [];
-    private Dictionary<Guid, string> _codes = [];
-    private Dictionary<ulong, string> _names = [];
+    private IReadOnlyList<QuestBoardItem> _quests = [];
+    private IReadOnlyDictionary<Guid, string> _codes = new Dictionary<Guid, string>();
+    private IReadOnlyDictionary<ulong, string> _names = new Dictionary<ulong, string>();
+    private IReadOnlyDictionary<ulong, string> _avatars = new Dictionary<ulong, string>();
     private bool _isManager;
     private string _zoneId = TimeZoneService.Utc;
     private GuildSettings _settings = new();
@@ -198,20 +298,27 @@ else if (State == AccessState.Ready)
 
     private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
 
+    // Button visibility shares the handler's authorization rule via IQuestAuthorizer.Allows (no extra DB calls —
+    // _isManager is resolved once in LoadAsync); the state conditions (status / no-active-participant) stay here.
+    private GuildActor Actor => new(GuildId, UserId);
+
+    private bool Can(QuestBoardItem q, QuestPermission action) =>
+        Authorizer.Allows(Actor, _isManager, q.Origin, q.OwnerId, isTaker: false, action);
+
     /// <summary>Managers vet + tier a pending personal quest at intake.</summary>
-    private bool CanIntake(Mission q) =>
-        _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.PendingApproval;
+    private bool CanIntake(QuestBoardItem q) =>
+        q.Origin == QuestOrigin.Player && q.Status == QuestStatus.PendingApproval && Can(q, QuestPermission.AcceptIntake);
 
     /// <summary>Managers give the final sign-off on a personal quest awaiting it.</summary>
-    private bool CanFinalize(Mission q) =>
-        _isManager && q.Origin == MissionOrigin.Player && q.Status == MissionStatus.PendingFinal;
+    private bool CanFinalize(QuestBoardItem q) =>
+        q.Origin == QuestOrigin.Player && q.Status == QuestStatus.PendingFinal && Can(q, QuestPermission.Finalize);
 
     /// <summary>Editable only before anyone is working on it: owner (personal) or manager (guild).</summary>
-    private bool CanEdit(Mission q) =>
-        q.Status is MissionStatus.Open or MissionStatus.Scheduled or MissionStatus.PendingApproval
-        && !q.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted
-            or MissionParticipantStatus.RevisionRequested or MissionParticipantStatus.Approved)
-        && (q.Origin == MissionOrigin.Guild ? _isManager : q.OwnerId == UserId);
+    private bool CanEdit(QuestBoardItem q) =>
+        q.Status is QuestStatus.Open or QuestStatus.Scheduled or QuestStatus.PendingApproval
+        && !q.Participants.Any(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
+            or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved)
+        && Can(q, QuestPermission.Edit);
 
     /// <summary>Whether any available action benefits from an optional note (submit/revise/reject).</summary>
     private static bool Noteable(IReadOnlyList<QuestAction> actions) =>
@@ -219,8 +326,8 @@ else if (State == AccessState.Ready)
             || a.Value.StartsWith("revise:", StringComparison.Ordinal)
             || a.Value.StartsWith("reject:", StringComparison.Ordinal));
 
-    private string CurrentTab => Tab is "mine" or "history" ? Tab : "active";
-    private string CurrentType => Type is "guild" or "personal" ? Type : "";
+    private string CurrentTab => Tab is "actionneeded" or "history" ? Tab : "active";
+    private string CurrentType => Type is "guild" or "player" or "mine" ? Type : "";
     private string CurrentSort => string.IsNullOrEmpty(Sort) ? "created" : Sort;
     private bool CurrentDesc => string.IsNullOrEmpty(Sort) ? true : Desc;
     private int CurrentSize => PageSizes.Contains(Size) ? Size : 25;
@@ -229,64 +336,16 @@ else if (State == AccessState.Ready)
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
-        _settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
-        _codes = await Db.Currencies.Where(c => c.GuildId == GuildId).ToDictionaryAsync(c => c.Id, c => c.Code);
 
-        var query = Db.Missions.Include(m => m.Participants)
-            .Where(m => m.GuildId == GuildId && m.Type == MissionType.Quest);
-
-        query = CurrentTab switch
-        {
-            "history" => _isManager
-                ? query.Where(m => m.Status == MissionStatus.Closed || m.Status == MissionStatus.Cancelled || m.Status == MissionStatus.Expired)
-                : query.Where(m => (m.Status == MissionStatus.Closed || m.Status == MissionStatus.Cancelled || m.Status == MissionStatus.Expired)
-                    && (m.OwnerId == UserId || m.Participants.Any(p => p.UserId == UserId))),
-            "mine" => query.Where(m => m.OwnerId == UserId || m.Participants.Any(p => p.UserId == UserId)),
-            _ => _isManager
-                ? query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed
-                    || m.Status == MissionStatus.PendingApproval || m.Status == MissionStatus.PendingFinal)
-                : query.Where(m => m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed),
-        };
-
-        if (CurrentType == "guild")
-        {
-            query = query.Where(m => m.Origin == MissionOrigin.Guild);
-        }
-        else if (CurrentType == "personal")
-        {
-            query = query.Where(m => m.Origin == MissionOrigin.Player);
-        }
-
-        if (!string.IsNullOrWhiteSpace(Search))
-        {
-            var s = Search.Trim();
-            query = query.Where(m => m.Name.Contains(s) || m.Description.Contains(s));
-        }
-
-        _total = await query.CountAsync();
-        _totalPages = Math.Max(1, (int)Math.Ceiling(_total / (double)CurrentSize));
-        _page = Math.Clamp(Page <= 0 ? 1 : Page, 1, _totalPages);
-
-        _quests = await Sorted(query).Skip((_page - 1) * CurrentSize).Take(CurrentSize).ToListAsync();
-
-        var ids = _quests.SelectMany(m => m.Participants.Select(p => p.UserId)).Distinct().ToList();
-        _names = await Db.Users.Where(u => ids.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.GlobalName ?? u.Username);
-    }
-
-    private IQueryable<Mission> Sorted(IQueryable<Mission> q)
-    {
-        var d = CurrentDesc;
-        return CurrentSort switch
-        {
-            "name" => d ? q.OrderByDescending(m => m.Name) : q.OrderBy(m => m.Name),
-            "type" => d ? q.OrderByDescending(m => m.Origin) : q.OrderBy(m => m.Origin),
-            "reward" => d ? q.OrderByDescending(m => m.RewardAmount) : q.OrderBy(m => m.RewardAmount),
-            "status" => d ? q.OrderByDescending(m => m.Status) : q.OrderBy(m => m.Status),
-            "opens" => d ? q.OrderByDescending(m => m.ScheduledStart) : q.OrderBy(m => m.ScheduledStart),
-            "closes" => d ? q.OrderByDescending(m => m.Deadline) : q.OrderBy(m => m.Deadline),
-            _ => d ? q.OrderByDescending(m => m.CreatedAt) : q.OrderBy(m => m.CreatedAt),
-        };
+        var board = await Reads.GetBoardAsync(GuildId, UserId, _isManager, CurrentTab, CurrentType, Search, CurrentSort, CurrentDesc, Page, CurrentSize);
+        _quests = board.Items;
+        _total = board.Total;
+        _page = board.Page;
+        _totalPages = board.TotalPages;
+        _codes = board.Codes;
+        _names = board.Names;
+        _avatars = board.Avatars;
+        _settings = board.Settings;
     }
 
     private async Task ActAsync()
@@ -300,71 +359,38 @@ else if (State == AccessState.Ready)
         }
 
         var note = form?["Note"].ToString() is { Length: > 0 } n ? n.Trim() : null;
+        _ = Guid.TryParse(id, out var questId); // an invalid id ⇒ handler returns NotFound
+        _ = Enum.TryParse<QuestTier>(form?["Tier"].ToString(), out var tier);
+        var requireFinal = form?["RequireFinal"].ToString() == "true";
 
-        CommandResult result;
-        if (action.StartsWith("approve:") && ulong.TryParse(action[8..], out var approveId))
-        {
-            result = await Board.ApproveAsync(GuildId, id, approveId, UserId);
-        }
-        else if (action.StartsWith("reject:") && ulong.TryParse(action[7..], out var rejectId))
-        {
-            result = await Board.RejectAsync(GuildId, id, rejectId, UserId);
-        }
-        else if (action.StartsWith("revise:") && ulong.TryParse(action[7..], out var reviseId))
-        {
-            result = await Board.RequestRevisionAsync(GuildId, id, UserId, reviseId, note);
-        }
-        else if (action == "accept")
-        {
-            _ = Enum.TryParse<QuestTier>(form?["Tier"].ToString(), out var tier);
-            var requireFinal = form?["RequireFinal"].ToString() == "true";
-            result = await Board.AcceptIntakeAsync(GuildId, id, tier, requireFinal, UserId);
-        }
-        else
-        {
-            result = action switch
-            {
-                "submit" => await Board.SubmitAsync(GuildId, id, UserId, note),
-                "confirm" => await Board.ConfirmAsync(GuildId, id, UserId),
-                "cancel" => await Board.CancelAsync(GuildId, id, UserId),
-                "dispute" => await Board.DisputeAsync(GuildId, id, UserId),
-                "revise" => await Board.RequestRevisionAsync(GuildId, id, UserId, null, note),
-                "reject-intake" => await Board.RejectIntakeAsync(GuildId, id, UserId),
-                "finalize-pay" => await Board.FinalizeAsync(GuildId, id, true, UserId),
-                "finalize-refund" => await Board.FinalizeAsync(GuildId, id, false, UserId),
-                "resolve-pay" => await Board.ArbitrateAsync(GuildId, id, true),
-                "resolve-refund" => await Board.ArbitrateAsync(GuildId, id, false),
-                _ => await Board.ClaimAsync(GuildId, id, UserId),
-            };
-        }
-
+        // Every quest action is a command — auditing happens in the command's audit middleware.
+        var result = await QuestActionRunner.RunAsync(Bus, GuildId, questId, UserId, action, note, tier, requireFinal);
         Message = result.Message;
-        if (!result.IsError)
-        {
-            await Audit.RecordAsync(GuildId, UserId, $"quest.{action.Split(':')[0]}", id);
-        }
 
         await LoadAsync();
     }
 
     /// <summary>The actions this viewer may take on a quest, given its state and their role.</summary>
-    private IEnumerable<QuestAction> ActionsFor(Mission q)
+    private IEnumerable<QuestAction> ActionsFor(QuestBoardItem q)
     {
         var myPart = q.Participants.FirstOrDefault(p => p.UserId == UserId);
         var iAmOwner = q.OwnerId == UserId;
-        var submitters = q.Participants.Where(p => p.Status == MissionParticipantStatus.Submitted).ToList();
-        var isPersonal = q.Origin == MissionOrigin.Player;
+        var submitters = q.Participants.Where(p => p.Status == QuestParticipantStatus.Submitted).ToList();
+        var isPersonal = q.Origin == QuestOrigin.Player;
 
-        if (q.Status == MissionStatus.Open)
+        if (q.Status == QuestStatus.Open)
         {
-            if (!iAmOwner && myPart is null)
+            // Guild quests are guild-owned, so the creator may claim. A player bounty's owner can't take it
+            // unless the guild enabled self-participation.
+            var canClaim = myPart is null && (!isPersonal || !iAmOwner || _settings.Quests.AllowSelfParticipation);
+            if (canClaim)
             {
                 yield return new("claim", "Claim", true);
             }
 
-            if (myPart?.Status == MissionParticipantStatus.Claimed)
+            if (myPart?.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested)
             {
-                yield return new("submit", "Submit", true);
+                yield return new("submit", myPart.Status == QuestParticipantStatus.RevisionRequested ? "Resubmit" : "Submit", true);
             }
 
             if (submitters.Count > 0 && isPersonal && iAmOwner)
@@ -384,13 +410,13 @@ else if (State == AccessState.Ready)
             }
         }
 
-        if (q.Status is MissionStatus.Open or MissionStatus.Scheduled or MissionStatus.PendingApproval && submitters.Count == 0
+        if (q.Status is QuestStatus.Open or QuestStatus.Scheduled or QuestStatus.PendingApproval && submitters.Count == 0
             && ((isPersonal && iAmOwner) || (!isPersonal && _isManager)))
         {
             yield return new("cancel", "Cancel", false);
         }
 
-        if (q.Status == MissionStatus.Disputed && isPersonal && _isManager)
+        if (q.Status == QuestStatus.Disputed && isPersonal && _isManager)
         {
             yield return new("resolve-pay", "Pay completer", true);
             yield return new("resolve-refund", "Refund owner", false);
@@ -399,58 +425,180 @@ else if (State == AccessState.Ready)
 
     private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"member {userId}");
 
+    private string? Avatar(ulong userId) => _avatars.GetValueOrDefault(userId);
+
+    /// <summary>A Material Symbol name for the card's icon toolbar; the full label lives in the button's title/aria-label.</summary>
+    private static string IconFor(string action)
+    {
+        var key = action.Contains(':') ? action[..action.IndexOf(':')] : action;
+        return key switch
+        {
+            "claim" => "add_task",
+            "submit" => "send",
+            "approve" or "accept" => "thumb_up",          // approval decision
+            "reject" or "reject-intake" => "thumb_down",  // denial decision
+            "confirm" or "finalize-pay" or "resolve-pay" => "paid", // pay out
+            "finalize-refund" or "resolve-refund" => "undo",        // give escrow back
+            "revise" => "rate_review",                    // send back for changes
+            "reopen" => "replay",
+            "cancel" => "delete",                         // withdraw the quest
+            "dispute" => "gavel",
+            _ => "circle",
+        };
+    }
+
+    /// <summary>Semantic colour class for an action button (green approve, red deny, amber caution).</summary>
+    private static string IconColor(string action)
+    {
+        var key = action.Contains(':') ? action[..action.IndexOf(':')] : action;
+        return key switch
+        {
+            "approve" or "accept" or "confirm" or "finalize-pay" or "resolve-pay" => "success",
+            "reject" or "reject-intake" or "cancel" => "danger",
+            "revise" or "dispute" or "finalize-refund" or "resolve-refund" => "warn",
+            "claim" or "submit" => "primary",
+            _ => "",
+        };
+    }
+
     private string QPath => $"/guilds/{GuildId}/quests";
 
-    private string BuildQuery(string tab, string sort, bool desc, int page)
+    private string TabUrl(string tab) => $"{QPath}?{BuildQuery(tab, CurrentType, CurrentSort, CurrentDesc, 1)}";
+
+    private string TypeUrl(string type) => $"{QPath}?{BuildQuery(CurrentTab, type, CurrentSort, CurrentDesc, 1)}";
+
+    private string SortValueUrl(string sort, bool desc) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, sort, desc, 1)}";
+
+    private string PageUrl(int page) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, CurrentSort, CurrentDesc, page)}";
+
+    /// <summary>One-line tally of the current page's missions for the board header.</summary>
+    private string SummaryText
+    {
+        get
+        {
+            var open = _quests.Count(q => q.Status == QuestStatus.Open && !HasActiveWorker(q));
+            var inProgress = _quests.Count(q => q.Status == QuestStatus.Open && HasActiveWorker(q));
+            var review = _quests.Count(q => q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted));
+            return $"{open} open · {inProgress} in progress · {review} awaiting review";
+        }
+    }
+
+    private static bool HasActiveWorker(QuestBoardItem q) =>
+        q.Participants.Any(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested);
+
+    private static int ClaimedCount(QuestBoardItem q) =>
+        q.Participants.Count(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
+            or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved);
+
+    /// <summary>Participants currently on the quest (claimed/submitted/in-revision/approved) for the avatar stack.</summary>
+    private static IReadOnlyList<QuestParticipantView> ActiveWorkers(QuestBoardItem q) =>
+        q.Participants
+            .Where(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
+                or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved)
+            .ToList();
+
+    /// <summary>Everyone with a real outcome on the quest (excludes Released give-ups), for the roster popup.</summary>
+    private static IReadOnlyList<QuestParticipantView> RosterParticipants(QuestBoardItem q) =>
+        q.Participants
+            .Where(p => p.Status != QuestParticipantStatus.Released)
+            .OrderByDescending(p => p.Status == QuestParticipantStatus.Approved)
+            .ToList();
+
+    private string InitialOf(ulong userId) => Name(userId) is { Length: > 0 } n ? n[..1].ToUpperInvariant() : "?";
+
+    /// <summary>Avatar ring colour by participant status.</summary>
+    private static string RingClass(QuestParticipantStatus s) => s switch
+    {
+        QuestParticipantStatus.Approved => "approved",
+        QuestParticipantStatus.Submitted => "submitted",
+        QuestParticipantStatus.RevisionRequested => "revision",
+        QuestParticipantStatus.Rejected => "rejected",
+        _ => "claimed",
+    };
+
+    private static string ParticipantChip(QuestParticipantStatus s) => s switch
+    {
+        QuestParticipantStatus.Approved => "chip-review",
+        QuestParticipantStatus.Rejected => "chip-closed",
+        _ => "chip-progress",
+    };
+
+    private static string ParticipantLabel(QuestParticipantStatus s) => s switch
+    {
+        QuestParticipantStatus.RevisionRequested => "Revision",
+        _ => s.ToString(),
+    };
+
+    private static string RewardTextClass(string code) =>
+        code.Equals("POINTS", StringComparison.OrdinalIgnoreCase) ? "reward-points" : "reward-coin";
+
+
+    /// <summary>An optional status chip; plain Open quests show none (the category chip carries it).</summary>
+    private (string Text, string Class)? StatusChip(QuestBoardItem q)
+    {
+        var submitted = q.Participants.Count(p => p.Status == QuestParticipantStatus.Submitted);
+        if (q.Status == QuestStatus.Open && q.Origin == QuestOrigin.Guild && _isManager && submitted > 0)
+        {
+            return ($"{submitted} to review", "chip-review");
+        }
+
+        return q.Status switch
+        {
+            QuestStatus.Closed => ("Closed", "chip-closed"),
+            QuestStatus.Cancelled => ("Cancelled", "chip-closed"),
+            QuestStatus.Expired => ("Expired", "chip-closed"),
+            QuestStatus.Disputed => ("Disputed", "chip-closed"),
+            QuestStatus.Scheduled => ("Scheduled", "chip-progress"),
+            QuestStatus.PendingApproval => ("Pending intake", "chip-progress"),
+            QuestStatus.PendingFinal => ("Awaiting sign-off", "chip-progress"),
+            QuestStatus.Open when HasActiveWorker(q) => ("In progress", "chip-progress"),
+            _ => null,
+        };
+    }
+
+    /// <summary>Friendly deadline text for the card's top-right.</summary>
+    private string DueText(QuestBoardItem q)
+    {
+        if (q.Status is QuestStatus.Closed or QuestStatus.Cancelled or QuestStatus.Expired)
+        {
+            return "Closed";
+        }
+
+        if (q.Status == QuestStatus.Scheduled && q.ScheduledStart is { } s)
+        {
+            return $"Opens {Local(s)}";
+        }
+
+        if (q.Deadline is not { } d)
+        {
+            return "No expiry";
+        }
+
+        var span = d - DateTimeOffset.UtcNow;
+        if (span <= TimeSpan.Zero)
+        {
+            return "Overdue";
+        }
+
+        if (span.TotalDays >= 1)
+        {
+            return $"{(int)span.TotalDays}d left";
+        }
+
+        return span.TotalHours >= 1 ? $"{(int)span.TotalHours}h left" : $"{(int)span.TotalMinutes}m left";
+    }
+
+    private string BuildQuery(string tab, string type, string sort, bool desc, int page)
     {
         var parts = new List<string> { $"tab={tab}" };
         if (!string.IsNullOrEmpty(Search)) parts.Add($"search={Uri.EscapeDataString(Search)}");
-        if (!string.IsNullOrEmpty(CurrentType)) parts.Add($"type={CurrentType}");
+        if (!string.IsNullOrEmpty(type)) parts.Add($"type={type}");
         parts.Add($"sort={sort}");
         parts.Add($"desc={desc.ToString().ToLowerInvariant()}");
         parts.Add($"page={page}");
         parts.Add($"size={CurrentSize}");
         return string.Join("&", parts);
     }
-
-    private string TabUrl(string tab) => $"{QPath}?{BuildQuery(tab, CurrentSort, CurrentDesc, 1)}";
-
-    private string SortUrl(string column)
-    {
-        var desc = CurrentSort == column ? !CurrentDesc : false;
-        return $"{QPath}?{BuildQuery(CurrentTab, column, desc, 1)}";
-    }
-
-    private string PageUrl(int page) => $"{QPath}?{BuildQuery(CurrentTab, CurrentSort, CurrentDesc, page)}";
-
-    private string Indicator(string column) => CurrentSort == column ? (CurrentDesc ? "▼" : "▲") : "";
-
-    private static string StatusClass(Mission q) => q.Status switch
-    {
-        MissionStatus.Open => "open",
-        MissionStatus.Scheduled => "scheduled",
-        MissionStatus.Disputed => "disputed",
-        MissionStatus.PendingApproval => "scheduled",
-        MissionStatus.PendingFinal => "disputed",
-        MissionStatus.Closed => "closed",
-        MissionStatus.Cancelled => "cancelled",
-        MissionStatus.Expired => "expired",
-        _ => "open",
-    };
-
-    private string StatusLabel(Mission q) => q.Status switch
-    {
-        MissionStatus.Scheduled => "Scheduled",
-        MissionStatus.Disputed => "Disputed",
-        MissionStatus.PendingApproval => "Pending approval",
-        MissionStatus.PendingFinal => "Awaiting sign-off",
-        MissionStatus.Open when q.Participants.Any(p => p.Status is MissionParticipantStatus.Claimed or MissionParticipantStatus.Submitted) => "In progress",
-        MissionStatus.Open => "Open",
-        MissionStatus.Closed => "Completed",
-        MissionStatus.Cancelled => "Cancelled",
-        MissionStatus.Expired => "Expired",
-        _ => q.Status.ToString(),
-    };
 
     private string Local(DateTimeOffset? utc)
     {

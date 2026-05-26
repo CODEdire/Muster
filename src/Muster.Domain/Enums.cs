@@ -18,24 +18,7 @@ public enum ActivityType
     Voice = 1,
 }
 
-public enum MissionType
-{
-    /// <summary>Claimable task: claim -> submit -> officer approve. No time tracking required.</summary>
-    Quest = 0,
-    /// <summary>Scheduled operation with RSVP and attendance.</summary>
-    EventOp = 1,
-}
-
-/// <summary>Who created a quest and how its reward is funded.</summary>
-public enum MissionOrigin
-{
-    /// <summary>Created by the guild; reward is minted (new currency issued).</summary>
-    Guild = 0,
-    /// <summary>A player bounty; reward is escrowed from the poster's own balance and transferred on completion.</summary>
-    Player = 1,
-}
-
-public enum MissionStatus
+public enum QuestStatus
 {
     Draft = 0,
     Open = 1,
@@ -70,31 +53,37 @@ public enum FinalApprovalMode
     Forced = 3,
 }
 
-/// <summary>Difficulty tier for a guild quest, driving the bonus POINTS reward via guild config. S is hardest.</summary>
-public enum QuestTier
+public enum QuestParticipantStatus
 {
-    None = 0,
-    E = 1,
-    D = 2,
-    C = 3,
-    B = 4,
-    A = 5,
-    S = 6,
-}
-
-public enum MissionParticipantStatus
-{
-    // Quest lifecycle
     Claimed = 0,
     Submitted = 1,
     Approved = 2,
+    /// <summary>A reviewer finally rejected the submission — terminal, and bars the member from re-claiming
+    /// (a non-repeatable quest is one-shot per member). Reversible only by a manager via reopen.</summary>
     Rejected = 3,
     /// <summary>A reviewer sent the submission back to the same worker to revise and resubmit.</summary>
     RevisionRequested = 4,
-    // Event-op lifecycle
-    SignedUp = 10,
-    Attended = 11,
-    NoShow = 12,
+    /// <summary>The slot was given up without a verdict — an idle claim timed out, or the quest was
+    /// cancelled/expired. Unlike <see cref="Rejected"/>, this does NOT bar the member from re-claiming.</summary>
+    Released = 5,
+}
+
+public enum EventStatus
+{
+    /// <summary>Created with a future start time; sign-ups allowed, not yet live.</summary>
+    Scheduled = 0,
+    /// <summary>Live: members sign up and accrue attendance.</summary>
+    Open = 1,
+    /// <summary>Closed: attendees marked and awarded.</summary>
+    Closed = 2,
+    Cancelled = 3,
+}
+
+public enum AttendanceStatus
+{
+    SignedUp = 0,
+    Attended = 1,
+    NoShow = 2,
 }
 
 /// <summary>Outcome applied when a personal quest sits in intake (PendingApproval) past the guild's timeout.</summary>
@@ -141,10 +130,11 @@ public enum SeasonStatus
 public enum LedgerSourceType
 {
     TrackingSession = 0,
-    Mission = 1,
+    Quest = 1,
     Muster = 2,
     ManualAward = 3,
     Connector = 4,
+    Event = 5,
 }
 
 public enum AppRole

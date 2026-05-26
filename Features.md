@@ -55,7 +55,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Tracking sessions** — open/close + voice-minute rewards (`TrackingSessionService`)
 - [x] **Voice attendance** capture from `VoiceStateUpdate` (`VoiceAttendanceHandler`)
 - [x] **Reaction musters** — create + reward on reaction, capacity & idempotency (`MusterService` + `MusterReactionHandler`)
-- [x] **Quests** — claim/submit/approve/reject, reward-on-approve (`MissionService`)
+- [x] **Quests** — claim/submit/approve/reject, reward-on-approve (`QuestService`)
 - [x] **Manual / bulk awards** — `ManualAwardService`
 - [x] **Tracking sessions** — auto bind to Discord Scheduled Events (`ScheduledEventHandler`)
 - [ ] **Reaction check-in** as a session attendance signal (distinct from musters)
@@ -131,10 +131,10 @@ revisions, edit, optimistic concurrency, audits, player limits) with event/notif
 What's left, to revisit:
 
 ### Wiring the seams (highest value)
-- [ ] Discord notification delivery — implement `IQuestNotifier` to DM the right person per lifecycle
-      event (currently a logging stub)
+- [ ] Discord notification delivery — add a Wolverine consumer for `QuestLifecycleNotified` that DMs the
+      right person / posts per lifecycle moment (QuestService already publishes; nothing consumes yet)
 - [ ] Formatted quest board post — post/edit/close the Discord message on create + state changes
-      (the `Created` event and `Mission.ChannelId`/`MessageId` are reserved for this)
+      (the `Created` event is reserved for this; `GuildEvent.ChannelId`/`MessageId` hold the event's announce message)
 - [ ] External reward connector — implement `IQuestRewardSink` so the CurrencyService / loot system
       resolves rewards on `QuestCompletion` (currently a logging stub)
 

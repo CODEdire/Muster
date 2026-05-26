@@ -20,16 +20,28 @@ var migrations = builder.AddProject<Projects.Muster_MigrationService>("migration
     .WithReference(db)
     .WaitFor(db);
 
-builder.AddProject<Projects.Muster_Bot>("bot")
-    .WithReference(db)
-    .WithEnvironment("Discord__Token", discordToken)
-    .WaitForCompletion(migrations);
-
-builder.AddProject<Projects.Muster_Web>("web")
+var web = builder.AddProject<Projects.Muster_Web>("web")
     .WithReference(db)
     .WithEnvironment("Discord__ClientId", discordClientId)
     .WithEnvironment("Discord__ClientSecret", discordClientSecret)
+    // The bot token lets the web settings page list a guild's channels (for the quest-board channel picker)
+    // via Discord REST — no channel table, fetched live.
+    .WithEnvironment("Discord__Token", discordToken)
     .WithExternalHttpEndpoints()
+    .WaitForCompletion(migrations);
+
+// Dev tunnel exposes the local web on a public HTTPS URL so Discord's servers can fetch the quest-board embed
+// images (tier badges / guild crest) and follow the title link. Anonymous so Discord needs no auth. First run
+// prompts a one-time `devtunnel user login`. (In publish the web has a real public URL, so the tunnel is dev-only.)
+var webTunnel = builder.AddDevTunnel("web-tunnel")
+    .WithReference(web.GetEndpoint("https"), allowAnonymous: true);
+
+builder.AddProject<Projects.Muster_Bot>("bot")
+    .WithReference(db)
+    .WithEnvironment("Discord__Token", discordToken)
+    // Public tunnel URL → the quest-board embeds deep-link (title/author) and load their tier/guild icons from a
+    // host Discord can actually reach.
+    .WithEnvironment("Web__BaseUrl", webTunnel.GetEndpoint(web, "https"))
     .WaitForCompletion(migrations);
 
 builder.Build().Run();

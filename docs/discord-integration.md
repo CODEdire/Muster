@@ -100,6 +100,16 @@ This means commands and event handling are exercised in unit tests against an in
 database — validation, idempotency, capacity limits, leaderboard/wallet formatting — with no
 Discord connection. The same command services are reusable by the web UI and API.
 
+## Time input
+
+Discord sends slash-command text options with **no timezone** — the bot interprets them. `TimeZoneService.ParseLocalAsync`
+accepts three forms: a Discord timestamp (`<t:1700000000>`), a bare unix value, or a relative duration (`in 3 days`,
+`2h`) — all zone-independent. A plain wall-clock date (`2026-06-01 18:00`) is read in the user's **own** zone; if they
+haven't set one the command is **gated** with a message pointing to `/timezone` (autocompleted from the .NET system
+zone list) or the timestamp/relative forms. The web equivalent is the `/onboarding` page, which a member with no zone
+is redirected to before any guild page (`GuildPageComponentBase`). Zones are stored as IANA ids (Windows ids are
+converted), so they're consistent across the bot and web.
+
 ## Caveats
 
 - **Backfill**: the bot cannot see activity before it joins a guild.

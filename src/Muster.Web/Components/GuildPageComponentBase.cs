@@ -31,6 +31,10 @@ public abstract class GuildPageComponentBase : ComponentBase
 
     [Inject] protected GuildAuthorizationService Auth { get; set; } = default!;
 
+    [Inject] protected MemberSyncService MemberSync { get; set; } = default!;
+
+    [Inject] protected Muster.Infrastructure.Services.Platform.TimeZoneService TimeZones { get; set; } = default!;
+
     [Inject] protected NavigationManager Nav { get; set; } = default!;
 
     protected AccessState State { get; private set; } = AccessState.Loading;
@@ -47,7 +51,8 @@ public abstract class GuildPageComponentBase : ComponentBase
 
     protected override async Task OnInitializedAsync()
     {
-        var userId = AuthState is null ? null : (await AuthState).User.GetDiscordUserId();
+        var principal = AuthState is null ? null : (await AuthState).User;
+        var userId = principal?.GetDiscordUserId();
         if (userId is null)
         {
             // Session missing or expired — bounce through login and come back here.
@@ -58,6 +63,13 @@ public abstract class GuildPageComponentBase : ComponentBase
         }
 
         UserId = userId.Value;
+
+        // Keep the signed-in user's profile from showing as a raw id even before a gateway/login sync —
+        // fills name from claims, preserving any avatar/global name already synced. Idempotent + cheap.
+        if (principal!.Identity?.Name is { Length: > 0 } username)
+        {
+            await MemberSync.EnsureUserAsync(UserId, username);
+        }
 
         if (!ulong.TryParse(GuildIdRaw, out var guildId))
         {
@@ -70,6 +82,15 @@ public abstract class GuildPageComponentBase : ComponentBase
         if (!await IsAuthorizedAsync(guildId, UserId))
         {
             Forbid();
+            return;
+        }
+
+        // New-user onboarding: a member with no time zone set is bounced to /onboarding (and back here after),
+        // so dates they enter are never silently misread.
+        if (!await TimeZones.HasUserZoneAsync(UserId))
+        {
+            var returnUrl = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+            Nav.NavigateTo($"/onboarding?returnUrl={Uri.EscapeDataString(returnUrl)}");
             return;
         }
 

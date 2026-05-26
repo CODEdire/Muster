@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 
 namespace Muster.Infrastructure.Services.Membership;
@@ -12,7 +12,7 @@ public class RoleSyncService(MusterDbContext db)
 {
     public async Task UpsertAsync(ulong guildId, ulong roleId, string name, ulong permissions, CancellationToken ct = default)
     {
-        var role = await db.GuildRoles.FirstOrDefaultAsync(r => r.GuildId == guildId && r.RoleId == roleId, ct);
+        var role = await db.FindRoleAsync(guildId, roleId, ct);
         if (role is null)
         {
             role = new GuildRole { GuildId = guildId, RoleId = roleId };
@@ -26,7 +26,7 @@ public class RoleSyncService(MusterDbContext db)
 
     public async Task RemoveAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
     {
-        var role = await db.GuildRoles.FirstOrDefaultAsync(r => r.GuildId == guildId && r.RoleId == roleId, ct);
+        var role = await db.FindRoleAsync(guildId, roleId, ct);
         if (role is not null)
         {
             db.GuildRoles.Remove(role);
@@ -38,7 +38,7 @@ public class RoleSyncService(MusterDbContext db)
     public async Task SyncAllAsync(ulong guildId, IEnumerable<(ulong RoleId, string Name, ulong Permissions)> roles, CancellationToken ct = default)
     {
         var incoming = roles.ToList();
-        var existing = await db.GuildRoles.Where(r => r.GuildId == guildId).ToListAsync(ct);
+        var existing = await db.ListRolesAsync(guildId, ct);
 
         var incomingIds = incoming.Select(r => r.RoleId).ToHashSet();
         db.GuildRoles.RemoveRange(existing.Where(r => !incomingIds.Contains(r.RoleId)));

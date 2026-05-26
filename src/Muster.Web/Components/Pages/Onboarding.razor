@@ -1,0 +1,91 @@
+@page "/onboarding"
+@layout PublicLayout
+@inject TimeZoneService TimeZones
+@inject NavigationManager Nav
+@using Muster.Infrastructure.Services.Platform
+
+<PageTitle>Set up your profile — Muster</PageTitle>
+
+@if (_userId is null)
+{
+    <section class="hero">
+        <h1>Almost there</h1>
+        <p>Please <a href="/account/login">log in with Discord</a> to finish setting up your profile.</p>
+    </section>
+}
+else
+{
+    <section class="hero onboarding">
+        <h1>Welcome — set your time zone</h1>
+        <p>Dates you enter on the quest board are read in your time zone. Pick yours to finish setting up your profile.</p>
+
+        @if (Message is not null)
+        {
+            <p class="message">@Message</p>
+        }
+
+        <EditForm class="form-grid" Model="this" FormName="onboarding" OnValidSubmit="SaveAsync">
+            <label>Your time zone
+                <InputSelect @bind-Value="Zone" id="tz-input">
+                    <option value="">— select your time zone —</option>
+                    @foreach (var z in _zones)
+                    {
+                        <option value="@z.Id">@z.Display</option>
+                    }
+                </InputSelect>
+            </label>
+            <input type="hidden" name="onboarding.ReturnUrl" value="@ReturnUrl" />
+            <div class="btn-row">
+                <button type="button" class="btn btn-ghost" onclick="musterUseBrowserTimeZone()">Use my browser zone</button>
+                <button type="submit">Continue</button>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "onboarding")] public string? Zone { get; set; }
+    [SupplyParameterFromForm(FormName = "onboarding")] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrlQuery { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ulong? _userId;
+    private static readonly IReadOnlyList<(string Id, string Display)> _zones = TimeZoneService.GetKnownZones();
+
+    private string? Message { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = AuthState is null ? null : (await AuthState).User;
+        _userId = principal?.GetDiscordUserId();
+
+        // Carry the return target across the form post (query on GET, hidden field on POST).
+        ReturnUrl ??= ReturnUrlQuery;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_userId is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Zone))
+        {
+            Message = "Please pick your time zone to continue.";
+            return;
+        }
+
+        var (ok, error) = await TimeZones.SetUserZoneAsync(_userId.Value, Zone);
+        if (!ok)
+        {
+            Message = error;
+            return;
+        }
+
+        // Onboarding complete — bounce back to where they were headed (default: their servers).
+        var target = string.IsNullOrWhiteSpace(ReturnUrl) || !ReturnUrl.StartsWith('/') ? "/guilds" : ReturnUrl;
+        Nav.NavigateTo(target);
+    }
+}

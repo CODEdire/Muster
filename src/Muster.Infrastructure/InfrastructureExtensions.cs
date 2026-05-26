@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
 using Microsoft.Extensions.Hosting;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Services.Ledger;
@@ -7,6 +7,7 @@ using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
+using Muster.Infrastructure.Services.Events;
 using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
@@ -14,6 +15,7 @@ using Muster.Infrastructure.Commands.Ledger;
 using Muster.Infrastructure.Commands.Membership;
 using Muster.Infrastructure.Commands.Musters;
 using Muster.Infrastructure.Commands.Quests;
+using Muster.Infrastructure.Commands.Events;
 using Muster.Infrastructure.Commands.Seasons;
 using Muster.Infrastructure.Commands.Tracking;
 
@@ -33,11 +35,11 @@ public static class InfrastructureExtensions
 
         builder.Services.AddScoped<GuildProvisioningService>();
         builder.Services.AddScoped<ScoreQueryService>();
-        builder.Services.AddScoped<AwardService>();
-        builder.Services.AddScoped<EscrowService>();
-        builder.Services.AddScoped<BountyService>();
+        builder.Services.AddScoped<IQuestService, QuestService>();
+        builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
+        builder.Services.AddScoped<IQuestReadService, QuestReadService>();
         builder.Services.AddScoped<MusterService>();
-        builder.Services.AddScoped<MissionService>();
+        builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<ManualAwardService>();
         builder.Services.AddScoped<ActivityService>();
@@ -49,7 +51,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<WebAdminService>();
         builder.Services.AddScoped<WebMemberService>();
         builder.Services.AddScoped<ApiClientService>();
-        builder.Services.AddScoped<CurrencyService>();
+        builder.Services.AddScoped<ICurrencyService, CurrencyService>();
         builder.Services.AddScoped<CurrencyAdminService>();
         builder.Services.AddScoped<AuditService>();
         builder.Services.AddScoped<MentionHumanizer>();
@@ -59,16 +61,13 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<AwardCommandService>();
         builder.Services.AddScoped<ScoreCommandService>();
         builder.Services.AddScoped<TrackingCommandService>();
-        builder.Services.AddScoped<QuestCommandService>();
-        builder.Services.AddScoped<BountyCommandService>();
-        builder.Services.AddScoped<QuestBoardService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();
         builder.Services.AddScoped<QuestMaintenanceService>();
-        // Default lifecycle notifier / reward sink just log; the bot + connectors replace them later.
-        builder.Services.AddScoped<IQuestNotifier, LoggingQuestNotifier>();
-        builder.Services.AddScoped<IQuestRewardSink, LoggingQuestRewardSink>();
+        // Quest lifecycle moments publish as Wolverine messages (QuestLifecycleNotified); a Discord/connector
+        // consumer subscribes later. The currency-event sink default just logs until the outbox connector lands.
+        builder.Services.AddScoped<ICurrencyEventSink, LoggingCurrencyEventSink>();
         // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
         // registered by the bot host alongside its IMusterPublisher implementation — not here.
 

@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
 using Muster.Infrastructure;
 
 namespace Muster.MigrationService;

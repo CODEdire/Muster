@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain;
 
 namespace Muster.Infrastructure.Services.Membership;
@@ -16,7 +16,7 @@ public class GuildAuthorizationService(MusterDbContext db)
 {
     public async Task<bool> IsAdminAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return false;
@@ -27,7 +27,7 @@ public class GuildAuthorizationService(MusterDbContext db)
             return true; // owner bypass — lockout-proof
         }
 
-        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
         if (member is null)
         {
             return false;
@@ -48,8 +48,8 @@ public class GuildAuthorizationService(MusterDbContext db)
             return true;
         }
 
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
-        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
         if (guild is null || member is null)
         {
             return false;
@@ -66,8 +66,8 @@ public class GuildAuthorizationService(MusterDbContext db)
             return true;
         }
 
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
-        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
         if (guild is null || member is null)
         {
             return false;
@@ -83,7 +83,7 @@ public class GuildAuthorizationService(MusterDbContext db)
     /// </summary>
     public async Task<bool> IsParticipantAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return false;
@@ -95,19 +95,15 @@ public class GuildAuthorizationService(MusterDbContext db)
             return true; // open by default
         }
 
-        var member = await db.GuildMembers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.UserId == userId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
         return member is not null && member.RoleIds.Any(r => allowed.Contains(r));
     }
 
     private async Task<bool> HasAdminPermissionAsync(ulong guildId, List<ulong> memberRoleIds, CancellationToken ct)
     {
-        // Materialize the member's roles, then test permission bits client-side (SQL Server can't do
+        // Materialize the member's role permissions, then test bits client-side (SQL Server can't do
         // bitwise AND on the decimal-mapped ulong column).
-        var roles = await db.GuildRoles
-            .Where(r => r.GuildId == guildId && memberRoleIds.Contains(r.RoleId))
-            .Select(r => r.Permissions)
-            .ToListAsync(ct);
-
+        var roles = await db.RolePermissionsAsync(guildId, memberRoleIds, ct);
         return roles.Any(p => (p & DiscordPermissions.AdminBypassMask) != 0);
     }
 }

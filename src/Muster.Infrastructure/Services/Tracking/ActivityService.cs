@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 
@@ -15,7 +15,7 @@ public class ActivityService(MusterDbContext db)
         ulong guildId, ulong channelId, ulong userId, ulong messageId, DateTimeOffset timestamp,
         CancellationToken ct = default)
     {
-        var alreadyRecorded = await db.ActivityRecords.AnyAsync(a => a.SourceMessageId == messageId, ct);
+        var alreadyRecorded = await db.MessageRecordedAsync(messageId, ct);
         if (alreadyRecorded)
         {
             return;
@@ -32,8 +32,7 @@ public class ActivityService(MusterDbContext db)
         });
 
         var date = DateOnly.FromDateTime(timestamp.UtcDateTime);
-        var rollup = await db.DailyActivityRollups.FirstOrDefaultAsync(
-            r => r.GuildId == guildId && r.UserId == userId && r.ChannelId == channelId && r.Date == date, ct);
+        var rollup = await db.FindDailyRollupAsync(guildId, userId, channelId, date, ct);
         if (rollup is null)
         {
             rollup = new DailyActivityRollup

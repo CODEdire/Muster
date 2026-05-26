@@ -25,14 +25,11 @@ public class MemberLifecycleHandler(IServiceScopeFactory scopeFactory)
 
     private async ValueTask UpsertAsync(GuildUser user)
     {
-        if (user.IsBot)
-        {
-            return;
-        }
-
+        // Bots are synced too (with their IsBot flag) so they can be bound as an API key's service actor;
+        // human-facing lists filter them out.
         using var scope = scopeFactory.CreateScope();
         var members = scope.ServiceProvider.GetRequiredService<MemberSyncService>();
         await members.UpsertAsync(
-            user.GuildId, user.Id, user.Username, user.GlobalName, user.AvatarHash, user.Nickname, user.RoleIds);
+            user.GuildId, user.Id, user.Username, user.GlobalName, user.AvatarHash, user.Nickname, user.RoleIds, user.IsBot);
     }
 }

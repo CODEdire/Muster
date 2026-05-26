@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 
 namespace Muster.Infrastructure.Services.Platform;
@@ -115,9 +116,7 @@ public class AuditService(MusterDbContext db)
     private async Task<List<AuditEntryView>> ToViewsAsync(List<AuditLog> rows, CancellationToken ct)
     {
         var ids = rows.Select(r => r.ActorUserId).Distinct().ToList();
-        var names = await db.Users
-            .Where(u => ids.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.GlobalName ?? u.Username, ct);
+        var names = await db.UserDisplayNameMapAsync(ids, ct);
 
         return rows
             .Select(r => new AuditEntryView(

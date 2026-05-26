@@ -119,7 +119,7 @@ in-process today."
 > **Task:** Introduce the "messaging at the seams" pattern by moving quest **completion side-effects**
 > onto Wolverine messages backed by the **transactional outbox**, without rewriting the service layer.
 >
-> Read `transition.md` and `docs/quest-state-machine.md` first. Implement the **First slice**:
+> Read `transition.md` and `docs/features/guild-quests.md` first. Implement the **First slice**:
 > 1. Add a `QuestCompleted` event in `Muster.Contracts` (mirror the existing `QuestCompletion` record).
 > 2. At the completion chokepoints (`MissionService.ApproveAsync` and `BountyService` pay paths used by
 >    Confirm/Finalize/Arbitrate), publish `QuestCompleted` **via Wolverine's EF transactional outbox**

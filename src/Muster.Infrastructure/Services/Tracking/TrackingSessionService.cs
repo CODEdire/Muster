@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Ledger;
@@ -12,7 +12,7 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
 /// are opened manually by an admin or bound to a Discord scheduled event.
 /// </summary>
-public class TrackingSessionService(MusterDbContext db, AwardService awards, GuildAuthorizationService auth)
+public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth)
 {
     public const int DefaultPointsPerMinute = 1;
 
@@ -28,8 +28,7 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards, Gui
     public async Task<TrackingSession?> EnsureForScheduledEventAsync(
         ulong guildId, ulong voiceChannelId, ulong scheduledEventId, CancellationToken ct = default)
     {
-        var alreadyOpen = await db.TrackingSessions.AnyAsync(
-            s => s.GuildId == guildId && s.ScheduledEventId == scheduledEventId && s.Status == TrackingSessionStatus.Active, ct);
+        var alreadyOpen = await db.HasActiveSessionForEventAsync(guildId, scheduledEventId, ct);
         if (alreadyOpen)
         {
             return null;
@@ -41,8 +40,7 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards, Gui
     /// <summary>Close the active session bound to a scheduled event, if any.</summary>
     public async Task CloseForScheduledEventAsync(ulong guildId, ulong scheduledEventId, CancellationToken ct = default)
     {
-        var session = await db.TrackingSessions.FirstOrDefaultAsync(
-            s => s.GuildId == guildId && s.ScheduledEventId == scheduledEventId && s.Status == TrackingSessionStatus.Active, ct);
+        var session = await db.FindActiveSessionForEventAsync(guildId, scheduledEventId, ct);
         if (session is not null)
         {
             await CloseAsync(session.Id, ct: ct);
@@ -78,14 +76,11 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards, Gui
     {
         var now = at ?? DateTimeOffset.UtcNow;
 
-        var activeSessions = await db.TrackingSessions
-            .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active)
-            .ToListAsync(ct);
+        var activeSessions = await db.ListActiveSessionsAsync(guildId, ct);
 
         foreach (var session in activeSessions)
         {
-            var attendance = await db.VoiceAttendance
-                .FirstOrDefaultAsync(a => a.TrackingSessionId == session.Id && a.UserId == userId, ct);
+            var attendance = await db.FindAttendanceAsync(session.Id, userId, ct);
             var isCurrent = currentChannelId == session.VoiceChannelId;
 
             if (isCurrent)
@@ -123,9 +118,7 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards, Gui
     {
         var now = at ?? DateTimeOffset.UtcNow;
 
-        var session = await db.TrackingSessions
-            .Include(s => s.Attendance)
-            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        var session = await db.FindSessionWithAttendanceAsync(sessionId, ct);
 
         if (session is null)
         {
@@ -171,7 +164,7 @@ public class TrackingSessionService(MusterDbContext db, AwardService awards, Gui
 
     private async Task<int> ResolvePointsPerMinuteAsync(ulong guildId, CancellationToken ct)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         var rate = guild?.Settings.PointsPerVoiceMinute ?? DefaultPointsPerMinute;
         return rate > 0 ? rate : DefaultPointsPerMinute;
     }

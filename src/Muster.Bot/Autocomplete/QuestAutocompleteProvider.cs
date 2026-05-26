@@ -1,5 +1,6 @@
+using Muster.Contracts;
 using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
@@ -26,10 +27,10 @@ public class QuestAutocompleteProvider(IServiceScopeFactory scopeFactory)
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
 
-        var quests = await db.Missions
-            .Where(m => m.GuildId == guildId && m.Type == MissionType.Quest
-                && (m.Status == MissionStatus.Open || m.Status == MissionStatus.Scheduled || m.Status == MissionStatus.Disputed
-                    || m.Status == MissionStatus.PendingApproval || m.Status == MissionStatus.PendingFinal)
+        var quests = await db.Quests
+            .Where(m => m.GuildId == guildId
+                && (m.Status == QuestStatus.Open || m.Status == QuestStatus.Scheduled || m.Status == QuestStatus.Disputed
+                    || m.Status == QuestStatus.PendingApproval || m.Status == QuestStatus.PendingFinal)
                 && m.Name.Contains(input))
             .OrderByDescending(m => m.CreatedAt)
             .Take(25)
@@ -37,6 +38,6 @@ public class QuestAutocompleteProvider(IServiceScopeFactory scopeFactory)
             .ToListAsync();
 
         return quests.Select(q => new ApplicationCommandOptionChoiceProperties(
-            $"{q.Name} [{(q.Origin == MissionOrigin.Guild ? "Guild" : "Personal")}]", q.Id.ToString()));
+            $"{q.Name} [{(q.Origin == QuestOrigin.Guild ? "Guild" : "Personal")}]", q.Id.ToString()));
     }
 }

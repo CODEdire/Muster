@@ -36,6 +36,57 @@ Write bodies are `{ "userId": 123, "amount": 50, "reason": "…" }`. They append
 the outbox stay consistent. `spend` is overdraft-checked for currencies Muster is authoritative
 for (returns `409 insufficient_funds`); `External`-mode currencies skip the check.
 
+### Quests (`ApiQuestEndpoints`)
+
+The quest API mirrors the bot/web: every write **invokes the same CQRS command** via `IMessageBus`,
+so the command handler is the single authorization funnel.
+
+| Method | Route | Scope | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/guilds/{guildId}/quests?tab=&type=&search=&sort=&desc=&page=&size=` | `read:quests` | board (filter/search/sort/page) |
+| GET | `/api/v1/guilds/{guildId}/quests/{questId}` | `read:quests` | detail + participants, reviewers, dispute |
+| POST | `…/quests` | `write:quests` | post a quest |
+| POST | `…/quests/{id}/claim` | `write:quests` | claim *as* a member |
+| POST | `…/quests/{id}/submit` | `write:quests` | submit *as* a member |
+| POST | `…/quests/{id}/approve` | `write:quests` | approve a submission (mint) |
+| POST | `…/quests/{id}/reject` | `write:quests` | reject a submission |
+| POST | `…/quests/{id}/request-revision` | `write:quests` | send back for revision |
+| POST | `…/quests/{id}/reopen` | `write:quests` | undo a reject (`{ "memberId": 123 }`) |
+| POST | `…/quests/{id}/confirm` | `write:quests` | owner accepts + pays a player quest |
+| POST | `…/quests/{id}/dispute` | `write:quests` | owner/taker raises a dispute |
+| POST | `…/quests/{id}/cancel` | `write:quests` | cancel |
+| POST | `…/quests/{id}/arbitrate` | `write:quests` | resolve a dispute (`{ "pay": true }`) |
+| POST | `…/quests/{id}/intake/accept` | `write:quests` | accept + tier a pending quest |
+| POST | `…/quests/{id}/intake/reject` | `write:quests` | reject at intake (refund) |
+| POST | `…/quests/{id}/finalize` | `write:quests` | final sign-off (`{ "pay": true }`) |
+| POST | `…/quests/{id}/edit` | `write:quests` | patch before work (`{ "name", "reward", "tier", … }`) |
+
+**Two-layer auth.** A request passes only if **both** hold:
+1. **Token scope** — the key holds `read:quests` / `write:quests` (which endpoints it may call).
+2. **Bound actor** — the key is tied to a Discord user (`ActsAsUserId`). Every action runs *as that user* with
+   *their* guild roles, and the command funnel authorizes it exactly as for the bot/web. So a key can do at most
+   the **intersection** of its scopes and its actor's permissions — bind a GuildMaster for manager actions.
+   **A key may only be bound to the creating admin's own account or a bot/app member of the guild** — never an
+   arbitrary member (prevents impersonating a non-consenting user); this is enforced server-side at creation.
+   Bots are synced (with an `IsBot` flag) so they can serve as service actors, but are hidden from human-facing
+   pickers (leaderboard, award). Removing the actor's role — or kicking them — instantly neutralizes the key.
+
+The actor is **never supplied in the request** — a key can't act on behalf of anyone but its bound user. (`memberId`
+on review bodies is the *subject* — whose submission — not the actor.) A key with no actor gets `403 key_not_bound`;
+a transition the actor isn't allowed to make returns `409 quest_action_failed` (reason `Forbidden`).
+
+Bodies: `post` `{ "origin": "Guild|Player", "name": "…", "currency": "COIN", "reward": 50, "tier": "B" }`;
+`submit` `{ "note": "…" }`; `approve`/`reject` `{ "memberId": 123, "note": "…" }`; `request-revision`
+`{ "memberId": 123, "note": "…" }`; `arbitrate`/`finalize` `{ "pay": true }`; `intake/accept`
+`{ "tier": "B", "requireFinalApproval": false }`; `claim` / `cancel` / `intake/reject` take no body.
+A failed transition returns `409` with `{ "error": "quest_action_failed", "reason": "<QuestResult>" }`.
+
+The list (`GET /quests`) mirrors the web board: `tab` (`active`|`actionneeded`|`history`, default `active`; `actionneeded` =
+the manager review queue, empty for non-managers), `type`/scope (`guild`|`player`|`mine`, default all; `mine` = bounties you posted + any quest you claimed, incl. guild duties),
+`search`, `sort` (`reward`|`closes`|`created`|`name`|`type`|`status`|`opens`), `desc`, `page`, `size` (10/25/50/100). It returns
+`{ items, total, page, totalPages, codes, names, avatars }`. `mine`/`history` and the manager view (submissions-to-review, pending-intake
+rows) resolve against the key's **bound actor** + `IsQuestManagerAsync` — an unbound key sees the public active board as a non-manager.
+
 ## Currency modes (balance authority)
 
 Each `Currency` has a `Mode` describing where the balance authority lives:

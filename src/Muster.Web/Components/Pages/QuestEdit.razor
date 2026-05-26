@@ -1,15 +1,16 @@
+@using Muster.Contracts
 @page "/guilds/{GuildIdRaw}/quests/{QuestId}/edit"
+@layout GuildLayout
 @inherits GuildMemberComponentBase
-@inject QuestBoardService Board
 @inject TimeZoneService TimeZones
-@inject MusterDbContext Db
+@inject IQuestReadService Reads
+@inject Wolverine.IMessageBus Bus
 @using Muster.Domain.Entities
-@using Muster.Infrastructure.Persistence
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
-@using Microsoft.EntityFrameworkCore
 @using Muster.Infrastructure.Services.Platform
 @using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Quests
 
 <PageTitle>Edit quest — Muster</PageTitle>
 
@@ -39,23 +40,8 @@ else if (State == AccessState.Ready)
         <div class="panel glass">
             <EditForm class="form-grid" Model="Edit" FormName="edit-quest" OnValidSubmit="SaveAsync">
                 <input type="hidden" name="Edit.Submitted" value="1" />
-                <label>Name <InputText @bind-Value="Edit.Name" /></label>
-                <label>Details <InputText @bind-Value="Edit.Details" /></label>
-                <label>Expires (optional) <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Edit.ExpiresAt" /></label>
-                @if (_isGuild)
-                {
-                    <label>Reward amount <InputNumber @bind-Value="Edit.Amount" /></label>
-                    <label>Difficulty tier
-                        <InputSelect @bind-Value="Edit.Tier">
-                            <option value="@QuestTier.None">None</option>
-                            @foreach (var t in _tiers)
-                            {
-                                <option value="@t">@t</option>
-                            }
-                        </InputSelect>
-                    </label>
-                    <label>Slots (capacity) <InputNumber @bind-Value="Edit.Capacity" /></label>
-                }
+                <QuestFormFields Model="Edit.Fields" NamePrefix="Edit.Fields" Settings="_settings"
+                                 IncludeReward="_isGuild" IncludeGuildFields="_isGuild" />
                 <div class="btn-row">
                     <button type="submit">Save</button>
                     <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Cancel</a>
@@ -69,9 +55,9 @@ else if (State == AccessState.Ready)
     [Parameter] public string QuestId { get; set; } = "";
     [SupplyParameterFromForm(FormName = "edit-quest")] private EditInput Edit { get; set; } = new();
 
-    private Mission? _mission;
+    private QuestEditView? _mission;
+    private GuildSettings _settings = new();
     private bool _isGuild;
-    private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
 
     protected override async Task LoadAsync()
     {
@@ -80,42 +66,43 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        _mission = await Db.Missions.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id && m.GuildId == GuildId);
+        _settings = await Reads.GetSettingsAsync(GuildId);
+        _mission = await Reads.GetForEditAsync(GuildId, id);
         if (_mission is null)
         {
             return;
         }
 
-        _isGuild = _mission.Origin == MissionOrigin.Guild;
+        _isGuild = _mission.Origin == QuestOrigin.Guild;
         if (string.IsNullOrEmpty(Edit.Submitted))
         {
-            Edit.Name = _mission.Name;
-            Edit.Details = _mission.Description;
-            Edit.Amount = _mission.RewardAmount;
-            Edit.Tier = _mission.Tier;
-            Edit.Capacity = _mission.Capacity;
-            Edit.ExpiresAt = _mission.Deadline is { } d ? d.UtcDateTime : null;
+            Edit.Fields.Name = _mission.Name;
+            Edit.Fields.Details = _mission.Description;
+            Edit.Fields.Amount = _mission.RewardAmount;
+            Edit.Fields.Tier = _mission.Tier;
+            Edit.Fields.Capacity = _mission.Capacity;
+            Edit.Fields.ExpiresAt = _mission.Deadline is { } d ? d.UtcDateTime : null;
         }
     }
 
     private async Task SaveAsync()
     {
-        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, Edit.ExpiresAt);
-        var result = await Board.EditAsync(
-            GuildId, QuestId, UserId, Edit.Name, Edit.Details, _isGuild ? Edit.Amount : null,
-            deadline, _isGuild ? Edit.Tier : null, _isGuild ? Edit.Capacity : null);
-        Message = result.Message;
+        if (!Guid.TryParse(QuestId, out var id))
+        {
+            return;
+        }
+
+        var f = Edit.Fields;
+        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.ExpiresAt);
+        var command = new EditQuest(GuildId, id, UserId, f.Name, f.Details,
+            _isGuild ? f.Amount : null, deadline, _isGuild ? f.Tier : null, _isGuild ? f.Capacity : null);
+        Message = (await Bus.InvokeAsync<Result>(command)).ToCommandResult("Quest updated.").Message;
         await LoadAsync();
     }
 
     public class EditInput
     {
         public string? Submitted { get; set; }
-        public string? Name { get; set; }
-        public string? Details { get; set; }
-        public long Amount { get; set; }
-        public QuestTier Tier { get; set; }
-        public int Capacity { get; set; } = 1;
-        public DateTime? ExpiresAt { get; set; }
+        public QuestFormModel Fields { get; set; } = new();
     }
 }

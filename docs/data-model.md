@@ -1,7 +1,7 @@
 # Data Model
 
 All entities live in `Muster.Domain/Entities` and are mapped by `MusterDbContext`
-(`Muster.Infrastructure`). Every record is **guild-scoped** (the tenant boundary). Discord
+(`Muster.Persistence`). Every record is **guild-scoped** (the tenant boundary). Discord
 snowflake ids are stored as `ulong` (mapped to `decimal(20,0)` on SQL Server).
 
 ## Core
@@ -21,8 +21,10 @@ snowflake ids are stored as `ulong` (mapped to `decimal(20,0)` on SQL Server).
 | `VoiceAttendance` | Accumulated voice minutes per member within a session — the **primary rewardable signal**. |
 | `ActivityRecord` | Raw activity event (message/voice). **Stats-only in v1.** `SourceMessageId` is the dedupe key. |
 | `DailyActivityRollup` | Per-(guild,user,channel,day) counts so stats/leaderboards stay cheap. |
-| `Mission` | Board item. `Type` is `Quest` (claim → submit → approve) or `EventOp` (scheduled, RSVP/attendance). May optionally link a `TrackingSession`. |
-| `MissionParticipant` | A member's state on a mission (quest: Claimed/Submitted/Approved/Rejected; op: SignedUp/Attended/NoShow). |
+| `GuildQuest` | A claimable board quest (claim → submit → approve). `Origin` is `Guild` (minted reward) or `Player` (escrowed bounty). |
+| `QuestParticipant` | A member's state on a quest (Claimed/Submitted/Approved/Rejected/RevisionRequested). |
+| `GuildEvent` | A scheduled op with sign-up/attendance (`Scheduled → Open → Closed`/`Cancelled`). May optionally link a `TrackingSession`. |
+| `EventAttendee` | A member's state on an event (SignedUp/Attended/NoShow). |
 | `ReactionMuster` | A react-to-check-in message. Multi-emoji (distinct responses), optional capacity (first N). |
 | `ReactionParticipant` | A member's reaction on a muster. |
 | `ManualAward` | Admin manual or bulk award for off-platform contributions. |
@@ -67,14 +69,15 @@ The reward system is a **multi-currency, append-only ledger**.
 - `LedgerEntry (GuildId, UserId, CurrencyId, SeasonId)` — balance/leaderboard reads.
 - `Wallet (GuildId, UserId, CurrencyId, SeasonId)` unique.
 - `ActivityRecord (SourceMessageId)` unique, filtered — message dedupe.
-- `VoiceAttendance (TrackingSessionId, UserId)` unique; `MissionParticipant (MissionId, UserId)` unique; `ReactionParticipant (MusterId, UserId)` unique.
+- `VoiceAttendance (TrackingSessionId, UserId)` unique; `ReactionParticipant (MusterId, UserId)` unique; `EventAttendee (EventId, UserId)` unique.
+- `QuestParticipant (QuestId, UserId)` **non-unique** — a member may hold several participations when a quest allows repeat completions.
 
 ## Migrations
 
 The initial schema is `Migrations/*_InitialCreate`. Generate further migrations with:
 
 ```bash
-dotnet ef migrations add <Name> --project src/Muster.Infrastructure
+dotnet ef migrations add <Name> --project src/Muster.Persistence
 ```
 
 `MusterDbContextFactory` provides the design-time context (no database is contacted).

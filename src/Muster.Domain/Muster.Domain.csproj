@@ -4,4 +4,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Muster.Contracts\Muster.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

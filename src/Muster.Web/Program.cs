@@ -16,6 +16,9 @@ builder.AddMusterMessaging();
 builder.Services.AddRazorComponents();
 builder.Services.AddCascadingAuthenticationState();
 
+// Lists a guild's channels (Discord REST, bot token) for the quest-board channel picker on the settings page.
+builder.Services.AddHttpClient<Muster.Web.DiscordChannelLookup>();
+
 // Discord OAuth: cookie session, challenge via Discord. Credentials come from configuration
 // (user-secrets locally, Key Vault in Azure). Discord is only registered when configured — the
 // OAuth handler validates ClientId on every request, so registering it without credentials would
@@ -44,6 +47,24 @@ if (discordConfigured)
         options.Scope.Add("identify");
         options.Scope.Add("guilds");
         options.SaveTokens = true;
+
+        // On login, backfill the signed-in user's profile so their name/avatar resolve across the app
+        // even before the bot's gateway sync has seen them (per-guild roles still come from the bot).
+        options.Events.OnCreatingTicket = async ctx =>
+        {
+            var root = ctx.User; // the /users/@me response
+            if (!root.TryGetProperty("id", out var idEl) || !ulong.TryParse(idEl.GetString(), out var userId))
+            {
+                return;
+            }
+
+            static string? Str(System.Text.Json.JsonElement e, string name) =>
+                e.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+
+            await using var scope = ctx.HttpContext.RequestServices.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Membership.MemberSyncService>()
+                .UpsertUserAsync(userId, Str(root, "username") ?? "", Str(root, "global_name"), Str(root, "avatar"));
+        };
     });
 }
 

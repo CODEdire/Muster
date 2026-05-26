@@ -43,13 +43,14 @@ else if (State == AccessState.Ready)
         else
         {
             <table class="approvals">
-                <thead><tr><th>Name</th><th>Scopes</th><th>Status</th></tr></thead>
+                <thead><tr><th>Name</th><th>Scopes</th><th>Acts as</th><th>Status</th></tr></thead>
                 <tbody>
                     @foreach (var c in _clients)
                     {
                         <tr>
                             <td>@c.Name</td>
                             <td>@string.Join(", ", c.Scopes)</td>
+                            <td>@(c.ActsAsUserId == 0 ? "—" : c.ActsAsUserId.ToString())</td>
                             <td>@(c.IsActive ? "active" : "revoked")</td>
                         </tr>
                     }
@@ -66,6 +67,11 @@ else if (State == AccessState.Ready)
             <label><InputCheckbox @bind-Value="Input.ReadWallets" /> read:wallets</label>
             <label><InputCheckbox @bind-Value="Input.ReadLedger" /> read:ledger</label>
             <label><InputCheckbox @bind-Value="Input.WriteCurrency" /> write:currency</label>
+            <label><InputCheckbox @bind-Value="Input.ReadQuests" /> read:quests</label>
+            <label><InputCheckbox @bind-Value="Input.WriteQuests" /> write:quests</label>
+            <label>Acts as (Discord user id) <InputText @bind-Value="Input.ActsAsUserId" placeholder="e.g. a bot or service account" />
+                <span class="subtitle">Quest writes run as this user with <em>their</em> guild roles — bind a GuildMaster for manager actions, a member for claim/submit. Leave blank for read/currency-only keys.</span>
+            </label>
             <div class="btn-row"><button type="submit">Create key</button></div>
         </EditForm>
     </div>
@@ -114,11 +120,30 @@ else if (State == AccessState.Ready)
         if (Input.ReadWallets) scopes.Add("read:wallets");
         if (Input.ReadLedger) scopes.Add("read:ledger");
         if (Input.WriteCurrency) scopes.Add("write:currency");
+        if (Input.ReadQuests) scopes.Add("read:quests");
+        if (Input.WriteQuests) scopes.Add("write:quests");
 
-        var created = await Clients.CreateAsync(GuildId, Input.Name.Trim(), scopes);
+        if (!string.IsNullOrWhiteSpace(Input.ActsAsUserId) && !ulong.TryParse(Input.ActsAsUserId, out _))
+        {
+            Message = "Acts-as must be a numeric Discord user id (or blank).";
+            return;
+        }
+
+        _ = ulong.TryParse(Input.ActsAsUserId, out var actsAs);
+        ApiClientCreated created;
+        try
+        {
+            created = await Clients.CreateAsync(GuildId, Input.Name.Trim(), scopes, actsAs, UserId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Message = ex.Message; // invalid actor binding (not self / not a guild bot)
+            return;
+        }
+
         _newKey = created.ApiKey;
         Message = $"Created client '{created.Client.Name}'.";
-        await AuditAsync("apiclient.create", $"{created.Client.Name} [{string.Join(", ", scopes)}]");
+        await AuditAsync("apiclient.create", $"{created.Client.Name} [{string.Join(", ", scopes)}]" + (actsAs == 0 ? "" : $" acts-as {actsAs}"));
         Input = new CreateInput();
         await LoadAsync();
     }
@@ -143,6 +168,9 @@ else if (State == AccessState.Ready)
         public bool ReadWallets { get; set; }
         public bool ReadLedger { get; set; }
         public bool WriteCurrency { get; set; }
+        public bool ReadQuests { get; set; }
+        public bool WriteQuests { get; set; }
+        public string? ActsAsUserId { get; set; }
     }
 
     public class RevokeClientInput

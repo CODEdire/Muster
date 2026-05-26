@@ -26,15 +26,31 @@ public enum RequiredRole
 /// </summary>
 public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : ApplicationCommandModule<ApplicationCommandContext>
 {
-    protected async Task<Reply> RunAsync(
+    protected async Task RunAsync(
         Func<IServiceProvider, ulong, Task<CommandResult>> action,
         RequiredRole required = RequiredRole.None,
         string? auditAction = null,
         bool ephemeral = true)
     {
+        // Acknowledge immediately so Discord's 3-second window never closes on slow work (minting, escrow,
+        // DB writes). The deferred response is a placeholder we edit with the real result once we're done —
+        // every command goes through here, so every command is acked.
+        await Context.Interaction.SendResponseAsync(
+            InteractionCallback.DeferredMessage(ephemeral ? MessageFlags.Ephemeral : null));
+
+        var content = await ExecuteAsync(action, required, auditAction);
+
+        await Context.Interaction.ModifyResponseAsync(m => m.Content = content);
+    }
+
+    private async Task<string> ExecuteAsync(
+        Func<IServiceProvider, ulong, Task<CommandResult>> action,
+        RequiredRole required,
+        string? auditAction)
+    {
         if (Context.Guild is not { } guild)
         {
-            return Message("This command can only be used in a server.", ephemeral);
+            return "This command can only be used in a server.";
         }
 
         using var scope = scopeFactory.CreateScope();
@@ -52,12 +68,12 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
 
             if (!allowed)
             {
-                return Message(required switch
+                return required switch
                 {
                     RequiredRole.Admin => "You need to be a server admin to use this command.",
                     RequiredRole.QuestManager => "You need to be a quest manager to use this command.",
                     _ => "You need to be an officer to use this command.",
-                }, ephemeral);
+                };
             }
         }
 
@@ -70,13 +86,6 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
                 .RecordAsync(guild.Id, Context.User.Id, auditAction, result.Message);
         }
 
-        return Message(result.Message, ephemeral);
+        return result.Message;
     }
-
-    private static Reply Message(string content, bool ephemeral) =>
-        InteractionCallback.Message(new InteractionMessageProperties
-        {
-            Content = content,
-            Flags = ephemeral ? MessageFlags.Ephemeral : null,
-        });
 }

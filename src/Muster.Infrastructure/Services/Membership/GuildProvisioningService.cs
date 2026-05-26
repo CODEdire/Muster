@@ -1,5 +1,6 @@
-using Microsoft.EntityFrameworkCore;
-using Muster.Infrastructure.Persistence;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
+using Muster.Domain;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 
@@ -12,12 +13,12 @@ namespace Muster.Infrastructure.Services.Membership;
 /// </summary>
 public class GuildProvisioningService(MusterDbContext db)
 {
-    public const string PointsCurrencyCode = "POINTS";
+    public const string PointsCurrencyCode = Currencies.PointsCode;
 
     public async Task EnsureGuildAsync(
         ulong guildId, string name, string? iconHash, ulong ownerId = 0, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             db.Guilds.Add(new Guild
@@ -41,7 +42,7 @@ public class GuildProvisioningService(MusterDbContext db)
             }
         }
 
-        var hasPoints = await db.Currencies.AnyAsync(c => c.GuildId == guildId && c.Code == PointsCurrencyCode, ct);
+        var hasPoints = await db.CurrencyExistsAsync(guildId, PointsCurrencyCode, ct);
         if (!hasPoints)
         {
             db.Currencies.Add(new Currency
@@ -55,7 +56,7 @@ public class GuildProvisioningService(MusterDbContext db)
             });
         }
 
-        var hasActiveSeason = await db.Seasons.AnyAsync(s => s.GuildId == guildId && s.Status == SeasonStatus.Active, ct);
+        var hasActiveSeason = await db.HasActiveSeasonAsync(guildId, ct);
         if (!hasActiveSeason)
         {
             db.Seasons.Add(new Season
@@ -74,7 +75,7 @@ public class GuildProvisioningService(MusterDbContext db)
     /// <summary>Mark a guild inactive when the bot is removed from it.</summary>
     public async Task MarkInactiveAsync(ulong guildId, CancellationToken ct = default)
     {
-        var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+        var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is not null)
         {
             guild.IsActive = false;

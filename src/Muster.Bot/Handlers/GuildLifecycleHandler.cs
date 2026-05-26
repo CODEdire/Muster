@@ -30,7 +30,15 @@ public class GuildLifecycleHandler(
             await sp.GetRequiredService<RoleSyncService>().SyncAllAsync(
                 guild.Id, guild.Roles.Values.Select(r => (r.Id, r.Name, (ulong)r.Permissions)));
 
-            logger.LogInformation("Provisioned guild {GuildId} ({GuildName})", guild.Id, guild.Name);
+            // Backfill the roster the GuildCreate payload already carries (needs the GuildUsers intent).
+            // For guilds above Discord's large threshold this may be partial — /syncmembers pulls the rest.
+            // Bots are included (with IsBot) so they can serve as API service actors; human lists filter them.
+            var snapshots = guild.Users.Values
+                .Select(u => new MemberSnapshot(u.Id, u.Username, u.GlobalName, u.AvatarHash, u.Nickname, u.RoleIds, u.IsBot))
+                .ToList();
+            var synced = await sp.GetRequiredService<MemberSyncService>().SyncGuildAsync(guild.Id, snapshots);
+
+            logger.LogInformation("Provisioned guild {GuildId} ({GuildName}); synced {Count} members", guild.Id, guild.Name, synced);
         });
     }
 

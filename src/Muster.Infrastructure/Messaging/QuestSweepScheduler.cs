@@ -27,14 +27,13 @@ public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<Ques
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var missions = scope.ServiceProvider.GetRequiredService<MissionService>();
-                var bounties = scope.ServiceProvider.GetRequiredService<BountyService>();
+                var quests = scope.ServiceProvider.GetRequiredService<IQuestService>();
                 var maintenance = scope.ServiceProvider.GetRequiredService<QuestMaintenanceService>();
 
                 var now = DateTimeOffset.UtcNow;
-                var activated = await missions.ActivateScheduledAsync(now, stoppingToken);
-                var expired = await bounties.ExpireDueAsync(now, stoppingToken)       // personal quests (refund escrow)
-                    + await missions.ExpireDueQuestsAsync(now, stoppingToken);        // guild quests (close, nothing to refund)
+                var activated = await quests.ActivateScheduledAsync(now, stoppingToken);
+                var expired = await quests.ExpireDueAsync(now, stoppingToken)         // personal quests (refund escrow)
+                    + await quests.ExpireDueQuestsAsync(now, stoppingToken);          // guild quests (close, nothing to refund)
                 var resolved = await maintenance.SweepAsync(now, stoppingToken);      // anti-staleness auto-resolve
 
                 if (activated > 0 || expired > 0 || resolved > 0)

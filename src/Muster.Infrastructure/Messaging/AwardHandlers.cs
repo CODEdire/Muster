@@ -6,14 +6,14 @@ namespace Muster.Infrastructure.Messaging;
 
 /// <summary>
 /// Wolverine handlers for the broker-agnostic award contracts. Each awards through
-/// <see cref="AwardService"/> and returns a <see cref="LedgerEntryRecorded"/> as a cascading message,
+/// <see cref="ICurrencyService"/> and returns a <see cref="LedgerEntryRecorded"/> as a cascading message,
 /// which Wolverine publishes through the durable outbox — the hook outbound connectors subscribe to.
 ///
 /// These are plain methods: Wolverine injects the services at runtime, and unit tests call them directly.
 /// </summary>
 public static class AwardCurrencyHandler
 {
-    public static async Task<LedgerEntryRecorded> Handle(AwardCurrency command, AwardService awards, CancellationToken ct)
+    public static async Task<LedgerEntryRecorded> Handle(AwardCurrency command, ICurrencyService awards, CancellationToken ct)
     {
         var sourceType = Enum.Parse<LedgerSourceType>(command.SourceType, ignoreCase: true);
         var entry = await awards.AwardAsync(
@@ -29,7 +29,7 @@ public static class AwardCurrencyHandler
 
 public static class MemberParticipatedHandler
 {
-    public static async Task<LedgerEntryRecorded> Handle(MemberParticipated message, AwardService awards, CancellationToken ct)
+    public static async Task<LedgerEntryRecorded> Handle(MemberParticipated message, ICurrencyService awards, CancellationToken ct)
     {
         var sourceType = Enum.Parse<LedgerSourceType>(message.SourceType, ignoreCase: true);
         var entry = await awards.AwardPointsAsync(
@@ -43,7 +43,7 @@ public static class MemberParticipatedHandler
 /// <summary>Connector-driven mint/spend of a spendable currency.</summary>
 public static class AdjustCurrencyBalanceHandler
 {
-    public static async Task<LedgerEntryRecorded> Handle(AdjustCurrencyBalance command, AwardService awards, CancellationToken ct)
+    public static async Task<LedgerEntryRecorded> Handle(AdjustCurrencyBalance command, ICurrencyService awards, CancellationToken ct)
     {
         var entry = await awards.AwardAsync(
             command.GuildId, command.UserId, command.CurrencyId, command.Delta,
