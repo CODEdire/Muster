@@ -1,0 +1,108 @@
+@using Muster.Contracts
+@page "/guilds/{GuildIdRaw}/quests/{QuestId}/edit"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject TimeZoneService TimeZones
+@inject IQuestReadService Reads
+@inject Wolverine.IMessageBus Bus
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Quests
+
+<PageTitle>Edit quest — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
+        <h1>Edit quest</h1>
+        <p class="subtitle">Edits are locked once someone claims the quest.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_mission is null)
+    {
+        <div class="panel glass empty">Quest not found.</div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <EditForm class="form-grid" Model="Edit" FormName="edit-quest" OnValidSubmit="SaveAsync">
+                <input type="hidden" name="Edit.Submitted" value="1" />
+                <QuestFormFields Model="Edit.Fields" NamePrefix="Edit.Fields" Settings="_settings"
+                                 IncludeReward="_isGuild" IncludeGuildFields="_isGuild" />
+                <div class="btn-row">
+                    <button type="submit">Save</button>
+                    <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Cancel</a>
+                </div>
+            </EditForm>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string QuestId { get; set; } = "";
+    [SupplyParameterFromForm(FormName = "edit-quest")] private EditInput Edit { get; set; } = new();
+
+    private QuestEditView? _mission;
+    private GuildSettings _settings = new();
+    private bool _isGuild;
+
+    protected override async Task LoadAsync()
+    {
+        if (!Guid.TryParse(QuestId, out var id))
+        {
+            return;
+        }
+
+        _settings = await Reads.GetSettingsAsync(GuildId);
+        _mission = await Reads.GetForEditAsync(GuildId, id);
+        if (_mission is null)
+        {
+            return;
+        }
+
+        _isGuild = _mission.Origin == QuestOrigin.Guild;
+        if (string.IsNullOrEmpty(Edit.Submitted))
+        {
+            Edit.Fields.Name = _mission.Name;
+            Edit.Fields.Details = _mission.Description;
+            Edit.Fields.Amount = _mission.RewardAmount;
+            Edit.Fields.Tier = _mission.Tier;
+            Edit.Fields.Capacity = _mission.Capacity;
+            Edit.Fields.ExpiresAt = _mission.Deadline is { } d ? d.UtcDateTime : null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Guid.TryParse(QuestId, out var id))
+        {
+            return;
+        }
+
+        var f = Edit.Fields;
+        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.ExpiresAt);
+        var command = new EditQuest(GuildId, id, UserId, f.Name, f.Details,
+            _isGuild ? f.Amount : null, deadline, _isGuild ? f.Tier : null, _isGuild ? f.Capacity : null);
+        Message = (await Bus.InvokeAsync<Result>(command)).ToCommandResult("Quest updated.").Message;
+        await LoadAsync();
+    }
+
+    public class EditInput
+    {
+        public string? Submitted { get; set; }
+        public QuestFormModel Fields { get; set; } = new();
+    }
+}

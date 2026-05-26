@@ -1,0 +1,26 @@
+@inherits LayoutComponentBase
+
+@* Guild theme override hook: once guild theming lands, inject a <style> here setting
+   --accent / --brand-* on .app-shell[data-guild] so member-facing pages adopt the guild palette. *@
+<div class="app-shell">
+    <header class="topbar glass">
+        <a href="/" class="brand">Muster</a>
+        <nav>
+            <a href="/guilds">My servers</a>
+            <ThemeToggle />
+            <AuthorizeView>
+                <Authorized>
+                    <span class="user">@context.User.DisplayName()</span>
+                    <a class="btn btn-ghost" href="/account/logout">Log out</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn" href="/account/login">Log in</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
+    </header>
+
+    <div class="container">
+        @Body
+    </div>
+</div>

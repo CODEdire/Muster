@@ -1,0 +1,72 @@
+@page "/guilds"
+@inject WebGuildService GuildService
+
+<PageTitle>My servers — Muster</PageTitle>
+
+<div class="page-head">
+    <h1>My servers</h1>
+    <p class="subtitle">Servers where you can view Muster.</p>
+</div>
+
+@if (_userId is null)
+{
+    <div class="panel glass empty">
+        Please <a href="/account/login?returnUrl=/guilds">log in with Discord</a> to continue.
+    </div>
+}
+else if (_guilds is null)
+{
+    <div class="panel glass empty">Loading…</div>
+}
+else if (_guilds.Count == 0)
+{
+    <div class="panel glass empty">
+        You're not in any servers that have Muster yet. Once you're active in a server running Muster,
+        it'll show up here.
+    </div>
+}
+else
+{
+    <div class="card-grid">
+        @foreach (var guild in _guilds)
+        {
+            <a class="card glass" href="/guilds/@guild.GuildId">
+                <div class="card-row">
+                    <span class="avatar">@Initial(guild.Name)</span>
+                    <div>
+                        <h3>@guild.Name</h3>
+                        @if (guild.IsAdmin)
+                        {
+                            <span class="badge">admin</span>
+                        }
+                    </div>
+                </div>
+            </a>
+        }
+    </div>
+}
+
+@code {
+@using Muster.Infrastructure.Services.Web
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ulong? _userId;
+    private IReadOnlyList<UserGuildView>? _guilds;
+
+    private static string Initial(string name)
+        => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        _userId = (await AuthState).User.GetDiscordUserId();
+        if (_userId is { } id)
+        {
+            _guilds = await GuildService.GetGuildsForUserAsync(id);
+        }
+    }
+}

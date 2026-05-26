@@ -1,0 +1,125 @@
+@using Muster.Contracts
+@page "/guilds/{GuildIdRaw}/quests/new"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject IQuestReadService Reads
+@inject TimeZoneService TimeZones
+@inject CurrencyAdminService CurrencyAdmin
+@inject Wolverine.IMessageBus Bus
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Ledger
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Quests
+
+<PageTitle>Post a quest — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
+        <h1>Post a quest</h1>
+        <p class="subtitle">Guild quests mint their reward on approval; personal quests escrow your own balance.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        @{
+            var guildHidden = Post.Kind == "guild" ? "" : "is-hidden";
+            var playerHidden = Post.Kind == "guild" ? "is-hidden" : "";
+        }
+        <EditForm class="form-grid" Model="Post" FormName="post-quest" OnValidSubmit="PostAsync">
+            @if (_isManager)
+            {
+                <div class="kind-tabs" role="tablist">
+                    <button type="button" class="kind-tab @(Post.Kind != "guild" ? "active" : "")" data-kind="personal">
+                        <span class="material-symbols-outlined">person</span> Player quest
+                    </button>
+                    <button type="button" class="kind-tab @(Post.Kind == "guild" ? "active" : "")" data-kind="guild">
+                        <span class="material-symbols-outlined">shield</span> Guild quest
+                    </button>
+                </div>
+                <p class="subtitle">
+                    <span class="guild-only @guildHidden">Minted reward — opens immediately, no balance needed.</span>
+                    <span class="personal-only @playerHidden">Escrowed from your balance — goes through manager intake.</span>
+                </p>
+            }
+            <input type="hidden" name="Post.Kind" id="quest-kind-value" value="@Post.Kind" />
+
+            <QuestFormFields Model="Post.Fields" NamePrefix="Post.Fields" Settings="_settings"
+                             Currencies="_currencies"
+                             ShowRewardHints="true" GuildHintClass="@guildHidden" PlayerHintClass="@playerHidden"
+                             IncludeGuildFields="_isManager" GuildFieldsClass="@($"guild-only {guildHidden}")"
+                             IncludeStarts="true" />
+
+            @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.OwnerChoice)
+            {
+                <label class="checkbox personal-only @playerHidden"><InputCheckbox @bind-Value="Post.RequestFinalApproval" /> Require a manager's final sign-off before payout</label>
+            }
+
+            <div class="btn-row">
+                <button type="submit">Post quest</button>
+                <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Back to board</a>
+            </div>
+        </EditForm>
+        <p class="subtitle">Start/expiry are read in your time zone (<strong>@_zoneId</strong>). A future start keeps the quest scheduled until then.</p>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "post-quest")] private PostInput Post { get; set; } = new();
+
+    private IReadOnlyList<CurrencyView> _currencies = [];
+    private bool _isManager;
+    private string _zoneId = TimeZoneService.Utc;
+    private GuildSettings _settings = new();
+
+    protected override async Task LoadAsync()
+    {
+        _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+        _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
+        _currencies = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+        _settings = await Reads.GetSettingsAsync(GuildId);
+    }
+
+    private async Task PostAsync()
+    {
+        // Guild quests are manager-only and carry tier + slots; player quests are single-taker and tiered at intake.
+        var f = Post.Fields;
+        var isGuild = _isManager && Post.Kind == "guild";
+        var origin = isGuild ? QuestOrigin.Guild : QuestOrigin.Player;
+        var tier = isGuild ? f.Tier : QuestTier.None;
+        var capacity = isGuild ? Math.Max(1, f.Capacity) : 1;
+
+        var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.StartsAt);
+        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.ExpiresAt);
+
+        var command = new PostQuest(GuildId, UserId, origin, f.Name ?? "", f.Currency ?? "POINTS", f.Amount,
+            f.Details ?? "", startsAt, deadline, tier, Post.RequestFinalApproval, capacity);
+        var result = (await Bus.InvokeAsync<Result>(command)).ToCommandResult($"Quest **{f.Name}** posted.");
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            Post = new PostInput();
+        }
+
+        await LoadAsync();
+    }
+
+    public class PostInput
+    {
+        public string Kind { get; set; } = "personal";
+        public bool RequestFinalApproval { get; set; }
+        public QuestFormModel Fields { get; set; } = new();
+    }
+}

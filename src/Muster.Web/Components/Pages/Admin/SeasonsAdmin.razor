@@ -1,0 +1,88 @@
+@using Muster.Infrastructure.Commands.Seasons
+@page "/guilds/{GuildIdRaw}/seasons"
+@inherits GuildAdminComponentBase
+@inject SeasonCommandService Seasons
+
+<PageTitle>Seasons — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Seasons</h1>
+        <p class="subtitle">@_status</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Start a new season</h2>
+        <p class="subtitle">Starting a season archives the current one and resets the points leaderboard.</p>
+        <EditForm class="form-grid" Model="Input" FormName="season-start" OnValidSubmit="StartAsync">
+            <label>Season name <InputText @bind-Value="Input.Name" /></label>
+            <div class="btn-row"><button type="submit">Start season</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
+        <h2>End current season</h2>
+        <EditForm Model="EndInput" FormName="season-end" OnValidSubmit="EndAsync">
+            <div class="btn-row"><button type="submit" class="btn-ghost">End season</button></div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "season-start")] private StartInput Input { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "season-end")] private EmptyInput EndInput { get; set; } = new();
+
+    private string? _status;
+
+    protected override async Task LoadAsync()
+        => _status = (await Seasons.StatusAsync(GuildId)).Message;
+
+    private async Task StartAsync()
+    {
+        var result = await Seasons.StartAsync(GuildId, Input.Name ?? string.Empty);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("season.start", result.Message);
+        }
+
+        Input = new StartInput();
+        await LoadAsync();
+    }
+
+    private async Task EndAsync()
+    {
+        var result = await Seasons.EndAsync(GuildId);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("season.end", result.Message);
+        }
+
+        await LoadAsync();
+    }
+
+    public class StartInput
+    {
+        public string? Name { get; set; }
+    }
+
+    public class EmptyInput
+    {
+    }
+}

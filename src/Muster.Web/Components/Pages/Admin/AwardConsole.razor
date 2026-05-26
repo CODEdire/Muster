@@ -1,0 +1,86 @@
+@page "/guilds/{GuildIdRaw}/award"
+@inherits GuildAdminComponentBase
+@inject WebAdminService Admin
+@inject AwardCommandService Awards
+@inject CurrencyAdminService CurrencyAdmin
+
+<PageTitle>Award — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Award</h1>
+        <p class="subtitle">Grant a currency to a member for an off-platform contribution.</p>
+    </div>
+
+    <div class="panel glass">
+        @if (Message is not null)
+        {
+            <p class="message">@Message</p>
+        }
+
+        <EditForm class="form-grid" Model="Input" FormName="award" OnValidSubmit="SubmitAsync">
+            <label>Member
+                <InputSelect @bind-Value="Input.MemberId">
+                    <option value="0">— select —</option>
+                    @foreach (var m in _members)
+                    {
+                        <option value="@m.UserId">@m.DisplayName</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Currency
+                <InputSelect @bind-Value="Input.Currency">
+                    @foreach (var c in _currencies)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Amount <InputNumber @bind-Value="Input.Amount" /></label>
+            <label>Reason <InputText @bind-Value="Input.Reason" /></label>
+            <div class="btn-row"><button type="submit">Award</button></div>
+        </EditForm>
+    </div>
+}
+
+@code {
+@using Muster.Infrastructure.Services.Ledger
+@using Muster.Infrastructure.Services.Web
+@using Muster.Infrastructure.Commands.Ledger
+    [SupplyParameterFromForm] private AwardInput Input { get; set; } = new();
+
+    private IReadOnlyList<MemberOption> _members = [];
+    private IReadOnlyList<CurrencyView> _currencies = [];
+
+    protected override async Task LoadAsync()
+    {
+        _members = await Admin.GetMembersAsync(GuildId);
+        _currencies = await CurrencyAdmin.ListAsync(GuildId);
+    }
+
+    private async Task SubmitAsync()
+    {
+        var result = await Awards.AwardCurrencyAsync(GuildId, UserId, Input.MemberId, Input.Currency ?? "POINTS", Input.Amount, Input.Reason ?? string.Empty);
+        if (!result.IsError)
+        {
+            await AuditAsync("award", result.Message);
+        }
+
+        Message = await HumanizeAsync(result.Message);
+        Input = new AwardInput();
+    }
+
+    public class AwardInput
+    {
+        public ulong MemberId { get; set; }
+        public string? Currency { get; set; } = "POINTS";
+        public long Amount { get; set; }
+        public string? Reason { get; set; }
+    }
+}

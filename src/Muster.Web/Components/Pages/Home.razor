@@ -1,0 +1,34 @@
+@page "/"
+@layout PublicLayout
+
+<PageTitle>Muster — participation tracking for Discord</PageTitle>
+
+<section class="hero">
+    <h1>Reward the people who show up</h1>
+    <p>Muster tracks voice attendance, missions, musters, and awards across your Discord community —
+       all on a clean multi-currency leaderboard.</p>
+
+    <AuthorizeView>
+        <Authorized>
+            <a class="btn" href="/guilds">Go to your servers →</a>
+        </Authorized>
+        <NotAuthorized>
+            <a class="btn" href="/account/login">Log in with Discord</a>
+        </NotAuthorized>
+    </AuthorizeView>
+</section>
+
+<div class="feature-grid">
+    <div class="card glass">
+        <h3>Voice attendance</h3>
+        <p>Reward the time members spend in tracked sessions and scheduled ops.</p>
+    </div>
+    <div class="card glass">
+        <h3>Quests &amp; musters</h3>
+        <p>Standing quests to claim and complete, plus one-tap reaction check-ins.</p>
+    </div>
+    <div class="card glass">
+        <h3>Seasons &amp; leaderboards</h3>
+        <p>Points reset each season; spendable currencies persist for loot and perks.</p>
+    </div>
+</div>

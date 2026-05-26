@@ -1,0 +1,88 @@
+@page "/guilds/{GuildIdRaw}"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject SeasonService Seasons
+
+<PageTitle>Dashboard — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds">← My servers</a>
+        <h1>Leaderboard</h1>
+        <div class="actions">
+            <a class="btn btn-ghost" href="/guilds/@GuildId/me">My profile</a>
+            <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Quest board</a>
+            @if (_isOfficer)
+            {
+                <a class="btn btn-ghost" href="/guilds/@GuildId/admin">Admin</a>
+            }
+        </div>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Season</div>
+            <div class="num">@(_seasonName ?? "—")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Ranked members</div>
+            <div class="num">@(_leaderboard?.Count ?? 0)</div>
+        </div>
+    </div>
+
+    <div class="panel glass">
+        @if (_leaderboard is null)
+        {
+            <p class="empty">Loading…</p>
+        }
+        else if (_leaderboard.Count == 0)
+        {
+            <p class="empty">No scores yet this season.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>#</th><th>Member</th><th>Points</th></tr></thead>
+                <tbody>
+                    @foreach (var row in _leaderboard)
+                    {
+                        <tr>
+                            <td class="rank @(row.Rank <= 3 ? $"rank-{row.Rank}" : null)">@row.Rank</td>
+                            <td>
+                                @if (_isOfficer)
+                                {
+                                    <a href="/guilds/@GuildId/members/@row.UserId">@row.DisplayName</a>
+                                }
+                                else
+                                {
+                                    @row.DisplayName
+                                }
+                            </td>
+                            <td>@row.Total</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+@using Muster.Infrastructure.Services.Seasons
+@using Muster.Infrastructure.Services.Web
+    private bool _isOfficer;
+    private string? _seasonName;
+    private IReadOnlyList<LeaderboardRow>? _leaderboard;
+
+    protected override async Task LoadAsync()
+    {
+        _isOfficer = await Auth.IsOfficerAsync(GuildId, UserId);
+        _seasonName = (await Seasons.GetActiveAsync(GuildId))?.Name;
+        _leaderboard = await Guilds.GetLeaderboardAsync(GuildId);
+    }
+}

@@ -1,0 +1,359 @@
+@page "/guilds/{GuildIdRaw}/quests/{QuestId}"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject IQuestReadService Reads
+@inject TimeZoneService TimeZones
+@inject IQuestAuthorizer Authorizer
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Services.Quests
+
+<PageTitle>@(_quest?.Name ?? "Quest") — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_quest is null)
+    {
+        <div class="panel glass empty">Quest not found.</div>
+    }
+    else
+    {
+        var q = _quest;
+        var iAmOwner = q.OwnerId == UserId;
+        var myPart = q.Participants.FirstOrDefault(p => p.UserId == UserId);
+        var hasSubmitter = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
+        var isPersonal = q.Origin == QuestOrigin.Player;
+
+        <article class="panel glass quest-detail @(q.Tier != QuestTier.None ? $"tier-accent tier-edge-{q.Tier}" : "")">
+            <div class="qc-chips">
+                @if (q.Tier != QuestTier.None)
+                {
+                    <span class="tier-badge tier-@q.Tier" title="Difficulty @q.Tier · +@q.BonusPoints bonus points">@q.Tier</span>
+                }
+                <span class="chip @(isPersonal ? "chip-player" : "chip-quest")">@(isPersonal ? "Player" : "Guild")</span>
+                <span class="chip @StatusClass(q.Status)">@StatusLabel(q.Status)</span>
+            </div>
+
+            <h1>@q.Name</h1>
+
+            <div class="detail-reward">
+                <span class="qc-reward @(q.RewardCode.Equals("POINTS", StringComparison.OrdinalIgnoreCase) ? "reward-points" : "reward-coin")">
+                    +@q.RewardAmount @q.RewardCode
+                    @if (isPersonal)
+                    {
+                        <span class="material-symbols-outlined esc-lock" title="Reward held in escrow">lock</span>
+                    }
+                </span>
+                @if (q.BonusPoints > 0)
+                {
+                    <span class="subtitle">+@q.BonusPoints pts on completion</span>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(q.Description))
+            {
+                <div class="detail-desc markdown">@DiscordMarkdown.ToHtml(q.Description)</div>
+            }
+
+            @if (q.Status == QuestStatus.Disputed && q.DisputedByName is { } dn)
+            {
+                <p class="qc-note">⚖ Disputed by <b>@dn</b> — awaiting manager arbitration.</p>
+                @if (!string.IsNullOrWhiteSpace(q.DisputeReason))
+                {
+                    <p class="qc-note">Reason: @q.DisputeReason</p>
+                }
+            }
+
+            <div class="detail-stats">
+                <div class="stat-item">
+                    <span class="lbl">Issued by</span>
+                    <span class="val">
+                        @if (isPersonal)
+                        {
+                            <UserChip Name="@q.OwnerName" AvatarUrl="@q.OwnerAvatar" />
+                        }
+                        else
+                        {
+                            <span class="issuer-mark"><span class="material-symbols-outlined">shield</span></span> <span>Guild</span>
+                        }
+                    </span>
+                </div>
+                <div class="stat-item"><span class="lbl">Completions</span><span class="val">@q.Participants.Count(p => p.Status == QuestParticipantStatus.Approved)/@q.Capacity</span></div>
+                <div class="stat-item"><span class="lbl">Posted</span><span class="val">@Local(q.CreatedAt)</span></div>
+                @if (q.ScheduledStart is not null)
+                {
+                    <div class="stat-item"><span class="lbl">Opens</span><span class="val">@Local(q.ScheduledStart)</span></div>
+                }
+                <div class="stat-item"><span class="lbl">Closes</span><span class="val">@(q.Deadline is { } d ? Local(d) : "No expiry")</span></div>
+            </div>
+
+            @* Quest-level actions. *@
+            <EditForm class="detail-actions" Model="this" FormName="quest-act" OnValidSubmit="ActAsync">
+                <input type="hidden" name="QuestId" value="@q.Id" />
+
+                @if (CanIntake(q))
+                {
+                    <select name="Tier" class="tier-select">
+                        <option value="@QuestTier.None">No tier (0 pts)</option>
+                        @foreach (var t in _tiers)
+                        {
+                            <option value="@t">@t (@_settings.Quests.PointsForTier(t) pts)</option>
+                        }
+                    </select>
+                    @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
+                    {
+                        <label class="checkbox"><input type="checkbox" name="RequireFinal" value="true" /> final sign-off</label>
+                    }
+                }
+
+                @if (NoteableQuest(q, myPart, iAmOwner, isPersonal, hasSubmitter))
+                {
+                    <input name="Note" class="note-input" placeholder="note (optional)" />
+                }
+
+                <div class="icon-row">
+                    @if (q.Status == QuestStatus.Open && myPart is null && (!isPersonal || !iAmOwner || _settings.Quests.AllowSelfParticipation))
+                    {
+                        <button type="submit" name="Action" value="claim" class="btn btn-sm">Claim</button>
+                    }
+                    @if (q.Status == QuestStatus.Open && myPart?.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested)
+                    {
+                        <button type="submit" name="Action" value="submit" class="btn btn-sm">@(myPart.Status == QuestParticipantStatus.RevisionRequested ? "Resubmit" : "Submit")</button>
+                    }
+                    @if (q.Status == QuestStatus.Open && myPart?.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested)
+                    {
+                        <button type="submit" name="Action" value="abandon" class="btn btn-sm btn-ghost">Abandon</button>
+                    }
+                    @if (q.Status == QuestStatus.Open && isPersonal && iAmOwner && hasSubmitter)
+                    {
+                        <button type="submit" name="Action" value="confirm" class="btn btn-sm">Confirm &amp; pay</button>
+                        <button type="submit" name="Action" value="revise" class="btn btn-sm btn-ghost">Request revision</button>
+                        <button type="submit" name="Action" value="dispute" class="btn btn-sm btn-ghost">Dispute</button>
+                    }
+                    @if (CanIntake(q))
+                    {
+                        <button type="submit" name="Action" value="accept" class="btn btn-sm">Accept &amp; open</button>
+                        <button type="submit" name="Action" value="reject-intake" class="btn btn-sm btn-ghost">Reject intake</button>
+                    }
+                    @if (CanFinalize(q))
+                    {
+                        <button type="submit" name="Action" value="finalize-pay" class="btn btn-sm">Pay completer</button>
+                        <button type="submit" name="Action" value="finalize-refund" class="btn btn-sm btn-ghost">Refund owner</button>
+                    }
+                    @if (CanArbitrate(q, iAmOwner, myPart))
+                    {
+                        <button type="submit" name="Action" value="resolve-pay" class="btn btn-sm">Pay completer</button>
+                        <button type="submit" name="Action" value="resolve-refund" class="btn btn-sm btn-ghost">Refund owner</button>
+                    }
+                    @if (CanCancel(q))
+                    {
+                        <button type="submit" name="Action" value="cancel" class="btn btn-sm btn-ghost">Cancel quest</button>
+                    }
+                </div>
+            </EditForm>
+        </article>
+
+        @if (q.Participants.Count > 0)
+        {
+            <section class="panel glass">
+                <h2>Participants</h2>
+                <EditForm Model="this" FormName="participant-act" OnValidSubmit="ActAsync">
+                    <input type="hidden" name="QuestId" value="@q.Id" />
+                    <ul class="participant-list">
+                        @foreach (var p in q.Participants)
+                        {
+                            <li>
+                                @if (p.AvatarUrl is { } pa)
+                                {
+                                    <img class="avatar-xs ring-@RingClass(p.Status)" src="@pa" alt="" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <span class="avatar-xs ring-@RingClass(p.Status)">@(p.Name is { Length: > 0 } pn ? pn[..1].ToUpperInvariant() : "?")</span>
+                                }
+                                <span class="p-name">@p.Name</span>
+                                <span class="chip @ParticipantChip(p.Status)">@ParticipantLabel(p.Status)</span>
+                                @if (p.ReviewedByName is { } rb)
+                                {
+                                    <span class="roster-by">by @rb</span>
+                                }
+                                @if (p.Note is { Length: > 0 } note)
+                                {
+                                    <span class="p-note">“@note”</span>
+                                }
+                                @if (p.ReviewNote is { Length: > 0 } rn)
+                                {
+                                    <span class="p-note">↳ @rn</span>
+                                }
+
+                                @if (_isManager && !isPersonal && q.Status == QuestStatus.Open)
+                                {
+                                    <span class="p-actions">
+                                        @if (p.Status == QuestParticipantStatus.Submitted)
+                                        {
+                                            <input name="Note_@p.UserId" class="note-input p-note-input" placeholder="feedback (optional)" />
+                                            <button type="submit" name="Action" value="approve:@p.UserId" title="Approve" class="icon-btn success"><span class="material-symbols-outlined">thumb_up</span></button>
+                                            <button type="submit" name="Action" value="revise:@p.UserId" title="Request revision" class="icon-btn warn"><span class="material-symbols-outlined">rate_review</span></button>
+                                            <button type="submit" name="Action" value="reject:@p.UserId" title="Reject" class="icon-btn danger"><span class="material-symbols-outlined">thumb_down</span></button>
+                                        }
+                                        else if (p.Status == QuestParticipantStatus.Rejected)
+                                        {
+                                            <button type="submit" name="Action" value="reopen:@p.UserId" title="Reopen for review" class="icon-btn"><span class="material-symbols-outlined">replay</span></button>
+                                        }
+                                    </span>
+                                }
+
+                                @* Force-release an active claim (any origin) — a manager frees the slot for someone else. *@
+                                @if (_isManager && q.Status == QuestStatus.Open && p.UserId != UserId
+                                    && p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested)
+                                {
+                                    <span class="p-actions">
+                                        <button type="submit" name="Action" value="release:@p.UserId" title="Release this claim" class="icon-btn warn"><span class="material-symbols-outlined">person_remove</span></button>
+                                    </span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                </EditForm>
+            </section>
+        }
+    }
+}
+
+@code {
+    [Parameter] public string QuestId { get; set; } = string.Empty;
+
+    private QuestDetailView? _quest;
+    private GuildSettings _settings = new();
+    private bool _isManager;
+    private string _zoneId = TimeZoneService.Utc;
+
+    private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
+
+    private GuildActor Actor => new(GuildId, UserId);
+
+    protected override async Task LoadAsync()
+    {
+        _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+        _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
+        _settings = await Reads.GetSettingsAsync(GuildId);
+        if (Guid.TryParse(QuestId, out var id))
+        {
+            _quest = await Reads.GetQuestDetailAsync(GuildId, id);
+        }
+    }
+
+    private async Task ActAsync()
+    {
+        var form = Http?.Request.Form;
+        var action = form?["Action"].ToString() ?? "";
+        if (!Guid.TryParse(form?["QuestId"].ToString(), out var questId) || string.IsNullOrEmpty(action))
+        {
+            return;
+        }
+
+        // Member-suffixed actions (approve:123 …) carry a per-row feedback note "Note_123"; quest-level
+        // actions (submit, owner-revise) use the single "Note" field.
+        var colon = action.IndexOf(':');
+        var noteField = colon > 0 && ulong.TryParse(action[(colon + 1)..], out var mid) ? $"Note_{mid}" : "Note";
+        var note = form?[noteField].ToString() is { Length: > 0 } n ? n.Trim() : null;
+        _ = Enum.TryParse<QuestTier>(form?["Tier"].ToString(), out var tier);
+        var requireFinal = form?["RequireFinal"].ToString() == "true";
+
+        var result = await QuestActionRunner.RunAsync(Bus, GuildId, questId, UserId, action, note, tier, requireFinal);
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    private bool Can(QuestPermission action) =>
+        _quest is not null && Authorizer.Allows(Actor, _isManager, _quest.Origin, _quest.OwnerId, isTaker: false, action);
+
+    private bool CanIntake(QuestDetailView q) =>
+        q.Origin == QuestOrigin.Player && q.Status == QuestStatus.PendingApproval && Can(QuestPermission.AcceptIntake);
+
+    private bool CanFinalize(QuestDetailView q) =>
+        q.Origin == QuestOrigin.Player && q.Status == QuestStatus.PendingFinal && Can(QuestPermission.Finalize);
+
+    private bool CanArbitrate(QuestDetailView q, bool iAmOwner, QuestDetailParticipant? myPart) =>
+        q.Origin == QuestOrigin.Player && q.Status == QuestStatus.Disputed && Can(QuestPermission.Arbitrate)
+        && !iAmOwner && myPart is null; // recusal: a party can't arbitrate their own dispute
+
+    private bool CanCancel(QuestDetailView q) =>
+        q.Status is QuestStatus.Open or QuestStatus.Scheduled or QuestStatus.PendingApproval
+        && !q.Participants.Any(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
+            or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved)
+        && Can(QuestPermission.Cancel);
+
+    private static bool NoteableQuest(QuestDetailView q, QuestDetailParticipant? myPart, bool iAmOwner, bool isPersonal, bool hasSubmitter) =>
+        (q.Status == QuestStatus.Open && myPart?.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested) // (re)submit
+        || (q.Status == QuestStatus.Open && isPersonal && iAmOwner && hasSubmitter);        // owner revise
+
+    private string Local(DateTimeOffset? utc)
+    {
+        if (utc is not { } t)
+        {
+            return "—";
+        }
+
+        if (!TimeZoneService.IsValidZone(_zoneId))
+        {
+            return t.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+        }
+
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(_zoneId);
+        return TimeZoneInfo.ConvertTime(t, zone).ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private static string StatusClass(QuestStatus s) => s switch
+    {
+        QuestStatus.Closed => "chip-review",
+        QuestStatus.Cancelled or QuestStatus.Expired or QuestStatus.Disputed => "chip-closed",
+        _ => "chip-progress",
+    };
+
+    private static string StatusLabel(QuestStatus s) => s switch
+    {
+        QuestStatus.PendingApproval => "Pending intake",
+        QuestStatus.PendingFinal => "Awaiting sign-off",
+        QuestStatus.Closed => "Completed",
+        _ => s.ToString(),
+    };
+
+    private static string RingClass(QuestParticipantStatus s) => s switch
+    {
+        QuestParticipantStatus.Approved => "approved",
+        QuestParticipantStatus.Submitted => "submitted",
+        QuestParticipantStatus.RevisionRequested => "revision",
+        QuestParticipantStatus.Rejected => "rejected",
+        _ => "claimed",
+    };
+
+    private static string ParticipantChip(QuestParticipantStatus s) => s switch
+    {
+        QuestParticipantStatus.Approved => "chip-review",
+        QuestParticipantStatus.Rejected => "chip-closed",
+        _ => "chip-progress",
+    };
+
+    private static string ParticipantLabel(QuestParticipantStatus s) => s switch
+    {
+        QuestParticipantStatus.RevisionRequested => "Revision",
+        _ => s.ToString(),
+    };
+}

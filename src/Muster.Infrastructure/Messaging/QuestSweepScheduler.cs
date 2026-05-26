@@ -1,0 +1,53 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Muster.Infrastructure.Services.Quests;
+
+namespace Muster.Infrastructure.Messaging;
+
+/// <summary>
+/// Reconciles time-based quest state once a minute: activates scheduled quests whose start has passed
+/// and refunds/expires past-deadline personal quests. Runs the work directly (no message hop) so it
+/// executes deterministically. Both operations are idempotent state queries over durable data — guarded
+/// status flips and escrow refunds keyed by a deterministic ledger source — so running it on more than
+/// one node is safe; a missed tick simply self-heals on the next one.
+/// </summary>
+public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<QuestSweepScheduler> logger)
+    : BackgroundService
+{
+    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        logger.LogInformation("Quest sweep scheduler started; interval {Interval}.", Interval);
+
+        using var timer = new PeriodicTimer(Interval);
+        do
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var quests = scope.ServiceProvider.GetRequiredService<IQuestService>();
+                var maintenance = scope.ServiceProvider.GetRequiredService<QuestMaintenanceService>();
+
+                var now = DateTimeOffset.UtcNow;
+                var activated = await quests.ActivateScheduledAsync(now, stoppingToken);
+                var expired = await quests.ExpireDueAsync(now, stoppingToken)         // personal quests (refund escrow)
+                    + await quests.ExpireDueQuestsAsync(now, stoppingToken);          // guild quests (close, nothing to refund)
+                var resolved = await maintenance.SweepAsync(now, stoppingToken);      // anti-staleness auto-resolve
+
+                if (activated > 0 || expired > 0 || resolved > 0)
+                {
+                    logger.LogInformation(
+                        "Quest sweep activated {Activated}, expired {Expired}, auto-resolved {Resolved} quests.",
+                        activated, expired, resolved);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Quest sweep failed.");
+            }
+        }
+        while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+}
