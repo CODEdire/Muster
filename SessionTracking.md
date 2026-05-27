@@ -168,7 +168,11 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   `CurrencyLedgerSource.TrackingSession` with idempotent key `session:{id}:user:{id}:coin` (distinct from the
   POINTS key). Honors the same participant + `AllOut` opt-out gates. POINTS award unchanged; Background mints
   no COIN. Settings are JSON (empty migration `P3SessionCoin` keeps the model snapshot in sync).
-- **P4 — Admin participation reports + CSV; participation leaderboards.**
+- **P4 — Participation reports + leaderboards. ✅ Done.** `ParticipationReadService`: voice-time leaderboard
+  (active season via `SeasonParticipation`, else all-time from rollups) + a per-member report (voice minutes,
+  message counts, points by reward source: Session/Background/Event/Quest/Muster) over a date range. Surfaces:
+  `/voice-leaderboard` Discord command; admin CSV export at `GET /guilds/{guildId}/participation/export.csv`
+  (cookie + admin auth, mirrors the audit export). Read-only — no migration.
 - **P5 — Guarded Sessions.** Unify Session accrual onto the snapshot/occupancy reconcile engine so
   `RequireUnmuted`/`RequireNotAlone` apply to Sessions per `ApplyAfkGuardsToSessions`.
 - **P6 — Live ops board + member self-view.**
