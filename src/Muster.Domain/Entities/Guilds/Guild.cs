@@ -58,6 +58,11 @@ public class GuildSettings
     /// (floored). 0 (default) disables session coin minting.</summary>
     public int MinutesPerCoin { get; set; }
 
+    /// <summary>When true (default), bounded Sessions honor the same anti-AFK guards as the background plane —
+    /// time accrues only while a member is unmuted and not alone in the channel. When false, sessions count
+    /// raw presence.</summary>
+    public bool ApplyAfkGuardsToSessions { get; set; } = true;
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>

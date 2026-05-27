@@ -68,44 +68,100 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
     }
 
     /// <summary>
-    /// Reconcile a member's voice presence against active sessions: close any open segment in a
-    /// session they've left, and open one in the session for the channel they're now in.
+    /// Reconcile active sessions against the current voice roster (snapshot-driven, like the background plane).
+    /// For each session, eligible presence in its channel accrues into the member's <see cref="VoiceAttendance"/>;
+    /// when the guild's anti-AFK guards are on, muted/deafened or alone-in-channel time is paused. Idempotent and
+    /// self-healing — safe to call on every voice event and on the periodic sweep.
     /// </summary>
-    public async Task ProcessVoiceStateAsync(
-        ulong guildId, ulong userId, ulong? currentChannelId, DateTimeOffset? at = null, CancellationToken ct = default)
+    public async Task ReconcileSessionsAsync(
+        ulong guildId, IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> occupantsByChannel,
+        DateTimeOffset? at = null, CancellationToken ct = default)
     {
-        var now = at ?? DateTimeOffset.UtcNow;
-
-        var activeSessions = await db.ListActiveSessionsAsync(guildId, ct);
-
-        foreach (var session in activeSessions)
+        var sessions = await db.ListActiveSessionsAsync(guildId, ct);
+        if (sessions.Count == 0)
         {
-            var attendance = await db.FindAttendanceAsync(session.Id, userId, ct);
-            var isCurrent = currentChannelId == session.VoiceChannelId;
+            return;
+        }
 
-            if (isCurrent)
+        var now = at ?? DateTimeOffset.UtcNow;
+        var guardsOn = (await db.GetSettingsAsync(guildId, ct)).ApplyAfkGuardsToSessions;
+
+        foreach (var session in sessions)
+        {
+            var occupants = occupantsByChannel.TryGetValue(session.VoiceChannelId, out var list) ? list : [];
+            var humans = occupants.Where(o => !o.IsBot).ToList();
+            var present = humans.Select(h => h.UserId).ToHashSet();
+            var byUser = (await db.AttendanceForSessionAsync(session.Id, ct)).ToDictionary(a => a.UserId);
+
+            foreach (var member in humans)
             {
-                if (attendance is null)
+                var eligible = !guardsOn || (!member.IsMutedOrDeafened && humans.Count >= 2);
+                var att = GetOrCreateAttendance(session.Id, byUser, member.UserId, now);
+
+                if (eligible)
                 {
-                    attendance = new VoiceAttendance
+                    if (att.OpenSegmentStart is null)
                     {
-                        Id = Guid.NewGuid(),
-                        TrackingSessionId = session.Id,
-                        UserId = userId,
-                        FirstJoinedAt = now,
-                    };
-                    db.VoiceAttendance.Add(attendance);
+                        att.OpenSegmentStart = now;
+                    }
+                    else
+                    {
+                        FlushAttendance(att, now);
+                    }
                 }
-
-                attendance.OpenSegmentStart ??= now;
+                else if (att.OpenSegmentStart is not null)
+                {
+                    FlushAttendance(att, now);
+                    att.OpenSegmentStart = null;
+                }
             }
-            else if (attendance?.OpenSegmentStart is { } start)
+
+            foreach (var att in byUser.Values.Where(a => !present.Contains(a.UserId) && a.OpenSegmentStart is not null))
             {
-                CloseSegment(attendance, start, now);
+                FlushAttendance(att, now);
+                att.OpenSegmentStart = null;
             }
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Clear open attendance segments on startup — a stale watermark after a restart must not credit downtime.</summary>
+    public async Task<int> VoidOpenAttendanceAsync(CancellationToken ct = default)
+    {
+        var open = await db.ListOpenAttendanceAsync(ct);
+        foreach (var att in open)
+        {
+            att.OpenSegmentStart = null;
+            att.CarrySeconds = 0;
+        }
+
+        if (open.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
+        return open.Count;
+    }
+
+    private VoiceAttendance GetOrCreateAttendance(
+        Guid sessionId, Dictionary<ulong, VoiceAttendance> byUser, ulong userId, DateTimeOffset now)
+    {
+        if (byUser.TryGetValue(userId, out var existing))
+        {
+            return existing;
+        }
+
+        var created = new VoiceAttendance
+        {
+            Id = Guid.NewGuid(),
+            TrackingSessionId = sessionId,
+            UserId = userId,
+            FirstJoinedAt = now,
+        };
+        db.VoiceAttendance.Add(created);
+        byUser[userId] = created;
+        return created;
     }
 
     /// <summary>
@@ -135,10 +191,8 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
         foreach (var attendance in session.Attendance)
         {
-            if (attendance.OpenSegmentStart is { } start)
-            {
-                CloseSegment(attendance, start, now);
-            }
+            FlushAttendance(attendance, now);
+            attendance.OpenSegmentStart = null;
         }
 
         await db.SaveChangesAsync(ct);
@@ -208,10 +262,24 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         return (await db.FindCurrencyAsync(guildId, code, ct), minutesPerCoin);
     }
 
-    private static void CloseSegment(VoiceAttendance attendance, DateTimeOffset start, DateTimeOffset end)
+    /// <summary>Roll eligible elapsed time on the open segment into whole minutes (sub-minute remainder carries),
+    /// then advance the watermark. No-op when no segment is open. Caller decides whether to keep the segment open
+    /// (advanced) or close it (null the start). Restart staleness is handled by <see cref="VoidOpenAttendanceAsync"/>,
+    /// so an explicit close/leave settles the true elapsed time (no per-flush clamp).</summary>
+    private static void FlushAttendance(VoiceAttendance attendance, DateTimeOffset now)
     {
-        attendance.TotalMinutes += (int)(end - start).TotalMinutes;
-        attendance.OpenSegmentStart = null;
-        attendance.LastLeftAt = end;
+        if (attendance.OpenSegmentStart is not { } start)
+        {
+            return;
+        }
+
+        var elapsed = (int)(now - start).TotalSeconds;
+        var totalSeconds = attendance.CarrySeconds + Math.Max(0, elapsed);
+        var minutes = totalSeconds / 60;
+        attendance.CarrySeconds = totalSeconds % 60;
+        attendance.OpenSegmentStart = now;
+
+        attendance.TotalMinutes += minutes;
+        attendance.LastLeftAt = now;
     }
 }

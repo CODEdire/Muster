@@ -22,10 +22,12 @@ public class VoiceAttendanceHandler(IServiceScopeFactory scopeFactory, GatewayCl
             await members.UpsertAsync(arg.GuildId, arg.UserId, user.Username, user.GlobalName, user.AvatarHash, user.Nickname, user.RoleIds);
         }
 
+        var roster = VoiceRoster.Snapshot(client, arg.GuildId);
+
         var sessions = scope.ServiceProvider.GetRequiredService<TrackingSessionService>();
-        await sessions.ProcessVoiceStateAsync(arg.GuildId, arg.UserId, arg.ChannelId);
+        await sessions.ReconcileSessionsAsync(arg.GuildId, roster);
 
         var background = scope.ServiceProvider.GetRequiredService<BackgroundTrackingService>();
-        await background.ReconcileGuildAsync(arg.GuildId, VoiceRoster.Snapshot(client, arg.GuildId));
+        await background.ReconcileGuildAsync(arg.GuildId, roster);
     }
 }

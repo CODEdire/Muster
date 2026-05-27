@@ -29,6 +29,13 @@ public class OpAndActivityTests
         return db;
     }
 
+    /// <summary>A voice roster snapshot: the given users present (unmuted, human) in one channel.</summary>
+    private static IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> Occupant(ulong channelId, params ulong[] userIds)
+        => new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
+        {
+            [channelId] = userIds.Select(u => new VoiceMemberSnapshot(u, IsBot: false, IsMutedOrDeafened: false)).ToList(),
+        };
+
     [Fact]
     public async Task Op_CreateSignupClose_AwardsAttendees()
     {
@@ -106,13 +113,14 @@ public class OpAndActivityTests
         var guild = await db.FindGuildAsync(1);
         guild!.Settings.SessionCoinCurrencyCode = "COIN";
         guild.Settings.MinutesPerCoin = 30;
+        guild.Settings.ApplyAfkGuardsToSessions = false; // single-user accrual test
         guild.Settings = guild.Settings;
         await db.SaveChangesAsync();
 
         var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
         var now = DateTimeOffset.UtcNow;
         var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
-        await sut.ProcessVoiceStateAsync(1, userId: 10, currentChannelId: 500, at: now);
+        await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);
         await sut.CloseAsync(session.Id, at: now.AddMinutes(60)); // 60 eligible minutes
 
         var coinBalance = (await db.Wallets.SingleAsync(w => w.UserId == 10 && w.CurrencyId == coin.Id)).Balance;

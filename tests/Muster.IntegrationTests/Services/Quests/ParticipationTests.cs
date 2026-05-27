@@ -29,6 +29,23 @@ public class ParticipationTests
         return (db, points);
     }
 
+    private static IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> Occupant(ulong channelId, params ulong[] userIds)
+        => new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
+        {
+            [channelId] = userIds.Select(u => new VoiceMemberSnapshot(u, IsBot: false, IsMutedOrDeafened: false)).ToList(),
+        };
+
+    private static readonly IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> NoOne = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>();
+
+    /// <summary>Count raw presence (no anti-AFK guards) so single-user accrual maths are exact.</summary>
+    private static async Task DisableSessionGuardsAsync(MusterDbContext db)
+    {
+        var g = await db.Guilds.FirstAsync();
+        g.Settings.ApplyAfkGuardsToSessions = false;
+        g.Settings = g.Settings;
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task Award_IsIdempotent_OnSameSource()
     {
@@ -104,15 +121,50 @@ public class ParticipationTests
         => await db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
 
     [Fact]
+    public async Task Session_GuardsOn_PausesMutedAndCreditsUnmutedPeer()
+    {
+        var (db, _) = await SeededAsync(); // ApplyAfkGuardsToSessions defaults true
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
+        {
+            [500] = new[] { new VoiceMemberSnapshot(10, false, IsMutedOrDeafened: true), new VoiceMemberSnapshot(20, false, false) },
+        };
+        var t0 = DateTimeOffset.UtcNow;
+        await sessions.ReconcileSessionsAsync(1, roster, t0);
+        await sessions.ReconcileSessionsAsync(1, roster, t0.AddMinutes(10));
+
+        Assert.Equal(0, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes);  // muted: paused
+        Assert.Equal(10, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 20)).TotalMinutes); // unmuted peer
+    }
+
+    [Fact]
+    public async Task Session_GuardsOn_AloneMember_NotAccrued()
+    {
+        var (db, _) = await SeededAsync();
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false) } };
+        var t0 = DateTimeOffset.UtcNow;
+        await sessions.ReconcileSessionsAsync(1, roster, t0);
+        await sessions.ReconcileSessionsAsync(1, roster, t0.AddMinutes(10));
+
+        Assert.Equal(0, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes); // alone: paused
+    }
+
+    [Fact]
     public async Task TrackingSession_AwardsByVoiceMinutes_OnClose()
     {
         var (db, _) = await SeededAsync();
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
 
+        await DisableSessionGuardsAsync(db);
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var joinedAt = DateTimeOffset.UtcNow.AddMinutes(-30);
-        await sessions.ProcessVoiceStateAsync(1, userId: 10, currentChannelId: 500, at: joinedAt);
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10), joinedAt);
         await sessions.CloseAsync(session.Id, at: joinedAt.AddMinutes(30), pointsPerMinute: 2);
 
         var attendance = await db.VoiceAttendance.SingleAsync();
@@ -125,11 +177,12 @@ public class ParticipationTests
     {
         var (db, _) = await SeededAsync();
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        await DisableSessionGuardsAsync(db);
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var t0 = DateTimeOffset.UtcNow.AddMinutes(-20);
-        await sessions.ProcessVoiceStateAsync(1, 10, currentChannelId: 500, at: t0);          // join
-        await sessions.ProcessVoiceStateAsync(1, 10, currentChannelId: null, at: t0.AddMinutes(15)); // leave
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10), t0);              // join
+        await sessions.ReconcileSessionsAsync(1, NoOne, t0.AddMinutes(15));           // leave
 
         var attendance = await db.VoiceAttendance.SingleAsync();
         Assert.Null(attendance.OpenSegmentStart);

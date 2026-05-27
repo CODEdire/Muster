@@ -40,7 +40,11 @@ public class VoiceAttendance
     public DateTimeOffset? LastLeftAt { get; set; }
     public int TotalMinutes { get; set; }
 
-    /// <summary>Start of the currently-open presence segment, or null when the member isn't present.</summary>
+    /// <summary>Eligible seconds accrued but not yet rolled into a whole minute (sub-minute precision across flushes).</summary>
+    public int CarrySeconds { get; set; }
+
+    /// <summary>Start of the currently-open eligible presence segment, or null when the member isn't present
+    /// (or isn't currently eligible under the session's anti-AFK guards).</summary>
     public DateTimeOffset? OpenSegmentStart { get; set; }
 
     public TrackingSession? TrackingSession { get; set; }
