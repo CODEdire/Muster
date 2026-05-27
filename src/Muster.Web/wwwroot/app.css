@@ -415,6 +415,16 @@ table.leaderboard th a { color: var(--text-muted); }
     font-size: 0.9rem;
 }
 .quest-tabs a.active { background: var(--accent); color: #fff; border-color: transparent; }
+/* Generic link-based pill tabs (server-loaded panels, unlike the CSS-only radio .tabs). */
+.pill-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.pill-tabs a {
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.pill-tabs a.active { background: var(--accent); color: #fff; border-color: transparent; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; max-width: none; margin: 0; }
 .row-actions label { margin: 0; }
 .badge.status-open { background: var(--accent-soft); color: #04122b; }

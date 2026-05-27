@@ -30,7 +30,7 @@ else if (State == AccessState.Ready)
         </div>
     }
 
-    <nav class="tabs">
+    <nav class="pill-tabs">
         <a class="@(Tab == "active" ? "active" : "")" href="@TabUrl("active")">Active</a>
         <a class="@(Tab == "leaderboard" ? "active" : "")" href="@TabUrl("leaderboard")">Leaderboard</a>
         @if (_isStaff)
