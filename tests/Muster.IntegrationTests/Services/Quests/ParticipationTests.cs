@@ -174,6 +174,22 @@ public class ParticipationTests
     }
 
     [Fact]
+    public async Task SessionFlush_ClampsAbsurdGap()
+    {
+        var (db, _) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        var t0 = DateTimeOffset.UtcNow;
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10), t0);     // opens segment
+        await sessions.CloseAsync(session.Id, at: t0.AddHours(13));          // 13h gap, no intervening flush
+
+        // Clamped to the 12h (720 min) sanity bound, not 780.
+        Assert.Equal(720, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes);
+    }
+
+    [Fact]
     public async Task CloseStaleSessions_ClosesPastMaxHours()
     {
         var (db, _) = await SeededAsync(); // MaxSessionHours defaults to 24

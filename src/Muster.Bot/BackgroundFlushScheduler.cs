@@ -15,7 +15,7 @@ namespace Muster.Bot;
 /// next one. Bot-only: it reads the live voice roster from the gateway cache.
 /// </summary>
 public class BackgroundFlushScheduler(
-    IServiceScopeFactory scopeFactory, GatewayClient client, ILogger<BackgroundFlushScheduler> logger)
+    IServiceScopeFactory scopeFactory, GuildReconcileCoordinator coordinator, ILogger<BackgroundFlushScheduler> logger)
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
@@ -47,24 +47,28 @@ public class BackgroundFlushScheduler(
         {
             try
             {
-                using var scope = scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
-                var background = scope.ServiceProvider.GetRequiredService<BackgroundTrackingService>();
-                var sessions = scope.ServiceProvider.GetRequiredService<TrackingSessionService>();
-
-                // Visit every guild that has either monitored voice channels or an active session.
-                var guildIds = (await db.ListGuildIdsWithVoiceTrackingAsync(stoppingToken))
-                    .Union(await db.ListGuildIdsWithActiveSessionsAsync(stoppingToken));
-
-                foreach (var guildId in guildIds)
+                List<ulong> guildIds;
+                int staleClosed;
+                using (var scope = scopeFactory.CreateScope())
                 {
-                    var roster = VoiceRoster.Snapshot(client, guildId);
-                    await sessions.ReconcileSessionsAsync(guildId, roster, ct: stoppingToken);
-                    await background.ReconcileGuildAsync(guildId, roster, ct: stoppingToken);
+                    var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
+
+                    // Visit every guild that has either monitored voice channels or an active session.
+                    guildIds = (await db.ListGuildIdsWithVoiceTrackingAsync(stoppingToken))
+                        .Union(await db.ListGuildIdsWithActiveSessionsAsync(stoppingToken))
+                        .ToList();
+
+                    // Safety net: close any session that's run past its guild's MaxSessionHours.
+                    staleClosed = await scope.ServiceProvider.GetRequiredService<TrackingSessionService>()
+                        .CloseStaleSessionsAsync(ct: stoppingToken);
                 }
 
-                // Safety net: close any session that's run past its guild's MaxSessionHours.
-                var staleClosed = await sessions.CloseStaleSessionsAsync(ct: stoppingToken);
+                // Reconcile through the coordinator so the sweep can't race a debounced run for the same guild.
+                foreach (var guildId in guildIds)
+                {
+                    await coordinator.ReconcileNowAsync(guildId, stoppingToken);
+                }
+
                 if (staleClosed > 0)
                 {
                     logger.LogInformation("Auto-closed {Count} stale session(s) past their max duration.", staleClosed);

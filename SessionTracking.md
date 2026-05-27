@@ -218,6 +218,20 @@ spanning a season rollover is split exactly at the boundary by construction. Day
     `ActivityRecord` rows beyond the window (rollups kept).
   - *Deferred:* minimum-segment threshold (lowest value; 0-minute flushes are already harmless) and the
     stream/video mute-exemption — nice-to-haves, not scheduled.
+- **P7.5 — Scale & robustness. ✅ Done (with reasoned scope).**
+  - *Thundering-herd + concurrency:* `GuildReconcileCoordinator` (bot singleton) debounces voice-event bursts
+    into one reconcile per guild (~2s window) and serializes per guild via a keyed semaphore — so the voice
+    handler, the 5-min sweep, and session-start scans never race the minute bookkeeping (the ledger was already
+    idempotent; the counters weren't). Handler now just `Schedule`s; sweep + scans go through `ReconcileNowAsync`.
+    The sweep is the backstop if churn ever starves a debounce.
+  - *Session gap clamp:* a generous 12h `MaxFlushMinutes` bound on attendance flushes — never clips a normal
+    session (the sweep keeps real flushes small) but caps an absurd stale watermark a gateway gap could leave,
+    on top of startup-void (restart) and `MaxSessionHours` (total).
+  - *Deferred, with reasoning:* **config cache** — the debounce collapses the reconcile storm that justified it,
+    and untracked-channel messages already short-circuit in one indexed query, so caching EF entities in the hot
+    path is net-negative (staleness + churn) for the remaining gain. **Leader-gated sweeps** — the codebase's
+    pattern is idempotent/multi-node-safe (per `QuestSweepScheduler`), not leader election; gating adds risk for
+    no benefit on a single-node deploy. Revisit both if real traffic/scale-out demands it.
 - **P8 — Multipliers & bonuses.** Time-bounded reward multipliers: event windows (2× during a scheduled
   event / admin "happy hour") **and recurring peak-time schedules** (e.g. ×1.5 on weeknights 7–10pm in the
   guild's time zone). Applies to POINTS (and Session COIN). Stacking rules TBD. **Plus configurable

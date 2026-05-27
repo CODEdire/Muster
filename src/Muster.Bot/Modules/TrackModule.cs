@@ -1,16 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
-using NetCord.Gateway;
 using Muster.Bot.Autocomplete;
 using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
 using Muster.Infrastructure.Commands.Tracking;
-using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.Bot.Modules;
 
 /// <summary>Discord adapter for tracking-session commands (admin-only). Logic in <see cref="TrackingCommandService"/>.</summary>
-public class TrackModule(IServiceScopeFactory scopeFactory, GatewayClient client) : MusterModuleBase(scopeFactory)
+public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
     [SlashCommand("track-start", "Open a named voice tracking session in a channel.")]
     public Task StartAsync(
@@ -26,8 +24,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory, GatewayClient client
 
                 // Members already in the channel produce no voice event, so scan the current roster now
                 // (otherwise they wouldn't be counted until the next periodic sweep).
-                await sp.GetRequiredService<TrackingSessionService>()
-                    .ReconcileSessionsAsync(guildId, VoiceRoster.Snapshot(client, guildId));
+                await sp.GetRequiredService<GuildReconcileCoordinator>().ReconcileNowAsync(guildId);
 
                 return result;
             },

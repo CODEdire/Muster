@@ -316,10 +316,17 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         return (await db.FindCurrencyAsync(guildId, code, ct), minutesPerCoin);
     }
 
+    /// <summary>
+    /// Upper bound on minutes credited in a single attendance flush. Generous (12h) so it never clips a normal
+    /// session — the 5-minute sweep keeps real flushes small — but caps an absurd stale watermark from a gateway
+    /// gap that <see cref="VoidOpenAttendanceAsync"/> (restart) and <c>MaxSessionHours</c> (total) don't catch.
+    /// </summary>
+    private const int MaxFlushMinutes = 12 * 60;
+
     /// <summary>Roll eligible elapsed time on the open segment into whole minutes (sub-minute remainder carries),
     /// then advance the watermark. No-op when no segment is open. Caller decides whether to keep the segment open
-    /// (advanced) or close it (null the start). Restart staleness is handled by <see cref="VoidOpenAttendanceAsync"/>,
-    /// so an explicit close/leave settles the true elapsed time (no per-flush clamp).</summary>
+    /// (advanced) or close it (null the start). Restart staleness is handled by <see cref="VoidOpenAttendanceAsync"/>;
+    /// the clamp is a final sanity bound for unobserved gateway gaps.</summary>
     private static void FlushAttendance(VoiceAttendance attendance, DateTimeOffset now)
     {
         if (attendance.OpenSegmentStart is not { } start)
@@ -332,6 +339,12 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var minutes = totalSeconds / 60;
         attendance.CarrySeconds = totalSeconds % 60;
         attendance.OpenSegmentStart = now;
+
+        if (minutes > MaxFlushMinutes)
+        {
+            minutes = MaxFlushMinutes;
+            attendance.CarrySeconds = 0;
+        }
 
         attendance.TotalMinutes += minutes;
         attendance.LastLeftAt = now;
