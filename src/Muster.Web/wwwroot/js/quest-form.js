@@ -62,6 +62,9 @@
         initKindToggle();
     }
 
+    // Re-init after Blazor enhanced navigation (idempotent — guarded by data-mdeReady).
+    window.musterReinitQuestForm = init;
+
     if (document.readyState !== "loading") {
         init();
     } else {

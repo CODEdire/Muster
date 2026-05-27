@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Options;
 using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Currencies;
 
 namespace Muster.Infrastructure.Commands.Membership;
 
@@ -18,8 +20,230 @@ public enum RoleKind
 /// The guild owner can always run these even before any role is mapped, so the server can be
 /// configured without being locked out.
 /// </summary>
-public class ConfigCommandService(MusterDbContext db)
+public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention)
 {
+    /// <summary>Set how many days of detailed ledger history this guild keeps before the prune sweep compacts older
+    /// rows into carry-forward checkpoints (0 = inherit the platform default / keep forever). Validated against the
+    /// platform cap; the effective window is the smaller of this and the cap.</summary>
+    public async Task<CommandResult> SetLedgerRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
+    {
+        if (days < 0)
+        {
+            return CommandResult.Error("Retention days can't be negative (0 = inherit the platform default).");
+        }
+
+        var cap = retention.Value.MaxLedgerRetentionDays;
+        if (LedgerRetention.ExceedsCap(days, cap))
+        {
+            return CommandResult.Error($"The platform maximum ledger retention is {cap} days.");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.LedgerRetentionDays = days;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        var effective = LedgerRetention.Effective(days, cap);
+        var window = effective == 0 ? "unlimited (full history kept)" : $"{effective} days";
+        var chosen = days == 0 ? "platform default" : $"{days} days";
+        return CommandResult.Ok($"Ledger retention set to {chosen} — effective window: {window}.");
+    }
+
+    /// <summary>Set the guild's background-tracking consent default: opt-in (members must opt in) vs opt-out (on by default).</summary>
+    public async Task<CommandResult> SetBackgroundOptInAsync(ulong guildId, bool optIn, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.BackgroundTrackingOptIn = optIn;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(optIn
+            ? "Background tracking is now **opt-in** — members aren't passively tracked until they run `/track-privacy` and opt in."
+            : "Background tracking is now **on by default** — members may opt out with `/track-privacy`. Sessions/events are unaffected.");
+    }
+
+    /// <summary>Set which spendable currency a Session mints on close and the minutes-per-coin rate. A blank code or
+    /// 0 minutes disables session coin minting.</summary>
+    public async Task<CommandResult> SetSessionCoinAsync(ulong guildId, string? currencyCode, int minutesPerCoin, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (minutesPerCoin < 0)
+        {
+            return CommandResult.Error("Minutes-per-coin can't be negative (0 disables session coin minting).");
+        }
+
+        var code = string.IsNullOrWhiteSpace(currencyCode) ? null : currencyCode.Trim().ToUpperInvariant();
+        var settings = guild.Settings;
+
+        // Disable when no currency or no rate.
+        if (code is null || minutesPerCoin == 0)
+        {
+            settings.SessionCoinCurrencyCode = null;
+            settings.MinutesPerCoin = 0;
+            guild.Settings = settings;
+            await db.SaveChangesAsync(ct);
+            return CommandResult.Ok("Session coin minting is **off**.");
+        }
+
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is null)
+        {
+            return CommandResult.Error($"No currency with code `{code}` exists. Create it first.");
+        }
+
+        if (!currency.IsSpendable)
+        {
+            return CommandResult.Error($"`{code}` isn't a spendable currency — pick a spendable one for session payouts.");
+        }
+
+        settings.SessionCoinCurrencyCode = code;
+        settings.MinutesPerCoin = minutesPerCoin;
+        guild.Settings = settings;
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok($"Sessions will mint **1 {code}** per **{minutesPerCoin}** eligible minute(s) on close.");
+    }
+
+    /// <summary>Toggle whether bounded Sessions honor anti-AFK guards (pause muted/alone time) by default.</summary>
+    public async Task<CommandResult> SetApplyGuardsToSessionsAsync(ulong guildId, bool apply, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.ApplyAfkGuardsToSessions = apply;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(apply
+            ? "New sessions will pause reward time while a member is muted or alone (per-session override still applies)."
+            : "New sessions will count all presence by default.");
+    }
+
+    /// <summary>Set the auto-close cap (hours) for a never-stopped session (0 = never auto-close).</summary>
+    public async Task<CommandResult> SetMaxSessionHoursAsync(ulong guildId, int hours, CancellationToken ct = default)
+    {
+        if (hours < 0)
+        {
+            return CommandResult.Error("Max session hours can't be negative (0 = never auto-close).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.MaxSessionHours = hours;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(hours == 0
+            ? "Sessions never auto-close (stop them manually)."
+            : $"Sessions auto-close after {hours} hour(s).");
+    }
+
+    /// <summary>Set the minimum seconds a member must accrue in a session to stay on its roster (0 = keep everyone).</summary>
+    public async Task<CommandResult> SetMinTrackedSecondsAsync(ulong guildId, int seconds, CancellationToken ct = default)
+    {
+        if (seconds < 0)
+        {
+            return CommandResult.Error("Minimum tracked seconds can't be negative (0 = keep everyone).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.MinTrackedSeconds = seconds;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(seconds == 0
+            ? "Drive-by filtering off — every attendee is kept."
+            : $"Members who accrue under {seconds}s in a session are dropped from its roster.");
+    }
+
+    /// <summary>Set how many days of raw activity records to keep (0 = keep forever). Rollups are always kept.</summary>
+    public async Task<CommandResult> SetActivityRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
+    {
+        if (days < 0)
+        {
+            return CommandResult.Error("Retention days can't be negative (0 = keep forever).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.ActivityRetentionDays = days;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(days == 0
+            ? "Raw activity records are kept indefinitely (rollups always persist)."
+            : $"Raw activity records older than {days} day(s) will be pruned (rollups kept).");
+    }
+
+    /// <summary>Set the reward-multiplier stacking policy + global cap and the session start/end presence bonuses
+    /// (amounts, qualifying-window minutes, and whether the active multiplier scales them).</summary>
+    public async Task<CommandResult> SetMultiplierSettingsAsync(
+        ulong guildId, MultiplierStacking stacking, decimal cap,
+        int startBonus, int endBonus, int startWindowMinutes, int endWindowMinutes, bool multiplyBonuses,
+        CancellationToken ct = default)
+    {
+        if (cap < 0m || startBonus < 0 || endBonus < 0 || startWindowMinutes < 0 || endWindowMinutes < 0)
+        {
+            return CommandResult.Error("Cap, bonuses, and windows can't be negative (0 = off / no cap).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.MultiplierStacking = stacking;
+        settings.MultiplierCap = cap;
+        settings.SessionStartBonus = startBonus;
+        settings.SessionEndBonus = endBonus;
+        settings.StartBonusWindowMinutes = startWindowMinutes;
+        settings.EndBonusWindowMinutes = endWindowMinutes;
+        settings.MultiplyPresenceBonuses = multiplyBonuses;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok("Multiplier & bonus settings updated.");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

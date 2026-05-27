@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
+using Muster.Domain.Enums;
 
 namespace Muster.Persistence.Queries;
 
@@ -9,6 +10,10 @@ public static class MembershipQueries
     /// <summary>Find a guild (tracked) by id.</summary>
     public static Task<Guild?> FindGuildAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.Guilds.FirstOrDefaultAsync(g => g.Id == guildId, ct);
+
+    /// <summary>A user's display name (global name, else username), or null if unknown — for connector enrichment.</summary>
+    public static Task<string?> FindDisplayNameAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
+        => db.Users.Where(u => u.Id == userId).Select(u => u.GlobalName ?? u.Username).FirstOrDefaultAsync(ct);
 
     /// <summary>A guild's settings (read-only, untracked); defaults when the guild is unknown.</summary>
     public static async Task<GuildSettings> GetSettingsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
@@ -21,6 +26,18 @@ public static class MembershipQueries
     /// <summary>A guild's configured IANA time zone id (scalar), or null.</summary>
     public static Task<string?> GuildTimeZoneIdAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.Guilds.Where(g => g.Id == guildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync(ct);
+
+    /// <summary>A guild's display name (scalar), or null when unknown.</summary>
+    public static Task<string?> GuildNameAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.Guilds.Where(g => g.Id == guildId).Select(g => g.Name).FirstOrDefaultAsync(ct);
+
+    /// <summary>Tracked users for the given ids, keyed by id — the member-sync upsert reconciles against this.</summary>
+    public static async Task<Dictionary<ulong, DiscordUser>> UsersByIdAsync(this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)
+        => await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);
+
+    /// <summary>Tracked guild members for the given user ids, keyed by user id — for the member-sync upsert.</summary>
+    public static async Task<Dictionary<ulong, GuildMember>> MembersByIdAsync(this MusterDbContext db, ulong guildId, List<ulong> userIds, CancellationToken ct = default)
+        => await db.GuildMembers.Where(m => m.GuildId == guildId && userIds.Contains(m.UserId)).ToDictionaryAsync(m => m.UserId, ct);
 
     // --- Members / roles / users ---
 
@@ -44,6 +61,23 @@ public static class MembershipQueries
     public static Task<Dictionary<ulong, string>> RoleNameMapAsync(this MusterDbContext db, ulong guildId, List<ulong> roleIds, CancellationToken ct = default)
         => db.GuildRoles.Where(r => r.GuildId == guildId && roleIds.Contains(r.RoleId)).ToDictionaryAsync(r => r.RoleId, r => r.Name, ct);
 
+    // --- Channels ---
+
+    /// <summary>Find a synced guild channel (tracked).</summary>
+    public static Task<GuildChannel?> FindChannelAsync(this MusterDbContext db, ulong guildId, ulong channelId, CancellationToken ct = default)
+        => db.GuildChannels.FirstOrDefaultAsync(c => c.GuildId == guildId && c.ChannelId == channelId, ct);
+
+    /// <summary>All of a guild's synced channels (tracked).</summary>
+    public static Task<List<GuildChannel>> ListChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.GuildChannels.Where(c => c.GuildId == guildId).ToListAsync(ct);
+
+    /// <summary>A guild's live (non-deleted) synced channels of one kind, ordered by position then name (for pickers).</summary>
+    public static Task<List<GuildChannel>> ListChannelsByKindAsync(this MusterDbContext db, ulong guildId, GuildChannelKind kind, CancellationToken ct = default)
+        => db.GuildChannels.AsNoTracking()
+            .Where(c => c.GuildId == guildId && c.Kind == kind && c.DeletedAt == null)
+            .OrderBy(c => c.Position ?? int.MaxValue).ThenBy(c => c.Name)
+            .ToListAsync(ct);
+
     /// <summary>Find a user (tracked).</summary>
     public static Task<DiscordUser?> FindUserAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
         => db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
@@ -51,6 +85,24 @@ public static class MembershipQueries
     /// <summary>A user's stored IANA time zone id (scalar), or null.</summary>
     public static Task<string?> UserTimeZoneIdAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
         => db.Users.Where(u => u.Id == userId).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct);
+
+    /// <summary>Whether the user has opted out of currency-receipt DMs (false = receipts on; default when unknown).</summary>
+    public static Task<bool> CurrencyDmOptOutAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
+        => db.Users.Where(u => u.Id == userId).Select(u => u.CurrencyDmOptOut).FirstOrDefaultAsync(ct);
+
+    /// <summary>Set the user's currency-receipt DM opt-out. No-op if the user is unknown. Returns the saved value.</summary>
+    public static async Task<bool> SetCurrencyDmOptOutAsync(this MusterDbContext db, ulong userId, bool optOut, CancellationToken ct = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+        {
+            return false;
+        }
+
+        user.CurrencyDmOptOut = optOut;
+        await db.SaveChangesAsync(ct);
+        return optOut;
+    }
 
     /// <summary>Map of user id → display name (global name, falling back to username) for the given users.</summary>
     public static Task<Dictionary<ulong, string>> UserDisplayNameMapAsync(this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)
@@ -71,6 +123,13 @@ public static class MembershipQueries
     /// <summary>All of a guild's members (tracked-free read).</summary>
     public static Task<List<GuildMember>> ListMembersAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.GuildMembers.Where(m => m.GuildId == guildId).ToListAsync(ct);
+
+    /// <summary>Role-id sets for the given members, keyed by user id — for resolving per-member role multipliers
+    /// in the reward hot path (one query per reconcile pass).</summary>
+    public static async Task<Dictionary<ulong, List<ulong>>> RoleIdsByUserAsync(this MusterDbContext db, ulong guildId, IReadOnlyCollection<ulong> userIds, CancellationToken ct = default)
+        => await db.GuildMembers.AsNoTracking()
+            .Where(m => m.GuildId == guildId && userIds.Contains(m.UserId))
+            .ToDictionaryAsync(m => m.UserId, m => m.RoleIds, ct);
 
     /// <summary>The guild ids a user is a member of.</summary>
     public static Task<List<ulong>> ListMemberGuildIdsAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)

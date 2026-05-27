@@ -17,10 +17,12 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
+builder.AddMusterConnectorProtection(); // Data Protection for connector secrets (bot dispatches via connectors)
 
-// The bot is the only host that listens on the quest-board queue: it renders/updates the Discord channel
-// board in response to quest lifecycle events published from any host.
-builder.AddMusterMessaging(listenForQuestBoard: true);
+// The bot is the only host that listens on the quest-board and currency-events queues: it renders/updates the
+// Discord channel board in response to quest lifecycle events, and DMs currency receipts (grants/staff actions)
+// to recipients — both published from any host.
+builder.AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true, listenForMemberSync: true);
 
 // NetCord gateway. The bot token is read from configuration key "Discord:Token"
 // (user-secrets locally, Key Vault in Azure).
@@ -61,6 +63,24 @@ builder.Services.AddHostedService<Muster.Bot.QuestBoardCleanupScheduler>();
 // DMs "closes soon" deadline nudges to active workers / a taker-less bounty owner (bot-only — needs DM REST).
 builder.Services.AddHostedService<Muster.Bot.QuestReminderScheduler>();
 
+// Periodically reconciles External/Hybrid balances from their connectors (per-currency sync interval).
+builder.Services.AddHostedService<Muster.Bot.CurrencyBalanceSyncScheduler>();
+
+// Daily: compacts ledger history beyond each guild's LedgerRetentionDays into carry-forward checkpoints.
+builder.Services.AddHostedService<Muster.Bot.LedgerPruneScheduler>();
+
+// Periodically flushes always-on background voice accrual for still-present members (idempotent, gateway-cache-driven).
+builder.Services.AddHostedService<Muster.Bot.BackgroundFlushScheduler>();
+
+// Reconciles voice accrual at reward-multiplier window edges so each segment is credited at one exact regime.
+builder.Services.AddHostedService<Muster.Bot.MultiplierBoundaryScheduler>();
+
+// Daily: prunes raw activity records beyond each guild's retention window (rollups kept).
+builder.Services.AddHostedService<Muster.Bot.ActivityPruneScheduler>();
+
+// Per-guild voice reconcile coordinator: debounces event bursts + serializes reconciles per guild.
+builder.Services.AddSingleton<Muster.Bot.GuildReconcileCoordinator>();
+
 // NetCord-backed implementation of the muster publisher abstraction, plus the muster command
 // service that depends on it (a bot-only concern — the web doesn't post muster messages).
 builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();
@@ -71,6 +91,7 @@ builder.Services.AddTransient<Muster.Bot.Autocomplete.CurrencyAutocompleteProvid
 builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestCurrencyAutocompleteProvider>();
 builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestAutocompleteProvider>();
 builder.Services.AddTransient<Muster.Bot.Autocomplete.TimezoneAutocompleteProvider>();
+builder.Services.AddTransient<Muster.Bot.Autocomplete.ActiveSessionAutocompleteProvider>();
 
 var host = builder.Build();
 

@@ -20,9 +20,9 @@ business rules in handlers, and makes reliable event publishing a first-class co
 The bot's job is to translate gateway events into messages, not to embed scoring rules:
 
 ```
-VoiceStateUpdate ──► publish MemberParticipated ──► handler writes LedgerEntry (+ outbox)
-ReactionAdd       ──► publish MemberParticipated ──► handler writes LedgerEntry (+ outbox)
-/award (web/bot)  ──► send    AwardCurrency      ──► handler writes LedgerEntry (+ outbox)
+VoiceStateUpdate ──► publish MemberParticipated ──► handler writes CurrencyLedgerEntry (+ outbox)
+ReactionAdd       ──► publish MemberParticipated ──► handler writes CurrencyLedgerEntry (+ outbox)
+/currency mint    ──► invoke  AdjustCurrency     ──► handler writes CurrencyLedgerEntry (+ outbox)
 ```
 
 Because scoring lives in handlers, the same logic runs whether triggered from the bot, the
@@ -30,15 +30,17 @@ web UI, or (later) an external connector.
 
 ## Contracts
 
-Message contracts live in `Muster.Contracts/Messages.cs` and are intentionally
-**broker-agnostic** (plain records, no transport types):
+Message contracts live in `Muster.Contracts/` (split by feature: `CurrencyMessages.cs`,
+`QuestMessages.cs`, `Commands.cs`) and are intentionally **broker-agnostic** (plain records, no transport types):
 
 | Message | Direction | Purpose |
 | --- | --- | --- |
-| `MemberParticipated` | bot → handler | rewardable participation occurred |
-| `AwardCurrency` | web/bot → handler | award currency (manual, mission, muster) |
-| `AdjustCurrencyBalance` | connector → handler | mint/spend a spendable currency |
-| `LedgerEntryRecorded` | handler → outbound | emitted after a ledger entry commits |
+| `MintCurrency` / `SpendCurrency` | connector → handler | machine-inbound mirror of an external movement (`CurrencyChangeResult`) |
+| `TransferCurrency` / `AdjustCurrency` | bot/web/api → handler | user/staff CQRS (`IGuildCommand`, authorized + audited → `Result`) |
+| `CurrencyMovementRecorded` | service → outbound | published on every staged ledger movement (the money-moved seam) |
+| `RunCurrencyBulkAdjust` | web → background worker | apply a queued staff bulk mint/adjust to many members (durable, idempotent per member leg) |
+| `SyncGuildMembers` | web → bot | pull the guild roster from Discord and upsert it (web equivalent of `/syncmembers`) |
+| `QuestLifecycleNotified` | service → outbound | a quest changed state (Discord/connector fan-out) |
 
 ## v1: no broker
 
@@ -64,16 +66,23 @@ first-class Service Bus integration for this.
   connection is present it enables `PersistMessagesWithSqlServer` + `UseEntityFrameworkCoreTransactions`
   (durable outbox/inbox); without one it runs in-memory for local dev.
 - Handlers live in `Muster.Infrastructure.Messaging` and are discovered via
-  `opts.Discovery.IncludeAssembly`. `AwardCurrencyHandler`, `AdjustCurrencyBalanceHandler`, and
-  `MemberParticipatedHandler` award through `AwardService` and **return** a `LedgerEntryRecorded`,
-  which Wolverine publishes as a cascading message through the outbox. `LedgerEntryRecordedHandler`
-  is the outbound subscription seam (logs in v1; forwards to connectors post-v1).
+  `opts.Discovery.IncludeAssembly`. Currency mutations flow through `ICurrencyService`, which writes the
+  ledger and **publishes `CurrencyMovementRecorded`** for every staged movement;
+  `CurrencyMovementRecordedHandler` is the outbound subscription seam (logs in v1; forwards to connectors
+  post-v1). `IGuildCommand`s (`TransferCurrency`/`AdjustCurrency`, quest commands) are audited centrally by
+  `AuditMiddleware`.
+- **Bot-only durable SQL queues** (set up via `UseSqlServerPersistenceAndTransport`). Two effects need the bot's
+  gateway/REST client, so they're routed to the bot rather than handled in the publishing host:
+  - `QuestLifecycleNotified` → `QuestBoardQueue` (`"quest-board"`) — renders/updates the Discord channel board.
+  - `CurrencyMovementRecorded` → `CurrencyEventsQueue` (`"currency-events"`) — DM currency receipts to recipients.
+  - `SyncGuildMembers` → `MemberSyncQueue` (`"member-sync"`) — pull the guild roster from Discord (`GuildMemberSyncHandler`).
+  Every host *publishes* to these queues (so a change from web/API/the sweep still reaches the bot); only the bot
+  *listens* — `AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true, listenForMemberSync: true)`.
+  The currency-events consumers are `CurrencyDmHandler` (DM receipts) and `CurrencyWebhookHandler` (fan out to the
+  guild's outbound webhooks — HMAC-signed POST per matching subscription); pruning checkpoints bypass `StageAsync`,
+  so they never enter the firehose.
 - Because handlers are plain methods, they're unit-tested by calling them directly with an in-memory
   database — no bus required.
-
-> Synchronous slash-command awards (muster reactions, quest approvals, tracking close) currently
-> award directly via the services for an immediate reply; routing them through the bus to also emit
-> `LedgerEntryRecorded` is a later refinement.
 
 ## Sagas & scheduled messages
 

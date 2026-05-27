@@ -74,23 +74,42 @@
 
     private sealed record NavItem(string Label, string Icon, string? Href, string Match);
 
-    private IReadOnlyList<NavItem> NavItems => _guildId == 0 ? [] :
-    [
-        new("Dashboard", "dashboard", $"/guilds/{_guildId}", "$"),
-        new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-        new("Sessions", "schedule", null, "/sessions"),
-        new("Musters", "groups", null, "/musters"),
-        new("Awards", "emoji_events", _isAdmin ? $"/guilds/{_guildId}/award" : null, "/award"),
-        new("Members", "group", null, "/members"),
-        new("Currencies", "paid", _isAdmin ? $"/guilds/{_guildId}/currencies" : null, "/currencies"),
-        new("Audit log", "receipt_long", _isAdmin ? $"/guilds/{_guildId}/audit" : null, "/audit"),
-    ];
+    private IReadOnlyList<NavItem> NavItems
+    {
+        get
+        {
+            if (_guildId == 0)
+            {
+                return [];
+            }
+
+            // Member-facing items at the top level; admin tooling (awards, currencies, quest settings, seasons,
+            // role mapping, API clients, audit log) is consolidated under the single admin-only "Admin" hub.
+            var items = new List<NavItem>
+            {
+                new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
+                new("Me", "person", $"/guilds/{_guildId}/me", "/me"),
+                new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/wallet", "/wallet"),
+                new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
+                new("Sessions", "schedule", $"/guilds/{_guildId}/sessions", "/sessions"),
+                new("Musters", "groups", null, "/musters"),
+                new("Members", "group", _isAdmin ? $"/guilds/{_guildId}/members" : null, "/members"),
+            };
+
+            if (_isAdmin)
+            {
+                items.Add(new("Admin", "shield_person", $"/guilds/{_guildId}/admin", "/admin"));
+            }
+
+            return items;
+        }
+    }
 
     private IReadOnlyList<NavItem> BottomTabs => _guildId == 0 ? [] :
     [
         new("Home", "home", $"/guilds/{_guildId}", "$"),
         new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-        new("Sessions", "schedule", null, "/sessions"),
+        new("Sessions", "schedule", $"/guilds/{_guildId}/sessions", "/sessions"),
         new("You", "person", $"/guilds/{_guildId}/me", "/me"),
     ];
 

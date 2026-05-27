@@ -1,0 +1,69 @@
+using Muster.Domain.Entities;
+using Muster.Domain.Enums;
+
+namespace Muster.Infrastructure.Services.Currencies;
+
+/// <summary>
+/// The single money API. All currency movement — minting, spending, awards, and bounty escrow — flows
+/// through one source of truth, which writes the ledger and publishes a <c>CurrencyMovementRecorded</c> message for
+/// every leg. Callers depend on this interface, not the concrete service or any lower-level primitive.
+/// </summary>
+public interface ICurrencyService
+{
+    /// <summary>Current balance of a spendable currency (by code), or null if the currency is unknown.</summary>
+    Task<long?> GetBalanceAsync(ulong guildId, string code, ulong userId, CancellationToken ct = default);
+
+    /// <summary>Mint currency to a user (public API surface). No overdraft check — minting creates value.
+    /// A non-null <paramref name="sourceId"/> makes it idempotent (deduped on (Connector, sourceId)).</summary>
+    Task<CurrencyOperationResult> MintAsync(
+        ulong guildId, string code, ulong userId, long amount, string reason, string? sourceId = null, CancellationToken ct = default);
+
+    /// <summary>Spend currency from a user. Overdraft-checked when Muster owns the balance (Internal/Hybrid).
+    /// A non-null <paramref name="sourceId"/> makes it idempotent (deduped on (Connector, sourceId)).</summary>
+    Task<CurrencyOperationResult> SpendAsync(
+        ulong guildId, string code, ulong userId, long amount, string reason, string? sourceId = null, CancellationToken ct = default);
+
+    /// <summary>Move funds between two members (by code) in one transaction: debit the sender, credit the receiver.
+    /// Overdraft-checked on the sender when Muster owns the balance (Internal/Hybrid). For External/Hybrid both legs
+    /// push to the backing system (debit + credit) before commit. A non-null <paramref name="sourceId"/> makes the
+    /// transfer idempotent (the two legs key off it with :out/:in suffixes). Returns the sender's resulting balance.</summary>
+    Task<CurrencyOperationResult> TransferAsync(
+        ulong guildId, string code, ulong fromUserId, ulong toUserId, long amount, string reason, string? sourceId = null, CancellationToken ct = default);
+
+    /// <summary>Staff balance correction (by code): apply a signed delta. No overdraft check — staff is authoritative.
+    /// For External/Hybrid it pushes Credit (delta &gt; 0) or Debit (delta &lt; 0) before commit. Idempotent on
+    /// <paramref name="sourceId"/>. Returns the member's resulting balance.</summary>
+    Task<CurrencyOperationResult> AdjustAsync(
+        ulong guildId, string code, ulong userId, long delta, string reason, string? sourceId = null, CancellationToken ct = default);
+
+    /// <summary>Award a currency (by id) and commit. Idempotent on (sourceType, sourceId).</summary>
+    Task<CurrencyLedgerEntry> AwardAsync(
+        ulong guildId, ulong userId, Guid currencyId, long amount,
+        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct = default);
+
+    /// <summary>Award the guild's POINTS currency and commit.</summary>
+    Task<CurrencyLedgerEntry> AwardPointsAsync(
+        ulong guildId, ulong userId, long amount,
+        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct = default);
+
+    /// <summary>Stage a POINTS award WITHOUT saving, so it commits in the caller's unit of work.</summary>
+    Task StagePointsAsync(
+        ulong guildId, ulong userId, long amount,
+        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct = default);
+
+    /// <summary>Recompute every wallet balance in a guild from the ledger (the ledger is the source of truth, the
+    /// wallet a cache). Corrects any drift; returns how many wallets changed. Safe to run anytime.</summary>
+    Task<int> RebuildWalletsAsync(ulong guildId, CancellationToken ct = default);
+
+    /// <summary>Reserve the owner's funds into escrow (stages legs; caller commits). Validates spendable + funds.</summary>
+    Task<EscrowStatus> HoldAsync(
+        ulong guildId, ulong ownerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Pay escrowed funds out to the completer (stages legs; caller commits).</summary>
+    Task<EscrowStatus> PayoutAsync(
+        ulong guildId, ulong completerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Return escrowed funds to the owner (stages legs; caller commits).</summary>
+    Task<EscrowStatus> RefundAsync(
+        ulong guildId, ulong ownerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
+}

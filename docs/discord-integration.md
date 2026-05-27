@@ -57,10 +57,8 @@ later for rank rewards). On join, `GuildCreate` upserts the `Guild` row and seed
 | `/quest post\|claim\|submit\|approve\|list` | mixed | quest board lifecycle |
 | `/op create\|signup\|close` | mixed | scheduled event ops (RSVP/attendance) |
 | `/muster create` | admin | post a reaction check-in |
-| `/award user\|voice\|reacted` | admin | manual / bulk awards |
-| `/score me\|user` | all | view a member's score |
+| `/currency balance\|history\|list\|give\|notify\|inspect\|mint\|adjust` | mixed | wallet balances + history, currency directory, member transfers, DM-receipt opt-out, staff member-wallet inspect + mint/adjust (CQRS) |
 | `/leaderboard` | all | season leaderboard |
-| `/wallet` | all | currency balances |
 | `/season start\|end\|status` | admin | manage seasons |
 | `/config` | admin | guild settings / reward config |
 
@@ -85,10 +83,10 @@ scoring rules live in one place.
 Discord-facing code is kept as thin as possible so the real logic can be tested without a
 gateway:
 
-- **Command services** (`Muster.Infrastructure.Commands`, e.g. `AwardCommandService`,
-  `ScoreCommandService`, `TrackingCommandService`) hold all validation, orchestration, and
-  message formatting. They take primitives (guild id, user id, parsed parameters) and return
-  a platform-independent `CommandResult { Message, IsError }`.
+- **Command services** (`Muster.Infrastructure.Commands`, e.g. `TrackingCommandService`,
+  `ConfigCommandService`) hold validation/orchestration for the non-CQRS commands and return a
+  platform-independent `CommandResult { Message, IsError }`. Currency + quest actions instead go
+  through **Wolverine `IGuildCommand`s** dispatched on the bus (authorized + audited centrally).
 - **NetCord modules** (`Muster.Bot/Modules`) are adapters: they pull ids/parameters off
   `Context`, handle Discord-specific concerns (e.g. "must be used in a server"), call the
   command service, and return `result.Message`.

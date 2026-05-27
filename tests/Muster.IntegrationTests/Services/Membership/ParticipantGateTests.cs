@@ -6,7 +6,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Quests;
@@ -66,14 +66,14 @@ public class ParticipantGateTests
 
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
         var auth = new GuildAuthorizationService(db);
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         await new MemberSyncService(db).UpsertAsync(1, 20, "guest", null, null, roleIds: [123]);
 
         // Muster reaction by a guest -> not eligible, no reward.
         var musters = new MusterService(db, awards, auth);
         await musters.CreateAsync(1, 100, 999, "Roll call", ["✅"], points.Id, 10, capacity: null, expiresAt: null);
         Assert.Equal(ReactionOutcome.NotEligible, await musters.RecordReactionAsync(999, 20, "✅"));
-        Assert.Equal(0, await db.LedgerEntries.CountAsync());
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync());
 
         // Quest claim by a guest -> rejected.
         var quests = new QuestService(db, awards, auth, new RecordingMessageBus());

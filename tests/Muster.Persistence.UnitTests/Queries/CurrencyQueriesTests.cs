@@ -24,13 +24,13 @@ public class CurrencyQueriesTests
     {
         using var sqlite = new SqliteDb();
         var db = sqlite.Context;
-        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = Currencies.PointsCode, Name = "Points", IsSeasonal = true });
+        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = CurrencyCodes.PointsCode, Name = "Points", IsSeasonal = true });
         await db.SaveChangesAsync();
 
         var points = await db.FindPointsAsync(1);
 
         Assert.NotNull(points);
-        Assert.Equal(Currencies.PointsCode, points!.Code);
+        Assert.Equal(CurrencyCodes.PointsCode, points!.Code);
     }
 
     [Fact]

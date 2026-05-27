@@ -6,7 +6,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Quests;
 
@@ -29,18 +29,18 @@ public class BountyServiceTests
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
 
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         var sut = new QuestService(db, awards, auth, new RecordingMessageBus());
         return new Ctx(db, sut, coin);
     }
 
     private static Task<long> BalanceAsync(MusterDbContext db, ulong userId, Guid currencyId) =>
-        db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
+        db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
             .SumAsync(e => (long?)e.Amount).ContinueWith(t => t.Result ?? 0);
 
     private static async Task FundAsync(Ctx c, ulong userId, long amount)
-        => await new CurrencyService(c.Db, new NullCurrencyEventSink()).AwardAsync(1, userId, c.Coin.Id, amount, LedgerSourceType.Connector, null, "seed");
+        => await new CurrencyService(c.Db, new RecordingMessageBus()).AwardAsync(1, userId, c.Coin.Id, amount, CurrencyLedgerSource.Connector, null, "seed");
 
     [Fact]
     public async Task Post_EscrowsReward_AndCreatesOpenBounty()

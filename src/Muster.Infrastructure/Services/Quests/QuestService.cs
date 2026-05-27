@@ -3,7 +3,7 @@ using Muster.Persistence.Queries;
 using Muster.Contracts;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Wolverine;
 
@@ -257,14 +257,14 @@ public sealed class QuestService(
         // Awards are keyed by the participation, so a member's repeat completions each pay out exactly once.
         await currency.AwardAsync(
             quest.GuildId, userId, quest.RewardCurrencyId, quest.RewardAmount,
-            LedgerSourceType.Quest, $"quest:{questId}:participant:{participant.Id}",
+            CurrencyLedgerSource.Quest, $"quest:{questId}:participant:{participant.Id}",
             $"Quest approved: {quest.Name}", ct);
 
         if (quest.BonusPoints > 0)
         {
             await currency.AwardPointsAsync(
                 quest.GuildId, userId, quest.BonusPoints,
-                LedgerSourceType.Quest, $"quest:{questId}:participant:{participant.Id}:bonus",
+                CurrencyLedgerSource.Quest, $"quest:{questId}:participant:{participant.Id}:bonus",
                 $"Quest bonus: {quest.Name}", ct);
         }
 
@@ -808,7 +808,7 @@ public sealed class QuestService(
         if (quest.BonusPoints > 0)
         {
             await currency.StagePointsAsync(
-                quest.GuildId, taker.UserId, quest.BonusPoints, LedgerSourceType.Quest,
+                quest.GuildId, taker.UserId, quest.BonusPoints, CurrencyLedgerSource.Quest,
                 $"bounty:{quest.Id}:bonus:{taker.UserId}", $"Quest bonus: {quest.Name}", ct);
         }
 

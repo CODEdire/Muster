@@ -7,7 +7,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
@@ -35,7 +35,7 @@ public class QuestBoardAndTimeZoneTests
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
 
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         var quests = new QuestService(db, awards, auth, new RecordingMessageBus());
         var tz = new TimeZoneService(db);
@@ -44,7 +44,7 @@ public class QuestBoardAndTimeZoneTests
     }
 
     private static async Task FundAsync(Ctx c, ulong userId, long amount)
-        => await new CurrencyService(c.Db, new NullCurrencyEventSink()).AwardAsync(1, userId, c.Coin.Id, amount, LedgerSourceType.Connector, null, "seed");
+        => await new CurrencyService(c.Db, new RecordingMessageBus()).AwardAsync(1, userId, c.Coin.Id, amount, CurrencyLedgerSource.Connector, null, "seed");
 
     // --- Time zone ---
 
@@ -199,13 +199,13 @@ public class QuestBoardAndTimeZoneTests
     // --- Tier-based bonus points ---
 
     private static async Task<long> BalanceAsync(MusterDbContext db, ulong userId, Guid currencyId)
-        => await db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
+        => await db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == null)
             .SumAsync(e => (long?)e.Amount) ?? 0;
 
     private static async Task<long> PointsAsync(MusterDbContext db, ulong guildId, ulong userId)
     {
         var pointsId = await db.Currencies.Where(cur => cur.GuildId == guildId && cur.Code == "POINTS").Select(cur => cur.Id).FirstAsync();
-        return await db.LedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
+        return await db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
     }
 
     [Fact]

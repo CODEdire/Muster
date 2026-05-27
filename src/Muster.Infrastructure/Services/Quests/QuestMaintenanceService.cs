@@ -17,11 +17,19 @@ namespace Muster.Infrastructure.Services.Quests;
 /// (actor 0 = system). A per-quest try/catch keeps one conflict (e.g. a manager acting at the same moment)
 /// from aborting the whole sweep.
 /// </summary>
+/// <summary>The periodic quest reconciliation sweep (activate scheduled, expire deadlines, auto-resolve timeouts).
+/// The scheduler depends on this interface.</summary>
+public interface IQuestMaintenanceService
+{
+    /// <summary>Run one reconciliation pass across active guilds as of <paramref name="now"/>. Returns items resolved.</summary>
+    Task<int> SweepAsync(DateTimeOffset now, CancellationToken ct = default);
+}
+
 public class QuestMaintenanceService(
     MusterDbContext db,
     IQuestService quests,
     AuditService audit,
-    ILogger<QuestMaintenanceService> logger)
+    ILogger<QuestMaintenanceService> logger) : IQuestMaintenanceService
 {
     public async Task<int> SweepAsync(DateTimeOffset now, CancellationToken ct = default)
     {

@@ -1,0 +1,146 @@
+@page "/guilds/{GuildIdRaw}/me"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject ParticipationReadService Participation
+@inject TrackingSessionService Sessions
+@inject MusterDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using Muster.Persistence
+@using Muster.Persistence.Queries
+@using Muster.Infrastructure.Services.Tracking
+
+<PageTitle>Me — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <h1>You</h1>
+        <p class="subtitle">Your live sessions and a snapshot of your standing.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Points</div>
+            <div class="num">@_points.ToString("N0")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Voice — season</div>
+            <div class="num">@Dur(_voice.SeasonMinutes)@(_voice.SeasonRank > 0 ? $" · #{_voice.SeasonRank}" : "")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Voice — all time</div>
+            <div class="num">@Dur(_voice.AllTimeMinutes)</div>
+        </div>
+        <a class="stat glass" href="/guilds/@GuildId/wallet">
+            <div class="label">Wallet</div>
+            <div class="num">Open →</div>
+        </a>
+    </div>
+
+    <div class="panel glass">
+        <h2>Active now</h2>
+        @if (_active.Count == 0)
+        {
+            <p class="empty">You're not in any tracked session right now.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Session</th><th>Channel</th><th>Your time</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var s in _active)
+                    {
+                        <tr>
+                            <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                            <td>@Chan(s.VoiceChannelName)</td>
+                            <td>@Dur(s.MyMinutes)</td>
+                            <td>@(s.PresentNow ? "🟢 Active" : "🟡 Paused")</td>
+                            <td>
+                                <EditForm Model="_optOutMarker" FormName="@($"optout-{s.SessionId}")" OnValidSubmit="() => OptOutAsync(s.SessionId)" Enhance>
+                                    <button type="submit" class="btn btn-sm btn-ghost">Opt out</button>
+                                </EditForm>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <p class="subtitle">Opting out removes you from that one session for the rest of it — it doesn't change your standing preference (set that on the <a href="/guilds/@GuildId/wallet#privacy">wallet page</a>).</p>
+        }
+    </div>
+
+    <div class="panel glass">
+        <h2>Your recent sessions</h2>
+        @if (_history.Count == 0)
+        {
+            <p class="empty">No past sessions yet.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Session</th><th>Channel</th><th>Ended</th><th>Your time</th></tr></thead>
+                <tbody>
+                    @foreach (var s in _history)
+                    {
+                        <tr>
+                            <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                            <td>@Chan(s.VoiceChannelName)</td>
+                            <td>@(s.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC</td>
+                            <td>@Dur(s.MyMinutes)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private readonly object _optOutMarker = new();
+
+    private long _points;
+    private MemberVoiceStats _voice = new(0, 0, 0);
+    private IReadOnlyList<MemberSessionView> _active = [];
+    private IReadOnlyList<MemberSessionView> _history = [];
+
+    protected override async Task LoadAsync()
+    {
+        _voice = await Participation.MemberVoiceStatsAsync(GuildId, UserId);
+        _active = await Participation.MemberActiveSessionsAsync(GuildId, UserId);
+        _history = await Participation.MemberSessionHistoryAsync(GuildId, UserId, 10);
+
+        var points = await Db.FindPointsAsync(GuildId);
+        if (points is not null)
+        {
+            Guid? seasonId = points.IsSeasonal ? await Db.ActiveSeasonIdAsync(GuildId) : null;
+            _points = await Db.BalanceAsync(GuildId, UserId, points.Id, seasonId);
+        }
+    }
+
+    private async Task OptOutAsync(Guid sessionId)
+    {
+        if (await Sessions.OptOutMemberAsync(GuildId, sessionId, UserId))
+        {
+            Message = "You've opted out of that session.";
+        }
+
+        await LoadAsync();
+    }
+
+    private static string Chan(string name) => string.IsNullOrWhiteSpace(name) ? "—" : "#" + name;
+
+    private static string Dur(int minutes)
+    {
+        var h = minutes / 60;
+        var m = minutes % 60;
+        return h > 0 ? $"{h}h {m}m" : $"{m}m";
+    }
+}

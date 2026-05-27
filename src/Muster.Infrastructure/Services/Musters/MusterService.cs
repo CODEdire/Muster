@@ -2,7 +2,7 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Infrastructure.Services.Musters;
@@ -97,7 +97,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
 
         await awards.AwardAsync(
             muster.GuildId, userId, muster.CurrencyId, muster.RewardAmount,
-            LedgerSourceType.Muster, $"muster:{muster.Id}:user:{userId}",
+            CurrencyLedgerSource.Muster, $"muster:{muster.Id}:user:{userId}",
             $"Reaction muster: {muster.Prompt}", ct);
 
         return ReactionOutcome.Recorded;

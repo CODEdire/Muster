@@ -13,7 +13,7 @@ namespace Muster.Infrastructure.Services.Membership;
 /// </summary>
 public class GuildProvisioningService(MusterDbContext db)
 {
-    public const string PointsCurrencyCode = Currencies.PointsCode;
+    public const string PointsCurrencyCode = CurrencyCodes.PointsCode;
 
     public async Task EnsureGuildAsync(
         ulong guildId, string name, string? iconHash, ulong ownerId = 0, CancellationToken ct = default)

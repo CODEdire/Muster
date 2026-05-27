@@ -1,12 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Persistence;
-using Muster.Contracts;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Messaging;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
@@ -58,45 +56,17 @@ public class MessagingAndSeasonTests
         using var db = await SeededAsync();
         var guild = await db.Guilds.SingleAsync();
         guild.Settings.PointsPerVoiceMinute = 3;
+        guild.Settings.ApplyAfkGuardsToSessions = false; // single-user accrual test
         await db.SaveChangesAsync();
 
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var joined = DateTimeOffset.UtcNow.AddMinutes(-10);
-        await sessions.ProcessVoiceStateAsync(1, 10, currentChannelId: 500, at: joined);
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false, false) } };
+        await sessions.ReconcileSessionsAsync(1, roster, joined);
         await sessions.CloseAsync(session.Id, at: joined.AddMinutes(10)); // no explicit rate -> use config (3)
 
         Assert.Equal(30, (await db.Wallets.SingleAsync(w => w.UserId == 10)).Balance); // 10 min * 3
-    }
-
-    [Fact]
-    public async Task AwardCurrencyHandler_WritesLedger_AndReturnsEvent()
-    {
-        using var db = await SeededAsync();
-        var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
-
-        var evt = await AwardCurrencyHandler.Handle(
-            new AwardCurrency(1, 10, points.Id, 40, nameof(LedgerSourceType.ManualAward), "src-1", "reason"),
-            awards, CancellationToken.None);
-
-        Assert.Equal(40, evt.Amount);
-        Assert.Equal(10ul, evt.UserId);
-        Assert.Equal(1, await db.LedgerEntries.CountAsync());
-    }
-
-    [Fact]
-    public async Task AdjustCurrencyBalanceHandler_MintsConnectorCurrency()
-    {
-        using var db = await SeededAsync();
-        var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
-
-        var evt = await AdjustCurrencyBalanceHandler.Handle(
-            new AdjustCurrencyBalance(1, 10, points.Id, 100, "loot drop"), awards, CancellationToken.None);
-
-        Assert.Equal(100, evt.Amount);
-        Assert.Equal(LedgerSourceType.Connector, (await db.LedgerEntries.SingleAsync()).SourceType);
     }
 }

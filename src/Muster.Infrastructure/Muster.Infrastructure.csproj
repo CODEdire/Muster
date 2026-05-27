@@ -11,6 +11,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
     <PackageReference Include="WolverineFx" />
     <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <PackageReference Include="WolverineFx.EntityFrameworkCore" />

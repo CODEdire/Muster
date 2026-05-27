@@ -18,6 +18,130 @@ public enum ActivityType
     Voice = 1,
 }
 
+/// <summary>Kind of a synced Discord <see cref="Muster.Domain.Entities.Members.GuildChannel"/>. Governs both
+/// the roster (web pickers) and what background tracking the channel supports. Threads/categories/forums
+/// are not synced.</summary>
+public enum GuildChannelKind
+{
+    Text = 0,
+    Voice = 1,
+}
+
+/// <summary>
+/// A member's per-guild tracking preference. Governs the always-on "background" plane (active-time stats +
+/// background reward) and, at the strongest level, bounded Sessions too. <see cref="Default"/> follows the
+/// guild's background policy (<c>GuildSettings.BackgroundTrackingOptIn</c>).
+/// </summary>
+public enum TrackingChoice
+{
+    /// <summary>Follow the guild policy: background on unless the guild is opt-in; Sessions always tracked.</summary>
+    Default = 0,
+
+    /// <summary>Explicitly opt into all tracking (overrides a guild opt-in default).</summary>
+    In = 1,
+
+    /// <summary>Opt out of the background plane (no active-time stats, no background reward); Sessions still tracked.</summary>
+    BackgroundOut = 2,
+
+    /// <summary>Opt out of everything — background and Sessions.</summary>
+    AllOut = 3,
+}
+
+/// <summary>
+/// Anti-AFK guards that pause reward accrual. A reward minute counts only when none of the set guards trip.
+/// Combinable: e.g. <c>Undeafened | NotAlone</c> pauses a checked-out or alone member but still credits a
+/// muted-but-listening one (a phone call). Deafened/alone are the usual signals; muted is opt-in.
+/// </summary>
+[Flags]
+public enum AfkGuards
+{
+    None = 0,
+
+    /// <summary>Pause while muted (self/server) — can't speak.</summary>
+    Unmuted = 1,
+
+    /// <summary>Pause while deafened (self/server) — can't hear, i.e. checked out.</summary>
+    Undeafened = 2,
+
+    /// <summary>Pause while fewer than two humans are present in the channel.</summary>
+    NotAlone = 4,
+}
+
+/// <summary>Helpers for composing/reading <see cref="AfkGuards"/> from the per-guard toggles the UI presents.</summary>
+public static class AfkGuardsExtensions
+{
+    public static AfkGuards Compose(bool unmuted, bool undeafened, bool notAlone)
+        => (unmuted ? AfkGuards.Unmuted : 0)
+            | (undeafened ? AfkGuards.Undeafened : 0)
+            | (notAlone ? AfkGuards.NotAlone : 0);
+
+    public static bool Unmuted(this AfkGuards g) => g.HasFlag(AfkGuards.Unmuted);
+    public static bool Undeafened(this AfkGuards g) => g.HasFlag(AfkGuards.Undeafened);
+    public static bool NotAlone(this AfkGuards g) => g.HasFlag(AfkGuards.NotAlone);
+}
+
+/// <summary>What kind of window/condition a <see cref="Muster.Domain.Entities.Tracking.RewardMultiplier"/> matches.</summary>
+public enum MultiplierKind
+{
+    /// <summary>A single absolute time window (StartsAt..EndsAt) — a one-off "happy hour" / event boost.</summary>
+    OneOff = 0,
+
+    /// <summary>A weekly recurring window (WeekDays + StartTime..EndTime), evaluated in the guild's time zone.</summary>
+    Recurring = 1,
+
+    /// <summary>Always-on factor for members holding a given role (VIP / booster). Multiplies the time factor.</summary>
+    Role = 2,
+}
+
+/// <summary>Which reward planes a multiplier applies to (combinable).</summary>
+[Flags]
+public enum MultiplierScope
+{
+    None = 0,
+    BackgroundVoice = 1,
+    Messages = 2,
+    Sessions = 4,
+    All = BackgroundVoice | Messages | Sessions,
+}
+
+/// <summary>How overlapping time-window multipliers combine into one factor.</summary>
+public enum MultiplierStacking
+{
+    /// <summary>Use the single highest active factor (predictable, no runaway).</summary>
+    HighestWins = 0,
+
+    /// <summary>Multiply all active factors together.</summary>
+    Multiplicative = 1,
+}
+
+/// <summary>Days of the week a recurring multiplier is active (combinable). Mirrors <see cref="System.DayOfWeek"/> order.</summary>
+[Flags]
+public enum WeekDays
+{
+    None = 0,
+    Sunday = 1,
+    Monday = 2,
+    Tuesday = 4,
+    Wednesday = 8,
+    Thursday = 16,
+    Friday = 32,
+    Saturday = 64,
+    All = Sunday | Monday | Tuesday | Wednesday | Thursday | Friday | Saturday,
+}
+
+/// <summary>How a monitored channel is treated for background (always-on) participation.</summary>
+public enum TrackedChannelMode
+{
+    /// <summary>Not monitored (a row exists only to hold disabled config / history).</summary>
+    Off = 0,
+
+    /// <summary>Activity is recorded for stats/leaderboards but never awards currency.</summary>
+    StatsOnly = 1,
+
+    /// <summary>Activity accrues and awards currency (subject to anti-AFK guards + daily cap).</summary>
+    Reward = 2,
+}
+
 public enum QuestStatus
 {
     Draft = 0,
@@ -127,7 +251,7 @@ public enum SeasonStatus
 }
 
 /// <summary>The participation source that produced a ledger entry.</summary>
-public enum LedgerSourceType
+public enum CurrencyLedgerSource
 {
     TrackingSession = 0,
     Quest = 1,
@@ -135,6 +259,10 @@ public enum LedgerSourceType
     ManualAward = 3,
     Connector = 4,
     Event = 5,
+    Transfer = 6, // member-to-member move (two legs share one source key with :out/:in suffixes)
+    Adjustment = 7, // staff balance correction (mint/adjust outside the connector loop)
+    Checkpoint = 8, // carry-forward opening balance written when pruning history (sum of the pruned rows)
+    Background = 9, // always-on per-channel participation (voice presence / activity outside a bounded session)
 }
 
 public enum AppRole
@@ -142,6 +270,15 @@ public enum AppRole
     Member = 0,
     GuildAdmin = 1,
     SuperAdmin = 2,
+}
+
+/// <summary>Lifecycle of a queued bulk currency adjustment (staff mint/adjust applied to many members async).</summary>
+public enum BulkBatchStatus
+{
+    Pending = 0,   // created, awaiting the background worker
+    Running = 1,   // worker is applying member legs
+    Completed = 2, // every target applied (or already-applied via idempotent rerun)
+    Failed = 3,    // worker stopped on an unrecoverable error
 }
 
 /// <summary>How a currency's balance authority is split with external systems.</summary>
@@ -155,4 +292,54 @@ public enum CurrencyMode
 
     /// <summary>Split authority: Muster mints from participation, external owns spend; reconciled via events.</summary>
     Hybrid = 2,
+}
+
+/// <summary>How a currency connector authenticates its outbound HTTP calls. OAuth is a future scheme.</summary>
+public enum ConnectorAuthScheme
+{
+    None = 0,
+    Basic = 1,   // username + password
+    Bearer = 2,  // static token (OAuth client-credentials is a future connector)
+    ApiKey = 3,  // a key in a configurable header or query param
+}
+
+/// <summary>HMAC algorithm used to sign the request body (orthogonal to <see cref="ConnectorAuthScheme"/>).</summary>
+public enum ConnectorSignAlgorithm
+{
+    None = 0,
+    HmacSha256 = 1,
+    HmacSha512 = 2,
+}
+
+/// <summary>Where an API-key secret is placed on the request.</summary>
+public enum ApiKeyLocation
+{
+    Header = 0,
+    Query = 1,
+}
+
+/// <summary>How to read a value (e.g. an updated balance) out of a connector action's HTTP response.</summary>
+public enum ConnectorResponseFormat
+{
+    /// <summary>Ignore the response body (just check the status code).</summary>
+    None = 0,
+
+    /// <summary>Parse JSON and read the value at the configured dotted path.</summary>
+    Json = 1,
+
+    /// <summary>The whole (trimmed) response body is the value.</summary>
+    Text = 2,
+
+    /// <summary>Apply a regex (with one capture group) to the body text and parse the captured number.</summary>
+    Regex = 3,
+}
+
+/// <summary>How a connector action encodes its request body.</summary>
+public enum ConnectorBodyFormat
+{
+    /// <summary>JSON (<c>application/json</c>) — the body template is JSON with quoted tokens.</summary>
+    Json = 0,
+
+    /// <summary>Form (<c>application/x-www-form-urlencoded</c>) — the body template is <c>a=$userId&amp;b=$amount</c>.</summary>
+    Form = 1,
 }

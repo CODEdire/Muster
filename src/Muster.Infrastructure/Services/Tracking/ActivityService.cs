@@ -1,20 +1,41 @@
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Infrastructure.Services.Tracking;
 
 /// <summary>
-/// Records stats-only channel activity. Message activity is not rewardable in v1 — it feeds stats
-/// and daily rollups. Dedupes on the message id so gateway redelivery never inflates counts.
+/// Records message activity for monitored text channels (background plane). Scoped to configured
+/// <see cref="GuildChannel"/> rows (Mode != Off, not soft-deleted); untracked channels are ignored. Honors the
+/// member's background consent. Stats always; Reward-mode channels also mint POINTS per message
+/// (<see cref="GuildChannel.PointsPerMessage"/>). Dedupes on the message id so gateway redelivery never
+/// inflates counts or double-pays.
 /// </summary>
-public class ActivityService(MusterDbContext db)
+public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers)
 {
     public async Task RecordMessageAsync(
         ulong guildId, ulong channelId, ulong userId, ulong messageId, DateTimeOffset timestamp,
         CancellationToken ct = default)
     {
+        // Scope: only monitored, live text channels are recorded.
+        var channel = await db.FindChannelAsync(guildId, channelId, ct);
+        if (channel is null || channel.Kind != GuildChannelKind.Text || channel.Mode == TrackedChannelMode.Off || channel.DeletedAt is not null)
+        {
+            return;
+        }
+
+        // Consent: message activity is part of the background plane.
+        var settings = await db.GetSettingsAsync(guildId, ct);
+        var choice = await db.MemberTrackingChoiceAsync(guildId, userId, ct);
+        if (!TrackingConsentResolver.Resolve(choice, settings.BackgroundTrackingOptIn).Background)
+        {
+            return;
+        }
+
         var alreadyRecorded = await db.MessageRecordedAsync(messageId, ct);
         if (alreadyRecorded)
         {
@@ -47,6 +68,111 @@ public class ActivityService(MusterDbContext db)
 
         rollup.MessageCount++;
 
+        // Reward: Reward-mode channels mint POINTS per reward event, gated by messages-per-point, a cooldown,
+        // and a per-day cap (any of which may be off). Dedupe above means this runs once per unique message.
+        if (channel.Mode == TrackedChannelMode.Reward
+            && channel.PointsPerMessage > 0
+            && await auth.IsParticipantAsync(guildId, userId, ct))
+        {
+            await TryRewardMessageAsync(channel, userId, messageId, timestamp, ct);
+        }
+
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Delete raw <see cref="ActivityRecord"/> rows older than each guild's <c>ActivityRetentionDays</c>. Daily
+    /// rollups are kept, so stats and leaderboards are unaffected — only the line-item log is compacted. Returns
+    /// how many rows were deleted. Run on a daily sweep.
+    /// </summary>
+    public async Task<int> PruneOldRecordsAsync(DateTimeOffset? at = null, CancellationToken ct = default)
+    {
+        var now = at ?? DateTimeOffset.UtcNow;
+        var total = 0;
+
+        foreach (var guild in await db.ListActiveGuildsAsync(ct))
+        {
+            var days = guild.Settings.ActivityRetentionDays;
+            if (days <= 0)
+            {
+                continue;
+            }
+
+            var cutoff = now.AddDays(-days);
+            var stale = await db.StaleActivityRecordsAsync(guild.Id, cutoff, ct);
+            if (stale.Count > 0)
+            {
+                db.ActivityRecords.RemoveRange(stale);
+                await db.SaveChangesAsync(ct);
+                total += stale.Count;
+            }
+        }
+
+        return total;
+    }
+
+    private async Task TryRewardMessageAsync(
+        GuildChannel channel, ulong userId, ulong messageId, DateTimeOffset now, CancellationToken ct)
+    {
+        var state = await db.FindMessageRewardStateAsync(channel.GuildId, userId, channel.ChannelId, ct);
+        if (state is null)
+        {
+            state = new MessageRewardState { GuildId = channel.GuildId, UserId = userId, ChannelId = channel.ChannelId };
+            db.MessageRewardStates.Add(state);
+        }
+
+        state.MessagesSinceAward++;
+
+        // messages-per-point gate
+        var perPoint = Math.Max(1, channel.MessagesPerPoint);
+        if (state.MessagesSinceAward < perPoint)
+        {
+            return;
+        }
+
+        // cooldown gate (messages keep counting; the reward just waits until the window passes)
+        if (channel.MessageCooldownSeconds > 0
+            && state.LastRewardAt is { } last
+            && now - last < TimeSpan.FromSeconds(channel.MessageCooldownSeconds))
+        {
+            return;
+        }
+
+        // daily-cap gate
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        if (state.AwardedDate != today)
+        {
+            state.AwardedDate = today;
+            state.AwardedPointsToday = 0;
+        }
+
+        var mult = await multipliers.LoadAsync(channel.GuildId, ct);
+        var factor = mult.IsEmpty
+            ? 1m
+            : mult.Factor(MultiplierScope.Messages, now, (await db.RoleIdsByUserAsync(channel.GuildId, [userId], ct)).GetValueOrDefault(userId));
+        var points = (int)Math.Floor(channel.PointsPerMessage * factor);
+        if (points <= 0)
+        {
+            return; // a sub-1 multiplier floored the award to nothing
+        }
+
+        if (channel.MessageDailyCapPoints > 0)
+        {
+            var remaining = channel.MessageDailyCapPoints - state.AwardedPointsToday;
+            if (remaining <= 0)
+            {
+                return;
+            }
+
+            points = Math.Min(points, remaining);
+        }
+
+        state.MessagesSinceAward -= perPoint;
+        state.LastRewardAt = now;
+        state.AwardedPointsToday += points;
+
+        await awards.StagePointsAsync(
+            channel.GuildId, userId, points, CurrencyLedgerSource.Background,
+            $"bgmsg:{messageId}", "Message activity", ct);
     }
 }

@@ -4,12 +4,12 @@
 @inherits GuildMemberComponentBase
 @inject IQuestReadService Reads
 @inject TimeZoneService TimeZones
-@inject CurrencyAdminService CurrencyAdmin
+@inject ICurrencyAdminService CurrencyAdmin
 @inject Wolverine.IMessageBus Bus
 @using Muster.Domain.Entities
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
-@using Muster.Infrastructure.Services.Ledger
+@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Platform
 @using Muster.Infrastructure.Commands.Quests
 @using Muster.Infrastructure.Services.Quests

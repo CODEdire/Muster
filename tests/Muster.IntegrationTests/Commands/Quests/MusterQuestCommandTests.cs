@@ -8,7 +8,7 @@ using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Discord;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Platform;
@@ -53,7 +53,7 @@ public class MusterQuestCommandTests
     {
         using var db = await SeededAsync();
         var publisher = new FakePublisher();
-        var sut = new MusterCommandService(new MusterService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db)), publisher);
+        var sut = new MusterCommandService(new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)), publisher);
 
         var result = await sut.CreateAsync(1, channelId: 500, prompt: "Roll call", emoji: "✅", reward: 10, capacity: null);
 
@@ -72,7 +72,7 @@ public class MusterQuestCommandTests
     {
         using var db = await SeededAsync();
         var publisher = new FakePublisher();
-        var sut = new MusterCommandService(new MusterService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db)), publisher);
+        var sut = new MusterCommandService(new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)), publisher);
 
         Assert.True((await sut.CreateAsync(1, 500, "", "✅", 10, null)).IsError);
         Assert.True((await sut.CreateAsync(1, 500, "p", "✅", -1, null)).IsError);
@@ -86,7 +86,7 @@ public class MusterQuestCommandTests
     public async Task Quest_PostClaimSubmitApprove_AwardsMember()
     {
         using var db = await SeededAsync();
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var quests = new QuestService(db, awards, new GuildAuthorizationService(db), new RecordingMessageBus());
 
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
@@ -127,7 +127,7 @@ public class MusterQuestCommandTests
 
     private static QuestCommandHarness NewBoard(MusterDbContext db)
     {
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         var quests = new QuestService(db, awards, auth, new RecordingMessageBus());
         return new QuestCommandHarness(db, auth, quests, new QuestReadService(db));

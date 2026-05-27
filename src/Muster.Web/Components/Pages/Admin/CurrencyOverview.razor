@@ -1,0 +1,129 @@
+@page "/guilds/{GuildIdRaw}/currency-overview"
+@layout GuildLayout
+@inherits GuildAdminComponentBase
+@inject ICurrencyReadService Reader
+@inject WebGuildService Guilds
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+
+<PageTitle>Currency overview — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need officer or admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Currency overview</h1>
+        <p class="subtitle">Supply, circulation, and movement for any currency in this server.</p>
+    </div>
+
+    @if (_currencies.Count == 0)
+    {
+        <div class="panel glass empty">No currencies are configured in this server yet.</div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <EditForm class="form-grid" Model="this" FormName="overview-currency" OnValidSubmit="ReloadAsync">
+                <label>Currency
+                    <InputSelect @bind-Value="Code">
+                        @foreach (var c in _currencies)
+                        {
+                            <option value="@c.Code">@c.Code — @c.Name</option>
+                        }
+                    </InputSelect>
+                </label>
+                <div class="btn-row"><button type="submit">Show</button></div>
+            </EditForm>
+        </div>
+
+        @if (_overview is not null)
+        {
+            <div class="stat-grid">
+                <div class="card glass stat"><span class="label">In circulation</span><span class="num">@_overview.Supply.Circulating.ToString("N0")</span><span class="subtitle">member-held</span></div>
+                <div class="card glass stat"><span class="label">Held in escrow</span><span class="num">@_overview.Supply.Escrow.ToString("N0")</span><span class="subtitle">house account</span></div>
+                <div class="card glass stat"><span class="label">Holders</span><span class="num">@_overview.Supply.Holders.ToString("N0")</span><span class="subtitle">members with a balance</span></div>
+                <div class="card glass stat"><span class="label">Total minted</span><span class="num">@_overview.Supply.Minted.ToString("N0")</span><span class="subtitle">all-time inflow</span></div>
+                <div class="card glass stat"><span class="label">Total removed</span><span class="num">@_overview.Supply.Removed.ToString("N0")</span><span class="subtitle">all-time outflow</span></div>
+            </div>
+
+            <div class="panel glass">
+                <h2>Top holders</h2>
+                @if (_overview.TopHolders.Count == 0)
+                {
+                    <p class="subtitle">No balances yet.</p>
+                }
+                else
+                {
+                    <table class="leaderboard">
+                        <thead><tr><th>#</th><th>Member</th><th>Balance</th></tr></thead>
+                        <tbody>
+                            @foreach (var h in _overview.TopHolders)
+                            {
+                                <tr><td>@h.Rank</td><td>@h.DisplayName</td><td>@h.Total.ToString("N0")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="panel glass">
+                <h2>Recent movement</h2>
+                @if (_overview.Recent.Count == 0)
+                {
+                    <p class="subtitle">No movement yet.</p>
+                }
+                else
+                {
+                    <table class="leaderboard">
+                        <thead><tr><th>Member</th><th>Amount</th><th>Source</th><th>When</th><th>Reason</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in _overview.Recent)
+                            {
+                                <tr>
+                                    <td>@m.DisplayName</td>
+                                    <td class="@(m.Amount < 0 ? "neg" : "pos")">@(m.Amount >= 0 ? "+" : "")@m.Amount.ToString("N0")</td>
+                                    <td>@m.Source</td>
+                                    <td>@m.OccurredAt.UtcDateTime.ToString("g") UTC</td>
+                                    <td>@m.Reason</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    // Read-only; officer is enough to view economy health.
+    protected override bool OfficerSufficient => true;
+
+    [SupplyParameterFromForm(FormName = "overview-currency")] private string? Code { get; set; }
+
+    private IReadOnlyList<CurrencyInfo> _currencies = [];
+    private Muster.Infrastructure.Services.Web.CurrencyOverview? _overview;
+
+    protected override async Task LoadAsync()
+    {
+        _currencies = await Reader.GetCurrenciesAsync(GuildId);
+        if (_currencies.Count == 0)
+        {
+            return;
+        }
+
+        // Default to POINTS when present, else the first currency.
+        if (string.IsNullOrWhiteSpace(Code) || _currencies.All(c => c.Code != Code))
+        {
+            Code = _currencies.FirstOrDefault(c => c.Code == "POINTS")?.Code ?? _currencies[0].Code;
+        }
+
+        _overview = await Guilds.GetCurrencyOverviewAsync(GuildId, Code!);
+    }
+
+    private Task ReloadAsync() => LoadAsync();
+}

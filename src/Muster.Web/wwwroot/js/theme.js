@@ -29,8 +29,13 @@
         syncButtons();
     };
 
-    document.addEventListener("DOMContentLoaded", function () {
+    function reinit() {
         apply(current());
         syncButtons();
-    });
+    }
+
+    // Re-apply after Blazor enhanced navigation (the DOMContentLoaded handler won't refire).
+    window.musterReinitTheme = reinit;
+
+    document.addEventListener("DOMContentLoaded", reinit);
 })();

@@ -112,8 +112,8 @@ public class MemberSyncService(MusterDbContext db)
         }
 
         var ids = members.Select(m => m.UserId).ToList();
-        var users = await db.Users.Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);
-        var existing = await db.GuildMembers.Where(m => m.GuildId == guildId && ids.Contains(m.UserId)).ToDictionaryAsync(m => m.UserId, ct);
+        var users = await db.UsersByIdAsync(ids, ct);
+        var existing = await db.MembersByIdAsync(guildId, ids, ct);
 
         foreach (var s in members)
         {

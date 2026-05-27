@@ -6,7 +6,7 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Persistence;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
@@ -28,7 +28,6 @@ public class AuditMiddlewareTests
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddDbContext<MusterDbContext>(o => o.UseInMemoryDatabase(dbName));
         builder.Services.AddScoped<GuildAuthorizationService>();
-        builder.Services.AddScoped<ICurrencyEventSink, NullCurrencyEventSink>();
         builder.Services.AddScoped<ICurrencyService, CurrencyService>();
         builder.Services.AddScoped<IQuestService, QuestService>();
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();

@@ -16,6 +16,14 @@ public static class WolverineExtensions
     /// <summary>Durable SQL queue the quest lifecycle events flow through to reach the bot's channel board.</summary>
     public const string QuestBoardQueue = "quest-board";
 
+    /// <summary>Durable SQL queue currency movements flow through to reach the bot's DM receipts (a grant from
+    /// web/API still notifies the recipient).</summary>
+    public const string CurrencyEventsQueue = "currency-events";
+
+    /// <summary>Durable SQL queue a web-triggered "sync members from Discord" flows through to reach the bot (only it
+    /// holds the gateway client to pull the roster).</summary>
+    public const string MemberSyncQueue = "member-sync";
+
     /// <summary>
     /// Configures the Wolverine command/query bus and discovers handlers in the Infrastructure assembly.
     /// When a SQL connection is available it enables the durable outbox/inbox (EF Core + SQL Server) so
@@ -23,11 +31,12 @@ public static class WolverineExtensions
     /// dev without a database). No external broker in v1 — contracts are broker-agnostic so Azure Service
     /// Bus can be enabled later without handler changes.
     ///
-    /// <paramref name="listenForQuestBoard"/> is set only by the <b>Bot</b> host: quest lifecycle events are
-    /// routed over a durable SQL queue (so a quest changed from web/API/the sweep still reaches the bot), and
-    /// only the bot listens on it + renders the Discord channel board.
+    /// <paramref name="listenForQuestBoard"/> and <paramref name="listenForCurrencyEvents"/> are set only by the
+    /// <b>Bot</b> host: quest lifecycle events and currency movements are routed over durable SQL queues (so a change
+    /// from web/API/the sweep still reaches the bot), and only the bot listens on them + renders the Discord channel
+    /// board / sends DM receipts.
     /// </summary>
-    public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, bool listenForQuestBoard = false, string connectionName = "musterdb")
+    public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, bool listenForQuestBoard = false, bool listenForCurrencyEvents = false, bool listenForMemberSync = false, string connectionName = "musterdb")
         where TBuilder : IHostApplicationBuilder
     {
         var connectionString = builder.Configuration.GetConnectionString(connectionName);
@@ -66,6 +75,23 @@ public static class WolverineExtensions
                 if (listenForQuestBoard)
                 {
                     opts.ListenToSqlServerQueue(QuestBoardQueue);
+                }
+
+                // Currency movements drive DM receipts (grant received / staff mint+adjust), which only the Bot can
+                // deliver. Route them over a durable SQL queue so a grant from any origin reaches the bot; only the
+                // bot listens + handles (CurrencyDmHandler in the bot assembly). Pruning checkpoints bypass StageAsync,
+                // so the firehose excludes them.
+                opts.PublishMessage<CurrencyMovementRecorded>().ToSqlServerQueue(CurrencyEventsQueue);
+                if (listenForCurrencyEvents)
+                {
+                    opts.ListenToSqlServerQueue(CurrencyEventsQueue);
+                }
+
+                // Web-triggered member sync runs on the bot (it owns the gateway client to pull the roster from Discord).
+                opts.PublishMessage<SyncGuildMembers>().ToSqlServerQueue(MemberSyncQueue);
+                if (listenForMemberSync)
+                {
+                    opts.ListenToSqlServerQueue(MemberSyncQueue);
                 }
             }
         });

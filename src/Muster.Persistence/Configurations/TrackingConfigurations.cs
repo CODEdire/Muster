@@ -41,3 +41,54 @@ public class DailyActivityRollupConfiguration : IEntityTypeConfiguration<DailyAc
         e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId, x.Date }).IsUnique();
     }
 }
+
+public class BackgroundVoicePresenceConfiguration : IEntityTypeConfiguration<BackgroundVoicePresence>
+{
+    public void Configure(EntityTypeBuilder<BackgroundVoicePresence> e)
+    {
+        e.HasKey(x => x.Id);
+        // One accrual row per member per channel; reconcile looks it up by this key.
+        e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId }).IsUnique();
+    }
+}
+
+public class SeasonParticipationConfiguration : IEntityTypeConfiguration<SeasonParticipation>
+{
+    public void Configure(EntityTypeBuilder<SeasonParticipation> e)
+    {
+        e.HasKey(x => x.Id);
+        // One accumulator per member per season.
+        e.HasIndex(x => new { x.GuildId, x.UserId, x.SeasonId }).IsUnique();
+    }
+}
+
+public class MessageRewardStateConfiguration : IEntityTypeConfiguration<MessageRewardState>
+{
+    public void Configure(EntityTypeBuilder<MessageRewardState> e)
+    {
+        e.HasKey(x => x.Id);
+        // One anti-spam state per member per channel.
+        e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId }).IsUnique();
+    }
+}
+
+public class SessionOptOutConfiguration : IEntityTypeConfiguration<SessionOptOut>
+{
+    public void Configure(EntityTypeBuilder<SessionOptOut> e)
+    {
+        e.HasKey(x => x.Id);
+        // One opt-out per member per session.
+        e.HasIndex(x => new { x.SessionId, x.UserId }).IsUnique();
+    }
+}
+
+public class RewardMultiplierConfiguration : IEntityTypeConfiguration<RewardMultiplier>
+{
+    public void Configure(EntityTypeBuilder<RewardMultiplier> e)
+    {
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => new { x.GuildId, x.Enabled });
+        e.Property(x => x.Name).HasMaxLength(100);
+        e.Property(x => x.Factor).HasPrecision(6, 3);
+    }
+}

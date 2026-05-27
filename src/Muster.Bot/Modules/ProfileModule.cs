@@ -6,9 +6,11 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Muster.Bot.Modules;
 
-/// <summary>Per-user preferences. The time zone controls how quest start/expiry dates you enter are read.</summary>
+/// <summary>Per-user preferences. The time zone controls how quest start/expiry dates you enter are read.
+/// (Tracking privacy moved to <c>/track privacy</c>.)</summary>
 public class ProfileModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
+
     [SlashCommand("timezone", "Show your time zone — or set it by picking one (controls how quest dates you enter are read).")]
     public Task TimeZoneAsync(
         [SlashCommandParameter(Name = "zone", Description = "Pick a zone to set it — leave empty to see your current one",

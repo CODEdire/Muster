@@ -12,46 +12,46 @@ namespace Muster.Persistence.UnitTests.Configurations;
 /// </summary>
 public class ConstraintTests
 {
-    private static LedgerEntry Entry(Guid currencyId, string? sourceId) => new()
+    private static CurrencyLedgerEntry Entry(Guid currencyId, string? sourceId) => new()
     {
         GuildId = 1,
         UserId = 10,
         CurrencyId = currencyId,
         Amount = 5,
-        SourceType = LedgerSourceType.Quest,
+        SourceType = CurrencyLedgerSource.Quest,
         SourceId = sourceId,
         OccurredAt = DateTimeOffset.UtcNow,
         Reason = "t",
     };
 
     [Fact]
-    public async Task LedgerEntry_DuplicateSource_IsRejected()
+    public async Task CurrencyLedgerEntry_DuplicateSource_IsRejected()
     {
         using var sqlite = new SqliteDb();
         var db = sqlite.Context;
         var currencyId = Guid.NewGuid();
 
-        db.LedgerEntries.Add(Entry(currencyId, "quest:1:user:10"));
+        db.CurrencyLedgerEntries.Add(Entry(currencyId, "quest:1:user:10"));
         await db.SaveChangesAsync();
 
         // Same (SourceType, SourceId) — the idempotency index must reject the second insert.
-        db.LedgerEntries.Add(Entry(currencyId, "quest:1:user:10"));
+        db.CurrencyLedgerEntries.Add(Entry(currencyId, "quest:1:user:10"));
         await Assert.ThrowsAnyAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
     [Fact]
-    public async Task LedgerEntry_NullSource_AllowsDuplicates()
+    public async Task CurrencyLedgerEntry_NullSource_AllowsDuplicates()
     {
         using var sqlite = new SqliteDb();
         var db = sqlite.Context;
         var currencyId = Guid.NewGuid();
 
         // The unique index is filtered to "SourceId IS NOT NULL", so connector entries (null source) stack.
-        db.LedgerEntries.Add(Entry(currencyId, null));
-        db.LedgerEntries.Add(Entry(currencyId, null));
+        db.CurrencyLedgerEntries.Add(Entry(currencyId, null));
+        db.CurrencyLedgerEntries.Add(Entry(currencyId, null));
         await db.SaveChangesAsync();
 
-        Assert.Equal(2, await db.LedgerEntries.CountAsync());
+        Assert.Equal(2, await db.CurrencyLedgerEntries.CountAsync());
     }
 
     [Fact]

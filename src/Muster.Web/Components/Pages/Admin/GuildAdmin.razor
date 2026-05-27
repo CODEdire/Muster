@@ -1,4 +1,5 @@
 @page "/guilds/{GuildIdRaw}/admin"
+@layout GuildLayout
 @inherits GuildAdminComponentBase
 
 <PageTitle>Admin — Muster</PageTitle>
@@ -21,16 +22,20 @@ else if (State == AccessState.Ready)
 
     <div class="card-grid">
         <a class="card glass" href="/guilds/@GuildId/award">
-            <h3>Award points</h3>
-            <p>Grant points to a member for an off-platform contribution.</p>
+            <h3>Award / adjust</h3>
+            <p>Mint a currency to a member, or correct a balance (negative deducts).</p>
         </a>
-        <a class="card glass" href="/guilds/@GuildId/quests">
-            <h3>Quest board</h3>
-            <p>Post quests, review submissions, and resolve disputes.</p>
+        <a class="card glass" href="/guilds/@GuildId/quest-settings">
+            <h3>Quest settings</h3>
+            <p>Board channels, approval workflow, auto-resolve timeouts &amp; limits, and tier bonus points.</p>
         </a>
         <a class="card glass" href="/guilds/@GuildId/seasons">
             <h3>Seasons</h3>
             <p>Start a new season or end the current one.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/tracking">
+            <h3>Tracking</h3>
+            <p>Monitored channels, background &amp; session reward rates, anti-AFK guards, and privacy defaults.</p>
         </a>
         <a class="card glass" href="/guilds/@GuildId/config">
             <h3>Role mapping</h3>
@@ -40,9 +45,21 @@ else if (State == AccessState.Ready)
             <h3>Currencies</h3>
             <p>Create and configure currencies like a spendable COIN.</p>
         </a>
+        <a class="card glass" href="/guilds/@GuildId/currency-overview">
+            <h3>Currency overview</h3>
+            <p>Supply, circulation, top holders, and the recent movement feed for any currency.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/members">
+            <h3>Members</h3>
+            <p>Browse balances, view any member's wallet, and bulk mint/adjust by selection or role.</p>
+        </a>
         <a class="card glass" href="/guilds/@GuildId/api-clients">
             <h3>API clients</h3>
             <p>Issue keys for external systems to call the Muster API.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/webhooks">
+            <h3>Webhooks</h3>
+            <p>POST every currency movement to your own endpoint, HMAC-signed, to mirror the economy out.</p>
         </a>
         <a class="card glass" href="/guilds/@GuildId/audit">
             <h3>Audit log</h3>

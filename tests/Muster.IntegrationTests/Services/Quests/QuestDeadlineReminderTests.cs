@@ -4,7 +4,7 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Quests;
 using Muster.IntegrationTests.TestSupport;
@@ -66,7 +66,7 @@ public class QuestDeadlineReminderTests
         db.Quests.Add(quest);
         await db.SaveChangesAsync();
 
-        var svc = new QuestService(db, new CurrencyService(db, new NullCurrencyEventSink()), new GuildAuthorizationService(db), new RecordingMessageBus());
+        var svc = new QuestService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RecordingMessageBus());
         var result = await svc.EditAsync(quest.Id, name: null, description: null, reward: null, deadline: now.AddHours(48), tier: null, capacity: null);
 
         Assert.Equal(QuestResult.Ok, result);

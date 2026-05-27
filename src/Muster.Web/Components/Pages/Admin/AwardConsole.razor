@@ -1,8 +1,9 @@
 @page "/guilds/{GuildIdRaw}/award"
+@layout GuildLayout
 @inherits GuildAdminComponentBase
 @inject WebAdminService Admin
-@inject AwardCommandService Awards
-@inject CurrencyAdminService CurrencyAdmin
+@inject Wolverine.IMessageBus Bus
+@inject ICurrencyAdminService CurrencyAdmin
 
 <PageTitle>Award — Muster</PageTitle>
 
@@ -14,8 +15,9 @@ else if (State == AccessState.Ready)
 {
     <div class="page-head">
         <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
-        <h1>Award</h1>
-        <p class="subtitle">Grant a currency to a member for an off-platform contribution.</p>
+        <h1>Award / adjust</h1>
+        <p class="subtitle">Mint a currency to a member for an off-platform contribution, or correct a balance.
+            A positive amount mints; a negative amount deducts.</p>
     </div>
 
     <div class="panel glass">
@@ -42,17 +44,17 @@ else if (State == AccessState.Ready)
                     }
                 </InputSelect>
             </label>
-            <label>Amount <InputNumber @bind-Value="Input.Amount" /></label>
+            <label>Amount (negative deducts) <InputNumber @bind-Value="Input.Amount" /></label>
             <label>Reason <InputText @bind-Value="Input.Reason" /></label>
-            <div class="btn-row"><button type="submit">Award</button></div>
+            <div class="btn-row"><button type="submit">Apply</button></div>
         </EditForm>
     </div>
 }
 
 @code {
-@using Muster.Infrastructure.Services.Ledger
+@using Muster.Contracts
+@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
-@using Muster.Infrastructure.Commands.Ledger
     [SupplyParameterFromForm] private AwardInput Input { get; set; } = new();
 
     private IReadOnlyList<MemberOption> _members = [];
@@ -66,14 +68,38 @@ else if (State == AccessState.Ready)
 
     private async Task SubmitAsync()
     {
-        var result = await Awards.AwardCurrencyAsync(GuildId, UserId, Input.MemberId, Input.Currency ?? "POINTS", Input.Amount, Input.Reason ?? string.Empty);
-        if (!result.IsError)
+        if (Input.MemberId == 0)
         {
-            await AuditAsync("award", result.Message);
+            Message = "Please choose a member.";
+            return;
         }
 
-        Message = await HumanizeAsync(result.Message);
-        Input = new AwardInput();
+        if (Input.Amount == 0)
+        {
+            Message = "Amount must be non-zero (negative deducts).";
+            return;
+        }
+
+        var code = Input.Currency ?? "POINTS";
+        var reason = string.IsNullOrWhiteSpace(Input.Reason) ? "Adjustment" : Input.Reason!.Trim();
+        // Staff CQRS path (authorized + audited by the middleware): the handler treats a positive Delta as a mint and
+        // a negative Delta as a deduction, authorizing Mint vs Adjust accordingly.
+        var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, UserId, code, Input.MemberId, Input.Amount, reason));
+
+        var verb = Input.Amount > 0 ? "Awarded" : "Deducted";
+        Message = result.Ok
+            ? await HumanizeAsync($"{verb} {Math.Abs(Input.Amount)} {code.ToUpperInvariant()} {(Input.Amount > 0 ? "to" : "from")} <@{Input.MemberId}> — {reason}")
+            : result.Status switch
+            {
+                "CurrencyNotFound" => $"Unknown currency '{code}'.",
+                "Forbidden" => "You're not allowed to do that.",
+                var other => other,
+            };
+
+        if (result.Ok)
+        {
+            Input = new AwardInput();
+        }
     }
 
     public class AwardInput

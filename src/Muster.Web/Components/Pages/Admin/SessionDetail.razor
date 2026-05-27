@@ -1,0 +1,177 @@
+@page "/guilds/{GuildIdRaw}/sessions/{SessionId}"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject ParticipationReadService Participation
+@inject TrackingSessionService Sessions
+@inject Muster.Infrastructure.Services.Platform.AuditService Audit
+@inject MusterDbContext Db
+@using Muster.Domain.Enums
+@using Muster.Persistence
+@using Muster.Persistence.Queries
+@using Muster.Infrastructure.Services.Tracking
+
+<PageTitle>Session — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && _detail is null)
+{
+    <div class="panel glass empty">Session not found.</div>
+}
+else if (State == AccessState.Ready && _detail is not null)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/sessions">← Sessions</a>
+        <h1>@_detail.Name</h1>
+        <p class="subtitle">@(_detail.Active ? "🟢 Active now" : "Ended")</p>
+        @if (_detail.Active && _isStaff)
+        {
+            <EditForm Model="EndForm" FormName="end-session" OnValidSubmit="EndAsync" Enhance>
+                <input type="hidden" name="EndForm.Submitted" value="1" />
+                <button type="submit" class="btn btn-sm btn-danger">End session</button>
+            </EditForm>
+        }
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Type</div>
+            <div class="num">@(_detail.Source == TrackingSessionSource.DiscordScheduledEvent ? "Scheduled event" : "Manual")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Channel</div>
+            <div class="num">@(string.IsNullOrWhiteSpace(_detail.VoiceChannelName) ? $"#{_detail.VoiceChannelId}" : "#" + _detail.VoiceChannelName)</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Started</div>
+            <div class="num">@_detail.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">@(_detail.Active ? "Status" : "Ended")</div>
+            <div class="num">@(_detail.Active ? "Active" : _detail.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC")</div>
+        </div>
+    </div>
+
+    <div class="panel glass">
+        <h2>Rules</h2>
+        <p class="subtitle">
+            Anti-AFK guards for this session (for reference):
+            pause while muted — <strong>@(_detail.Guards.Unmuted() ? "on" : "off")</strong>;
+            pause while deafened — <strong>@(_detail.Guards.Undeafened() ? "on" : "off")</strong>;
+            pause while alone — <strong>@(_detail.Guards.NotAlone() ? "on" : "off")</strong>.
+        </p>
+    </div>
+
+    <div class="panel glass">
+        <h2>Attendance (@_detail.Members.Count)</h2>
+        @if (_detail.Members.Count == 0)
+        {
+            <p class="empty">No attendance recorded.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Member</th><th>Joined</th><th>Minutes</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var m in _detail.Members)
+                    {
+                        <tr>
+                            <td>@Name(m.UserId)</td>
+                            <td>@m.FirstJoinedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                            <td>@m.TotalMinutes</td>
+                            <td>@Status(m)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+
+    [SupplyParameterFromForm(FormName = "end-session")] private EndInput EndForm { get; set; } = new();
+
+    private SessionDetailView? _detail;
+    private Dictionary<ulong, string> _names = [];
+    private bool _isStaff;
+
+    protected override async Task LoadAsync()
+    {
+        if (!Guid.TryParse(SessionId, out var id))
+        {
+            return;
+        }
+
+        _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
+        _detail = await Participation.SessionDetailAsync(GuildId, id);
+        if (_detail is not null)
+        {
+            _names = await Db.UserDisplayNameMapAsync(_detail.Members.Select(m => m.UserId).ToList());
+        }
+    }
+
+    private async Task EndAsync()
+    {
+        if (!_isStaff || !Guid.TryParse(SessionId, out var id))
+        {
+            return;
+        }
+
+        // Guard: only close a session that's active and belongs to this guild (no cross-guild close).
+        if (!await Db.IsActiveSessionAsync(GuildId, id))
+        {
+            Message = "That session is no longer active.";
+            await LoadAsync();
+            return;
+        }
+
+        if (await Sessions.CloseAsync(id))
+        {
+            await Audit.RecordAsync(GuildId, UserId, "track.session.stop", $"web: {id}");
+            Message = "Session ended and attendance awarded.";
+        }
+        else
+        {
+            Message = "Couldn't end that session.";
+        }
+
+        await LoadAsync();
+    }
+
+    public class EndInput
+    {
+        public string? Submitted { get; set; }
+    }
+
+    private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");
+
+    /// <summary>Active = accruing; Paused = still present but muted/alone; Left = stale last-seen (disconnected).</summary>
+    private string Status(SessionMemberRow m)
+    {
+        if (_detail is not { Active: true })
+        {
+            return "—";
+        }
+
+        if (m.PresentNow)
+        {
+            return "🟢 Active";
+        }
+
+        if (m.LastSeenAt is { } seen && DateTimeOffset.UtcNow - seen < TimeSpan.FromMinutes(6))
+        {
+            return "🟡 Present (not earning)";
+        }
+
+        return m.LastSeenAt is { } last ? $"⚪ Left {last.UtcDateTime:HH:mm} UTC" : "⚪ Left";
+    }
+}

@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Persistence;
 using Muster.Infrastructure;
 using Xunit;
-using Muster.Infrastructure.Services.Ledger;
+using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Web;
 
@@ -16,7 +16,7 @@ public class WebGuildServiceTests
             .Options);
 
     private static WebGuildService Sut(MusterDbContext db)
-        => new(db, new GuildAuthorizationService(db), new ScoreQueryService(db));
+        => new(db, new GuildAuthorizationService(db), new CurrencyReadService(db));
 
     [Fact]
     public async Task GetGuildsForUser_ReturnsMembershipsAndOwned_WithAdminFlag()
@@ -55,13 +55,13 @@ public class WebGuildServiceTests
         using var db = NewDb();
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
-        var awards = new CurrencyService(db, new NullCurrencyEventSink());
+        var awards = new CurrencyService(db, new RecordingMessageBus());
         var sync = new MemberSyncService(db);
 
         await sync.UpsertAsync(1, 10, "alice", "Alice", null);
         await sync.UpsertAsync(1, 20, "bob", null, null);
-        await awards.AwardAsync(1, 10, points.Id, 30, Muster.Domain.Enums.LedgerSourceType.ManualAward, "a", "r");
-        await awards.AwardAsync(1, 20, points.Id, 70, Muster.Domain.Enums.LedgerSourceType.ManualAward, "b", "r");
+        await awards.AwardAsync(1, 10, points.Id, 30, Muster.Domain.Enums.CurrencyLedgerSource.ManualAward, "a", "r");
+        await awards.AwardAsync(1, 20, points.Id, 70, Muster.Domain.Enums.CurrencyLedgerSource.ManualAward, "b", "r");
 
         var board = await Sut(db).GetLeaderboardAsync(1);
 
@@ -69,5 +69,33 @@ public class WebGuildServiceTests
         Assert.Equal(20ul, board[0].UserId);          // 70 points first
         Assert.Equal("bob", board[0].DisplayName);
         Assert.Equal("Alice", board[1].DisplayName);  // GlobalName preferred over username
+    }
+
+    [Fact]
+    public async Task GetCurrencyOverview_SplitsEscrow_ExcludesHouseFromHolders_AndNamesMembers()
+    {
+        using var db = NewDb();
+        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
+        var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var sync = new MemberSyncService(db);
+
+        await sync.UpsertAsync(1, 10, "alice", "Alice", null);
+        await sync.UpsertAsync(1, 20, "bob", null, null);
+        await awards.AwardAsync(1, 10, points.Id, 100, Muster.Domain.Enums.CurrencyLedgerSource.ManualAward, "a", "r");
+        await awards.AwardAsync(1, 20, points.Id, 50, Muster.Domain.Enums.CurrencyLedgerSource.ManualAward, "b", "r");
+        // House/escrow leg (user 0) — counts toward escrow, never a "holder".
+        await awards.AwardAsync(1, CurrencyService.EscrowAccountUserId, points.Id, 30, Muster.Domain.Enums.CurrencyLedgerSource.Quest, "e", "hold");
+
+        var overview = await Sut(db).GetCurrencyOverviewAsync(1, "POINTS");
+
+        Assert.NotNull(overview);
+        Assert.Equal(150, overview!.Supply.Circulating); // members only
+        Assert.Equal(30, overview.Supply.Escrow);
+        Assert.Equal(2, overview.Supply.Holders);
+        Assert.DoesNotContain(overview.TopHolders, h => h.UserId == CurrencyService.EscrowAccountUserId);
+        Assert.Equal(10ul, overview.TopHolders[0].UserId);   // 100 first
+        Assert.Equal("Alice", overview.TopHolders[0].DisplayName);
+        Assert.Equal(3, overview.Recent.Count);              // all three movements in the feed
     }
 }

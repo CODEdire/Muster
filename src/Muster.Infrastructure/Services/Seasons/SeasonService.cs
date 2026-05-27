@@ -2,14 +2,16 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Currencies;
 
 namespace Muster.Infrastructure.Services.Seasons;
 
 /// <summary>
 /// Manages scoring seasons. Starting a new season archives the current one, so seasonal POINTS
-/// leaderboards reset while spendable currencies (which aren't season-scoped) persist.
+/// leaderboards reset while spendable currencies (which aren't season-scoped) persist. Archiving a season
+/// also folds that season's ledger history into carry-forward checkpoints (balances preserved).
 /// </summary>
-public class SeasonService(MusterDbContext db)
+public class SeasonService(MusterDbContext db, ILedgerPruneService? prune = null)
 {
     public Task<Season?> GetActiveAsync(ulong guildId, CancellationToken ct = default)
         => db.FindActiveSeasonAsync(guildId, ct);
@@ -54,6 +56,13 @@ public class SeasonService(MusterDbContext db)
 
         active.Status = SeasonStatus.Archived;
         active.EndsAt = DateTimeOffset.UtcNow;
+
+        // Compact the archived season's ledger history into carry-forward checkpoints (balances preserved).
+        if (prune is not null)
+        {
+            await prune.CheckpointSeasonAsync(guildId, active.Id, ct);
+        }
+
         return active;
     }
 }

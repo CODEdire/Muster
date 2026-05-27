@@ -1,8 +1,11 @@
 @page "/guilds/{GuildIdRaw}/currencies"
+@layout GuildLayout
 @inherits GuildAdminComponentBase
-@inject CurrencyAdminService CurrencyAdmin
+@inject ICurrencyAdminService CurrencyAdmin
+@inject ICurrencyService Currency
+@using Muster.Domain.Entities
 @using Muster.Domain.Enums
-@using Muster.Infrastructure.Services.Ledger
+@using Muster.Infrastructure.Services.Currencies
 
 <PageTitle>Currencies — Muster</PageTitle>
 
@@ -25,9 +28,12 @@ else if (State == AccessState.Ready)
     }
 
     <div class="panel glass">
-        <h2>Currencies</h2>
+        <div class="panel-head">
+            <h2>Currencies</h2>
+            <a class="btn" href="/guilds/@GuildId/currencies/new">+ New currency</a>
+        </div>
         <table class="leaderboard">
-            <thead><tr><th>Code</th><th>Name</th><th>Seasonal</th><th>Spendable</th><th>Mode</th></tr></thead>
+            <thead><tr><th>Code</th><th>Name</th><th>Seasonal</th><th>Spendable</th><th>Mode</th><th>Connector</th><th></th></tr></thead>
             <tbody>
                 @foreach (var c in _currencies)
                 {
@@ -37,6 +43,8 @@ else if (State == AccessState.Ready)
                         <td>@(c.IsSeasonal ? "yes" : "no")</td>
                         <td>@(c.IsSpendable ? "yes" : "no")</td>
                         <td>@c.Mode</td>
+                        <td>@ConnectorSummary(c)</td>
+                        <td><a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/currencies/@c.Id/edit">Edit</a></td>
                     </tr>
                 }
             </tbody>
@@ -44,51 +52,38 @@ else if (State == AccessState.Ready)
     </div>
 
     <div class="panel glass">
-        <h2>Create a currency</h2>
-        <EditForm class="form-grid" Model="Input" FormName="create-currency" OnValidSubmit="CreateAsync">
-            <label>Code <InputText @bind-Value="Input.Code" placeholder="COIN" /></label>
-            <label>Name <InputText @bind-Value="Input.Name" placeholder="Coin" /></label>
-            <label><InputCheckbox @bind-Value="Input.IsSpendable" /> Spendable (wallet that persists across seasons)</label>
-            <label><InputCheckbox @bind-Value="Input.IsSeasonal" /> Seasonal (resets each season)</label>
-            <label>Mode
-                <InputSelect @bind-Value="Input.Mode">
-                    <option value="@CurrencyMode.Internal">Internal — Muster owns the balance</option>
-                    <option value="@CurrencyMode.External">External — an outside system owns it</option>
-                    <option value="@CurrencyMode.Hybrid">Hybrid — Muster mints, external owns spend</option>
-                </InputSelect>
-            </label>
-            <div class="btn-row"><button type="submit">Create</button></div>
+        <h2>Maintenance</h2>
+        <p class="subtitle">Recompute every wallet balance in this server from the ledger (the ledger is the source
+            of truth; this fixes any cached-balance drift).</p>
+        <EditForm Model="this" FormName="rebuild-wallets" OnValidSubmit="RebuildAsync">
+            <div class="btn-row"><button type="submit" class="btn-ghost">Rebuild wallets</button></div>
         </EditForm>
     </div>
 }
 
 @code {
-    [SupplyParameterFromForm] private CreateInput Input { get; set; } = new();
-
     private IReadOnlyList<CurrencyView> _currencies = [];
 
     protected override async Task LoadAsync()
         => _currencies = await CurrencyAdmin.ListAsync(GuildId);
 
-    private async Task CreateAsync()
+    private static string ConnectorSummary(CurrencyView c)
     {
-        var result = await CurrencyAdmin.CreateAsync(GuildId, Input.Code ?? "", Input.Name ?? "", Input.IsSeasonal, Input.IsSpendable, Input.Mode);
-        Message = result.Message;
-        if (!result.IsError)
+        var cfg = c.Connector.Config;
+        if (c.Mode == CurrencyMode.Internal || !cfg.Enabled)
         {
-            await AuditAsync("currency.create", result.Message);
-            Input = new CreateInput();
+            return "—";
         }
 
-        await LoadAsync();
+        var actions = string.Concat(cfg.Credit.Enabled ? "C" : "", cfg.Debit.Enabled ? "D" : "", cfg.GetBalance.Enabled ? "B" : "");
+        return $"{cfg.Auth.Scheme} · {(actions.Length > 0 ? actions : "—")}";
     }
 
-    public class CreateInput
+    private async Task RebuildAsync()
     {
-        public string? Code { get; set; }
-        public string? Name { get; set; }
-        public bool IsSpendable { get; set; } = true;
-        public bool IsSeasonal { get; set; }
-        public CurrencyMode Mode { get; set; } = CurrencyMode.Internal;
+        var corrected = await Currency.RebuildWalletsAsync(GuildId);
+        Message = $"Rebuilt wallets — {corrected} balance(s) corrected.";
+        await AuditAsync("currency.rebuildWallets", Message);
+        await LoadAsync();
     }
 }
