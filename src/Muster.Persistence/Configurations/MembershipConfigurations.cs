@@ -38,3 +38,13 @@ public class GuildRoleConfiguration : IEntityTypeConfiguration<GuildRole>
     public void Configure(EntityTypeBuilder<GuildRole> e)
         => e.HasKey(x => new { x.GuildId, x.RoleId });
 }
+
+public class GuildChannelConfiguration : IEntityTypeConfiguration<GuildChannel>
+{
+    public void Configure(EntityTypeBuilder<GuildChannel> e)
+    {
+        e.HasKey(x => new { x.GuildId, x.ChannelId });
+        e.HasIndex(x => new { x.GuildId, x.Kind });
+        e.Property(x => x.Name).HasMaxLength(100);
+    }
+}

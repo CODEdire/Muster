@@ -25,6 +25,14 @@ public enum TrackedChannelKind
     Text = 1,
 }
 
+/// <summary>Kind of a synced Discord <see cref="Muster.Domain.Entities.Members.GuildChannel"/> (the local
+/// channel roster the web pickers read). Threads/categories/forums are not synced.</summary>
+public enum GuildChannelKind
+{
+    Text = 0,
+    Voice = 1,
+}
+
 /// <summary>
 /// A member's per-guild tracking preference. Governs the always-on "background" plane (active-time stats +
 /// background reward) and, at the strongest level, bounded Sessions too. <see cref="Default"/> follows the

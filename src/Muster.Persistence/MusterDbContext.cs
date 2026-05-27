@@ -15,6 +15,7 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<DiscordUser> Users => Set<DiscordUser>();
     public DbSet<GuildMember> GuildMembers => Set<GuildMember>();
     public DbSet<GuildRole> GuildRoles => Set<GuildRole>();
+    public DbSet<GuildChannel> GuildChannels => Set<GuildChannel>();
 
     public DbSet<TrackingSession> TrackingSessions => Set<TrackingSession>();
     public DbSet<VoiceAttendance> VoiceAttendance => Set<VoiceAttendance>();

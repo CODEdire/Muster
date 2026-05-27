@@ -47,6 +47,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<SeasonService>();
         builder.Services.AddScoped<MemberSyncService>();
         builder.Services.AddScoped<RoleSyncService>();
+        builder.Services.AddScoped<ChannelSyncService>();
         builder.Services.AddScoped<GuildAuthorizationService>();
         builder.Services.AddScoped<WebGuildService>();
         builder.Services.AddScoped<WebAdminService>();

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain.Entities;
+using Muster.Domain.Enums;
 
 namespace Muster.Persistence.Queries;
 
@@ -59,6 +60,23 @@ public static class MembershipQueries
     /// <summary>Map of role id → name for the given roles in a guild.</summary>
     public static Task<Dictionary<ulong, string>> RoleNameMapAsync(this MusterDbContext db, ulong guildId, List<ulong> roleIds, CancellationToken ct = default)
         => db.GuildRoles.Where(r => r.GuildId == guildId && roleIds.Contains(r.RoleId)).ToDictionaryAsync(r => r.RoleId, r => r.Name, ct);
+
+    // --- Channels ---
+
+    /// <summary>Find a synced guild channel (tracked).</summary>
+    public static Task<GuildChannel?> FindChannelAsync(this MusterDbContext db, ulong guildId, ulong channelId, CancellationToken ct = default)
+        => db.GuildChannels.FirstOrDefaultAsync(c => c.GuildId == guildId && c.ChannelId == channelId, ct);
+
+    /// <summary>All of a guild's synced channels (tracked).</summary>
+    public static Task<List<GuildChannel>> ListChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.GuildChannels.Where(c => c.GuildId == guildId).ToListAsync(ct);
+
+    /// <summary>A guild's synced channels of one kind, ordered by position then name (untracked read for pickers).</summary>
+    public static Task<List<GuildChannel>> ListChannelsByKindAsync(this MusterDbContext db, ulong guildId, GuildChannelKind kind, CancellationToken ct = default)
+        => db.GuildChannels.AsNoTracking()
+            .Where(c => c.GuildId == guildId && c.Kind == kind)
+            .OrderBy(c => c.Position ?? int.MaxValue).ThenBy(c => c.Name)
+            .ToListAsync(ct);
 
     /// <summary>Find a user (tracked).</summary>
     public static Task<DiscordUser?> FindUserAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)

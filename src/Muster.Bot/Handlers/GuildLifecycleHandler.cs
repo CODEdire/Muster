@@ -30,6 +30,14 @@ public class GuildLifecycleHandler(
             await sp.GetRequiredService<RoleSyncService>().SyncAllAsync(
                 guild.Id, guild.Roles.Values.Select(r => (r.Id, r.Name, (ulong)r.Permissions)));
 
+            // Snapshot the voice/text channel roster so the web pickers work without a live Discord call.
+            var channels = guild.Channels.Values
+                .Select(c => (Channel: c, Kind: ChannelLifecycleHandler.MapKind(c)))
+                .Where(x => x.Kind is not null)
+                .Select(x => (x.Channel.Id, x.Channel.Name, x.Kind!.Value, x.Channel.Position))
+                .ToList();
+            await sp.GetRequiredService<ChannelSyncService>().SyncAllAsync(guild.Id, channels);
+
             // Backfill the roster the GuildCreate payload already carries (needs the GuildUsers intent).
             // For guilds above Discord's large threshold this may be partial — /syncmembers pulls the rest.
             // Bots are included (with IsBot) so they can serve as API service actors; human lists filter them.
