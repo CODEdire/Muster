@@ -6,6 +6,7 @@
 @inject MusterDbContext Db
 @inject Muster.Infrastructure.Connectors.CurrencyConnectorSyncService BalanceSync
 @inject Muster.Infrastructure.Services.Currencies.ICurrencyReadService Reader
+@inject Muster.Infrastructure.Services.Tracking.ParticipationReadService Participation
 @inject Wolverine.IMessageBus Bus
 @using Microsoft.EntityFrameworkCore
 @using Muster.Contracts
@@ -35,6 +36,15 @@ else if (State == AccessState.Ready && _detail is not null)
     }
 
     <MemberPanel Detail="_detail" />
+
+    <div class="panel glass">
+        <h2>Voice participation</h2>
+        <p class="subtitle">
+            This season: <strong>@FormatDuration(_voice.SeasonMinutes)</strong>@(_voice.SeasonRank > 0 ? $" · rank #{_voice.SeasonRank}" : "")
+            · All time: <strong>@FormatDuration(_voice.AllTimeMinutes)</strong>
+        </p>
+    </div>
+
 
     <EditForm class="balance-sync-row" Model="this" FormName="sync-balances" OnValidSubmit="ForceSyncAsync">
         <button type="submit" class="btn btn-sm btn-ghost">Sync balances</button>
@@ -129,6 +139,7 @@ else if (State == AccessState.Ready && _detail is not null)
     [SupplyParameterFromForm(FormName = "notify")] private NotifyInput Notify { get; set; } = new();
 
     private MemberDetailView? _detail;
+    private Muster.Infrastructure.Services.Tracking.MemberVoiceStats _voice = new(0, 0, 0);
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private IReadOnlyList<CurrencyInfo> _spendable = [];
     private IReadOnlyList<MemberOption> _recipients = [];
@@ -147,6 +158,7 @@ else if (State == AccessState.Ready && _detail is not null)
         Send.Currency ??= _spendable.FirstOrDefault()?.Code;
 
         _detail = await Members.GetAsync(GuildId, UserId, currencyFilter: string.IsNullOrWhiteSpace(HistoryCurrency) ? null : HistoryCurrency);
+        _voice = await Participation.MemberVoiceStatsAsync(GuildId, UserId);
 
         _guildZone = await Db.Guilds.Where(g => g.Id == GuildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync() ?? TimeZoneService.Utc;
         // Prefill from the stored pref on GET only; on a form post the bound value already reflects the submission.
@@ -242,5 +254,12 @@ else if (State == AccessState.Ready && _detail is not null)
     {
         public string? Submitted { get; set; }
         public bool ReceiptsOn { get; set; }
+    }
+
+    private static string FormatDuration(int minutes)
+    {
+        var hours = minutes / 60;
+        var mins = minutes % 60;
+        return hours > 0 ? $"{hours}h {mins}m" : $"{mins}m";
     }
 }

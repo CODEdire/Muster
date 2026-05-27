@@ -8,6 +8,19 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// <summary>A member's rank in the voice-participation leaderboard.</summary>
 public record VoiceLeaderboardEntry(ulong UserId, int VoiceMinutes);
 
+/// <summary>An in-progress tracking session (live ops view).</summary>
+public record ActiveSessionView(
+    Guid Id, TrackingSessionSource Source, ulong VoiceChannelId, ulong? ScheduledEventId,
+    DateTimeOffset StartedAt, int Attendees, int PresentNow);
+
+/// <summary>A finished tracking session (history view).</summary>
+public record RecentSessionView(
+    Guid Id, TrackingSessionSource Source, ulong VoiceChannelId,
+    DateTimeOffset StartedAt, DateTimeOffset? EndedAt, int Attendees, int TotalMinutes);
+
+/// <summary>A member's own voice participation summary (self-view).</summary>
+public record MemberVoiceStats(int SeasonMinutes, int AllTimeMinutes, int SeasonRank);
+
 /// <summary>One member's participation totals over a date range, broken down by reward source.</summary>
 public record ParticipationRow(
     ulong UserId,
@@ -107,5 +120,57 @@ public class ParticipationReadService(MusterDbContext db)
             .OrderByDescending(r => r.VoiceMinutes)
             .ThenByDescending(r => r.MessageCount)
             .ToList();
+    }
+
+    /// <summary>
+    /// In-progress sessions with attendee + currently-present counts — the live-ops view. This is the one
+    /// "live" read; it's isolated here so a future SSE/SignalR feed can push updates without changing callers
+    /// (the page polls today; later it subscribes and re-renders on a TrackingSession change).
+    /// </summary>
+    public async Task<IReadOnlyList<ActiveSessionView>> ActiveSessionsAsync(ulong guildId, CancellationToken ct = default)
+        => await db.TrackingSessions
+            .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active)
+            .OrderBy(s => s.StartedAt)
+            .Select(s => new ActiveSessionView(
+                s.Id, s.Source, s.VoiceChannelId, s.ScheduledEventId, s.StartedAt,
+                s.Attendance.Count,
+                s.Attendance.Count(a => a.OpenSegmentStart != null)))
+            .ToListAsync(ct);
+
+    /// <summary>Most recently ended sessions — the history view.</summary>
+    public async Task<IReadOnlyList<RecentSessionView>> RecentSessionsAsync(ulong guildId, int take = 25, CancellationToken ct = default)
+        => await db.TrackingSessions
+            .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Closed)
+            .OrderByDescending(s => s.EndedAt)
+            .Take(take)
+            .Select(s => new RecentSessionView(
+                s.Id, s.Source, s.VoiceChannelId, s.StartedAt, s.EndedAt,
+                s.Attendance.Count,
+                s.Attendance.Sum(a => a.TotalMinutes)))
+            .ToListAsync(ct);
+
+    /// <summary>A member's own voice participation: season minutes + all-time minutes + season rank.</summary>
+    public async Task<MemberVoiceStats> MemberVoiceStatsAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        var allTime = await db.DailyActivityRollups
+            .Where(r => r.GuildId == guildId && r.UserId == userId)
+            .SumAsync(r => (int?)r.VoiceMinutes, ct) ?? 0;
+
+        var seasonId = await db.ActiveSeasonIdAsync(guildId, ct);
+        if (seasonId is not { } sid)
+        {
+            return new MemberVoiceStats(SeasonMinutes: 0, AllTimeMinutes: allTime, SeasonRank: 0);
+        }
+
+        var seasonMinutes = await db.SeasonParticipations
+            .Where(p => p.GuildId == guildId && p.SeasonId == sid && p.UserId == userId)
+            .Select(p => (int?)p.VoiceMinutes).FirstOrDefaultAsync(ct) ?? 0;
+
+        var rank = seasonMinutes == 0
+            ? 0
+            : 1 + await db.SeasonParticipations.CountAsync(
+                p => p.GuildId == guildId && p.SeasonId == sid && p.VoiceMinutes > seasonMinutes, ct);
+
+        return new MemberVoiceStats(seasonMinutes, allTime, rank);
     }
 }

@@ -90,7 +90,7 @@
                 new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
                 new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/me", "/me"),
                 new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-                new("Sessions", "schedule", null, "/sessions"),
+                new("Sessions", "schedule", _isAdmin ? $"/guilds/{_guildId}/sessions" : null, "/sessions"),
                 new("Musters", "groups", null, "/musters"),
                 new("Members", "group", _isAdmin ? $"/guilds/{_guildId}/members" : null, "/members"),
             };

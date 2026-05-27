@@ -1,0 +1,152 @@
+@page "/guilds/{GuildIdRaw}/sessions"
+@layout GuildLayout
+@inherits GuildAdminComponentBase
+@inject ParticipationReadService Participation
+@inject MusterDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using Muster.Domain.Enums
+@using Muster.Persistence
+@using Muster.Persistence.Queries
+@using Muster.Infrastructure.Services.Tracking
+
+<PageTitle>Sessions — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Sessions</h1>
+        <p class="subtitle">Live operations, recent history, and voice participation.</p>
+    </div>
+
+    @* Live ops. Server-rendered today (reload to refresh); the data comes from ParticipationReadService.ActiveSessionsAsync,
+       which is the single seam a future SSE/SignalR feed replaces to push updates without touching this markup. *@
+    <div class="panel glass">
+        <div class="panel-head">
+            <h2>Active operations</h2>
+            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/sessions">Refresh</a>
+        </div>
+        @if (_active.Count == 0)
+        {
+            <p class="empty">No active sessions right now.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Source</th><th>Channel</th><th>Started</th><th>In voice now</th><th>Attendees</th></tr></thead>
+                <tbody>
+                    @foreach (var s in _active)
+                    {
+                        <tr>
+                            <td>@SourceLabel(s.Source)</td>
+                            <td>#@s.VoiceChannelId</td>
+                            <td>@s.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                            <td>@s.PresentNow</td>
+                            <td>@s.Attendees</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
+        <div class="panel-head">
+            <h2>Voice participation</h2>
+            <a class="btn btn-ghost btn-sm" href="@ExportUrl()">Export CSV</a>
+        </div>
+        @if (_leaderboard.Count == 0)
+        {
+            <p class="empty">No voice activity tracked yet.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>#</th><th>Member</th><th>Voice time</th></tr></thead>
+                <tbody>
+                    @{ var rank = 1; }
+                    @foreach (var e in _leaderboard)
+                    {
+                        <tr>
+                            <td>@rank</td>
+                            <td>@Name(e.UserId)</td>
+                            <td>@FormatDuration(e.VoiceMinutes)</td>
+                        </tr>
+                        rank++;
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
+        <h2>History</h2>
+        @if (_recent.Count == 0)
+        {
+            <p class="empty">No completed sessions yet.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Source</th><th>Channel</th><th>Ended</th><th>Duration</th><th>Attendees</th><th>Minutes</th></tr></thead>
+                <tbody>
+                    @foreach (var s in _recent)
+                    {
+                        <tr>
+                            <td>@SourceLabel(s.Source)</td>
+                            <td>#@s.VoiceChannelId</td>
+                            <td>@(s.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC</td>
+                            <td>@FormatDuration(Duration(s))</td>
+                            <td>@s.Attendees</td>
+                            <td>@s.TotalMinutes</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ActiveSessionView> _active = [];
+    private IReadOnlyList<RecentSessionView> _recent = [];
+    private IReadOnlyList<VoiceLeaderboardEntry> _leaderboard = [];
+    private Dictionary<ulong, string> _names = [];
+
+    protected override async Task LoadAsync()
+    {
+        _active = await Participation.ActiveSessionsAsync(GuildId);
+        _recent = await Participation.RecentSessionsAsync(GuildId, 25);
+        _leaderboard = await Participation.VoiceLeaderboardAsync(GuildId, 25);
+
+        _names = await Db.UserDisplayNameMapAsync(_leaderboard.Select(e => e.UserId).ToList());
+    }
+
+    private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");
+
+    private string ExportUrl() => $"/guilds/{GuildId}/participation/export.csv";
+
+    private static int Duration(RecentSessionView s)
+        => s.EndedAt is { } end ? Math.Max(0, (int)(end - s.StartedAt).TotalMinutes) : 0;
+
+    private static string SourceLabel(TrackingSessionSource source) => source switch
+    {
+        TrackingSessionSource.DiscordScheduledEvent => "Scheduled event",
+        _ => "Manual",
+    };
+
+    private static string FormatDuration(int minutes)
+    {
+        var hours = minutes / 60;
+        var mins = minutes % 60;
+        return hours > 0 ? $"{hours}h {mins}m" : $"{mins}m";
+    }
+}

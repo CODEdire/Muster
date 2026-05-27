@@ -102,6 +102,58 @@ public class ParticipationReadTests
     }
 
     [Fact]
+    public async Task ActiveSessions_ReportsAttendeesAndPresentNow()
+    {
+        using var db = await SeededAsync();
+        var sid = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        db.TrackingSessions.Add(new TrackingSession { Id = sid, GuildId = Guild, Source = TrackingSessionSource.Manual, VoiceChannelId = 500, StartedAt = now, Status = TrackingSessionStatus.Active, OpenedBy = 1 });
+        db.VoiceAttendance.Add(new VoiceAttendance { Id = Guid.NewGuid(), TrackingSessionId = sid, UserId = 10, FirstJoinedAt = now, OpenSegmentStart = now }); // present
+        db.VoiceAttendance.Add(new VoiceAttendance { Id = Guid.NewGuid(), TrackingSessionId = sid, UserId = 20, FirstJoinedAt = now, OpenSegmentStart = null }); // left
+        await db.SaveChangesAsync();
+
+        var active = await new ParticipationReadService(db).ActiveSessionsAsync(Guild);
+
+        var view = Assert.Single(active);
+        Assert.Equal(2, view.Attendees);
+        Assert.Equal(1, view.PresentNow);
+    }
+
+    [Fact]
+    public async Task RecentSessions_ReportsClosedWithMinutes()
+    {
+        using var db = await SeededAsync();
+        var sid = Guid.NewGuid();
+        var start = DateTimeOffset.UtcNow.AddMinutes(-30);
+        db.TrackingSessions.Add(new TrackingSession { Id = sid, GuildId = Guild, Source = TrackingSessionSource.Manual, VoiceChannelId = 500, StartedAt = start, EndedAt = start.AddMinutes(30), Status = TrackingSessionStatus.Closed, OpenedBy = 1 });
+        db.VoiceAttendance.Add(new VoiceAttendance { Id = Guid.NewGuid(), TrackingSessionId = sid, UserId = 10, FirstJoinedAt = start, TotalMinutes = 30 });
+        await db.SaveChangesAsync();
+
+        var recent = await new ParticipationReadService(db).RecentSessionsAsync(Guild);
+
+        var view = Assert.Single(recent);
+        Assert.Equal(1, view.Attendees);
+        Assert.Equal(30, view.TotalMinutes);
+    }
+
+    [Fact]
+    public async Task MemberVoiceStats_SeasonAllTimeAndRank()
+    {
+        using var db = await SeededAsync();
+        var seasonId = (await db.ActiveSeasonIdAsync(Guild))!.Value;
+        db.SeasonParticipations.Add(new SeasonParticipation { Id = Guid.NewGuid(), GuildId = Guild, UserId = 10, SeasonId = seasonId, VoiceMinutes = 40 });
+        db.SeasonParticipations.Add(new SeasonParticipation { Id = Guid.NewGuid(), GuildId = Guild, UserId = 20, SeasonId = seasonId, VoiceMinutes = 100 });
+        AddRollup(db, userId: 10, channelId: 100, voice: 50, messages: 0);
+        await db.SaveChangesAsync();
+
+        var stats = await new ParticipationReadService(db).MemberVoiceStatsAsync(Guild, 10);
+
+        Assert.Equal(40, stats.SeasonMinutes);
+        Assert.Equal(50, stats.AllTimeMinutes);
+        Assert.Equal(2, stats.SeasonRank); // one member ahead
+    }
+
+    [Fact]
     public async Task Report_ExcludesEntriesOutsideRange()
     {
         using var db = await SeededAsync();

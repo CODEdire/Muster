@@ -173,9 +173,21 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   message counts, points by reward source: Session/Background/Event/Quest/Muster) over a date range. Surfaces:
   `/voice-leaderboard` Discord command; admin CSV export at `GET /guilds/{guildId}/participation/export.csv`
   (cookie + admin auth, mirrors the audit export). Read-only — no migration.
-- **P5 — Guarded Sessions.** Unify Session accrual onto the snapshot/occupancy reconcile engine so
-  `RequireUnmuted`/`RequireNotAlone` apply to Sessions per `ApplyAfkGuardsToSessions`.
-- **P6 — Live ops board + member self-view.**
+- **P5 — Guarded Sessions. ✅ Done.** Session accrual moved onto a snapshot/occupancy-driven engine
+  (`TrackingSessionService.ReconcileSessionsAsync`, replacing the per-user `ProcessVoiceStateAsync`). When
+  `GuildSettings.ApplyAfkGuardsToSessions` is on (default), session reward time pauses while a member is
+  muted/deafened or alone in the channel; off counts raw presence. `VoiceAttendance.CarrySeconds` adds
+  sub-minute precision; `VoidOpenAttendanceAsync` voids stale segments on startup. Handler + flush scheduler
+  drive both planes from one roster snapshot. Migration `P5GuardedSessions` (CarrySeconds column; the toggle
+  is JSON). No per-flush clamp on sessions (admin-bounded; startup-void covers restarts) so an explicit
+  close/leave settles true elapsed.
+- **P6 — Live ops + member self-view. ✅ Done.** `ParticipationReadService` gains `ActiveSessionsAsync`
+  (live ops: attendees + present-now), `RecentSessionsAsync` (history), `MemberVoiceStatsAsync` (season/all-time
+  minutes + season rank). Combined admin page `Sessions.razor` at `/guilds/{id}/sessions` (active ops + voice
+  leaderboard + CSV export + history), wired into the guild nav. Member voice panel added to `MyProfile.razor`.
+  Server-rendered (reload to refresh); the live read is isolated in `ActiveSessionsAsync` as the single seam a
+  future **SSE/SignalR** feed replaces to push updates — no markup change needed then.
+  *Future (noted, not in scope):* let members claim event roles / ship positions in the live-ops view.
 - **P7 — Hardening.** Minimum segment threshold (ignore sub-minute drive-bys to cut noise); other
   robustness/cleanup as it surfaces.
 - **P8 — Multipliers.** Time-bounded reward multipliers: event windows (2× during a scheduled event /

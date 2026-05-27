@@ -69,6 +69,8 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Active-time stats + seasons + privacy (P2)** — unguarded active-time accrual → `DailyActivityRollup.VoiceMinutes` + per-season `SeasonParticipation` counter; message stats scoped to tracked text channels + `PointsPerMessage` reward; 4-state member tracking preference (`/track-privacy`) + guild `BackgroundTrackingOptIn` toggle (`/config-background-tracking`), enforced via `TrackingConsentResolver`.
 - [x] **Session COIN minting (P3)** — sessions mint a guild-chosen spendable currency on close = `floor(minutes / MinutesPerCoin)` per attendee (`/config-session-coin`), alongside the POINTS award; `CurrencyLedgerSource.TrackingSession` with a `:coin` idempotency key.
 - [x] **Participation reports + leaderboards (P4)** — `ParticipationReadService` (voice-time leaderboard season/all-time + per-member report of voice mins, messages, points by source); `/voice-leaderboard` command; admin CSV export `GET /guilds/{guildId}/participation/export.csv`.
+- [x] **Guarded sessions (P5)** — session reward time runs on the snapshot/occupancy engine (`ReconcileSessionsAsync`); `GuildSettings.ApplyAfkGuardsToSessions` (default on) pauses muted/alone time; `VoiceAttendance.CarrySeconds` + startup void.
+- [x] **Live ops + member self-view (P6)** — admin `Sessions.razor` (`/guilds/{id}/sessions`: active ops + voice leaderboard + CSV + history), nav-wired; voice panel on `MyProfile.razor`; read methods `ActiveSessionsAsync`/`RecentSessionsAsync`/`MemberVoiceStatsAsync` (live read isolated for a later SSE/SignalR push).
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
 ## M4 — Scoring, currency & messaging
