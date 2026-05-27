@@ -29,6 +29,9 @@
         });
     }
 
+    // Re-init after Blazor enhanced navigation (idempotent — guarded by data-cmReady).
+    window.musterReinitConnectorForm = initJsonEditors;
+
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initJsonEditors);
     } else {

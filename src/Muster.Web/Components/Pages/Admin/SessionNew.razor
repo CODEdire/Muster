@@ -43,7 +43,7 @@ else if (State == AccessState.Ready)
     else
     {
         <div class="panel glass">
-            <EditForm class="form-grid" Model="Input" FormName="session-new" OnValidSubmit="StartAsync">
+            <EditForm class="form-grid" Model="Input" FormName="session-new" OnValidSubmit="StartAsync" Enhance>
                 <input type="hidden" name="Input.Submitted" value="1" />
                 <label>Voice channel
                     <InputSelect @bind-Value="Input.ChannelId">

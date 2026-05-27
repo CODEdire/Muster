@@ -26,5 +26,8 @@
         }
     }
 
+    // Re-seed after Blazor enhanced navigation (the DOMContentLoaded handler won't refire).
+    window.musterReinitTz = seedHint;
+
     document.addEventListener("DOMContentLoaded", seedHint);
 })();

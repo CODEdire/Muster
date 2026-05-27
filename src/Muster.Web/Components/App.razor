@@ -29,6 +29,8 @@
 
 <body>
     <Routes />
+    <!-- Enhanced navigation/forms: fetch + DOM-patch over plain HTTP (no SignalR circuit). -->
+    <script src="_framework/blazor.web.js"></script>
     <script src="js/theme.js"></script>
     <script src="js/timezone.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
@@ -36,6 +38,8 @@
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
     <script src="js/connector-form.js"></script>
+    <!-- Re-run the progressive-enhancement scripts after each enhanced navigation. -->
+    <script src="js/enhanced-init.js"></script>
 </body>
 
 </html>

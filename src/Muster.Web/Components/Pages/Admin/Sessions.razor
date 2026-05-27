@@ -2,6 +2,8 @@
 @layout GuildLayout
 @inherits GuildMemberComponentBase
 @inject ParticipationReadService Participation
+@inject TrackingSessionService TrackingSessions
+@inject Muster.Infrastructure.Services.Platform.AuditService Audit
 @inject MusterDbContext Db
 @using Microsoft.EntityFrameworkCore
 @using Muster.Domain.Enums
@@ -203,7 +205,11 @@ else if (State == AccessState.Ready)
                                 <td>@s.Attendees</td>
                                 @if (_isStaff)
                                 {
-                                    <td><a class="btn btn-sm btn-danger" href="/guilds/@GuildId/sessions/@s.Id">End ▸</a></td>
+                                    <td>
+                                        <EditForm Model="_endMarker" FormName="@($"end-{s.Id}")" OnValidSubmit="() => EndAsync(s.Id)" Enhance>
+                                            <button type="submit" class="btn btn-sm btn-danger">End</button>
+                                        </EditForm>
+                                    </td>
                                 }
                             </tr>
                         }
@@ -232,9 +238,32 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromQuery] private bool Desc { get; set; }
     [SupplyParameterFromQuery] private int Page { get; set; }
 
+    private readonly object _endMarker = new();
     private bool _isStaff;
     private bool _present;
     private bool _hasBackground;
+
+    private async Task EndAsync(Guid sessionId)
+    {
+        if (!_isStaff)
+        {
+            return;
+        }
+
+        // Guard: only close a session that's active and belongs to this guild.
+        if (!await Db.IsActiveSessionAsync(GuildId, sessionId))
+        {
+            Message = "That session is no longer active.";
+            return;
+        }
+
+        if (await TrackingSessions.CloseAsync(sessionId))
+        {
+            await Audit.RecordAsync(GuildId, UserId, "track.session.stop", $"web: {sessionId}");
+            Message = "Session ended and attendance awarded.";
+            await LoadAsync(); // refresh so the closed session drops out of the active list
+        }
+    }
     private PagedResult<ActiveSessionView>? _active;
     private PagedResult<RecentSessionView>? _history;
     private IReadOnlyList<VoiceLeaderboardEntry> _leaderboard = [];

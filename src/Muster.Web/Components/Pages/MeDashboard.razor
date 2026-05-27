@@ -68,7 +68,7 @@ else if (State == AccessState.Ready)
                     }
                 </tbody>
             </table>
-            <EditForm class="form-grid" Model="OptOut" FormName="session-optout" OnValidSubmit="OptOutAsync">
+            <EditForm class="form-grid" Model="OptOut" FormName="session-optout" OnValidSubmit="OptOutAsync" Enhance>
                 <label>Opt out of a session (one time)
                     <InputSelect @bind-Value="OptOut.SessionId">
                         <option value="">— select —</option>

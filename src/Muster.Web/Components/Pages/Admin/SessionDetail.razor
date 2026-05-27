@@ -28,7 +28,7 @@ else if (State == AccessState.Ready && _detail is not null)
         <p class="subtitle">@(_detail.Active ? "🟢 Active now" : "Ended")</p>
         @if (_detail.Active && _isStaff)
         {
-            <EditForm Model="EndForm" FormName="end-session" OnValidSubmit="EndAsync">
+            <EditForm Model="EndForm" FormName="end-session" OnValidSubmit="EndAsync" Enhance>
                 <input type="hidden" name="EndForm.Submitted" value="1" />
                 <button type="submit" class="btn btn-sm btn-danger">End session</button>
             </EditForm>

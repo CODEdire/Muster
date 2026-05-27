@@ -306,8 +306,15 @@ when no base URL is set). `/track session new` returns the wizard link; `/track 
 sessions-view link. The web **create-session wizard** (`/guilds/{id}/sessions/new`, admin-gated) lets staff open
 a session from a synced voice-channel dropdown + guard toggles — members already present are credited on the
 next reconcile sweep (the web host has no gateway roster to reconcile immediately). Staff can **end** an active
-session from its detail page (`SessionDetail` "End session", guarded by `IsActiveSessionAsync` → `CloseAsync`);
-the active list links each row there. The Tracking settings
+session from the active list (per-row "End" button) or its detail page — both guarded by
+`IsActiveSessionAsync` → `CloseAsync` and audited.
+
+These pages use Blazor **enhanced navigation + enhanced forms** (`blazor.web.js`): link clicks and form posts
+fetch + DOM-patch instead of full reloads, so buttons feel responsive — **no SignalR circuit, still stateless
+HTTP**. The per-row End button is a `<EditForm Enhance>` with a unique `FormName` per row (the session id rides
+the FormName→handler match, avoiding per-row model binding). Enhanced nav is global; the progressive-enhancement
+scripts (theme, time zone, EasyMDE, CodeMirror) re-run on Blazor's `enhancedload` event (`enhanced-init.js`,
+all idempotent) so the markdown/JSON editors survive navigation. The Tracking settings
 add/remove-channel forms now use synced-channel dropdowns (kind auto-detected, shown by name).
 
 ## Command surface
