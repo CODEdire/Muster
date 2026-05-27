@@ -276,6 +276,15 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   Nav: sidebar gains **Me** (`/me`) + **Wallet** (`/wallet`); the bottom "You" tab points at the dashboard.
   Migration `SessionOptOut`.
 
+## Command surface
+
+All tracking slash commands live under one `/track` root (mirroring `/quest`'s sub-command tree):
+`/track session start|stop`, `/track background voice|text|remove|list`, `/track privacy`, `/track leaderboard`.
+`session start` takes rich slash options (native channel picker + name + per-guard toggles) rather than a modal —
+Discord modals are text-input-only, so they can't host a channel picker or boolean toggles, and the native
+option form is the better "fill-out" experience. (A guided component flow — channel-select message → modal —
+remains a possible future nicety.)
+
 ## Privacy & consent
 
 Tracking voice/activity on a public bot needs a clear consent model.

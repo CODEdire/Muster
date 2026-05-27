@@ -78,6 +78,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Min-segment threshold (P7d)** — `MinTrackedSeconds` drops drive-by session attendees (under the minimum) from the roster/award at leave + close.
 - [x] **Sessions UX round A** — channels shown by name (stored + cache-refreshed); Background tab (who's tracked where, live); SessionDetail header + rules panel + member status (Active/Paused/Left via `VoiceAttendance.LastSeenAt`).
 - [x] **Sessions UX round B** — wallet moved to `/wallet`; new `/me` dashboard (points/voice summary + active sessions you're in + your recent sessions); one-time per-session opt-out (`SessionOptOut` + `OptOutMemberAsync`, excluded in reconcile); nav adds Me + Wallet.
+- [x] **`/track` command tree** — tracking slash commands consolidated under one root: `/track session start|stop`, `/track background voice|text|remove|list`, `/track privacy`, `/track leaderboard` (replacing the flat `/track-*` + `/voice-leaderboard`). `session start` uses rich slash options (native channel picker + name + per-guard toggles) — no modal (Discord modals are text-only).
 - [x] **Anti-AFK guards as a `[Flags] AfkGuards` enum** (`Unmuted`/`Undeafened`/`NotAlone`) on channels + sessions — single configurable field; muted off by default (present/listening, e.g. phone call), deafened on (checked out); migrations fold the old bool columns into the flag.
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
