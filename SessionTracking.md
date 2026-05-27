@@ -197,6 +197,17 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   gains **Sessions** + **Tracking** cards; new **Tracking settings** page (`/guilds/{id}/tracking`) edits
   background opt-in, session guards, session-coin currency + minutes-per-coin, and the monitored-channel list.
   Migration `SessionNameAndGuards`.
+- **P6.2 — Sessions as an operational view. ✅ Done.** Design goal: admin hub trends toward *config only*;
+  operational views live on the nav rail. Sessions moved off the admin hub onto the **nav rail** (member-visible).
+  `Sessions.razor` rebased to `GuildMemberComponentBase` with an **access gradient**: members see **Active** +
+  **Leaderboard** (read-only); **History** + CSV export are staff (admin/officer) only. SSR query-param
+  **datagrid** (tabs + search + sortable headers + paging), mirroring the audit console. **Drill-in**
+  `SessionDetail.razor` (`/sessions/{id}`) shows the full attendance roster (member, joined, minutes,
+  present-now) for active or closed sessions — open to any member. An **opt-out CTA** shows on the live tab when
+  the viewer is currently tracked, linking to a new **web privacy control** on `MyProfile` (4-state
+  `TrackingChoice` via `TrackingPreferenceCommandService`). Read layer gained `PagedResult<T>`,
+  `ActiveSessionsPageAsync`/`RecentSessionsPageAsync` (search/sort/page), and `SessionDetailAsync`.
+  *Future:* the Active tab stays the single SSE/SignalR seam.
 - **P7 — Hardening.** Minimum segment threshold (ignore sub-minute drive-bys to cut noise); other
   robustness/cleanup as it surfaces.
 - **P8 — Multipliers.** Time-bounded reward multipliers: event windows (2× during a scheduled event /

@@ -7,8 +7,10 @@
 @inject Muster.Infrastructure.Connectors.CurrencyConnectorSyncService BalanceSync
 @inject Muster.Infrastructure.Services.Currencies.ICurrencyReadService Reader
 @inject Muster.Infrastructure.Services.Tracking.ParticipationReadService Participation
+@inject Muster.Infrastructure.Commands.Tracking.TrackingPreferenceCommandService TrackingPref
 @inject Wolverine.IMessageBus Bus
 @using Microsoft.EntityFrameworkCore
+@using Muster.Domain.Enums
 @using Muster.Contracts
 @using Muster.Persistence
 @using Muster.Persistence.Queries
@@ -37,12 +39,24 @@ else if (State == AccessState.Ready && _detail is not null)
 
     <MemberPanel Detail="_detail" />
 
-    <div class="panel glass">
+    <div class="panel glass" id="privacy">
         <h2>Voice participation</h2>
         <p class="subtitle">
             This season: <strong>@FormatDuration(_voice.SeasonMinutes)</strong>@(_voice.SeasonRank > 0 ? $" · rank #{_voice.SeasonRank}" : "")
             · All time: <strong>@FormatDuration(_voice.AllTimeMinutes)</strong>
         </p>
+        <EditForm class="form-grid" Model="Privacy" FormName="tracking-privacy" OnValidSubmit="SavePrivacyAsync">
+            <input type="hidden" name="Privacy.Submitted" value="1" />
+            <label>Tracking
+                <InputSelect @bind-Value="Privacy.Choice">
+                    <option value="@TrackingChoice.Default">Follow server default</option>
+                    <option value="@TrackingChoice.In">Track everything (opt in)</option>
+                    <option value="@TrackingChoice.BackgroundOut">No passive background tracking</option>
+                    <option value="@TrackingChoice.AllOut">Don't track me at all</option>
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Save privacy</button></div>
+        </EditForm>
     </div>
 
 
@@ -137,6 +151,7 @@ else if (State == AccessState.Ready && _detail is not null)
     [SupplyParameterFromForm(FormName = "wallet-filter")] private string? HistoryCurrency { get; set; }
     [SupplyParameterFromForm(FormName = "wallet-send")] private SendInput Send { get; set; } = new();
     [SupplyParameterFromForm(FormName = "notify")] private NotifyInput Notify { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "tracking-privacy")] private PrivacyInput Privacy { get; set; } = new();
 
     private MemberDetailView? _detail;
     private Muster.Infrastructure.Services.Tracking.MemberVoiceStats _voice = new(0, 0, 0);
@@ -159,6 +174,10 @@ else if (State == AccessState.Ready && _detail is not null)
 
         _detail = await Members.GetAsync(GuildId, UserId, currencyFilter: string.IsNullOrWhiteSpace(HistoryCurrency) ? null : HistoryCurrency);
         _voice = await Participation.MemberVoiceStatsAsync(GuildId, UserId);
+        if (Privacy.Submitted is null)
+        {
+            Privacy.Choice = await Db.MemberTrackingChoiceAsync(GuildId, UserId);
+        }
 
         _guildZone = await Db.Guilds.Where(g => g.Id == GuildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync() ?? TimeZoneService.Utc;
         // Prefill from the stored pref on GET only; on a form post the bound value already reflects the submission.
@@ -254,6 +273,19 @@ else if (State == AccessState.Ready && _detail is not null)
     {
         public string? Submitted { get; set; }
         public bool ReceiptsOn { get; set; }
+    }
+
+    public class PrivacyInput
+    {
+        public string? Submitted { get; set; }
+        public TrackingChoice Choice { get; set; }
+    }
+
+    private async Task SavePrivacyAsync()
+    {
+        var result = await TrackingPref.SetAsync(GuildId, UserId, Privacy.Choice);
+        Message = result.Message;
+        await LoadAsync();
     }
 
     private static string FormatDuration(int minutes)

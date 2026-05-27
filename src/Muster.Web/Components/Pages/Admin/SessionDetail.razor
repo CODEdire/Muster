@@ -1,0 +1,80 @@
+@page "/guilds/{GuildIdRaw}/sessions/{SessionId}"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject ParticipationReadService Participation
+@inject MusterDbContext Db
+@using Muster.Domain.Enums
+@using Muster.Persistence
+@using Muster.Persistence.Queries
+@using Muster.Infrastructure.Services.Tracking
+
+<PageTitle>Session — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && _detail is null)
+{
+    <div class="panel glass empty">Session not found.</div>
+}
+else if (State == AccessState.Ready && _detail is not null)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/sessions">← Sessions</a>
+        <h1>@_detail.Name</h1>
+        <p class="subtitle">
+            @(_detail.Source == TrackingSessionSource.DiscordScheduledEvent ? "Scheduled event" : "Manual")
+            · #@_detail.VoiceChannelId
+            · @(_detail.Active ? "Active now" : "Ended " + (_detail.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") + " UTC")
+        </p>
+    </div>
+
+    <div class="panel glass">
+        <h2>Attendance (@_detail.Members.Count)</h2>
+        @if (_detail.Members.Count == 0)
+        {
+            <p class="empty">No attendance recorded.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Member</th><th>Joined</th><th>Minutes</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var m in _detail.Members)
+                    {
+                        <tr>
+                            <td>@Name(m.UserId)</td>
+                            <td>@m.FirstJoinedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                            <td>@m.TotalMinutes</td>
+                            <td>@(m.PresentNow ? "🟢 in voice" : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+
+    private SessionDetailView? _detail;
+    private Dictionary<ulong, string> _names = [];
+
+    protected override async Task LoadAsync()
+    {
+        if (!Guid.TryParse(SessionId, out var id))
+        {
+            return;
+        }
+
+        _detail = await Participation.SessionDetailAsync(GuildId, id);
+        if (_detail is not null)
+        {
+            _names = await Db.UserDisplayNameMapAsync(_detail.Members.Select(m => m.UserId).ToList());
+        }
+    }
+
+    private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");
+}

@@ -154,6 +154,46 @@ public class ParticipationReadTests
     }
 
     [Fact]
+    public async Task ActiveSessionsPage_FiltersSortsAndPages()
+    {
+        using var db = await SeededAsync();
+        var t = DateTimeOffset.UtcNow;
+        db.TrackingSessions.Add(new TrackingSession { Id = Guid.NewGuid(), GuildId = Guild, Name = "Alpha raid", Source = TrackingSessionSource.Manual, VoiceChannelId = 1, StartedAt = t.AddMinutes(-10), Status = TrackingSessionStatus.Active });
+        db.TrackingSessions.Add(new TrackingSession { Id = Guid.NewGuid(), GuildId = Guild, Name = "Beta op", Source = TrackingSessionSource.Manual, VoiceChannelId = 2, StartedAt = t, Status = TrackingSessionStatus.Active });
+        await db.SaveChangesAsync();
+        var svc = new ParticipationReadService(db);
+
+        var byName = await svc.ActiveSessionsPageAsync(Guild, search: null, sort: "name", desc: false, page: 1, pageSize: 1);
+        Assert.Equal(2, byName.Total);
+        Assert.Equal(2, byName.TotalPages);
+        Assert.Equal("Alpha raid", Assert.Single(byName.Items).Name);
+
+        var filtered = await svc.ActiveSessionsPageAsync(Guild, search: "Beta", sort: "started", desc: false, page: 1);
+        Assert.Equal("Beta op", Assert.Single(filtered.Items).Name);
+    }
+
+    [Fact]
+    public async Task SessionDetail_ReturnsRoster()
+    {
+        using var db = await SeededAsync();
+        var sid = Guid.NewGuid();
+        var t = DateTimeOffset.UtcNow;
+        db.TrackingSessions.Add(new TrackingSession { Id = sid, GuildId = Guild, Name = "Op", Source = TrackingSessionSource.Manual, VoiceChannelId = 5, StartedAt = t, Status = TrackingSessionStatus.Active });
+        db.VoiceAttendance.Add(new VoiceAttendance { Id = Guid.NewGuid(), TrackingSessionId = sid, UserId = 10, FirstJoinedAt = t, TotalMinutes = 20, OpenSegmentStart = t });
+        db.VoiceAttendance.Add(new VoiceAttendance { Id = Guid.NewGuid(), TrackingSessionId = sid, UserId = 20, FirstJoinedAt = t, TotalMinutes = 5, OpenSegmentStart = null });
+        await db.SaveChangesAsync();
+
+        var detail = await new ParticipationReadService(db).SessionDetailAsync(Guild, sid);
+
+        Assert.NotNull(detail);
+        Assert.True(detail!.Active);
+        Assert.Equal(2, detail.Members.Count);
+        Assert.Equal(10ul, detail.Members[0].UserId); // ordered by minutes desc
+        Assert.True(detail.Members[0].PresentNow);
+        Assert.False(detail.Members[1].PresentNow);
+    }
+
+    [Fact]
     public async Task Report_ExcludesEntriesOutsideRange()
     {
         using var db = await SeededAsync();

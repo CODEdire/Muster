@@ -1,6 +1,6 @@
 @page "/guilds/{GuildIdRaw}/sessions"
 @layout GuildLayout
-@inherits GuildAdminComponentBase
+@inherits GuildMemberComponentBase
 @inject ParticipationReadService Participation
 @inject MusterDbContext Db
 @using Microsoft.EntityFrameworkCore
@@ -11,144 +11,247 @@
 
 <PageTitle>Sessions — Muster</PageTitle>
 
-@if (State == AccessState.NeedLogin)
+@if (State == AccessState.Forbidden)
 {
-    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
-}
-else if (State == AccessState.Forbidden)
-{
-    <div class="panel glass empty">You need admin access for this server.</div>
+    <div class="panel glass empty">You don't have access to this server.</div>
 }
 else if (State == AccessState.Ready)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
         <h1>Sessions</h1>
-        <p class="subtitle">Live operations, recent history, and voice participation.</p>
+        <p class="subtitle">Live operations, voice participation@(_isStaff ? ", and history" : "").</p>
     </div>
 
-    @* Live ops. Server-rendered today (reload to refresh); the data comes from ParticipationReadService.ActiveSessionsAsync,
-       which is the single seam a future SSE/SignalR feed replaces to push updates without touching this markup. *@
-    <div class="panel glass">
-        <div class="panel-head">
-            <h2>Active operations</h2>
-            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/sessions">Refresh</a>
+    @if (_present)
+    {
+        <div class="panel glass">
+            <strong>You're being tracked in a live session.</strong>
+            <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/me#privacy">Privacy settings</a>
         </div>
-        @if (_active.Count == 0)
-        {
-            <p class="empty">No active sessions right now.</p>
-        }
-        else
-        {
-            <table class="leaderboard">
-                <thead><tr><th>Name</th><th>Source</th><th>Channel</th><th>Started</th><th>In voice now</th><th>Attendees</th></tr></thead>
-                <tbody>
-                    @foreach (var s in _active)
-                    {
-                        <tr>
-                            <td>@s.Name</td>
-                            <td>@SourceLabel(s.Source)</td>
-                            <td>#@s.VoiceChannelId</td>
-                            <td>@s.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
-                            <td>@s.PresentNow</td>
-                            <td>@s.Attendees</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
+    }
 
-    <div class="panel glass">
-        <div class="panel-head">
-            <h2>Voice participation</h2>
-            <a class="btn btn-ghost btn-sm" href="@ExportUrl()">Export CSV</a>
+    <nav class="tabs">
+        <a class="@(Tab == "active" ? "active" : "")" href="@TabUrl("active")">Active</a>
+        <a class="@(Tab == "leaderboard" ? "active" : "")" href="@TabUrl("leaderboard")">Leaderboard</a>
+        @if (_isStaff)
+        {
+            <a class="@(Tab == "history" ? "active" : "")" href="@TabUrl("history")">History</a>
+        }
+    </nav>
+
+    @if (Tab == "leaderboard")
+    {
+        <div class="panel glass">
+            @if (_leaderboard.Count == 0)
+            {
+                <p class="empty">No voice activity tracked yet.</p>
+            }
+            else
+            {
+                <table class="leaderboard">
+                    <thead><tr><th>#</th><th>Member</th><th>Voice time</th></tr></thead>
+                    <tbody>
+                        @{ var rank = 1; }
+                        @foreach (var e in _leaderboard)
+                        {
+                            <tr><td>@rank</td><td>@Name(e.UserId)</td><td>@Dur(e.VoiceMinutes)</td></tr>
+                            rank++;
+                        }
+                    </tbody>
+                </table>
+            }
         </div>
-        @if (_leaderboard.Count == 0)
-        {
-            <p class="empty">No voice activity tracked yet.</p>
-        }
-        else
-        {
-            <table class="leaderboard">
-                <thead><tr><th>#</th><th>Member</th><th>Voice time</th></tr></thead>
-                <tbody>
-                    @{ var rank = 1; }
-                    @foreach (var e in _leaderboard)
-                    {
+    }
+    else if (Tab == "history" && _isStaff)
+    {
+        <div class="panel glass">
+            <form method="get" class="filter-bar">
+                <input type="hidden" name="tab" value="history" />
+                <input type="search" name="search" value="@Search" placeholder="Search session name" />
+                <input type="hidden" name="sort" value="@Sort" />
+                <input type="hidden" name="desc" value="@Desc.ToString().ToLowerInvariant()" />
+                <button type="submit">Filter</button>
+                <a class="btn btn-ghost" href="/guilds/@GuildId/participation/export.csv">Export CSV</a>
+            </form>
+        </div>
+        <div class="panel glass">
+            @if (_history is null || _history.Items.Count == 0)
+            {
+                <p class="empty">No completed sessions.</p>
+            }
+            else
+            {
+                <table class="leaderboard">
+                    <thead>
                         <tr>
-                            <td>@rank</td>
-                            <td>@Name(e.UserId)</td>
-                            <td>@FormatDuration(e.VoiceMinutes)</td>
+                            <th><a href="@SortUrl("name")">Name @Ind("name")</a></th>
+                            <th>Source</th><th>Channel</th>
+                            <th><a href="@SortUrl("ended")">Ended @Ind("ended")</a></th>
+                            <th>Duration</th>
+                            <th><a href="@SortUrl("attendees")">Attendees @Ind("attendees")</a></th>
+                            <th><a href="@SortUrl("minutes")">Minutes @Ind("minutes")</a></th>
                         </tr>
-                        rank++;
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
-
-    <div class="panel glass">
-        <h2>History</h2>
-        @if (_recent.Count == 0)
-        {
-            <p class="empty">No completed sessions yet.</p>
-        }
-        else
-        {
-            <table class="leaderboard">
-                <thead><tr><th>Name</th><th>Source</th><th>Channel</th><th>Ended</th><th>Duration</th><th>Attendees</th><th>Minutes</th></tr></thead>
-                <tbody>
-                    @foreach (var s in _recent)
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _history.Items)
+                        {
+                            <tr>
+                                <td><a href="/guilds/@GuildId/sessions/@s.Id">@s.Name</a></td>
+                                <td>@Src(s.Source)</td>
+                                <td>#@s.VoiceChannelId</td>
+                                <td>@(s.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC</td>
+                                <td>@Dur(s.EndedAt is { } e ? Math.Max(0, (int)(e - s.StartedAt).TotalMinutes) : 0)</td>
+                                <td>@s.Attendees</td>
+                                <td>@s.TotalMinutes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="pager">
+                    @if (_history.Page > 1)
                     {
-                        <tr>
-                            <td>@s.Name</td>
-                            <td>@SourceLabel(s.Source)</td>
-                            <td>#@s.VoiceChannelId</td>
-                            <td>@(s.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC</td>
-                            <td>@FormatDuration(Duration(s))</td>
-                            <td>@s.Attendees</td>
-                            <td>@s.TotalMinutes</td>
-                        </tr>
+                        <a class="btn btn-ghost" href="@Query("history", Sort, Desc, _history.Page - 1)">← Prev</a>
                     }
-                </tbody>
-            </table>
-        }
-    </div>
+                    <span>Page @_history.Page of @_history.TotalPages · @_history.Total total</span>
+                    @if (_history.Page < _history.TotalPages)
+                    {
+                        <a class="btn btn-ghost" href="@Query("history", Sort, Desc, _history.Page + 1)">Next →</a>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <form method="get" class="filter-bar">
+                <input type="hidden" name="tab" value="active" />
+                <input type="search" name="search" value="@Search" placeholder="Search session name" />
+                <input type="hidden" name="sort" value="@Sort" />
+                <input type="hidden" name="desc" value="@Desc.ToString().ToLowerInvariant()" />
+                <button type="submit">Filter</button>
+                <a class="btn btn-ghost btn-sm" href="@TabUrl("active")">Refresh</a>
+            </form>
+        </div>
+        <div class="panel glass">
+            @if (_active is null || _active.Items.Count == 0)
+            {
+                <p class="empty">No active sessions right now.</p>
+            }
+            else
+            {
+                <table class="leaderboard">
+                    <thead>
+                        <tr>
+                            <th><a href="@SortUrl("name")">Name @Ind("name")</a></th>
+                            <th>Source</th><th>Channel</th>
+                            <th><a href="@SortUrl("started")">Started @Ind("started")</a></th>
+                            <th><a href="@SortUrl("present")">In voice now @Ind("present")</a></th>
+                            <th><a href="@SortUrl("attendees")">Attendees @Ind("attendees")</a></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _active.Items)
+                        {
+                            <tr>
+                                <td><a href="/guilds/@GuildId/sessions/@s.Id">@s.Name</a></td>
+                                <td>@Src(s.Source)</td>
+                                <td>#@s.VoiceChannelId</td>
+                                <td>@s.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                                <td>@s.PresentNow</td>
+                                <td>@s.Attendees</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="pager">
+                    @if (_active.Page > 1)
+                    {
+                        <a class="btn btn-ghost" href="@Query("active", Sort, Desc, _active.Page - 1)">← Prev</a>
+                    }
+                    <span>Page @_active.Page of @_active.TotalPages · @_active.Total total</span>
+                    @if (_active.Page < _active.TotalPages)
+                    {
+                        <a class="btn btn-ghost" href="@Query("active", Sort, Desc, _active.Page + 1)">Next →</a>
+                    }
+                </div>
+            }
+        </div>
+    }
 }
 
 @code {
-    private IReadOnlyList<ActiveSessionView> _active = [];
-    private IReadOnlyList<RecentSessionView> _recent = [];
+    [SupplyParameterFromQuery] private string? Tab { get; set; }
+    [SupplyParameterFromQuery] private string? Search { get; set; }
+    [SupplyParameterFromQuery] private string? Sort { get; set; }
+    [SupplyParameterFromQuery] private bool Desc { get; set; }
+    [SupplyParameterFromQuery] private int Page { get; set; }
+
+    private bool _isStaff;
+    private bool _present;
+    private PagedResult<ActiveSessionView>? _active;
+    private PagedResult<RecentSessionView>? _history;
     private IReadOnlyList<VoiceLeaderboardEntry> _leaderboard = [];
     private Dictionary<ulong, string> _names = [];
 
+    private string CurrentTab => Tab is "leaderboard" or "history" ? Tab : "active";
+
     protected override async Task LoadAsync()
     {
-        _active = await Participation.ActiveSessionsAsync(GuildId);
-        _recent = await Participation.RecentSessionsAsync(GuildId, 25);
-        _leaderboard = await Participation.VoiceLeaderboardAsync(GuildId, 25);
+        _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
+        Tab = CurrentTab;
+        var page = Page <= 0 ? 1 : Page;
 
-        _names = await Db.UserDisplayNameMapAsync(_leaderboard.Select(e => e.UserId).ToList());
+        // Banner: is the viewer currently in an active session's voice channel?
+        _present = await Db.TrackingSessions
+            .Where(s => s.GuildId == GuildId && s.Status == TrackingSessionStatus.Active)
+            .SelectMany(s => s.Attendance)
+            .AnyAsync(a => a.UserId == UserId && a.OpenSegmentStart != null);
+
+        if (Tab == "leaderboard")
+        {
+            _leaderboard = await Participation.VoiceLeaderboardAsync(GuildId, 50);
+            _names = await Db.UserDisplayNameMapAsync(_leaderboard.Select(e => e.UserId).ToList());
+        }
+        else if (Tab == "history" && _isStaff)
+        {
+            _history = await Participation.RecentSessionsPageAsync(GuildId, Search, Sort ?? "ended", Desc, page);
+        }
+        else
+        {
+            Tab = "active";
+            _active = await Participation.ActiveSessionsPageAsync(GuildId, Search, Sort ?? "started", Desc, page);
+        }
     }
 
     private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");
 
-    private string ExportUrl() => $"/guilds/{GuildId}/participation/export.csv";
+    private static string Src(TrackingSessionSource s) => s == TrackingSessionSource.DiscordScheduledEvent ? "Scheduled event" : "Manual";
 
-    private static int Duration(RecentSessionView s)
-        => s.EndedAt is { } end ? Math.Max(0, (int)(end - s.StartedAt).TotalMinutes) : 0;
-
-    private static string SourceLabel(TrackingSessionSource source) => source switch
+    private static string Dur(int minutes)
     {
-        TrackingSessionSource.DiscordScheduledEvent => "Scheduled event",
-        _ => "Manual",
-    };
-
-    private static string FormatDuration(int minutes)
-    {
-        var hours = minutes / 60;
-        var mins = minutes % 60;
-        return hours > 0 ? $"{hours}h {mins}m" : $"{mins}m";
+        var h = minutes / 60;
+        var m = minutes % 60;
+        return h > 0 ? $"{h}h {m}m" : $"{m}m";
     }
+
+    private string Query(string tab, string? sort, bool desc, int page)
+    {
+        var parts = new List<string> { $"tab={tab}" };
+        if (!string.IsNullOrEmpty(Search)) parts.Add($"search={Uri.EscapeDataString(Search)}");
+        if (!string.IsNullOrEmpty(sort)) parts.Add($"sort={sort}");
+        parts.Add($"desc={desc.ToString().ToLowerInvariant()}");
+        parts.Add($"page={page}");
+        return $"/guilds/{GuildId}/sessions?{string.Join("&", parts)}";
+    }
+
+    private string TabUrl(string tab) => Query(tab, null, false, 1);
+
+    private string SortUrl(string column)
+    {
+        var desc = Sort == column ? !Desc : true; // toggle when re-clicking the active column
+        return Query(Tab!, column, desc, 1);
+    }
+
+    private string Ind(string column) => Sort == column ? (Desc ? "▼" : "▲") : "";
 }
