@@ -68,7 +68,7 @@ public class OpAndActivityTests
     public async Task ScheduledEvent_OpensOnce_ThenCloses()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
 
         var first = await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001);
         var second = await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001);
@@ -92,7 +92,7 @@ public class OpAndActivityTests
         });
         await db.SaveChangesAsync();
 
-        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
         var now = DateTimeOffset.UtcNow;
 
         await sut.RecordMessageAsync(1, channelId: 100, userId: 10, messageId: 555, now);
@@ -117,7 +117,7 @@ public class OpAndActivityTests
         guild.Settings = guild.Settings;
         await db.SaveChangesAsync();
 
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
         var now = DateTimeOffset.UtcNow;
         var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);
@@ -125,6 +125,57 @@ public class OpAndActivityTests
 
         var coinBalance = (await db.Wallets.SingleAsync(w => w.UserId == 10 && w.CurrencyId == coin.Id)).Balance;
         Assert.Equal(2, coinBalance); // floor(60 / 30)
+    }
+
+    [Fact]
+    public async Task SessionClose_AppliesRewardMultiplier_ToCoin()
+    {
+        using var db = await SeededAsync();
+        var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
+        db.Currencies.Add(coin);
+        var guild = await db.FindGuildAsync(1);
+        guild!.Settings.SessionCoinCurrencyCode = "COIN";
+        guild.Settings.MinutesPerCoin = 30;
+        guild.Settings.ApplyAfkGuardsToSessions = false;
+        guild.Settings = guild.Settings;
+        var now = DateTimeOffset.UtcNow;
+        db.RewardMultipliers.Add(new RewardMultiplier
+        {
+            Id = Guid.NewGuid(), GuildId = 1, Name = "2x", Factor = 2m, Kind = MultiplierKind.OneOff,
+            Scope = MultiplierScope.All, Enabled = true, StartsAt = now.AddHours(-1), EndsAt = now.AddHours(2),
+        });
+        await db.SaveChangesAsync();
+
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);
+        await sut.CloseAsync(session.Id, at: now.AddMinutes(60)); // 60 eligible minutes, weighted ×2 = 120
+
+        var coinBalance = (await db.Wallets.SingleAsync(w => w.UserId == 10 && w.CurrencyId == coin.Id)).Balance;
+        Assert.Equal(4, coinBalance); // floor(60 × 2 / 30)
+    }
+
+    [Fact]
+    public async Task SessionClose_AwardsStartAndEndPresenceBonuses()
+    {
+        using var db = await SeededAsync();
+        var guild = await db.FindGuildAsync(1);
+        guild!.Settings.ApplyAfkGuardsToSessions = false;
+        guild.Settings.SessionStartBonus = 50;
+        guild.Settings.SessionEndBonus = 25;
+        guild.Settings = guild.Settings;
+        await db.SaveChangesAsync();
+
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var now = DateTimeOffset.UtcNow;
+        var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);      // present at start
+        await sut.CloseAsync(session.Id, at: now.AddMinutes(30));         // still present at end
+
+        var points = await db.FindPointsAsync(1);
+        var seasonId = points!.IsSeasonal ? await db.ActiveSeasonIdAsync(1) : (Guid?)null;
+        var balance = await db.BalanceAsync(1, 10, points.Id, seasonId);
+        Assert.Equal(105, balance); // 30 min × 1 + 50 start + 25 end
     }
 
     [Fact]
@@ -147,7 +198,7 @@ public class OpAndActivityTests
     }
 
     private static ActivityService Activity(MusterDbContext db)
-        => new(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        => new(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
 
     private static async Task AddRewardTextAsync(MusterDbContext db, int pointsPerMessage, int messagesPerPoint = 1, int cooldown = 0, int dailyCap = 0)
     {
@@ -228,7 +279,7 @@ public class OpAndActivityTests
     public async Task MessageActivity_UntrackedChannel_Ignored()
     {
         using var db = await SeededAsync();
-        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
 
         await sut.RecordMessageAsync(1, channelId: 999, userId: 10, messageId: 1, DateTimeOffset.UtcNow);
 
@@ -246,7 +297,7 @@ public class OpAndActivityTests
         });
         await db.SaveChangesAsync();
 
-        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
 
         await sut.RecordMessageAsync(1, channelId: 100, userId: 10, messageId: 1, DateTimeOffset.UtcNow);
 

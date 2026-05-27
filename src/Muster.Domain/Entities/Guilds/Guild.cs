@@ -98,6 +98,10 @@ public class GuildSettings
     /// <summary>A member qualifies for the end bonus if they were still present within this many minutes of the session end.</summary>
     public int EndBonusWindowMinutes { get; set; } = 5;
 
+    /// <summary>When true, the active reward multiplier also scales the start/end presence bonuses (start bonus by
+    /// the factor at session start, end bonus by the factor at session end). Default false = flat bonuses.</summary>
+    public bool MultiplyPresenceBonuses { get; set; }
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>

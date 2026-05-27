@@ -23,7 +23,7 @@ public readonly record struct VoiceMemberSnapshot(ulong UserId, bool IsBot, bool
 /// </list>
 /// Both honor the member's tracking consent (background lane); an opted-out member accrues neither.
 /// </summary>
-public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth)
+public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers)
 {
     /// <summary>
     /// Upper bound on minutes credited in a single flush. Reconciles happen on every voice event and on a
@@ -87,11 +87,15 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
             .ToList();
         var choices = await db.TrackingChoicesAsync(guildId, presentUserIds, ct);
 
+        // Reward multipliers: load once per pass; resolve per-member role factors from a single roles query.
+        var mult = await multipliers.LoadAsync(guildId, ct);
+        var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(guildId, presentUserIds, ct);
+
         var staged = false;
         foreach (var cfg in channels)
         {
             var occupants = occupantsByChannel.TryGetValue(cfg.ChannelId, out var list) ? list : [];
-            staged |= await ReconcileChannelAsync(cfg, occupants, now, settings.BackgroundTrackingOptIn, choices, seasonId, ct);
+            staged |= await ReconcileChannelAsync(cfg, occupants, now, settings.BackgroundTrackingOptIn, choices, seasonId, mult, rolesByUser, ct);
         }
 
         if (staged)
@@ -103,7 +107,8 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
     /// <summary>Returns true if any presence row was touched (so the caller knows to commit).</summary>
     private async Task<bool> ReconcileChannelAsync(
         GuildChannel cfg, IReadOnlyList<VoiceMemberSnapshot> occupants, DateTimeOffset now,
-        bool guildBackgroundOptIn, IReadOnlyDictionary<ulong, TrackingChoice> choices, Guid? seasonId, CancellationToken ct)
+        bool guildBackgroundOptIn, IReadOnlyDictionary<ulong, TrackingChoice> choices, Guid? seasonId,
+        MultiplierSet mult, IReadOnlyDictionary<ulong, List<ulong>> rolesByUser, CancellationToken ct)
     {
         var presences = await db.ListPresencesForChannelAsync(cfg.GuildId, cfg.ChannelId, ct);
         var byUser = presences.ToDictionary(p => p.UserId);
@@ -157,12 +162,12 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
                 }
                 else
                 {
-                    await FlushRewardAsync(cfg, p, now, ct);
+                    await FlushRewardAsync(cfg, p, now, mult, rolesByUser, ct);
                 }
             }
             else if (p.OpenSegmentStart is not null)
             {
-                await FlushRewardAsync(cfg, p, now, ct);
+                await FlushRewardAsync(cfg, p, now, mult, rolesByUser, ct);
                 p.OpenSegmentStart = null;
             }
         }
@@ -181,7 +186,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
             if (p.OpenSegmentStart is not null)
             {
-                await FlushRewardAsync(cfg, p, now, ct);
+                await FlushRewardAsync(cfg, p, now, mult, rolesByUser, ct);
                 p.OpenSegmentStart = null;
                 any = true;
             }
@@ -276,7 +281,8 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
     /// Convert eligible elapsed reward time into a POINTS award (whole minutes; remainder carries), then advance
     /// the watermark. Idempotent on the segment-start source key, daily-capped, gated to participants.
     /// </summary>
-    private async Task FlushRewardAsync(GuildChannel cfg, BackgroundVoicePresence p, DateTimeOffset now, CancellationToken ct)
+    private async Task FlushRewardAsync(GuildChannel cfg, BackgroundVoicePresence p, DateTimeOffset now,
+        MultiplierSet mult, IReadOnlyDictionary<ulong, List<ulong>> rolesByUser, CancellationToken ct)
     {
         if (p.OpenSegmentStart is not { } start)
         {
@@ -309,7 +315,13 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
             p.AwardedPointsToday = 0;
         }
 
-        var points = minutes * cfg.PointsPerMinute;
+        var factor = mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.BackgroundVoice, now, rolesByUser.GetValueOrDefault(p.UserId));
+        var points = (int)Math.Floor(minutes * cfg.PointsPerMinute * factor);
+        if (points <= 0)
+        {
+            return; // a sub-1 multiplier can floor the award to nothing
+        }
+
         if (cfg.DailyCapPoints > 0)
         {
             var remaining = cfg.DailyCapPoints - p.AwardedPointsToday;

@@ -124,6 +124,13 @@ public static class MembershipQueries
     public static Task<List<GuildMember>> ListMembersAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.GuildMembers.Where(m => m.GuildId == guildId).ToListAsync(ct);
 
+    /// <summary>Role-id sets for the given members, keyed by user id — for resolving per-member role multipliers
+    /// in the reward hot path (one query per reconcile pass).</summary>
+    public static async Task<Dictionary<ulong, List<ulong>>> RoleIdsByUserAsync(this MusterDbContext db, ulong guildId, IReadOnlyCollection<ulong> userIds, CancellationToken ct = default)
+        => await db.GuildMembers.AsNoTracking()
+            .Where(m => m.GuildId == guildId && userIds.Contains(m.UserId))
+            .ToDictionaryAsync(m => m.UserId, m => m.RoleIds, ct);
+
     /// <summary>The guild ids a user is a member of.</summary>
     public static Task<List<ulong>> ListMemberGuildIdsAsync(this MusterDbContext db, ulong userId, CancellationToken ct = default)
         => db.GuildMembers.Where(m => m.UserId == userId).Select(m => m.GuildId).ToListAsync(ct);

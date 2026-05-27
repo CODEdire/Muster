@@ -12,7 +12,7 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
 /// are opened manually by an admin or bound to a Discord scheduled event.
 /// </summary>
-public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth)
+public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers)
 {
     public const int DefaultPointsPerMinute = 1;
 
@@ -109,6 +109,11 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var choices = await db.TrackingChoicesAsync(guildId, presentUserIds, ct);
         var minTracked = (await db.GetSettingsAsync(guildId, ct)).MinTrackedSeconds;
 
+        // Reward multipliers weight each flush by the factor active now (time window + member role).
+        var mult = await multipliers.LoadAsync(guildId, ct);
+        var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(guildId, presentUserIds, ct);
+        decimal Factor(ulong userId) => mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, now, rolesByUser.GetValueOrDefault(userId));
+
         foreach (var session in sessions)
         {
             var optedOut = await db.OptedOutUserIdsAsync(session.Id, ct);
@@ -135,19 +140,19 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                     }
                     else
                     {
-                        FlushAttendance(att, now);
+                        FlushAttendance(att, now, Factor(member.UserId));
                     }
                 }
                 else if (att.OpenSegmentStart is not null)
                 {
-                    FlushAttendance(att, now);
+                    FlushAttendance(att, now, Factor(member.UserId));
                     att.OpenSegmentStart = null;
                 }
             }
 
             foreach (var att in byUser.Values.Where(a => !present.Contains(a.UserId) && a.OpenSegmentStart is not null))
             {
-                FlushAttendance(att, now);
+                FlushAttendance(att, now, Factor(att.UserId));
                 att.OpenSegmentStart = null;
 
                 // Drop a drive-by: a member who left having accrued less than the guild's minimum.
@@ -288,14 +293,22 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         session.Status = TrackingSessionStatus.Closed;
         session.EndedAt = now;
 
+        // Reward multipliers: weight the final flush + (optionally) the presence bonuses.
+        var settings = await db.GetSettingsAsync(session.GuildId, ct);
+        var attendeeIds = session.Attendance.Select(a => a.UserId).ToList();
+        var mult = await multipliers.LoadAsync(session.GuildId, ct);
+        var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(session.GuildId, attendeeIds, ct);
+        decimal SessionFactor(ulong userId, DateTimeOffset at) =>
+            mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, at, rolesByUser.GetValueOrDefault(userId));
+
         foreach (var attendance in session.Attendance)
         {
-            FlushAttendance(attendance, now);
+            FlushAttendance(attendance, now, SessionFactor(attendance.UserId, now));
             attendance.OpenSegmentStart = null;
         }
 
         // Drop drive-bys (members who never accrued the guild's minimum) so they're neither counted nor rewarded.
-        var minTracked = (await db.GetSettingsAsync(session.GuildId, ct)).MinTrackedSeconds;
+        var minTracked = settings.MinTrackedSeconds;
         if (minTracked > 0)
         {
             var driveBys = session.Attendance.Where(a => TotalSeconds(a) < minTracked).ToList();
@@ -329,26 +342,75 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 continue;
             }
 
-            await awards.AwardPointsAsync(
-                session.GuildId, attendance.UserId, attendance.TotalMinutes * rate,
-                CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
-                "Voice attendance", ct);
+            // Reward is computed from the multiplier-weighted minutes (falls back to raw for legacy/zero rows).
+            var weightedMinutes = attendance.WeightedSeconds > 0m
+                ? (int)(attendance.WeightedSeconds / 60m)
+                : attendance.TotalMinutes;
 
-            // Sessions (only) also mint the guild's chosen spendable currency, by minutes / minutes-per-coin.
-            if (coinCurrency is not null)
+            if (weightedMinutes > 0)
             {
-                var coins = attendance.TotalMinutes / minutesPerCoin;
-                if (coins > 0)
+                await awards.AwardPointsAsync(
+                    session.GuildId, attendance.UserId, weightedMinutes * rate,
+                    CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
+                    "Voice attendance", ct);
+
+                // Sessions (only) also mint the guild's chosen spendable currency, by minutes / minutes-per-coin.
+                if (coinCurrency is not null)
                 {
-                    await awards.AwardAsync(
-                        session.GuildId, attendance.UserId, coinCurrency.Id, coins,
-                        CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}:coin",
-                        "Session participation", ct);
+                    var coins = weightedMinutes / minutesPerCoin;
+                    if (coins > 0)
+                    {
+                        await awards.AwardAsync(
+                            session.GuildId, attendance.UserId, coinCurrency.Id, coins,
+                            CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}:coin",
+                            "Session participation", ct);
+                    }
                 }
             }
+
+            await AwardPresenceBonusesAsync(session, attendance, settings, SessionFactor, ct);
         }
 
         return true;
+    }
+
+    /// <summary>Flat POINTS bonuses for being present at the session's start and/or end (windows configurable;
+    /// optionally scaled by the multiplier active at that moment). Idempotent per-member source keys.</summary>
+    private async Task AwardPresenceBonusesAsync(
+        TrackingSession session, VoiceAttendance attendance, GuildSettings settings,
+        Func<ulong, DateTimeOffset, decimal> factorAt, CancellationToken ct)
+    {
+        var startedAt = session.StartedAt;
+        var endedAt = session.EndedAt ?? startedAt;
+
+        if (settings.SessionStartBonus > 0
+            && attendance.FirstJoinedAt <= startedAt.AddMinutes(settings.StartBonusWindowMinutes))
+        {
+            var amount = settings.MultiplyPresenceBonuses
+                ? (int)Math.Floor(settings.SessionStartBonus * factorAt(attendance.UserId, startedAt))
+                : settings.SessionStartBonus;
+            if (amount > 0)
+            {
+                await awards.AwardPointsAsync(
+                    session.GuildId, attendance.UserId, amount, CurrencyLedgerSource.TrackingSession,
+                    $"session:{session.Id}:user:{attendance.UserId}:startbonus", "Session start bonus", ct);
+            }
+        }
+
+        if (settings.SessionEndBonus > 0
+            && attendance.LastLeftAt is { } left
+            && left >= endedAt.AddMinutes(-settings.EndBonusWindowMinutes))
+        {
+            var amount = settings.MultiplyPresenceBonuses
+                ? (int)Math.Floor(settings.SessionEndBonus * factorAt(attendance.UserId, endedAt))
+                : settings.SessionEndBonus;
+            if (amount > 0)
+            {
+                await awards.AwardPointsAsync(
+                    session.GuildId, attendance.UserId, amount, CurrencyLedgerSource.TrackingSession,
+                    $"session:{session.Id}:user:{attendance.UserId}:endbonus", "Session end bonus", ct);
+            }
+        }
     }
 
     private async Task<int> ResolvePointsPerMinuteAsync(ulong guildId, CancellationToken ct)
@@ -384,7 +446,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
     /// then advance the watermark. No-op when no segment is open. Caller decides whether to keep the segment open
     /// (advanced) or close it (null the start). Restart staleness is handled by <see cref="VoidOpenAttendanceAsync"/>;
     /// the clamp is a final sanity bound for unobserved gateway gaps.</summary>
-    private static void FlushAttendance(VoiceAttendance attendance, DateTimeOffset now)
+    private static void FlushAttendance(VoiceAttendance attendance, DateTimeOffset now, decimal factor = 1m)
     {
         if (attendance.OpenSegmentStart is not { } start)
         {
@@ -404,6 +466,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         attendance.TotalMinutes += minutes;
+        // Multiplier-weighted basis: the whole minutes credited this flush, scaled by the factor active now.
+        // When factor is 1 this equals minutes×60, so WeightedSeconds tracks raw seconds and reward is unchanged.
+        attendance.WeightedSeconds += minutes * 60m * factor;
         attendance.LastLeftAt = now;
     }
 }

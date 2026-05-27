@@ -32,7 +32,7 @@ public class CommandServiceTests
     public async Task TrackStop_InvalidId_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)));
+        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db)));
 
         var result = await sut.StopAsync(1, "not-a-guid");
 
@@ -43,7 +43,7 @@ public class CommandServiceTests
     public async Task TrackStop_UnknownSession_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)));
+        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db)));
 
         var result = await sut.StopAsync(1, Guid.NewGuid().ToString());
 
@@ -54,7 +54,7 @@ public class CommandServiceTests
     public async Task TrackStart_ThenStop_Succeeds()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)));
+        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db)));
 
         var start = await sut.StartAsync(1, actorId: 5, voiceChannelId: 42, name: "Test op", channelName: "Voice", requireUnmuted: true, requireUndeafened: true, requireNotAlone: false);
         Assert.False(start.IsError);

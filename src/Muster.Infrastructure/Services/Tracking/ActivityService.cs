@@ -15,7 +15,7 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// (<see cref="GuildChannel.PointsPerMessage"/>). Dedupes on the message id so gateway redelivery never
 /// inflates counts or double-pays.
 /// </summary>
-public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth)
+public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers)
 {
     public async Task RecordMessageAsync(
         ulong guildId, ulong channelId, ulong userId, ulong messageId, DateTimeOffset timestamp,
@@ -146,7 +146,16 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
             state.AwardedPointsToday = 0;
         }
 
-        var points = channel.PointsPerMessage;
+        var mult = await multipliers.LoadAsync(channel.GuildId, ct);
+        var factor = mult.IsEmpty
+            ? 1m
+            : mult.Factor(MultiplierScope.Messages, now, (await db.RoleIdsByUserAsync(channel.GuildId, [userId], ct)).GetValueOrDefault(userId));
+        var points = (int)Math.Floor(channel.PointsPerMessage * factor);
+        if (points <= 0)
+        {
+            return; // a sub-1 multiplier floored the award to nothing
+        }
+
         if (channel.MessageDailyCapPoints > 0)
         {
             var remaining = channel.MessageDailyCapPoints - state.AwardedPointsToday;

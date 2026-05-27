@@ -29,7 +29,7 @@ public class BackgroundTrackingTests
     }
 
     private static BackgroundTrackingService Sut(MusterDbContext db) =>
-        new(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        new(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
 
     private static async Task AddRewardVoiceAsync(
         MusterDbContext db, int rate = 2, int dailyCap = 0, bool requireUnmuted = true, bool requireNotAlone = true)
