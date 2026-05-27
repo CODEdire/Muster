@@ -259,9 +259,10 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   start/end POINTS on close to members inside the configurable buffer windows (`Start/EndBonusWindowMinutes`),
   optionally scaled by the multiplier (`MultiplyPresenceBonuses` toggle). Config: Tracking settings form
   (stacking/cap/bonuses) + a `/guilds/{id}/multipliers` admin page (CRUD). Migration `P8MultipliersAndBonuses`.
-- **P9 — Tracking transparency notice.** How to inform members that participation is tracked (first-touch
-  and/or Session-start) **without broadcasting to every member**. Deferred deliberately — needs design
-  (e.g. ephemeral on first interaction, a pinned info message, or onboarding text — not a mass DM/ping).
+- **P9 — Tracking transparency notice. 📋 wishlist (revisit later).** How to inform members that participation
+  is tracked (first-touch and/or Session-start) **without broadcasting to every member**. Deferred deliberately —
+  needs design (e.g. ephemeral on first interaction, a pinned info message, or onboarding text — not a mass
+  DM/ping). Parked while other priorities (e.g. Azure SignalR migration) come first.
 
 ## Sessions UX round 2 (post-P7)
 
