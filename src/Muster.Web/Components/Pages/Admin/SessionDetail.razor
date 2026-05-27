@@ -2,6 +2,8 @@
 @layout GuildLayout
 @inherits GuildMemberComponentBase
 @inject ParticipationReadService Participation
+@inject TrackingSessionService Sessions
+@inject Muster.Infrastructure.Services.Platform.AuditService Audit
 @inject MusterDbContext Db
 @using Muster.Domain.Enums
 @using Muster.Persistence
@@ -24,7 +26,19 @@ else if (State == AccessState.Ready && _detail is not null)
         <a class="back-link" href="/guilds/@GuildId/sessions">← Sessions</a>
         <h1>@_detail.Name</h1>
         <p class="subtitle">@(_detail.Active ? "🟢 Active now" : "Ended")</p>
+        @if (_detail.Active && _isStaff)
+        {
+            <EditForm Model="EndForm" FormName="end-session" OnValidSubmit="EndAsync">
+                <input type="hidden" name="EndForm.Submitted" value="1" />
+                <button type="submit" class="btn btn-sm btn-danger">End session</button>
+            </EditForm>
+        }
     </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
 
     <div class="stat-grid">
         <div class="stat glass">
@@ -84,8 +98,11 @@ else if (State == AccessState.Ready && _detail is not null)
 @code {
     [Parameter] public string SessionId { get; set; } = string.Empty;
 
+    [SupplyParameterFromForm(FormName = "end-session")] private EndInput EndForm { get; set; } = new();
+
     private SessionDetailView? _detail;
     private Dictionary<ulong, string> _names = [];
+    private bool _isStaff;
 
     protected override async Task LoadAsync()
     {
@@ -94,11 +111,45 @@ else if (State == AccessState.Ready && _detail is not null)
             return;
         }
 
+        _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
         _detail = await Participation.SessionDetailAsync(GuildId, id);
         if (_detail is not null)
         {
             _names = await Db.UserDisplayNameMapAsync(_detail.Members.Select(m => m.UserId).ToList());
         }
+    }
+
+    private async Task EndAsync()
+    {
+        if (!_isStaff || !Guid.TryParse(SessionId, out var id))
+        {
+            return;
+        }
+
+        // Guard: only close a session that's active and belongs to this guild (no cross-guild close).
+        if (!await Db.IsActiveSessionAsync(GuildId, id))
+        {
+            Message = "That session is no longer active.";
+            await LoadAsync();
+            return;
+        }
+
+        if (await Sessions.CloseAsync(id))
+        {
+            await Audit.RecordAsync(GuildId, UserId, "track.session.stop", $"web: {id}");
+            Message = "Session ended and attendance awarded.";
+        }
+        else
+        {
+            Message = "Couldn't end that session.";
+        }
+
+        await LoadAsync();
+    }
+
+    public class EndInput
+    {
+        public string? Submitted { get; set; }
     }
 
     private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");

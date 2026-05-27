@@ -305,7 +305,9 @@ lookup (`DiscordChannelLookup`) was retired — no settings page makes a live Di
 when no base URL is set). `/track session new` returns the wizard link; `/track leaderboard` appends a full
 sessions-view link. The web **create-session wizard** (`/guilds/{id}/sessions/new`, admin-gated) lets staff open
 a session from a synced voice-channel dropdown + guard toggles — members already present are credited on the
-next reconcile sweep (the web host has no gateway roster to reconcile immediately). The Tracking settings
+next reconcile sweep (the web host has no gateway roster to reconcile immediately). Staff can **end** an active
+session from its detail page (`SessionDetail` "End session", guarded by `IsActiveSessionAsync` → `CloseAsync`);
+the active list links each row there. The Tracking settings
 add/remove-channel forms now use synced-channel dropdowns (kind auto-detected, shown by name).
 
 ## Command surface

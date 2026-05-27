@@ -185,6 +185,10 @@ else if (State == AccessState.Ready)
                             <th><a href="@SortUrl("started")">Started @Ind("started")</a></th>
                             <th><a href="@SortUrl("present")">In voice now @Ind("present")</a></th>
                             <th><a href="@SortUrl("attendees")">Attendees @Ind("attendees")</a></th>
+                            @if (_isStaff)
+                            {
+                                <th></th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
@@ -197,6 +201,10 @@ else if (State == AccessState.Ready)
                                 <td>@s.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
                                 <td>@s.PresentNow</td>
                                 <td>@s.Attendees</td>
+                                @if (_isStaff)
+                                {
+                                    <td><a class="btn btn-sm btn-danger" href="/guilds/@GuildId/sessions/@s.Id">End ▸</a></td>
+                                }
                             </tr>
                         }
                     </tbody>
