@@ -58,8 +58,22 @@ else if (State == AccessState.Ready)
             <label>Max session hours <InputNumber @bind-Value="Settings.MaxSessionHours" /> <span class="subtitle">auto-close a never-stopped session (0 = off)</span></label>
             <label>Activity retention (days) <InputNumber @bind-Value="Settings.ActivityRetentionDays" /> <span class="subtitle">prune raw records; rollups kept (0 = forever)</span></label>
             <label>Min session seconds <InputNumber @bind-Value="Settings.MinTrackedSeconds" /> <span class="subtitle">drop drive-by attendees under this (0 = keep all)</span></label>
+            <label>Multiplier stacking
+                <InputSelect @bind-Value="Settings.Stacking">
+                    <option value="@MultiplierStacking.HighestWins">Highest wins</option>
+                    <option value="@MultiplierStacking.Multiplicative">Multiplicative</option>
+                </InputSelect>
+                <span class="subtitle">how overlapping windows combine</span>
+            </label>
+            <label>Multiplier cap <InputNumber @bind-Value="Settings.Cap" /> <span class="subtitle">clamp the effective factor (0 = no cap)</span></label>
+            <label>Session start bonus <InputNumber @bind-Value="Settings.StartBonus" /> <span class="subtitle">flat POINTS for being there at the start (0 = off)</span></label>
+            <label>Session end bonus <InputNumber @bind-Value="Settings.EndBonus" /> <span class="subtitle">flat POINTS for staying to the end (0 = off)</span></label>
+            <label>Start window (min) <InputNumber @bind-Value="Settings.StartWindow" /> <span class="subtitle">joined within N min of start qualifies</span></label>
+            <label>End window (min) <InputNumber @bind-Value="Settings.EndWindow" /> <span class="subtitle">present within N min of end qualifies</span></label>
+            <label class="check"><InputCheckbox @bind-Value="Settings.MultiplyBonuses" /> Scale presence bonuses by the active multiplier</label>
             <div class="btn-row"><button type="submit">Save</button></div>
         </EditForm>
+        <p class="subtitle">Manage reward windows on the <a href="/guilds/@GuildId/multipliers">Multipliers</a> page.</p>
     </div>
 
     <div class="panel glass">
@@ -200,6 +214,13 @@ else if (State == AccessState.Ready)
             Settings.MaxSessionHours = s.MaxSessionHours;
             Settings.ActivityRetentionDays = s.ActivityRetentionDays;
             Settings.MinTrackedSeconds = s.MinTrackedSeconds;
+            Settings.Stacking = s.MultiplierStacking;
+            Settings.Cap = s.MultiplierCap;
+            Settings.StartBonus = s.SessionStartBonus;
+            Settings.EndBonus = s.SessionEndBonus;
+            Settings.StartWindow = s.StartBonusWindowMinutes;
+            Settings.EndWindow = s.EndBonusWindowMinutes;
+            Settings.MultiplyBonuses = s.MultiplyPresenceBonuses;
         }
     }
 
@@ -211,8 +232,9 @@ else if (State == AccessState.Ready)
         await Config.SetActivityRetentionAsync(GuildId, Settings.ActivityRetentionDays);
         await Config.SetMinTrackedSecondsAsync(GuildId, Settings.MinTrackedSeconds);
         var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
+        await Config.SetMultiplierSettingsAsync(GuildId, Settings.Stacking, Settings.Cap, Settings.StartBonus, Settings.EndBonus, Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses);
 
-        await AuditAsync("config.tracking", $"background-opt-in={Settings.BackgroundOptIn}; session-guards={Settings.ApplyGuardsToSessions}; coin={Settings.CoinCurrency}/{Settings.MinutesPerCoin}; max-session-h={Settings.MaxSessionHours}; activity-retention={Settings.ActivityRetentionDays}");
+        await AuditAsync("config.tracking", $"background-opt-in={Settings.BackgroundOptIn}; session-guards={Settings.ApplyGuardsToSessions}; coin={Settings.CoinCurrency}/{Settings.MinutesPerCoin}; max-session-h={Settings.MaxSessionHours}; activity-retention={Settings.ActivityRetentionDays}; stacking={Settings.Stacking}; cap={Settings.Cap}; bonuses={Settings.StartBonus}/{Settings.EndBonus}");
         Message = coin.IsError ? coin.Message : "Tracking settings saved.";
         await LoadAsync();
     }
@@ -273,6 +295,13 @@ else if (State == AccessState.Ready)
         public int MaxSessionHours { get; set; }
         public int ActivityRetentionDays { get; set; }
         public int MinTrackedSeconds { get; set; }
+        public MultiplierStacking Stacking { get; set; }
+        public decimal Cap { get; set; }
+        public int StartBonus { get; set; }
+        public int EndBonus { get; set; }
+        public int StartWindow { get; set; } = 5;
+        public int EndWindow { get; set; } = 5;
+        public bool MultiplyBonuses { get; set; }
     }
 
     public class AddChannelInput

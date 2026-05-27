@@ -212,6 +212,38 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             : $"Raw activity records older than {days} day(s) will be pruned (rollups kept).");
     }
 
+    /// <summary>Set the reward-multiplier stacking policy + global cap and the session start/end presence bonuses
+    /// (amounts, qualifying-window minutes, and whether the active multiplier scales them).</summary>
+    public async Task<CommandResult> SetMultiplierSettingsAsync(
+        ulong guildId, MultiplierStacking stacking, decimal cap,
+        int startBonus, int endBonus, int startWindowMinutes, int endWindowMinutes, bool multiplyBonuses,
+        CancellationToken ct = default)
+    {
+        if (cap < 0m || startBonus < 0 || endBonus < 0 || startWindowMinutes < 0 || endWindowMinutes < 0)
+        {
+            return CommandResult.Error("Cap, bonuses, and windows can't be negative (0 = off / no cap).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.MultiplierStacking = stacking;
+        settings.MultiplierCap = cap;
+        settings.SessionStartBonus = startBonus;
+        settings.SessionEndBonus = endBonus;
+        settings.StartBonusWindowMinutes = startWindowMinutes;
+        settings.EndBonusWindowMinutes = endWindowMinutes;
+        settings.MultiplyPresenceBonuses = multiplyBonuses;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok("Multiplier & bonus settings updated.");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

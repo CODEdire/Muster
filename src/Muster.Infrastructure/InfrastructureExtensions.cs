@@ -69,6 +69,7 @@ public static class InfrastructureExtensions
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<TrackingCommandService>();
         builder.Services.AddScoped<TrackedChannelCommandService>();
+        builder.Services.AddScoped<RewardMultiplierCommandService>();
         builder.Services.AddScoped<TrackingPreferenceCommandService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
