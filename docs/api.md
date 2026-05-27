@@ -125,6 +125,34 @@ Bodies: `post` `{ "origin": "Guild|Player", "name": "…", "currency": "COIN", "
 `{ "tier": "B", "requireFinalApproval": false }`; `claim` / `cancel` / `intake/reject` take no body.
 A failed transition returns `409` with `{ "error": "quest_action_failed", "reason": "<QuestResult>" }`.
 
+### Participation tracking (`ApiTrackingEndpoints`)
+
+Parity with the bot's `/track` tree and the web Sessions/Multipliers pages — reads use `read:tracking`,
+writes use `write:tracking`, all reusing the same domain services.
+
+| Method | Route | Scope | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/guilds/{guildId}/tracking/leaderboard?top=` | `read:tracking` | top members by voice time |
+| GET | `/api/v1/guilds/{guildId}/tracking/sessions/active?page=&pageSize=` | `read:tracking` | active sessions |
+| GET | `/api/v1/guilds/{guildId}/tracking/sessions?page=&pageSize=` | `read:tracking` | closed session history |
+| GET | `/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}` | `read:tracking` | session detail + roster |
+| GET | `/api/v1/guilds/{guildId}/members/{userId}/tracking` | `read:tracking` | member voice stats |
+| GET | `/api/v1/guilds/{guildId}/tracking/channels` | `read:tracking` | monitored channels |
+| GET | `/api/v1/guilds/{guildId}/tracking/multipliers` | `read:tracking` | reward multipliers |
+| POST | `…/tracking/sessions` | `write:tracking` (actor-bound) | open a session `{ channelId, name, skipMuted?, skipDeafened?, skipAlone? }` |
+| POST | `…/tracking/sessions/{sessionId}/stop` | `write:tracking` | close + award |
+| PUT | `…/tracking/channels/voice` | `write:tracking` | monitor voice `{ channelId, pointsPerMinute, dailyCap, requireUnmuted, requireUndeafened, requireNotAlone }` |
+| PUT | `…/tracking/channels/text` | `write:tracking` | monitor text `{ channelId, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap }` |
+| DELETE | `…/tracking/channels/{channelId}` | `write:tracking` | stop monitoring |
+| POST | `…/members/{userId}/tracking/privacy` | `write:tracking` | set privacy `{ choice }` |
+| POST | `…/tracking/multipliers` | `write:tracking` | create `{ kind: oneoff\|recurring\|role, name, factor, scope, … }` |
+| POST | `…/tracking/multipliers/{id}/enabled?enabled=` | `write:tracking` | enable/disable |
+| DELETE | `…/tracking/multipliers/{id}` | `write:tracking` | remove |
+
+Writes return `{ "message": … }` on success or `400 { "error": … }` on a validation failure (the same
+`CommandResult` the bot/web surface). Opening a session via the API can't scan the live voice roster (no
+gateway on the API host), so members already present are credited on the bot's next reconcile sweep.
+
 The list (`GET /quests`) mirrors the web board: `tab` (`active`|`actionneeded`|`history`, default `active`; `actionneeded` =
 the manager review queue, empty for non-managers), `type`/scope (`guild`|`player`|`mine`, default all; `mine` = bounties you posted + any quest you claimed, incl. guild duties),
 `search`, `sort` (`reward`|`closes`|`created`|`name`|`type`|`status`|`opens`), `desc`, `page`, `size` (10/25/50/100). It returns
