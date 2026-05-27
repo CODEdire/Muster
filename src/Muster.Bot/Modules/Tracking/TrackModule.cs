@@ -5,7 +5,11 @@ using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
 using Muster.Infrastructure.Commands.Tracking;
+using Muster.Infrastructure.Commands.Membership;
 using Muster.Infrastructure.Services.Tracking;
+using Muster.Infrastructure.Services.Platform;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 
 namespace Muster.Bot.Modules;
 
@@ -145,5 +149,171 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>().ListAsync(guildId),
                 RequiredRole.Admin);
+    }
+
+    /// <summary>Reward multipliers — boost/dampen earnings by window, schedule, or role (admin). Complex windows
+    /// are easier on the web Multipliers page; these cover the common cases.</summary>
+    [SubSlashCommand("multiplier", "Reward multipliers: windows, recurring schedules, and role boosts.")]
+    public class MultiplierModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
+    {
+        [SubSlashCommand("list", "List this server's reward multipliers.")]
+        public Task ListAsync()
+            => RunAsync(async (sp, guildId) =>
+            {
+                var rows = await sp.GetRequiredService<RewardMultiplierCommandService>().ListAsync(guildId);
+                if (rows.Count == 0)
+                {
+                    return CommandResult.Ok("No reward multipliers configured. Add one with `/track multiplier window|recurring|role`.");
+                }
+
+                var lines = rows.Select(m => $"- **{m.Name}** ×{m.Factor:0.##} — {m.Kind}, {(m.Enabled ? "on" : "off")}");
+                return CommandResult.Ok("**Reward multipliers**\n" + string.Join("\n", lines));
+            }, RequiredRole.Admin);
+
+        [SubSlashCommand("role", "Add an always-on multiplier for members holding a role.")]
+        public Task RoleAsync(
+            [SlashCommandParameter(Name = "role", Description = "Role whose members earn the multiplier")] Role role,
+            [SlashCommandParameter(Name = "factor", Description = "Multiplier (e.g. 1.5, 2). >1 boosts, <1 dampens")] double factor,
+            [SlashCommandParameter(Name = "name", Description = "A label for this rule")] string? name = null,
+            [SlashCommandParameter(Name = "applies-to", Description = "Which rewards it affects (default all)")] MultiplierScope scope = MultiplierScope.All)
+            => RunAsync(
+                (sp, guildId) => sp.GetRequiredService<RewardMultiplierCommandService>()
+                    .AddRoleAsync(guildId, name ?? $"{role.Name} role", (decimal)factor, scope, role.Id),
+                RequiredRole.Admin, auditAction: "track.multiplier.add");
+
+        [SubSlashCommand("recurring", "Add a weekly recurring multiplier (guild-local times; may wrap past midnight).")]
+        public Task RecurringAsync(
+            [SlashCommandParameter(Name = "factor", Description = "Multiplier (e.g. 1.5, 2)")] double factor,
+            [SlashCommandParameter(Name = "from", Description = "Start time HH:mm (guild time)")] string from,
+            [SlashCommandParameter(Name = "to", Description = "End time HH:mm")] string to,
+            [SlashCommandParameter(Name = "mon", Description = "Active on Mondays")] bool mon = false,
+            [SlashCommandParameter(Name = "tue", Description = "Active on Tuesdays")] bool tue = false,
+            [SlashCommandParameter(Name = "wed", Description = "Active on Wednesdays")] bool wed = false,
+            [SlashCommandParameter(Name = "thu", Description = "Active on Thursdays")] bool thu = false,
+            [SlashCommandParameter(Name = "fri", Description = "Active on Fridays")] bool fri = false,
+            [SlashCommandParameter(Name = "sat", Description = "Active on Saturdays")] bool sat = false,
+            [SlashCommandParameter(Name = "sun", Description = "Active on Sundays")] bool sun = false,
+            [SlashCommandParameter(Name = "name", Description = "A label for this rule")] string? name = null,
+            [SlashCommandParameter(Name = "applies-to", Description = "Which rewards it affects (default all)")] MultiplierScope scope = MultiplierScope.All)
+            => RunAsync((sp, guildId) =>
+            {
+                if (!TimeOnly.TryParse(from, out var f) || !TimeOnly.TryParse(to, out var t))
+                {
+                    return Task.FromResult(CommandResult.Error("Enter times as HH:mm (e.g. 19:00)."));
+                }
+
+                var days = (mon ? WeekDays.Monday : 0) | (tue ? WeekDays.Tuesday : 0) | (wed ? WeekDays.Wednesday : 0)
+                    | (thu ? WeekDays.Thursday : 0) | (fri ? WeekDays.Friday : 0) | (sat ? WeekDays.Saturday : 0) | (sun ? WeekDays.Sunday : 0);
+
+                return sp.GetRequiredService<RewardMultiplierCommandService>()
+                    .AddRecurringAsync(guildId, name ?? "Recurring", (decimal)factor, scope, days, f, t);
+            }, RequiredRole.Admin, auditAction: "track.multiplier.add");
+
+        [SubSlashCommand("window", "Add a one-off multiplier window (e.g. happy hour). Times are in your time zone.")]
+        public Task WindowAsync(
+            [SlashCommandParameter(Name = "factor", Description = "Multiplier (e.g. 1.5, 2)")] double factor,
+            [SlashCommandParameter(Name = "start", Description = "When it begins, your time zone (e.g. 2026-06-01 19:00)")] string start,
+            [SlashCommandParameter(Name = "end", Description = "When it ends")] string end,
+            [SlashCommandParameter(Name = "name", Description = "A label for this rule")] string? name = null,
+            [SlashCommandParameter(Name = "applies-to", Description = "Which rewards it affects (default all)")] MultiplierScope scope = MultiplierScope.All)
+            => RunAsync(async (sp, guildId) =>
+            {
+                var tz = sp.GetRequiredService<TimeZoneService>();
+                var (okStart, startUtc, errStart) = await tz.ParseLocalAsync(guildId, Context.User.Id, start);
+                if (!okStart)
+                {
+                    return CommandResult.Error(errStart ?? "Couldn't read the start time.");
+                }
+
+                var (okEnd, endUtc, errEnd) = await tz.ParseLocalAsync(guildId, Context.User.Id, end);
+                if (!okEnd)
+                {
+                    return CommandResult.Error(errEnd ?? "Couldn't read the end time.");
+                }
+
+                return await sp.GetRequiredService<RewardMultiplierCommandService>()
+                    .AddOneOffAsync(guildId, name ?? "Window", (decimal)factor, scope, startUtc!.Value, endUtc!.Value);
+            }, RequiredRole.Admin, auditAction: "track.multiplier.add");
+
+        [SubSlashCommand("enable", "Enable or disable a multiplier.")]
+        public Task EnableAsync(
+            [SlashCommandParameter(Name = "multiplier", Description = "Pick a multiplier",
+                AutocompleteProviderType = typeof(MultiplierAutocompleteProvider))] string multiplier,
+            [SlashCommandParameter(Name = "enabled", Description = "true to enable, false to disable")] bool enabled = true)
+            => RunAsync((sp, guildId) => Guid.TryParse(multiplier, out var id)
+                ? sp.GetRequiredService<RewardMultiplierCommandService>().SetEnabledAsync(guildId, id, enabled)
+                : Task.FromResult(CommandResult.Error("Pick a multiplier from the list.")),
+                RequiredRole.Admin, auditAction: "track.multiplier.toggle");
+
+        [SubSlashCommand("remove", "Remove a multiplier.")]
+        public Task RemoveAsync(
+            [SlashCommandParameter(Name = "multiplier", Description = "Pick a multiplier",
+                AutocompleteProviderType = typeof(MultiplierAutocompleteProvider))] string multiplier)
+            => RunAsync((sp, guildId) => Guid.TryParse(multiplier, out var id)
+                ? sp.GetRequiredService<RewardMultiplierCommandService>().RemoveAsync(guildId, id)
+                : Task.FromResult(CommandResult.Error("Pick a multiplier from the list.")),
+                RequiredRole.Admin, auditAction: "track.multiplier.remove");
+    }
+
+    /// <summary>Tracking reward settings (admin) — the scalar config that otherwise lives only on the web page.</summary>
+    [SubSlashCommand("settings", "Session guards, limits, and multiplier/bonus policy.")]
+    public class SettingsModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
+    {
+        [SubSlashCommand("guards", "Whether new sessions pause reward time while muted/alone by default.")]
+        public Task GuardsAsync(
+            [SlashCommandParameter(Name = "apply", Description = "true = pause muted/alone time; false = count all presence")] bool apply)
+            => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetApplyGuardsToSessionsAsync(guildId, apply),
+                RequiredRole.Admin, auditAction: "config.tracking");
+
+        [SubSlashCommand("limits", "Session safety limits (omit a value to leave it unchanged).")]
+        public Task LimitsAsync(
+            [SlashCommandParameter(Name = "max-session-hours", Description = "Auto-close a never-stopped session (0 = off)")] int? maxSessionHours = null,
+            [SlashCommandParameter(Name = "activity-retention-days", Description = "Prune raw activity rows older than N days (0 = forever)")] int? activityRetentionDays = null,
+            [SlashCommandParameter(Name = "min-session-seconds", Description = "Drop drive-by attendees under N seconds (0 = keep all)")] int? minSessionSeconds = null)
+            => RunAsync(async (sp, guildId) =>
+            {
+                var config = sp.GetRequiredService<ConfigCommandService>();
+                var messages = new List<string>();
+                if (maxSessionHours is { } mh)
+                {
+                    messages.Add((await config.SetMaxSessionHoursAsync(guildId, mh)).Message);
+                }
+
+                if (activityRetentionDays is { } rd)
+                {
+                    messages.Add((await config.SetActivityRetentionAsync(guildId, rd)).Message);
+                }
+
+                if (minSessionSeconds is { } ms)
+                {
+                    messages.Add((await config.SetMinTrackedSecondsAsync(guildId, ms)).Message);
+                }
+
+                return CommandResult.Ok(messages.Count == 0 ? "Provide at least one limit to change." : string.Join("\n", messages));
+            }, RequiredRole.Admin, auditAction: "config.tracking");
+
+        [SubSlashCommand("multiplier-policy", "How multipliers stack + a global cap, and the session presence bonuses.")]
+        public Task PolicyAsync(
+            [SlashCommandParameter(Name = "stacking", Description = "How overlapping windows combine")] MultiplierStacking? stacking = null,
+            [SlashCommandParameter(Name = "cap", Description = "Clamp the effective factor (0 = no cap)")] double? cap = null,
+            [SlashCommandParameter(Name = "start-bonus", Description = "Flat POINTS for being present at the start")] int? startBonus = null,
+            [SlashCommandParameter(Name = "end-bonus", Description = "Flat POINTS for staying to the end")] int? endBonus = null,
+            [SlashCommandParameter(Name = "start-window-min", Description = "Joined within N min of start qualifies")] int? startWindowMinutes = null,
+            [SlashCommandParameter(Name = "end-window-min", Description = "Present within N min of end qualifies")] int? endWindowMinutes = null,
+            [SlashCommandParameter(Name = "scale-bonuses", Description = "Scale presence bonuses by the active multiplier")] bool? scaleBonuses = null)
+            => RunAsync(async (sp, guildId) =>
+            {
+                // Merge with current settings so omitted options stay unchanged.
+                var s = await sp.GetRequiredService<MusterDbContext>().GetSettingsAsync(guildId);
+                return await sp.GetRequiredService<ConfigCommandService>().SetMultiplierSettingsAsync(
+                    guildId,
+                    stacking ?? s.MultiplierStacking,
+                    cap is { } c ? (decimal)c : s.MultiplierCap,
+                    startBonus ?? s.SessionStartBonus,
+                    endBonus ?? s.SessionEndBonus,
+                    startWindowMinutes ?? s.StartBonusWindowMinutes,
+                    endWindowMinutes ?? s.EndBonusWindowMinutes,
+                    scaleBonuses ?? s.MultiplyPresenceBonuses);
+            }, RequiredRole.Admin, auditAction: "config.tracking");
     }
 }

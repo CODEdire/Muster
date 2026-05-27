@@ -330,7 +330,9 @@ add/remove-channel forms now use synced-channel dropdowns (kind auto-detected, s
 ## Command surface
 
 All tracking slash commands live under one `/track` root (mirroring `/quest`'s sub-command tree):
-`/track session start|stop|new`, `/track background voice|text|remove|list`, `/track privacy`, `/track leaderboard`.
+`/track session start|stop|new`, `/track background voice|text|remove|list`, `/track multiplier list|role|recurring|window|enable|remove`,
+`/track settings guards|limits|multiplier-policy`, `/track privacy`, `/track leaderboard`. (Complex multiplier windows are
+easier on the web Multipliers page; the Discord commands cover the common cases. `settings` options omitted stay unchanged.)
 `session start` takes rich slash options (native channel picker + name + per-guard toggles) rather than a modal —
 Discord modals are text-input-only, so they can't host a channel picker or boolean toggles, and the native
 option form is the better "fill-out" experience. (A guided component flow — channel-select message → modal —
