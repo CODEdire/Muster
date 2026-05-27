@@ -78,6 +78,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Min-segment threshold (P7d)** — `MinTrackedSeconds` drops drive-by session attendees (under the minimum) from the roster/award at leave + close.
 - [x] **Sessions UX round A** — channels shown by name (stored + cache-refreshed); Background tab (who's tracked where, live); SessionDetail header + rules panel + member status (Active/Paused/Left via `VoiceAttendance.LastSeenAt`).
 - [x] **Sessions UX round B** — wallet moved to `/wallet`; new `/me` dashboard (points/voice summary + active sessions you're in + your recent sessions); one-time per-session opt-out (`SessionOptOut` + `OptOutMemberAsync`, excluded in reconcile); nav adds Me + Wallet.
+- [x] **Split mute/deafen guards** — independent `RequireUnmuted` (off by default — muted ≈ present/listening, e.g. phone call) + `RequireUndeafened` (on — deafened = checked out) on channels and sessions; migration backfills existing rows from the old combined flag.
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
 ## M4 — Scoring, currency & messaging

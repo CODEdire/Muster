@@ -19,7 +19,8 @@ public static class VoiceRoster
                     continue;
                 }
 
-                var muted = vs.IsMuted || vs.IsDeafened || vs.IsSelfMuted || vs.IsSelfDeafened;
+                var muted = vs.IsMuted || vs.IsSelfMuted;
+                var deafened = vs.IsDeafened || vs.IsSelfDeafened;
                 var isBot = vs.User?.IsBot ?? false;
 
                 if (!byChannel.TryGetValue(channelId, out var list))
@@ -28,7 +29,7 @@ public static class VoiceRoster
                     byChannel[channelId] = list;
                 }
 
-                list.Add(new VoiceMemberSnapshot(vs.UserId, isBot, muted));
+                list.Add(new VoiceMemberSnapshot(vs.UserId, isBot, muted, deafened));
             }
         }
 

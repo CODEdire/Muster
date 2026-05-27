@@ -14,13 +14,14 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
     public Task StartAsync(
         [SlashCommandParameter(Name = "channel", Description = "Voice channel to track")] Channel channel,
         [SlashCommandParameter(Name = "name", Description = "A name for this session (e.g. 'Friday raid')")] string name,
-        [SlashCommandParameter(Name = "skip-muted", Description = "Pause reward time while a member is muted/deafened (default true)")] bool skipMuted = true,
+        [SlashCommandParameter(Name = "skip-muted", Description = "Pause while muted, i.e. can't speak (default false — a muted member may still be present)")] bool skipMuted = false,
+        [SlashCommandParameter(Name = "skip-deafened", Description = "Pause while deafened, i.e. checked out (default true)")] bool skipDeafened = true,
         [SlashCommandParameter(Name = "skip-alone", Description = "Pause reward time while a member is alone in the channel (default false)")] bool skipAlone = false)
         => RunAsync(
             async (sp, guildId) =>
             {
                 var result = await sp.GetRequiredService<TrackingCommandService>()
-                    .StartAsync(guildId, Context.User.Id, channel.Id, name, (channel as IGuildChannel)?.Name, requireUnmuted: skipMuted, requireNotAlone: skipAlone);
+                    .StartAsync(guildId, Context.User.Id, channel.Id, name, (channel as IGuildChannel)?.Name, requireUnmuted: skipMuted, requireUndeafened: skipDeafened, requireNotAlone: skipAlone);
 
                 // Members already in the channel produce no voice event, so scan the current roster now
                 // (otherwise they wouldn't be counted until the next periodic sweep).

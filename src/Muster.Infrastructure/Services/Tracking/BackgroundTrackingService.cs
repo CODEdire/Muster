@@ -7,8 +7,9 @@ using Muster.Infrastructure.Services.Membership;
 
 namespace Muster.Infrastructure.Services.Tracking;
 
-/// <summary>A member's live voice presence in a channel, as seen on the gateway roster at reconcile time.</summary>
-public readonly record struct VoiceMemberSnapshot(ulong UserId, bool IsBot, bool IsMutedOrDeafened);
+/// <summary>A member's live voice presence in a channel, as seen on the gateway roster at reconcile time.
+/// Muted (can't speak) and deafened (can't hear — checked out) are separate so guards can treat them differently.</summary>
+public readonly record struct VoiceMemberSnapshot(ulong UserId, bool IsBot, bool IsMuted, bool IsDeafened);
 
 /// <summary>
 /// The always-on "background" plane. Two accruals run per monitored voice channel against the live voice
@@ -143,7 +144,8 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
             // Reward time: guarded + suppressed while a Session owns the channel.
             var eligible = isReward && !sessionActive
-                && (!cfg.RequireUnmuted || !member.IsMutedOrDeafened)
+                && (!cfg.RequireUnmuted || !member.IsMuted)
+                && (!cfg.RequireUndeafened || !member.IsDeafened)
                 && (!cfg.RequireNotAlone || humans.Count >= 2);
 
             if (eligible)

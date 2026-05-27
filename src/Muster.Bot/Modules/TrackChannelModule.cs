@@ -13,11 +13,12 @@ public class TrackChannelModule(IServiceScopeFactory scopeFactory) : MusterModul
         [SlashCommandParameter(Name = "channel", Description = "Voice channel to monitor")] Channel channel,
         [SlashCommandParameter(Name = "points-per-minute", Description = "Points per eligible minute")] int pointsPerMinute = 1,
         [SlashCommandParameter(Name = "daily-cap", Description = "Max background points per member per day (0 = uncapped)")] int dailyCap = 0,
-        [SlashCommandParameter(Name = "require-unmuted", Description = "Skip muted/deafened members (default true)")] bool requireUnmuted = true,
+        [SlashCommandParameter(Name = "require-unmuted", Description = "Skip muted members, i.e. can't speak (default false — a muted member may still be present)")] bool requireUnmuted = false,
+        [SlashCommandParameter(Name = "require-undeafened", Description = "Skip deafened members, i.e. checked out (default true)")] bool requireUndeafened = true,
         [SlashCommandParameter(Name = "require-not-alone", Description = "Skip when alone in the channel (default true)")] bool requireNotAlone = true)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>()
-                .SetVoiceAsync(guildId, channel.Id, pointsPerMinute, dailyCap, requireUnmuted, requireNotAlone, channelName: (channel as IGuildChannel)?.Name),
+                .SetVoiceAsync(guildId, channel.Id, pointsPerMinute, dailyCap, requireUnmuted, requireUndeafened, requireNotAlone, channelName: (channel as IGuildChannel)?.Name),
             RequiredRole.Admin,
             auditAction: "track.voice");
 

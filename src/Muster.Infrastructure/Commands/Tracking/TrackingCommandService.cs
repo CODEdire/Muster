@@ -7,19 +7,18 @@ public class TrackingCommandService(TrackingSessionService sessions)
 {
     public async Task<CommandResult> StartAsync(
         ulong guildId, ulong actorId, ulong voiceChannelId, string name, string? channelName,
-        bool requireUnmuted, bool requireNotAlone, CancellationToken ct = default)
+        bool requireUnmuted, bool requireUndeafened, bool requireNotAlone, CancellationToken ct = default)
     {
         var cleanName = string.IsNullOrWhiteSpace(name) ? "Manual session" : name.Trim();
-        var session = await sessions.OpenManualAsync(
-            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireNotAlone, ct);
+        await sessions.OpenManualAsync(
+            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireUndeafened, requireNotAlone, ct);
 
-        var guards = (requireUnmuted, requireNotAlone) switch
-        {
-            (false, false) => "counting all presence",
-            (true, false) => "skipping muted members",
-            (false, true) => "skipping when alone",
-            _ => "skipping muted or alone members",
-        };
+        var skips = new List<string>();
+        if (requireUnmuted) skips.Add("muted");
+        if (requireUndeafened) skips.Add("deafened");
+        if (requireNotAlone) skips.Add("alone");
+        var guards = skips.Count == 0 ? "counting all presence" : "skipping " + string.Join("/", skips) + " members";
+
         return CommandResult.Ok(
             $"Started **{cleanName}** in <#{voiceChannelId}> ({guards}). Close it with `/track-stop`.");
     }

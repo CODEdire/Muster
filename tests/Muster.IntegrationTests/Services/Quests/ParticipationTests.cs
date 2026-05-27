@@ -34,7 +34,7 @@ public class ParticipationTests
     private static IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> Occupant(ulong channelId, params ulong[] userIds)
         => new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
         {
-            [channelId] = userIds.Select(u => new VoiceMemberSnapshot(u, IsBot: false, IsMutedOrDeafened: false)).ToList(),
+            [channelId] = userIds.Select(u => new VoiceMemberSnapshot(u, IsBot: false, IsMuted: false, IsDeafened: false)).ToList(),
         };
 
     private static readonly IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> NoOne = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>();
@@ -123,22 +123,40 @@ public class ParticipationTests
         => await db.CurrencyLedgerEntries.Where(e => e.UserId == userId && e.CurrencyId == pointsId).SumAsync(e => (long?)e.Amount) ?? 0;
 
     [Fact]
-    public async Task Session_GuardsOn_PausesMutedAndCreditsUnmutedPeer()
+    public async Task Session_GuardsOn_PausesDeafenedAndCreditsPeer()
     {
-        var (db, _) = await SeededAsync(); // ApplyAfkGuardsToSessions defaults true
+        var (db, _) = await SeededAsync(); // ApplyAfkGuardsToSessions defaults true → undeafened + not-alone guards on
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
         {
-            [500] = new[] { new VoiceMemberSnapshot(10, false, IsMutedOrDeafened: true), new VoiceMemberSnapshot(20, false, false) },
+            [500] = new[] { new VoiceMemberSnapshot(10, false, IsMuted: false, IsDeafened: true), new VoiceMemberSnapshot(20, false, false, false) },
         };
         var t0 = DateTimeOffset.UtcNow;
         await sessions.ReconcileSessionsAsync(1, roster, t0);
         await sessions.ReconcileSessionsAsync(1, roster, t0.AddMinutes(10));
 
-        Assert.Equal(0, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes);  // muted: paused
-        Assert.Equal(10, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 20)).TotalMinutes); // unmuted peer
+        Assert.Equal(0, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes);  // deafened: paused
+        Assert.Equal(10, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 20)).TotalMinutes); // listening peer
+    }
+
+    [Fact]
+    public async Task Session_GuardsOn_AllowsMutedButPresent()
+    {
+        var (db, _) = await SeededAsync(); // guards on, but muted is allowed by default (phone-call case)
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
+        {
+            [500] = new[] { new VoiceMemberSnapshot(10, false, IsMuted: true, IsDeafened: false), new VoiceMemberSnapshot(20, false, false, false) },
+        };
+        var t0 = DateTimeOffset.UtcNow;
+        await sessions.ReconcileSessionsAsync(1, roster, t0);
+        await sessions.ReconcileSessionsAsync(1, roster, t0.AddMinutes(10));
+
+        Assert.Equal(10, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes);  // muted but listening → still earns
     }
 
     [Fact]
@@ -150,7 +168,7 @@ public class ParticipationTests
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
         await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
-        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false) } };
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false, false) } };
         await sessions.ReconcileSessionsAsync(1, roster, DateTimeOffset.UtcNow);
 
         Assert.Empty(await db.VoiceAttendance.ToListAsync()); // opted out of all tracking → no attendance row
@@ -252,7 +270,7 @@ public class ParticipationTests
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
-        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false) } };
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false, false) } };
         var t0 = DateTimeOffset.UtcNow;
         await sessions.ReconcileSessionsAsync(1, roster, t0);
         await sessions.ReconcileSessionsAsync(1, roster, t0.AddMinutes(10));

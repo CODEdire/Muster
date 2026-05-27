@@ -79,9 +79,16 @@ free.
 
 ## Anti-AFK guards
 
-From NetCord `VoiceState`: skip self-muted/deafened and server-muted/deafened (`RequireUnmuted`),
-skip alone-in-channel (`RequireNotAlone`, occupancy from the gateway roster), and cap
-per-member-per-channel-per-day points (`DailyCapPoints`).
+From NetCord `VoiceState`, three independent, configurable guards:
+- **`RequireUnmuted`** — skip muted (self/server) members. They *can't speak* but may still be present and
+  listening (e.g. on a phone call), so this is **off by default**.
+- **`RequireUndeafened`** — skip deafened (self/server) members. They *can't hear* = checked out, so this is
+  the primary AFK signal and **on by default** (with guards).
+- **`RequireNotAlone`** — skip when fewer than two humans are in the channel (occupancy from the gateway roster).
+
+Plus the per-member-per-day cap (`DailyCapPoints`). Each guard is set per background channel (`/track-voice`,
+web) and per session (`/track-start`, seeded from `ApplyAfkGuardsToSessions`). Existing rows from before the
+split keep their prior combined behavior (migration backfills `RequireUndeafened = RequireUnmuted`).
 
 **Guards now apply to Sessions too** (a planned change, P5): a Session can be opened with the same
 pause-while-muted / pause-while-alone rules so AFK sitters in a raid channel don't bank reward time.

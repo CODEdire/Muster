@@ -78,7 +78,7 @@ public class BackgroundTrackingTests
         var sut = Sut(db);
 
         // Alone + muted → no reward, but active time still accrues (unguarded, overlaps everything).
-        var roster = Roster(new VoiceMemberSnapshot(10, false, IsMutedOrDeafened: true));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, IsMuted: true, IsDeafened: false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));
 
@@ -97,7 +97,7 @@ public class BackgroundTrackingTests
         await db.SaveChangesAsync();
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));
 
@@ -117,7 +117,7 @@ public class BackgroundTrackingTests
         await db.SaveChangesAsync();
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));
 
@@ -132,7 +132,7 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, rate: 2);
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);                       // opens segments
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));        // flush 10 min
 
@@ -147,7 +147,7 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, requireNotAlone: true);
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));
 
@@ -161,7 +161,7 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, rate: 2, requireUnmuted: true);
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, IsMutedOrDeafened: true), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, IsMuted: true, IsDeafened: false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));
 
@@ -187,7 +187,7 @@ public class BackgroundTrackingTests
         await db.SaveChangesAsync();
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(10));
 
@@ -202,7 +202,7 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, rate: 2, dailyCap: 10);
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddMinutes(30)); // 60 pts uncapped → clamped to 10
 
@@ -216,7 +216,7 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, rate: 2);
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0);
         // A 3-hour jump (e.g. a gateway reconnect with a stale watermark) must not pay 3 hours.
         await sut.ReconcileGuildAsync(Guild, roster, T0.AddHours(3));
@@ -231,7 +231,7 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, rate: 2);
         var sut = Sut(db);
 
-        var roster = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, roster, T0); // opens segments
 
         await sut.VoidOpenSegmentsAsync(); // simulate bot restart
@@ -249,10 +249,10 @@ public class BackgroundTrackingTests
         await AddRewardVoiceAsync(db, rate: 2);
         var sut = Sut(db);
 
-        var both = Roster(new VoiceMemberSnapshot(10, false, false), new VoiceMemberSnapshot(20, false, false));
+        var both = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));
         await sut.ReconcileGuildAsync(Guild, both, T0);
         // User 10 leaves at +5 min; 20 stays so the channel still isn't "alone".
-        await sut.ReconcileGuildAsync(Guild, Roster(new VoiceMemberSnapshot(20, false, false)), T0.AddMinutes(5));
+        await sut.ReconcileGuildAsync(Guild, Roster(new VoiceMemberSnapshot(20, false, false, false)), T0.AddMinutes(5));
 
         Assert.Equal(10, await BalanceAsync(db, 10)); // 5 min * 2, settled on leave
     }

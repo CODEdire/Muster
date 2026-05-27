@@ -42,7 +42,7 @@ public record SessionMemberRow(
 public record SessionDetailView(
     Guid Id, string Name, TrackingSessionSource Source, ulong VoiceChannelId, string VoiceChannelName,
     DateTimeOffset StartedAt, DateTimeOffset? EndedAt, bool Active,
-    bool RequireUnmuted, bool RequireNotAlone, IReadOnlyList<SessionMemberRow> Members);
+    bool RequireUnmuted, bool RequireUndeafened, bool RequireNotAlone, IReadOnlyList<SessionMemberRow> Members);
 
 /// <summary>One member's participation totals over a date range, broken down by reward source.</summary>
 public record ParticipationRow(
@@ -282,7 +282,7 @@ public class ParticipationReadService(MusterDbContext db)
         return new SessionDetailView(
             session.Id, session.Name, session.Source, session.VoiceChannelId, session.VoiceChannelName,
             session.StartedAt, session.EndedAt, session.Status == TrackingSessionStatus.Active,
-            session.RequireUnmuted, session.RequireNotAlone, members);
+            session.RequireUnmuted, session.RequireUndeafened, session.RequireNotAlone, members);
     }
 
     /// <summary>Channels carrying tracked background presence right now, with the present members (live Background tab).</summary>

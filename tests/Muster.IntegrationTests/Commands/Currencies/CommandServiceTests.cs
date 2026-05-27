@@ -56,7 +56,7 @@ public class CommandServiceTests
         using var db = await SeededAsync();
         var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)));
 
-        var start = await sut.StartAsync(1, actorId: 5, voiceChannelId: 42, name: "Test op", channelName: "Voice", requireUnmuted: true, requireNotAlone: false);
+        var start = await sut.StartAsync(1, actorId: 5, voiceChannelId: 42, name: "Test op", channelName: "Voice", requireUnmuted: true, requireUndeafened: true, requireNotAlone: false);
         Assert.False(start.IsError);
 
         var session = await db.TrackingSessions.SingleAsync();

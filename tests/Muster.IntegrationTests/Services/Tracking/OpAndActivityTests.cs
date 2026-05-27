@@ -33,7 +33,7 @@ public class OpAndActivityTests
     private static IReadOnlyDictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> Occupant(ulong channelId, params ulong[] userIds)
         => new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
         {
-            [channelId] = userIds.Select(u => new VoiceMemberSnapshot(u, IsBot: false, IsMutedOrDeafened: false)).ToList(),
+            [channelId] = userIds.Select(u => new VoiceMemberSnapshot(u, IsBot: false, IsMuted: false, IsDeafened: false)).ToList(),
         };
 
     [Fact]

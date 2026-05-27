@@ -14,7 +14,7 @@ public class TrackedChannelCommandService(MusterDbContext db)
     /// <summary>Monitor a voice channel for always-on reward accrual (per-minute, with anti-AFK guards + daily cap).</summary>
     public async Task<CommandResult> SetVoiceAsync(
         ulong guildId, ulong channelId, int pointsPerMinute, int dailyCapPoints,
-        bool requireUnmuted, bool requireNotAlone, string? channelName = null, CancellationToken ct = default)
+        bool requireUnmuted, bool requireUndeafened, bool requireNotAlone, string? channelName = null, CancellationToken ct = default)
     {
         if (pointsPerMinute < 0 || dailyCapPoints < 0)
         {
@@ -26,11 +26,12 @@ public class TrackedChannelCommandService(MusterDbContext db)
         channel.PointsPerMinute = pointsPerMinute;
         channel.DailyCapPoints = dailyCapPoints;
         channel.RequireUnmuted = requireUnmuted;
+        channel.RequireUndeafened = requireUndeafened;
         channel.RequireNotAlone = requireNotAlone;
         await db.SaveChangesAsync(ct);
 
         var cap = dailyCapPoints == 0 ? "no daily cap" : $"cap {dailyCapPoints}/day";
-        var guards = $"unmuted={(requireUnmuted ? "on" : "off")}, not-alone={(requireNotAlone ? "on" : "off")}";
+        var guards = $"unmuted={(requireUnmuted ? "on" : "off")}, undeafened={(requireUndeafened ? "on" : "off")}, not-alone={(requireNotAlone ? "on" : "off")}";
         return CommandResult.Ok(
             $"Tracking voice <#{channelId}>: {pointsPerMinute} pt/min, {cap}, {guards}. Background pauses while a session runs there.");
     }

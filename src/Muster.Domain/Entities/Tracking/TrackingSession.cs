@@ -32,8 +32,11 @@ public class TrackingSession
 
     public ulong OpenedBy { get; set; }
 
-    /// <summary>Anti-AFK: when true, reward time pauses while a member is self/server muted or deafened.</summary>
+    /// <summary>Anti-AFK: when true, reward time pauses while a member is muted (can't speak).</summary>
     public bool RequireUnmuted { get; set; }
+
+    /// <summary>Anti-AFK: when true, reward time pauses while a member is deafened (can't hear — checked out).</summary>
+    public bool RequireUndeafened { get; set; }
 
     /// <summary>Anti-AFK: when true, reward time pauses while a member is alone in the channel (&lt;2 humans).</summary>
     public bool RequireNotAlone { get; set; }

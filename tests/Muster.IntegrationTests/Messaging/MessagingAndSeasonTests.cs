@@ -63,7 +63,7 @@ public class MessagingAndSeasonTests
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var joined = DateTimeOffset.UtcNow.AddMinutes(-10);
-        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false) } };
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false, false) } };
         await sessions.ReconcileSessionsAsync(1, roster, joined);
         await sessions.CloseAsync(session.Id, at: joined.AddMinutes(10)); // no explicit rate -> use config (3)
 
