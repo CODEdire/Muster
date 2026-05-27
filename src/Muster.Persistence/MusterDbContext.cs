@@ -32,6 +32,8 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<CurrencyLedgerEntry> CurrencyLedgerEntries => Set<CurrencyLedgerEntry>();
     public DbSet<Wallet> Wallets => Set<Wallet>();
+    public DbSet<CurrencyBulkBatch> CurrencyBulkBatches => Set<CurrencyBulkBatch>();
+    public DbSet<CurrencyWebhook> CurrencyWebhooks => Set<CurrencyWebhook>();
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();

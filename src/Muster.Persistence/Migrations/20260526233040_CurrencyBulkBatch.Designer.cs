@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muster.Persistence;
 
@@ -11,9 +12,11 @@ using Muster.Persistence;
 namespace Muster.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    partial class MusterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260526233040_CurrencyBulkBatch")]
+    partial class CurrencyBulkBatch
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -178,51 +181,6 @@ namespace Muster.Persistence.Migrations
                     b.HasIndex("GuildId", "UserId", "CurrencyId", "SeasonId");
 
                     b.ToTable("CurrencyLedgerEntries");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.Currencies.CurrencyWebhook", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("ConsecutiveFailures")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<DateTimeOffset?>("LastDeliveryAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("LastError")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("LastStatusCode")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Secret")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.PrimitiveCollection<string>("SourceFilter")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Url")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GuildId", "Enabled");
-
-                    b.ToTable("CurrencyWebhooks");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Currencies.Season", b =>

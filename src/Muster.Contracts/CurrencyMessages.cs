@@ -22,6 +22,11 @@ public record CurrencyChangeResult(bool Success, string Status, long Balance);
 /// in the background and paced (the external API is rate-limited), so it can take a while for large guilds.</summary>
 public record SyncCurrencyBalances(ulong GuildId, Guid CurrencyId);
 
+/// <summary>Run a queued bulk currency adjustment (staff mint/adjust applied to many members). Processed
+/// asynchronously by the background worker; each member leg is idempotent (source key <c>bulk:{BatchId}:{userId}</c>),
+/// so a redelivered job never double-applies. Progress is tracked on the <c>CurrencyBulkBatch</c> row.</summary>
+public record RunCurrencyBulkAdjust(Guid BatchId);
+
 /// <summary>
 /// Published the instant a ledger movement is staged by <c>CurrencyService</c> (the single funnel), so it covers
 /// <b>every</b> path — award, mint, spend, transfer, adjust, escrow. <see cref="Amount"/> is signed (negative =

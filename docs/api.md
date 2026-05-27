@@ -51,6 +51,9 @@ render as JSON-escaped content inside the template's quotes. Example — the **C
 | GET | `/api/v1/guilds/{guildId}/members/{userId}/ledger?currency=&skip=&take=` | `read:ledger` | one member's history (newest first, optional currency filter) |
 | GET | `/api/v1/guilds/{guildId}/currencies` | `read:wallets` | list the guild's currencies |
 | GET | `/api/v1/guilds/{guildId}/members/{userId}/currencies/{code}/balance` | `read:wallets` | one currency's balance |
+| GET | `/api/v1/guilds/{guildId}/currencies/{code}/supply` | `read:ledger` | supply analytics (minted/removed/circulating/escrow + holders) |
+| GET | `/api/v1/guilds/{guildId}/currencies/{code}/movements?skip=&take=` | `read:ledger` | guild-wide recent movements for one currency (newest first) |
+| GET | `/api/v1/guilds/{guildId}/audit?action=&search=&page=&pageSize=` | `read:audit` | admin audit trail (who minted/adjusted/sent/configured), filterable + paged |
 | POST | `/api/v1/guilds/{guildId}/currencies/{code}/mint` | `write:currency` | credit a currency (machine/inbound mirror) |
 | POST | `/api/v1/guilds/{guildId}/currencies/{code}/spend` | `write:currency` | debit a currency (machine/inbound mirror) |
 | POST | `/api/v1/guilds/{guildId}/currencies/{code}/transfer` | `write:currency` (actor-bound) | member-to-member move |
@@ -168,6 +171,24 @@ A connector **body template** (see [Connector transports](#connector-transports)
 target API's field names; `displayName` is the member's Discord global/username (from the synced user).
 
 Webhook + HTTP-API transports are implemented; a Discord message-command transport is wishlist.
+
+### Outbound movement webhooks (per-guild event fan-out)
+
+Distinct from the per-currency connector above: a guild admin can register **webhook subscriptions** (Admin →
+Webhooks) that receive **every** currency movement, not just one currency's external sync. Each enabled
+subscription whose source filter matches gets an HMAC-SHA256-signed POST of the movement:
+
+```json
+{ "guildId": 123, "userId": 456, "currencyId": "…", "currencyCode": "COIN", "amount": 50,
+  "source": "Transfer", "sourceId": "…", "reason": "…", "seasonId": null, "occurredAt": "2026-05-27T…Z" }
+```
+
+- Headers: `X-Muster-Signature: sha256=<hmac of the raw body>` (when a secret is set), `X-Muster-Delivery`
+  (stable per-movement idempotency key), `X-Muster-Event: currency.movement`.
+- **Source filter** narrows which movements fire (empty = all); checkpoints never publish, so pruning is excluded.
+- Delivery is **best-effort with health tracking** — consecutive failures accrue and auto-disable the subscription
+  past a threshold (admins re-enable, which clears the streak). Managed in the web UI (add / test / disable / delete);
+  separate from API keys.
 
 ## Versioning
 

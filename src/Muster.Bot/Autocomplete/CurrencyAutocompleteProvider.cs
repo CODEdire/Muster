@@ -21,7 +21,7 @@ public class CurrencyAutocompleteProvider(IServiceScopeFactory scopeFactory)
         var input = option.Value ?? string.Empty;
 
         using var scope = scopeFactory.CreateScope();
-        var currencies = await scope.ServiceProvider.GetRequiredService<CurrencyAdminService>().ListAsync(guildId);
+        var currencies = await scope.ServiceProvider.GetRequiredService<ICurrencyAdminService>().ListAsync(guildId);
 
         return currencies
             .Where(c => c.Code.Contains(input, StringComparison.OrdinalIgnoreCase)

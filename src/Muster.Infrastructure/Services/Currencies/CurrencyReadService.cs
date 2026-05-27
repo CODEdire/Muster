@@ -13,6 +13,13 @@ public record LedgerHistoryEntry(string CurrencyCode, long Amount, string Source
 /// <summary>A currency in the member-facing directory ("what exists / what's it for").</summary>
 public record CurrencyInfo(string Code, string Name, bool Spendable, bool Seasonal);
 
+/// <summary>Supply analytics for one currency (admin overview). <see cref="Minted"/>/<see cref="Removed"/> are all-time
+/// gross inflow/outflow; <see cref="Circulating"/> is member-held; <see cref="Escrow"/> is held by the house account.</summary>
+public record CurrencySupply(string Code, string Name, bool Seasonal, long Minted, long Removed, long Circulating, long Escrow, int Holders);
+
+/// <summary>One guild-wide ledger movement projected for the admin overview feed (currency resolved to its code).</summary>
+public record GuildMovementEntry(ulong UserId, string CurrencyCode, long Amount, string SourceType, DateTimeOffset OccurredAt, string Reason);
+
 /// <summary>
 /// The currency <b>read model</b> (CQRS query side): leaderboards and wallet balances for display. These are
 /// display reads, so they serve from the cheap <c>Wallet.Balance</c> cache (kept in lock-step with the ledger,
@@ -38,6 +45,15 @@ public interface ICurrencyReadService
 
     /// <summary>The guild's currencies (code-ordered) as a member-facing directory.</summary>
     Task<IReadOnlyList<CurrencyInfo>> GetCurrenciesAsync(ulong guildId, CancellationToken ct = default);
+
+    /// <summary>Supply analytics for one currency (by code), from the authoritative ledger (seasonal currencies use the
+    /// active season). Null when the currency is unknown.</summary>
+    Task<CurrencySupply?> GetSupplyAsync(ulong guildId, string code, CancellationToken ct = default);
+
+    /// <summary>The guild's recent ledger movements (newest first), optionally filtered to one currency (by code),
+    /// paged. Currency ids are resolved to codes. Empty when a given code is unknown.</summary>
+    Task<IReadOnlyList<GuildMovementEntry>> GetGuildMovementsAsync(
+        ulong guildId, string? code, int skip, int take, CancellationToken ct = default);
 }
 
 /// <inheritdoc cref="ICurrencyReadService"/>
@@ -100,6 +116,43 @@ public class CurrencyReadService(MusterDbContext db) : ICurrencyReadService
         return currencies
             .OrderBy(c => c.Code)
             .Select(c => new CurrencyInfo(c.Code, c.Name, c.IsSpendable, c.IsSeasonal))
+            .ToList();
+    }
+
+    public async Task<CurrencySupply?> GetSupplyAsync(ulong guildId, string code, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is null)
+        {
+            return null;
+        }
+
+        Guid? seasonId = currency.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
+        var totals = await db.CurrencySupplyAsync(guildId, currency.Id, seasonId, CurrencyService.EscrowAccountUserId, ct);
+        return new CurrencySupply(
+            currency.Code, currency.Name, currency.IsSeasonal,
+            totals.GrossCredited, totals.GrossDebited, totals.Circulating, totals.Escrow, totals.Holders);
+    }
+
+    public async Task<IReadOnlyList<GuildMovementEntry>> GetGuildMovementsAsync(
+        ulong guildId, string? code, int skip, int take, CancellationToken ct = default)
+    {
+        Guid? currencyId = null;
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            if (currency is null)
+            {
+                return [];
+            }
+
+            currencyId = currency.Id;
+        }
+
+        var rows = await db.GuildLedgerAsync(guildId, currencyId, skip, take, ct);
+        var codes = await db.CurrencyCodeMapAsync(guildId, ct);
+        return rows
+            .Select(r => new GuildMovementEntry(r.UserId, codes.GetValueOrDefault(r.CurrencyId, "?"), r.Amount, r.SourceType.ToString(), r.OccurredAt, r.Reason))
             .ToList();
     }
 

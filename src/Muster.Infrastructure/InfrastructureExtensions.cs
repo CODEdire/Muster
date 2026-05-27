@@ -52,10 +52,11 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<ApiClientService>();
         builder.Services.AddScoped<ICurrencyService, CurrencyService>();
         builder.Services.AddScoped<ICurrencyAuthorizer, Services.Currencies.CurrencyAuthorizer>();
+        builder.Services.AddScoped<Services.Currencies.ICurrencyBulkService, Services.Currencies.CurrencyBulkService>();
         // Platform-wide ledger retention cap/default (appsettings "Currency:MaxLedgerRetentionDays"; 0 = unlimited).
         builder.Services.Configure<Services.Currencies.CurrencyRetentionOptions>(builder.Configuration.GetSection("Currency"));
-        builder.Services.AddScoped<LedgerPruneService>();
-        builder.Services.AddScoped<CurrencyAdminService>();
+        builder.Services.AddScoped<Services.Currencies.ILedgerPruneService, LedgerPruneService>();
+        builder.Services.AddScoped<Services.Currencies.ICurrencyAdminService, CurrencyAdminService>();
         builder.Services.AddScoped<AuditService>();
         builder.Services.AddScoped<MentionHumanizer>();
         builder.Services.AddScoped<TimeZoneService>();
@@ -65,7 +66,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();
-        builder.Services.AddScoped<QuestMaintenanceService>();
+        builder.Services.AddScoped<Services.Quests.IQuestMaintenanceService, QuestMaintenanceService>();
         // Quest + currency events publish as Wolverine messages (QuestLifecycleNotified, CurrencyMovementRecorded);
         // a Discord/connector consumer subscribes later. A logging handler is the default seam (CurrencyService
         // publishes through IMessageBus, registered by Wolverine in the bot/web hosts).
@@ -81,6 +82,13 @@ public static class InfrastructureExtensions
             .AddStandardResilienceHandler();
         builder.Services.AddScoped<Connectors.ICurrencyConnectorClient, Connectors.CurrencyConnectorClient>();
         builder.Services.AddScoped<Connectors.CurrencyConnectorSyncService>();
+
+        // Outbound currency webhooks: per-guild signed POST of every movement (CurrencyMovementRecorded fan-out).
+        // Typed HttpClient + resilience; the dispatcher signs/sends, the service does admin CRUD. Like connectors,
+        // the secret protector comes from AddMusterConnectorProtection (web + bot only).
+        builder.Services.AddHttpClient<Services.Currencies.CurrencyWebhookDispatcher>()
+            .AddStandardResilienceHandler();
+        builder.Services.AddScoped<Services.Currencies.ICurrencyWebhookService, Services.Currencies.CurrencyWebhookService>();
         // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
         // registered by the bot host alongside its IMusterPublisher implementation — not here.
 

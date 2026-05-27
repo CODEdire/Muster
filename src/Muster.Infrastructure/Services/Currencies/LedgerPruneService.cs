@@ -18,8 +18,22 @@ namespace Muster.Infrastructure.Services.Currencies;
 /// </list>
 /// The platform <see cref="CurrencyRetentionOptions.MaxLedgerRetentionDays"/> caps + defaults each guild's window.
 /// </summary>
+/// <summary>Compacts ledger history into carry-forward checkpoints. Callers (the daily scheduler, season rollover)
+/// depend on this interface.</summary>
+public interface ILedgerPruneService
+{
+    /// <summary>Prune one guild against an already-effective retention (0 = never). Returns rows folded.</summary>
+    Task<int> PruneAsync(ulong guildId, int retentionDays, CancellationToken ct = default);
+
+    /// <summary>Checkpoint a season's balances (e.g. at season rollover). Returns rows folded.</summary>
+    Task<int> CheckpointSeasonAsync(ulong guildId, Guid seasonId, CancellationToken ct = default);
+
+    /// <summary>Prune every active guild by its effective retention. Returns total rows folded.</summary>
+    Task<int> PruneAllAsync(CancellationToken ct = default);
+}
+
 public sealed class LedgerPruneService(
-    MusterDbContext db, IOptions<CurrencyRetentionOptions> options, ILogger<LedgerPruneService> logger)
+    MusterDbContext db, IOptions<CurrencyRetentionOptions> options, ILogger<LedgerPruneService> logger) : ILedgerPruneService
 {
     private int GlobalMaxDays => options.Value.MaxLedgerRetentionDays;
 
@@ -57,7 +71,7 @@ public sealed class LedgerPruneService(
     /// with the platform cap/default). Returns total rows folded.</summary>
     public async Task<int> PruneAllAsync(CancellationToken ct = default)
     {
-        var guilds = await db.Guilds.Where(g => g.IsActive).ToListAsync(ct);
+        var guilds = await db.ListActiveGuildsAsync(ct);
 
         var total = 0;
         foreach (var g in guilds)

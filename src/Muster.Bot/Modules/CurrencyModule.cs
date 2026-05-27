@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Bot.Autocomplete;
 using Muster.Contracts;
+using Muster.Domain;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Commands.Currencies;
 using Muster.Infrastructure.Services.Currencies;
@@ -57,6 +58,38 @@ public class CurrencyModule(IServiceScopeFactory scopeFactory) : MusterModuleBas
                 return $"`{sign}{e.Amount:N0}` {e.CurrencyCode} · {e.SourceType} · <t:{e.OccurredAt.ToUnixTimeSeconds()}:R>{note}";
             });
             return CommandResult.Ok("**Recent activity**\n" + string.Join("\n", lines));
+        });
+
+    [SubSlashCommand("inspect", "Staff: view another member's wallet balances and recent activity.")]
+    public Task InspectAsync(
+        [SlashCommandParameter(Name = "member", Description = "Whose wallet to view")] User member,
+        [SlashCommandParameter(Name = "count", Description = "History entries (default 10, max 25)")] int count = 10)
+        => RunAsync(async (sp, guildId) =>
+        {
+            // Economy staff (officers + admins) may view anyone's wallet; a non-staff member only their own.
+            var authorizer = sp.GetRequiredService<ICurrencyAuthorizer>();
+            if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, Context.User.Id), member.Id, CurrencyPermission.View))
+            {
+                return CommandResult.Error("You're not allowed to view other members' wallets.");
+            }
+
+            var reader = sp.GetRequiredService<ICurrencyReadService>();
+            var wallets = await reader.GetWalletsAsync(guildId, member.Id);
+            var balances = wallets.Count == 0
+                ? "_no wallets_"
+                : string.Join("\n", wallets.Select(w => $"**{w.Balance:N0}** {w.CurrencyCode} ({w.CurrencyName})"));
+
+            var entries = await reader.GetMemberHistoryAsync(guildId, member.Id, null, skip: 0, take: Math.Clamp(count, 1, 25));
+            var history = entries.Count == 0
+                ? "_no activity_"
+                : string.Join("\n", entries.Select(e =>
+                {
+                    var sign = e.Amount >= 0 ? "+" : "";
+                    var note = string.IsNullOrWhiteSpace(e.Reason) ? "" : $" — {e.Reason}";
+                    return $"`{sign}{e.Amount:N0}` {e.CurrencyCode} · {e.SourceType} · <t:{e.OccurredAt.ToUnixTimeSeconds()}:R>{note}";
+                }));
+
+            return CommandResult.Ok($"**Wallet — <@{member.Id}>**\n{balances}\n\n**Recent activity**\n{history}");
         });
 
     [SubSlashCommand("list", "See the server's currencies and what they're for.")]

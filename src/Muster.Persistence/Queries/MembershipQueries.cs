@@ -26,6 +26,18 @@ public static class MembershipQueries
     public static Task<string?> GuildTimeZoneIdAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.Guilds.Where(g => g.Id == guildId).Select(g => g.TimeZoneId).FirstOrDefaultAsync(ct);
 
+    /// <summary>A guild's display name (scalar), or null when unknown.</summary>
+    public static Task<string?> GuildNameAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.Guilds.Where(g => g.Id == guildId).Select(g => g.Name).FirstOrDefaultAsync(ct);
+
+    /// <summary>Tracked users for the given ids, keyed by id — the member-sync upsert reconciles against this.</summary>
+    public static async Task<Dictionary<ulong, DiscordUser>> UsersByIdAsync(this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)
+        => await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);
+
+    /// <summary>Tracked guild members for the given user ids, keyed by user id — for the member-sync upsert.</summary>
+    public static async Task<Dictionary<ulong, GuildMember>> MembersByIdAsync(this MusterDbContext db, ulong guildId, List<ulong> userIds, CancellationToken ct = default)
+        => await db.GuildMembers.Where(m => m.GuildId == guildId && userIds.Contains(m.UserId)).ToDictionaryAsync(m => m.UserId, ct);
+
     // --- Members / roles / users ---
 
     /// <summary>Find a guild member (tracked).</summary>

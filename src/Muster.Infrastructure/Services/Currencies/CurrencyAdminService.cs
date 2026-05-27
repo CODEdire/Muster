@@ -16,13 +16,38 @@ public record CurrencyConnectorView(CurrencyConnector Config, bool AuthHasSecret
 
 public record CurrencyView(Guid Id, string Code, string Name, bool IsSeasonal, bool IsSpendable, CurrencyMode Mode, bool IsSystem, CurrencyConnectorView Connector);
 
+/// <summary>Admin management of a guild's currencies + their outbound connectors. Callers depend on this interface.</summary>
+public interface ICurrencyAdminService
+{
+    /// <summary>A guild's currencies projected for the admin list (connector secrets blanked).</summary>
+    Task<IReadOnlyList<CurrencyView>> ListAsync(ulong guildId, CancellationToken ct = default);
+
+    /// <summary>One currency view by id (for the edit page), or null.</summary>
+    Task<CurrencyView?> GetAsync(ulong guildId, Guid currencyId, CancellationToken ct = default);
+
+    /// <summary>Create a new (non-system) currency.</summary>
+    Task<CommandResult> CreateAsync(ulong guildId, string code, string name, bool isSeasonal, bool isSpendable, CurrencyMode mode, CancellationToken ct = default);
+
+    /// <summary>Update mutable fields (name, spendable, mode); code + seasonal nature are fixed at creation.</summary>
+    Task<CommandResult> UpdateAsync(ulong guildId, Guid currencyId, string name, bool isSpendable, CurrencyMode mode, CancellationToken ct = default);
+
+    /// <summary>Replace a currency's connector config (secrets are write-only / kept when blank).</summary>
+    Task<CommandResult> SetConnectorAsync(ulong guildId, Guid currencyId, CurrencyConnector incoming, CancellationToken ct = default);
+
+    /// <summary>Run the connector's Credit action with a synthetic movement to verify the endpoint/auth.</summary>
+    Task<CommandResult> TestConnectorAsync(ulong guildId, Guid currencyId, CancellationToken ct = default);
+
+    /// <summary>Read a member's external balance via the connector's GetBalance action (null if unconfigured/failed).</summary>
+    Task<long?> ReadExternalBalanceAsync(ulong guildId, Guid currencyId, ulong userId, CancellationToken ct = default);
+}
+
 /// <summary>
 /// Admin management of a guild's currencies. The seeded POINTS currency is treated as a protected
 /// system currency (its code and seasonal nature can't change). Other currencies (e.g. a spendable
 /// COIN for bounties/loot) are created and tuned here.
 /// </summary>
 public partial class CurrencyAdminService(
-    MusterDbContext db, IConnectorSecretProtector? secrets = null, CurrencyConnectorClient? client = null)
+    MusterDbContext db, IConnectorSecretProtector? secrets = null, CurrencyConnectorClient? client = null) : ICurrencyAdminService
 {
     public const string PointsCode = CurrencyCodes.PointsCode;
 
@@ -31,10 +56,7 @@ public partial class CurrencyAdminService(
 
     public async Task<IReadOnlyList<CurrencyView>> ListAsync(ulong guildId, CancellationToken ct = default)
     {
-        var currencies = await db.Currencies.AsNoTracking()
-            .Where(c => c.GuildId == guildId)
-            .OrderBy(c => c.Code)
-            .ToListAsync(ct);
+        var currencies = await db.ListCurrenciesReadOnlyAsync(guildId, ct);
 
         return currencies.Select(c => new CurrencyView(
             c.Id, c.Code, c.Name, c.IsSeasonal, c.IsSpendable, c.Mode, c.Code == PointsCode, ToConnectorView(c.Connector))).ToList();
@@ -43,7 +65,7 @@ public partial class CurrencyAdminService(
     /// <summary>One currency view by id (for the edit page), or null.</summary>
     public async Task<CurrencyView?> GetAsync(ulong guildId, Guid currencyId, CancellationToken ct = default)
     {
-        var c = await db.Currencies.AsNoTracking().FirstOrDefaultAsync(x => x.GuildId == guildId && x.Id == currencyId, ct);
+        var c = await db.FindCurrencyByIdReadOnlyAsync(guildId, currencyId, ct);
         return c is null
             ? null
             : new CurrencyView(c.Id, c.Code, c.Name, c.IsSeasonal, c.IsSpendable, c.Mode, c.Code == PointsCode, ToConnectorView(c.Connector));

@@ -147,6 +147,15 @@ public enum AppRole
     SuperAdmin = 2,
 }
 
+/// <summary>Lifecycle of a queued bulk currency adjustment (staff mint/adjust applied to many members async).</summary>
+public enum BulkBatchStatus
+{
+    Pending = 0,   // created, awaiting the background worker
+    Running = 1,   // worker is applying member legs
+    Completed = 2, // every target applied (or already-applied via idempotent rerun)
+    Failed = 3,    // worker stopped on an unrecoverable error
+}
+
 /// <summary>How a currency's balance authority is split with external systems.</summary>
 public enum CurrencyMode
 {

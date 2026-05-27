@@ -66,6 +66,7 @@ else if (State == AccessState.Ready)
             <label><InputCheckbox @bind-Value="Input.ReadLeaderboard" /> read:leaderboard</label>
             <label><InputCheckbox @bind-Value="Input.ReadWallets" /> read:wallets</label>
             <label><InputCheckbox @bind-Value="Input.ReadLedger" /> read:ledger</label>
+            <label><InputCheckbox @bind-Value="Input.ReadAudit" /> read:audit</label>
             <label><InputCheckbox @bind-Value="Input.WriteCurrency" /> write:currency</label>
             <label><InputCheckbox @bind-Value="Input.ReadQuests" /> read:quests</label>
             <label><InputCheckbox @bind-Value="Input.WriteQuests" /> write:quests</label>
@@ -119,6 +120,7 @@ else if (State == AccessState.Ready)
         if (Input.ReadLeaderboard) scopes.Add("read:leaderboard");
         if (Input.ReadWallets) scopes.Add("read:wallets");
         if (Input.ReadLedger) scopes.Add("read:ledger");
+        if (Input.ReadAudit) scopes.Add("read:audit");
         if (Input.WriteCurrency) scopes.Add("write:currency");
         if (Input.ReadQuests) scopes.Add("read:quests");
         if (Input.WriteQuests) scopes.Add("write:quests");
@@ -167,6 +169,7 @@ else if (State == AccessState.Ready)
         public bool ReadLeaderboard { get; set; }
         public bool ReadWallets { get; set; }
         public bool ReadLedger { get; set; }
+        public bool ReadAudit { get; set; }
         public bool WriteCurrency { get; set; }
         public bool ReadQuests { get; set; }
         public bool WriteQuests { get; set; }

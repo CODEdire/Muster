@@ -70,4 +70,32 @@ public class WebGuildServiceTests
         Assert.Equal("bob", board[0].DisplayName);
         Assert.Equal("Alice", board[1].DisplayName);  // GlobalName preferred over username
     }
+
+    [Fact]
+    public async Task GetCurrencyOverview_SplitsEscrow_ExcludesHouseFromHolders_AndNamesMembers()
+    {
+        using var db = NewDb();
+        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
+        var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var sync = new MemberSyncService(db);
+
+        await sync.UpsertAsync(1, 10, "alice", "Alice", null);
+        await sync.UpsertAsync(1, 20, "bob", null, null);
+        await awards.AwardAsync(1, 10, points.Id, 100, Muster.Domain.Enums.CurrencyLedgerSource.ManualAward, "a", "r");
+        await awards.AwardAsync(1, 20, points.Id, 50, Muster.Domain.Enums.CurrencyLedgerSource.ManualAward, "b", "r");
+        // House/escrow leg (user 0) — counts toward escrow, never a "holder".
+        await awards.AwardAsync(1, CurrencyService.EscrowAccountUserId, points.Id, 30, Muster.Domain.Enums.CurrencyLedgerSource.Quest, "e", "hold");
+
+        var overview = await Sut(db).GetCurrencyOverviewAsync(1, "POINTS");
+
+        Assert.NotNull(overview);
+        Assert.Equal(150, overview!.Supply.Circulating); // members only
+        Assert.Equal(30, overview.Supply.Escrow);
+        Assert.Equal(2, overview.Supply.Holders);
+        Assert.DoesNotContain(overview.TopHolders, h => h.UserId == CurrencyService.EscrowAccountUserId);
+        Assert.Equal(10ul, overview.TopHolders[0].UserId);   // 100 first
+        Assert.Equal("Alice", overview.TopHolders[0].DisplayName);
+        Assert.Equal(3, overview.Recent.Count);              // all three movements in the feed
+    }
 }

@@ -28,7 +28,7 @@ public class QuestSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<Ques
             {
                 using var scope = scopeFactory.CreateScope();
                 var quests = scope.ServiceProvider.GetRequiredService<IQuestService>();
-                var maintenance = scope.ServiceProvider.GetRequiredService<QuestMaintenanceService>();
+                var maintenance = scope.ServiceProvider.GetRequiredService<Services.Quests.IQuestMaintenanceService>();
 
                 var now = DateTimeOffset.UtcNow;
                 var activated = await quests.ActivateScheduledAsync(now, stoppingToken);

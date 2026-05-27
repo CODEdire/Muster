@@ -11,6 +11,12 @@ public record UserProfile(string Name, string? AvatarUrl);
 
 public record LeaderboardRow(int Rank, ulong UserId, string DisplayName, long Total);
 
+/// <summary>A guild-wide ledger movement for the admin overview feed, with the member named.</summary>
+public record MovementRow(ulong UserId, string DisplayName, string CurrencyCode, long Amount, string Source, DateTimeOffset OccurredAt, string Reason);
+
+/// <summary>The admin currency overview for one currency: supply analytics + top holders + a recent-movement feed.</summary>
+public record CurrencyOverview(CurrencySupply Supply, IReadOnlyList<LeaderboardRow> TopHolders, IReadOnlyList<MovementRow> Recent);
+
 /// <summary>Read models for the web UI: a user's guilds and a guild's leaderboard with display names.</summary>
 public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth, ICurrencyReadService scores)
 {
@@ -65,5 +71,37 @@ public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth,
         return entries
             .Select((e, i) => new LeaderboardRow(i + 1, e.UserId, names.GetValueOrDefault(e.UserId, e.UserId.ToString()), e.Total))
             .ToList();
+    }
+
+    /// <summary>The admin overview for one currency (by code): supply analytics, top holders (escrow/house account
+    /// excluded), and a recent guild-wide movement feed with member names. Null when the currency is unknown.</summary>
+    public async Task<CurrencyOverview?> GetCurrencyOverviewAsync(
+        ulong guildId, string code, int topHolders = 10, int feed = 25, CancellationToken ct = default)
+    {
+        var supply = await scores.GetSupplyAsync(guildId, code, ct);
+        if (supply is null)
+        {
+            return null;
+        }
+
+        // Pull a couple extra holders so dropping the house account still leaves a full list.
+        var holders = (await scores.GetLeaderboardAsync(guildId, code, topHolders + 2, ct))
+            .Where(e => e.UserId != CurrencyService.EscrowAccountUserId)
+            .Take(topHolders)
+            .ToList();
+        var movements = await scores.GetGuildMovementsAsync(guildId, code, skip: 0, take: feed, ct);
+
+        var ids = holders.Select(h => h.UserId).Concat(movements.Select(m => m.UserId)).Distinct().ToList();
+        var names = await db.UserDisplayNameMapAsync(ids, ct);
+        string Name(ulong id) => id == CurrencyService.EscrowAccountUserId ? "Escrow (house)" : names.GetValueOrDefault(id, id.ToString());
+
+        var topRows = holders
+            .Select((e, i) => new LeaderboardRow(i + 1, e.UserId, Name(e.UserId), e.Total))
+            .ToList();
+        var feedRows = movements
+            .Select(m => new MovementRow(m.UserId, Name(m.UserId), m.CurrencyCode, m.Amount, m.SourceType, m.OccurredAt, m.Reason))
+            .ToList();
+
+        return new CurrencyOverview(supply, topRows, feedRows);
     }
 }

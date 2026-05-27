@@ -292,23 +292,23 @@ a slash command.
 | Capability | Discord | Web | API |
 | --- | --- | --- | --- |
 | Mint to a member | ✅ `/currency mint` | ✅ Award console | ✅ `…/adjust` |
-| Adjust (+/-) | ✅ `/currency adjust` | 🟡 console framed positive-only | ✅ `…/adjust` |
-| Bulk award/adjust (many members) | ⬜ | ⬜ | ⬜ *(removed with ManualAward)* |
-| View any member's balances + ledger | ⬜ | ✅ MemberDetail | 🟡 single balance / guild-wide ledger |
+| Adjust (+/-) | ✅ `/currency adjust` | ✅ Award/adjust console (signed) + bulk *(P2)* | ✅ `…/adjust` |
+| Bulk award/adjust (many members) | ⬜ | ✅ Members page (select or role, async) *(P2)* | ⬜ |
+| View any member's balances + ledger | ✅ `/currency inspect` (staff) *(P3)* | ✅ Members roster + drill-in *(P2)* | 🟡 single balance / guild-wide ledger |
 | Create / edit currency | ⬜ | ✅ Currencies + edit | ⬜ (list only) |
 | Connector config + test + health | ⬜ | ✅ CurrencyEdit | ⬜ |
 | Retention config | ✅ `/config-ledger-retention` | ✅ Role-mapping page | ⬜ |
-| Sync member / sync-all / reconcile | ⬜ | 🟡 self-sync + admin sync-all | ⬜ |
+| Sync member / sync-all / reconcile | ⬜ | ✅ self-sync + balance sync-all + **member sync from Discord** *(P2)* | ⬜ |
 | Rebuild wallets | ⬜ | 🟡 Currencies page | ⬜ |
-| Currency audit (who minted/adjusted/sent) | ⬜ | ✅ Audit console | 🟡 not exposed |
-| Supply / analytics (total minted, top holders, velocity) | ⬜ | ⬜ | ⬜ **gap** |
+| Currency audit (who minted/adjusted/sent) | ⬜ | ✅ Audit console | ✅ `…/audit` (`read:audit`) *(P3)* |
+| Supply / analytics (total minted, top holders, velocity) | ⬜ | ✅ Currency overview *(P2)* | ✅ `…/supply` + `…/movements` *(P3)* |
 | API key management | ⬜ | ✅ ApiClients | ⬜ |
 
 **Integration**
 | Capability | API |
 | --- | --- |
 | Inbound mint/spend (machine mirror) | ✅ |
-| Outbound movement webhooks | ⬜ — `CurrencyMovementRecorded` published internally only **gap** |
+| Outbound movement webhooks | ✅ per-guild HMAC-signed POST of every movement, source-filterable, health-tracked *(P3)* |
 
 ### Placement principles
 - **Discord** = glance + quick single-target verbs (`balance`, `history`, `give`, `mint`, `adjust`,
@@ -320,9 +320,9 @@ a slash command.
 
 ### Themed gaps
 1. **Member self-service depth** — no Discord `history`/`list`; no web *send* form; leaderboard not its own page.
-2. **Admin reach on Discord** — can't view a member's wallet/ledger or run sync from Discord.
-3. **Bulk operations** — bulk award/adjust gone; wanted for events/payouts.
-4. **Analytics/insight** — no per-currency supply / top-holders / movement feed anywhere (admins' biggest blind spot).
+2. **Admin reach on Discord** — ✅ `/currency inspect @member` (staff) views any member's wallet + recent activity. *(P3)* (Web has roster sync; Discord member-sync stays a slash command via `/syncmembers`.)
+3. **Bulk operations** — ✅ web Members page: bulk mint/adjust to a selection or a whole role, processed async with progress. *(P2)*
+4. **Analytics/insight** — ✅ web Admin → **Currency overview**: supply (minted/removed/circulating/escrow), holder count, top holders, recent movement feed. *(P2)* API analytics still ⬜.
 5. **Receipts/notifications** — ✅ DM on deliberate grants received (`/currency notify` + web toggle to opt out). *(MS‑4)*
 6. **API symmetry** — per-member ledger, audit read, outbound event webhooks.
 
@@ -354,11 +354,39 @@ a slash command.
   `DiscordUser.CurrencyDmOptOut` — toggled by **`/currency notify on|off`** or the web **Wallet → Notifications**
   checkbox (`MembershipQueries.{CurrencyDmOptOut,SetCurrencyDmOptOut}Async`). Best-effort delivery (closed DMs no-op).
 
-### Later phases (sketched, not scheduled)
-- **Phase 2 — Admin depth:** bulk award/adjust; admin member-lookup + sync from Discord; **Currency overview /
-  analytics** (supply, top holders, recent-movement feed); reframe the web console to mint **and** adjust.
-- **Phase 3 — API parity + events:** per-member ledger (from MS‑1), audit read, **outbound movement webhooks**
-  (subscribe to `CurrencyMovementRecorded`), optional config-write.
+### Later phases
+- **Phase 2 — Admin depth.** *In progress.*
+  - **Currency overview / analytics.** ✅ **DONE.** Web Admin → Currency overview (`/currency-overview`, officer+):
+    per-currency supply (gross minted/removed, member-held circulation, escrow held, holder count), top holders
+    (house account excluded), and a recent guild-wide movement feed with member names. Reads from the authoritative
+    ledger (`CurrencyLedgerQueries.{CurrencySupplyAsync,GuildLedgerAsync}` → `ICurrencyReadService.{GetSupplyAsync,
+    GetGuildMovementsAsync}` → `WebGuildService.GetCurrencyOverviewAsync`).
+  - **Members page + bulk mint/adjust.** ✅ **DONE.** Web Admin → Members (`/members`, officer+): a paged, name-searchable
+    roster of every member with their balance in a chosen currency; each row drills into that member's wallet+ledger
+    (`/members/{userId}`, reusing `MemberPanel`). Bulk mint/adjust targets either a checkbox **selection** or **everyone
+    with a role**, with a confirm-preview. Queuing authorizes once (manager-only), persists a `CurrencyBulkBatch` as the
+    audited summary, and publishes `RunCurrencyBulkAdjust`; the background `RunCurrencyBulkAdjustHandler` applies each
+    member leg via `AdjustAsync` keyed `bulk:{batchId}:{userId}` (idempotent — a redelivered job never double-applies and
+    skips duplicate connector pushes), writing progress (applied/failed/status) back for the page to poll. Per-member
+    legs publish `CurrencyMovementRecorded`, so grant receipts (MS-4) fire per member. This satisfies the
+    **view-any-member** P2 item too.
+  - **Sync from Discord + signed award console.** ✅ **DONE.** The Members page has a **Sync from Discord** button that
+    publishes `SyncGuildMembers` over the durable `MemberSyncQueue` to the bot (only it holds the gateway client);
+    `GuildMemberSyncHandler` pulls the roster and upserts via `MemberSyncService` — the web equivalent of
+    `/syncmembers`. The single-member **Award / adjust** console (`/award`) now takes a signed amount (positive mints,
+    negative deducts) through the same audited `AdjustCurrency` path. **Phase 2 complete.**
+- **Phase 3 — API parity + events.** *In progress.*
+  - **API read parity.** ✅ **DONE.** New endpoints `GET …/currencies/{code}/supply` + `…/currencies/{code}/movements`
+    (`read:ledger`) and `GET …/guilds/{guildId}/audit` (new `read:audit` scope) — analytics + audit reach the API,
+    reusing the same read services as the web overview/audit console. Per-member ledger already shipped in MS‑1.
+  - **Outbound movement webhooks.** ✅ **DONE.** Per-guild `CurrencyWebhook` subscriptions (Admin → Webhooks,
+    `/webhooks`): each staged `CurrencyMovementRecorded` is fanned out by `CurrencyWebhookHandler` (on the bot, the
+    currency-events listener) to enabled webhooks whose `SourceFilter` matches (empty = all), delivered by
+    `CurrencyWebhookDispatcher` as an HMAC-SHA256-signed POST (`X-Muster-Signature: sha256=…`, `X-Muster-Delivery`
+    idempotency key), reusing the connector's signer + Data-Protection secret encryption. Best-effort with health
+    tracking — consecutive failures accrue and auto-disable the webhook past a threshold; admins can test-send,
+    enable/disable, rotate the secret, and delete. Checkpoints never publish, so the firehose excludes pruning.
+  - **Remaining:** optional API config-write (currency CRUD / webhook management over the API).
 
 ## Wishlist (deferred)
 

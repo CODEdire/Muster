@@ -1,0 +1,148 @@
+@page "/guilds/{GuildIdRaw}/webhooks"
+@inherits GuildAdminComponentBase
+@inject ICurrencyWebhookService Webhooks
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+
+<PageTitle>Webhooks — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Webhooks</h1>
+        <p class="subtitle">POST every currency movement to your own endpoint, signed with HMAC-SHA256
+            (<code>X-Muster-Signature: sha256=…</code>). Use them to mirror the economy into an external system.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Endpoints</h2>
+        @if (_hooks.Count == 0)
+        {
+            <p class="empty">No webhooks yet.</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>URL</th><th>Events</th><th>Status</th><th>Health</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var w in _hooks)
+                    {
+                        <tr>
+                            <td>@w.Url</td>
+                            <td>@(w.Sources.Count == 0 ? "all" : string.Join(", ", w.Sources))</td>
+                            <td><span class="badge status-@(w.Enabled ? "open" : "closed")">@(w.Enabled ? "enabled" : "disabled")</span></td>
+                            <td>
+                                @if (w.LastDeliveryAt is null)
+                                {
+                                    <span class="subtitle">never delivered</span>
+                                }
+                                else
+                                {
+                                    <span class="@(w.ConsecutiveFailures > 0 ? "neg" : "pos")">
+                                        @(w.LastStatusCode is { } sc ? $"HTTP {sc}" : "error")@(w.ConsecutiveFailures > 0 ? $" · {w.ConsecutiveFailures} fail" : "")
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(w.LastError)) { <div class="subtitle">@w.LastError</div> }
+                                }
+                            </td>
+                            <td class="btn-row">
+                                <EditForm Model="this" FormName="@($"test-{w.Id}")" OnValidSubmit="() => TestAsync(w.Id)">
+                                    <button type="submit" class="btn btn-sm btn-ghost">Test</button>
+                                </EditForm>
+                                <EditForm Model="this" FormName="@($"toggle-{w.Id}")" OnValidSubmit="() => ToggleAsync(w.Id, !w.Enabled)">
+                                    <button type="submit" class="btn btn-sm btn-ghost">@(w.Enabled ? "Disable" : "Enable")</button>
+                                </EditForm>
+                                <EditForm Model="this" FormName="@($"delete-{w.Id}")" OnValidSubmit="() => DeleteAsync(w.Id)">
+                                    <button type="submit" class="btn btn-sm btn-ghost">Delete</button>
+                                </EditForm>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
+        <h2>Add a webhook</h2>
+        <EditForm class="form-grid" Model="Input" FormName="create-webhook" OnValidSubmit="CreateAsync">
+            <label>URL <InputText @bind-Value="Input.Url" placeholder="https://example.com/muster/webhook" /></label>
+            <label>Signing secret (write-only) <InputText @bind-Value="Input.Secret" placeholder="leave blank for no signature" /></label>
+            <fieldset>
+                <legend>Events <span class="subtitle">(none = all movements)</span></legend>
+                @foreach (var s in _sources)
+                {
+                    <label class="check"><input type="checkbox" name="Input.Sources" value="@s" checked="@Input.Sources.Contains(s)" /> @s</label>
+                }
+            </fieldset>
+            <div class="btn-row"><button type="submit">Add webhook</button></div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "create-webhook")] private WebhookInput Input { get; set; } = new();
+
+    // Sources worth subscribing to (checkpoints never publish, so they're omitted).
+    private static readonly CurrencyLedgerSource[] _sources =
+    [
+        CurrencyLedgerSource.TrackingSession, CurrencyLedgerSource.Quest, CurrencyLedgerSource.Muster,
+        CurrencyLedgerSource.Event, CurrencyLedgerSource.Transfer, CurrencyLedgerSource.Adjustment,
+        CurrencyLedgerSource.ManualAward, CurrencyLedgerSource.Connector,
+    ];
+
+    private IReadOnlyList<WebhookView> _hooks = [];
+
+    protected override async Task LoadAsync() => _hooks = await Webhooks.ListAsync(GuildId);
+
+    private async Task CreateAsync()
+    {
+        var result = await Webhooks.CreateAsync(GuildId, Input.Url ?? "", Input.Secret, Input.Sources);
+        Message = result.Message;
+        if (!result.IsError)
+        {
+            await AuditAsync("currency.webhookCreate", Input.Url);
+            Input = new WebhookInput();
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task TestAsync(Guid id)
+    {
+        Message = (await Webhooks.TestSendAsync(GuildId, id)).Message;
+        await LoadAsync();
+    }
+
+    private async Task ToggleAsync(Guid id, bool enabled)
+    {
+        var result = await Webhooks.SetEnabledAsync(GuildId, id, enabled);
+        Message = result.Message;
+        await AuditAsync("currency.webhookToggle", $"{id} -> {(enabled ? "enabled" : "disabled")}");
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var result = await Webhooks.DeleteAsync(GuildId, id);
+        Message = result.Message;
+        await AuditAsync("currency.webhookDelete", id.ToString());
+        await LoadAsync();
+    }
+
+    public class WebhookInput
+    {
+        public string? Url { get; set; }
+        public string? Secret { get; set; }
+        public List<CurrencyLedgerSource> Sources { get; set; } = [];
+    }
+}

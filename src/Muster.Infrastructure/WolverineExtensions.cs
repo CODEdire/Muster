@@ -20,6 +20,10 @@ public static class WolverineExtensions
     /// web/API still notifies the recipient).</summary>
     public const string CurrencyEventsQueue = "currency-events";
 
+    /// <summary>Durable SQL queue a web-triggered "sync members from Discord" flows through to reach the bot (only it
+    /// holds the gateway client to pull the roster).</summary>
+    public const string MemberSyncQueue = "member-sync";
+
     /// <summary>
     /// Configures the Wolverine command/query bus and discovers handlers in the Infrastructure assembly.
     /// When a SQL connection is available it enables the durable outbox/inbox (EF Core + SQL Server) so
@@ -32,7 +36,7 @@ public static class WolverineExtensions
     /// from web/API/the sweep still reaches the bot), and only the bot listens on them + renders the Discord channel
     /// board / sends DM receipts.
     /// </summary>
-    public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, bool listenForQuestBoard = false, bool listenForCurrencyEvents = false, string connectionName = "musterdb")
+    public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, bool listenForQuestBoard = false, bool listenForCurrencyEvents = false, bool listenForMemberSync = false, string connectionName = "musterdb")
         where TBuilder : IHostApplicationBuilder
     {
         var connectionString = builder.Configuration.GetConnectionString(connectionName);
@@ -81,6 +85,13 @@ public static class WolverineExtensions
                 if (listenForCurrencyEvents)
                 {
                     opts.ListenToSqlServerQueue(CurrencyEventsQueue);
+                }
+
+                // Web-triggered member sync runs on the bot (it owns the gateway client to pull the roster from Discord).
+                opts.PublishMessage<SyncGuildMembers>().ToSqlServerQueue(MemberSyncQueue);
+                if (listenForMemberSync)
+                {
+                    opts.ListenToSqlServerQueue(MemberSyncQueue);
                 }
             }
         });

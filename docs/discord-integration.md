@@ -57,7 +57,7 @@ later for rank rewards). On join, `GuildCreate` upserts the `Guild` row and seed
 | `/quest post\|claim\|submit\|approve\|list` | mixed | quest board lifecycle |
 | `/op create\|signup\|close` | mixed | scheduled event ops (RSVP/attendance) |
 | `/muster create` | admin | post a reaction check-in |
-| `/currency balance\|history\|list\|give\|notify\|mint\|adjust` | mixed | wallet balances + history, currency directory, member transfers, DM-receipt opt-out, staff mint/adjust (CQRS) |
+| `/currency balance\|history\|list\|give\|notify\|inspect\|mint\|adjust` | mixed | wallet balances + history, currency directory, member transfers, DM-receipt opt-out, staff member-wallet inspect + mint/adjust (CQRS) |
 | `/leaderboard` | all | season leaderboard |
 | `/season start\|end\|status` | admin | manage seasons |
 | `/config` | admin | guild settings / reward config |

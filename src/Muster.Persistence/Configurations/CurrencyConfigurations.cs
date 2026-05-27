@@ -56,3 +56,23 @@ public class WalletConfiguration : IEntityTypeConfiguration<Wallet>
         e.HasIndex(x => new { x.GuildId, x.UserId, x.CurrencyId, x.SeasonId }).IsUnique();
     }
 }
+
+public class CurrencyBulkBatchConfiguration : IEntityTypeConfiguration<CurrencyBulkBatch>
+{
+    public void Configure(EntityTypeBuilder<CurrencyBulkBatch> e)
+    {
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => new { x.GuildId, x.Status });
+        // TargetUserIds (List<ulong>) maps to a JSON column via EF's primitive-collection support (like GuildMember.RoleIds).
+    }
+}
+
+public class CurrencyWebhookConfiguration : IEntityTypeConfiguration<CurrencyWebhook>
+{
+    public void Configure(EntityTypeBuilder<CurrencyWebhook> e)
+    {
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => new { x.GuildId, x.Enabled });
+        // SourceFilter (List<CurrencyLedgerSource>) maps to a JSON column via EF's primitive-collection support.
+    }
+}

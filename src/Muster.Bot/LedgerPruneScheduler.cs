@@ -25,7 +25,7 @@ public class LedgerPruneScheduler(
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var prune = scope.ServiceProvider.GetRequiredService<LedgerPruneService>();
+                var prune = scope.ServiceProvider.GetRequiredService<ILedgerPruneService>();
                 var pruned = await prune.PruneAllAsync(stoppingToken);
                 if (pruned > 0)
                 {

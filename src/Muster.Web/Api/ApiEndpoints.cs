@@ -5,6 +5,7 @@ using Muster.Infrastructure;
 using Wolverine;
 using Wolverine.Http;
 using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Web.Api;
 
@@ -105,6 +106,29 @@ public static class ApiEndpoints
             ? Results.NotFound(new { error = "currency_not_found" })
             : Results.Ok(new { balance });
     }
+
+    /// <summary>Supply analytics for one currency (minted/removed/circulating/escrow + holder count).</summary>
+    [WolverineGet("/api/v1/guilds/{guildId}/currencies/{code}/supply")]
+    [RequireApiScope("read:ledger")]
+    public static async Task<IResult> Supply(ulong guildId, string code, ICurrencyReadService scores)
+    {
+        var supply = await scores.GetSupplyAsync(guildId, code);
+        return supply is null ? Results.NotFound(new { error = "currency_not_found" }) : Results.Ok(supply);
+    }
+
+    /// <summary>Guild-wide recent ledger movements (newest first) for one currency, paged — the overview feed.</summary>
+    [WolverineGet("/api/v1/guilds/{guildId}/currencies/{code}/movements")]
+    [RequireApiScope("read:ledger")]
+    public static async Task<IResult> Movements(
+        ulong guildId, string code, ICurrencyReadService scores, int skip = 0, int take = 50) =>
+        Results.Ok(await scores.GetGuildMovementsAsync(guildId, code, skip, take));
+
+    /// <summary>The guild's admin audit trail (who minted/adjusted/sent/configured), filterable + paged.</summary>
+    [WolverineGet("/api/v1/guilds/{guildId}/audit")]
+    [RequireApiScope("read:audit")]
+    public static async Task<IResult> Audit(
+        ulong guildId, AuditService audit, string? action = null, string? search = null, int page = 1, int pageSize = 50) =>
+        Results.Ok(await audit.SearchAsync(guildId, new AuditQuery(Search: search, Action: action, Page: page, PageSize: pageSize)));
 
     private static IResult ToResult(CurrencyChangeResult result) => result.Status switch
     {

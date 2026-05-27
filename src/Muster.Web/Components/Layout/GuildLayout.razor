@@ -92,7 +92,7 @@
                 new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
                 new("Sessions", "schedule", null, "/sessions"),
                 new("Musters", "groups", null, "/musters"),
-                new("Members", "group", null, "/members"),
+                new("Members", "group", _isAdmin ? $"/guilds/{_guildId}/members" : null, "/members"),
             };
 
             if (_isAdmin)

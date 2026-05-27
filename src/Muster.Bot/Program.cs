@@ -22,7 +22,7 @@ builder.AddMusterConnectorProtection(); // Data Protection for connector secrets
 // The bot is the only host that listens on the quest-board and currency-events queues: it renders/updates the
 // Discord channel board in response to quest lifecycle events, and DMs currency receipts (grants/staff actions)
 // to recipients — both published from any host.
-builder.AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true);
+builder.AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true, listenForMemberSync: true);
 
 // NetCord gateway. The bot token is read from configuration key "Discord:Token"
 // (user-secrets locally, Key Vault in Azure).

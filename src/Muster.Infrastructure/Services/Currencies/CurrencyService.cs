@@ -189,7 +189,7 @@ public class CurrencyService(MusterDbContext db, IMessageBus bus, ICurrencyConne
         // The ledger is the source of truth; recompute each (user,currency,season) balance from it.
         var sums = await db.LedgerTotalsAsync(guildId, ct);
 
-        var wallets = await db.Wallets.Where(w => w.GuildId == guildId).ToListAsync(ct);
+        var wallets = await db.WalletsForGuildAsync(guildId, ct);
         var byKey = wallets.ToDictionary(w => (w.UserId, w.CurrencyId, w.SeasonId));
         var ledgerKeys = sums.Select(s => (s.UserId, s.CurrencyId, s.SeasonId)).ToHashSet();
         var now = DateTimeOffset.UtcNow;

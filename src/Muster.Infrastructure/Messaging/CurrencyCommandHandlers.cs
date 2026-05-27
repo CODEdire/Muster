@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Muster.Contracts;
 using Muster.Domain;
 using Muster.Infrastructure.Connectors;
@@ -118,4 +119,55 @@ public static class SyncCurrencyBalancesHandler
 {
     public static Task Handle(SyncCurrencyBalances command, CurrencyConnectorSyncService sync, CancellationToken ct)
         => sync.SyncCurrencyAsync(command.GuildId, command.CurrencyId, TimeSpan.FromMilliseconds(500), ct: ct);
+}
+
+/// <summary>
+/// Applies a queued bulk adjustment durably: one <c>AdjustAsync</c> per target member, each keyed
+/// <c>bulk:{batchId}:{userId}</c> so the ledger dedupes a redelivered job (and skips any duplicate connector push).
+/// Progress + outcome are written back to the <see cref="Muster.Domain.Entities.Currencies.CurrencyBulkBatch"/> row
+/// for the UI to poll. A member leg that throws (e.g. a connector failure) is counted as failed and the batch
+/// continues; the run is marked Failed only if nothing applied.
+/// </summary>
+public static class RunCurrencyBulkAdjustHandler
+{
+    public static async Task Handle(
+        RunCurrencyBulkAdjust command,
+        Muster.Persistence.MusterDbContext db,
+        ICurrencyService currency,
+        Microsoft.Extensions.Logging.ILogger<RunCurrencyBulkAdjust> logger,
+        CancellationToken ct)
+    {
+        var batch = await Muster.Persistence.Queries.CurrencyQueries.FindBulkBatchAsync(db, command.BatchId, ct);
+        if (batch is null || batch.Status == Muster.Domain.Enums.BulkBatchStatus.Completed)
+        {
+            return; // unknown or already done — idempotent no-op on redelivery
+        }
+
+        batch.Status = Muster.Domain.Enums.BulkBatchStatus.Running;
+        await db.SaveChangesAsync(ct);
+
+        int applied = 0, failed = 0;
+        foreach (var userId in batch.TargetUserIds)
+        {
+            try
+            {
+                // Idempotent per (Adjustment, sourceId): a rerun applies nothing new and skips the connector push.
+                await currency.AdjustAsync(
+                    batch.GuildId, batch.CurrencyCode, userId, batch.Delta, batch.Reason, $"bulk:{batch.Id}:{userId}", ct);
+                applied++;
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                logger.LogWarning(ex, "Bulk adjust {Batch}: member {User} failed", batch.Id, userId);
+            }
+        }
+
+        batch.AppliedCount = applied;
+        batch.FailedCount = failed;
+        batch.Status = applied == 0 && failed > 0 ? Muster.Domain.Enums.BulkBatchStatus.Failed : Muster.Domain.Enums.BulkBatchStatus.Completed;
+        batch.Error = failed > 0 ? $"{failed:N0} member(s) failed." : null;
+        batch.CompletedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
 }

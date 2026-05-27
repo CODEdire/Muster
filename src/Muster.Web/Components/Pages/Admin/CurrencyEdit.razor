@@ -1,7 +1,7 @@
 @page "/guilds/{GuildIdRaw}/currencies/new"
 @page "/guilds/{GuildIdRaw}/currencies/{CurrencyId}/edit"
 @inherits GuildAdminComponentBase
-@inject CurrencyAdminService CurrencyAdmin
+@inject ICurrencyAdminService CurrencyAdmin
 @inject Wolverine.IMessageBus Bus
 @using Muster.Contracts
 @using Muster.Domain.Entities

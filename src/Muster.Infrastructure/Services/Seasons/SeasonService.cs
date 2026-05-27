@@ -11,7 +11,7 @@ namespace Muster.Infrastructure.Services.Seasons;
 /// leaderboards reset while spendable currencies (which aren't season-scoped) persist. Archiving a season
 /// also folds that season's ledger history into carry-forward checkpoints (balances preserved).
 /// </summary>
-public class SeasonService(MusterDbContext db, LedgerPruneService? prune = null)
+public class SeasonService(MusterDbContext db, ILedgerPruneService? prune = null)
 {
     public Task<Season?> GetActiveAsync(ulong guildId, CancellationToken ct = default)
         => db.FindActiveSeasonAsync(guildId, ct);

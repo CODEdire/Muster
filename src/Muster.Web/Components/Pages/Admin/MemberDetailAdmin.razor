@@ -1,0 +1,41 @@
+@page "/guilds/{GuildIdRaw}/members/{UserIdRaw}"
+@inherits GuildAdminComponentBase
+@inject WebMemberService Members
+@using Muster.Infrastructure.Services.Web
+
+<PageTitle>Member — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need officer or admin access for this server.</div>
+}
+else if (State == AccessState.Ready && _detail is not null)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/members">← Members</a>
+        <h1>@_detail.DisplayName</h1>
+        <p class="subtitle">Wallet balances and recent ledger activity.</p>
+    </div>
+
+    <MemberPanel Detail="_detail" />
+}
+else if (State == AccessState.Ready)
+{
+    <div class="panel glass empty">Unknown member.</div>
+}
+
+@code {
+    protected override bool OfficerSufficient => true;
+
+    [Parameter] public string UserIdRaw { get; set; } = "";
+
+    private MemberDetailView? _detail;
+
+    protected override async Task LoadAsync()
+    {
+        if (ulong.TryParse(UserIdRaw, out var userId))
+        {
+            _detail = await Members.GetAsync(GuildId, userId);
+        }
+    }
+}

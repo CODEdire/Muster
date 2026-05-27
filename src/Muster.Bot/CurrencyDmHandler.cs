@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Muster.Contracts;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Persistence;
+using Muster.Persistence.Queries;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Rest;
@@ -40,21 +41,19 @@ public static class CurrencyDmHandler
             return;
         }
 
-        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == m.UserId, ct);
+        var user = await db.FindUserAsync(m.UserId, ct);
         if (user is null || user.IsBot || user.CurrencyDmOptOut)
         {
             return;
         }
 
-        var currency = await db.Currencies.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.GuildId == m.GuildId && c.Id == m.CurrencyId, ct);
+        var currency = await db.FindCurrencyByIdAsync(m.GuildId, m.CurrencyId, ct);
         if (currency is null)
         {
             return;
         }
 
-        var guildName = await db.Guilds.AsNoTracking()
-            .Where(g => g.Id == m.GuildId).Select(g => g.Name).FirstOrDefaultAsync(ct) ?? "your server";
+        var guildName = await db.GuildNameAsync(m.GuildId, ct) ?? "your server";
 
         var embed = new EmbedProperties
         {

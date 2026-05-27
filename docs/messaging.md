@@ -38,6 +38,8 @@ Message contracts live in `Muster.Contracts/` (split by feature: `CurrencyMessag
 | `MintCurrency` / `SpendCurrency` | connector → handler | machine-inbound mirror of an external movement (`CurrencyChangeResult`) |
 | `TransferCurrency` / `AdjustCurrency` | bot/web/api → handler | user/staff CQRS (`IGuildCommand`, authorized + audited → `Result`) |
 | `CurrencyMovementRecorded` | service → outbound | published on every staged ledger movement (the money-moved seam) |
+| `RunCurrencyBulkAdjust` | web → background worker | apply a queued staff bulk mint/adjust to many members (durable, idempotent per member leg) |
+| `SyncGuildMembers` | web → bot | pull the guild roster from Discord and upsert it (web equivalent of `/syncmembers`) |
 | `QuestLifecycleNotified` | service → outbound | a quest changed state (Discord/connector fan-out) |
 
 ## v1: no broker
@@ -73,9 +75,12 @@ first-class Service Bus integration for this.
   gateway/REST client, so they're routed to the bot rather than handled in the publishing host:
   - `QuestLifecycleNotified` → `QuestBoardQueue` (`"quest-board"`) — renders/updates the Discord channel board.
   - `CurrencyMovementRecorded` → `CurrencyEventsQueue` (`"currency-events"`) — DM currency receipts to recipients.
+  - `SyncGuildMembers` → `MemberSyncQueue` (`"member-sync"`) — pull the guild roster from Discord (`GuildMemberSyncHandler`).
   Every host *publishes* to these queues (so a change from web/API/the sweep still reaches the bot); only the bot
-  *listens* — `AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true)`. The currency-events
-  consumer is `CurrencyDmHandler`; pruning checkpoints bypass `StageAsync`, so they never enter the firehose.
+  *listens* — `AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true, listenForMemberSync: true)`.
+  The currency-events consumers are `CurrencyDmHandler` (DM receipts) and `CurrencyWebhookHandler` (fan out to the
+  guild's outbound webhooks — HMAC-signed POST per matching subscription); pruning checkpoints bypass `StageAsync`,
+  so they never enter the firehose.
 - Because handlers are plain methods, they're unit-tested by calling them directly with an in-memory
   database — no bus required.
 

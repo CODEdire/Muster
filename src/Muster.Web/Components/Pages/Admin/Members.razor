@@ -1,0 +1,278 @@
+@page "/guilds/{GuildIdRaw}/members"
+@inherits GuildAdminComponentBase
+@inject ICurrencyReadService Reader
+@inject WebMemberService MemberSvc
+@inject ICurrencyBulkService Bulk
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+
+<PageTitle>Members — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need officer or admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Members</h1>
+        <p class="subtitle">Browse every member's balance, drill into a wallet, or mint/adjust many at once.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_batch is not null)
+    {
+        <div class="panel glass">
+            <div class="panel-head">
+                <h2>Bulk job</h2>
+                <span class="badge status-@_batch.Status.ToString().ToLowerInvariant()">@_batch.Status</span>
+            </div>
+            <p class="subtitle">
+                @_batch.Delta.ToString("+#,##0;-#,##0") @_batch.CurrencyCode to @_batch.TotalCount.ToString("N0") member(s)
+                — applied @_batch.AppliedCount.ToString("N0"), failed @_batch.FailedCount.ToString("N0").
+                @if (_batch.Error is not null) { <span class="neg">@_batch.Error</span> }
+            </p>
+            @if (_batch.Status is BulkBatchStatus.Pending or BulkBatchStatus.Running)
+            {
+                <EditForm Model="this" FormName="members" OnValidSubmit="HandleAsync">
+                    <input type="hidden" name="Action" value="refresh" />
+                    <input type="hidden" name="BatchIdRaw" value="@_batch.Id" />
+                    <div class="btn-row"><button type="submit" class="btn btn-sm btn-ghost">Refresh status</button></div>
+                </EditForm>
+            }
+        </div>
+    }
+
+    @if (_currencies.Count == 0)
+    {
+        <div class="panel glass empty">No currencies are configured in this server yet.</div>
+    }
+    else
+    {
+        <EditForm Model="this" FormName="members" OnValidSubmit="HandleAsync">
+            <DataAnnotationsValidator />
+
+            <div class="panel glass">
+                <div class="form-grid">
+                    <label>Currency
+                        <InputSelect @bind-Value="Code">
+                            @foreach (var c in _currencies)
+                            {
+                                <option value="@c.Code">@c.Code — @c.Name</option>
+                            }
+                        </InputSelect>
+                    </label>
+                    <label>Search <InputText @bind-Value="Search" placeholder="name…" /></label>
+                    <div class="btn-row">
+                        <button type="submit" name="Action" value="filter">Apply</button>
+                        <button type="submit" name="Action" value="sync" class="btn btn-ghost" title="Pull the latest roster from Discord">Sync from Discord</button>
+                    </div>
+                </div>
+            </div>
+
+            @if (_showConfirm)
+            {
+                <div class="panel glass confirm">
+                    <h2>Confirm bulk @(Delta >= 0 ? "mint" : "adjustment")</h2>
+                    <p>Apply <strong>@Delta.ToString("+#,##0;-#,##0") @Code</strong> to
+                        <strong>@_confirmCount.ToString("N0") member(s)</strong> — reason: <em>@Reason</em>.</p>
+                    <p class="subtitle">Each member's balance changes and (for connected economies) is pushed to the backing system. This runs in the background.</p>
+                    <div class="btn-row">
+                        <button type="submit" name="Action" value="queue" class="btn">Confirm &amp; queue</button>
+                        <button type="submit" name="Action" value="cancel" class="btn btn-ghost">Cancel</button>
+                    </div>
+                </div>
+            }
+
+            <div class="panel glass">
+                <h2>Bulk mint / adjust</h2>
+                <div class="form-grid">
+                    <label>Targets
+                        <InputSelect @bind-Value="Mode">
+                            <option value="selected">Selected members below</option>
+                            <option value="role">Everyone with a role</option>
+                        </InputSelect>
+                    </label>
+                    @if (Mode == "role")
+                    {
+                        <label>Role
+                            <InputSelect @bind-Value="RoleIdRaw">
+                                <option value="">— select —</option>
+                                @foreach (var r in _roles)
+                                {
+                                    <option value="@r.RoleId">@r.Name</option>
+                                }
+                            </InputSelect>
+                        </label>
+                    }
+                    <label>Amount (signed) <InputNumber @bind-Value="Delta" /></label>
+                    <label>Reason <InputText @bind-Value="Reason" /></label>
+                    <div class="btn-row"><button type="submit" name="Action" value="preview" class="btn">Preview…</button></div>
+                </div>
+            </div>
+
+            <div class="panel glass">
+                <div class="panel-head">
+                    <h2>@_total.ToString("N0") member(s)</h2>
+                    <span class="subtitle">balance in @Code</span>
+                </div>
+                @if (_rows.Count == 0)
+                {
+                    <p class="empty">No members match.</p>
+                }
+                else
+                {
+                    <table class="leaderboard">
+                        <thead><tr><th></th><th>Member</th><th>Balance</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _rows)
+                            {
+                                <tr>
+                                    <td><input type="checkbox" name="SelectedIds" value="@r.UserId" checked="@SelectedIds.Contains(r.UserId)" /></td>
+                                    <td>@r.DisplayName</td>
+                                    <td>@r.Balance.ToString("N0")</td>
+                                    <td><a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/members/@r.UserId">View</a></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    <div class="btn-row pager">
+                        @if (Page > 0)
+                        {
+                            <button type="submit" name="Action" value="prev" class="btn btn-sm btn-ghost">← Prev</button>
+                        }
+                        <span class="subtitle">Page @(Page + 1) of @_totalPages</span>
+                        @if (Page + 1 < _totalPages)
+                        {
+                            <button type="submit" name="Action" value="next" class="btn btn-sm btn-ghost">Next →</button>
+                        }
+                    </div>
+                }
+            </div>
+        </EditForm>
+    }
+}
+
+@code {
+    protected override bool OfficerSufficient => true;
+
+    private const int PageSize = 25;
+
+    [SupplyParameterFromForm(FormName = "members")] private string? Code { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private string? Search { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private int Page { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private string? Mode { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private string? RoleIdRaw { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private long Delta { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private string? Reason { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private List<ulong> SelectedIds { get; set; } = [];
+    [SupplyParameterFromForm(FormName = "members")] private string? Action { get; set; }
+    [SupplyParameterFromForm(FormName = "members")] private string? BatchIdRaw { get; set; }
+
+    private IReadOnlyList<CurrencyInfo> _currencies = [];
+    private IReadOnlyList<BulkRoleOption> _roles = [];
+    private IReadOnlyList<RosterRow> _rows = [];
+    private int _total;
+    private int _totalPages = 1;
+    private bool _showConfirm;
+    private int _confirmCount;
+    private CurrencyBulkBatch? _batch;
+
+    protected override async Task LoadAsync()
+    {
+        _currencies = await Reader.GetCurrenciesAsync(GuildId);
+        if (_currencies.Count == 0)
+        {
+            return;
+        }
+
+        Mode ??= "selected";
+        if (string.IsNullOrWhiteSpace(Code) || _currencies.All(c => c.Code != Code))
+        {
+            Code = _currencies.FirstOrDefault(c => c.Code == "POINTS")?.Code ?? _currencies[0].Code;
+        }
+
+        _roles = await MemberSvc.GetRoleOptionsAsync(GuildId);
+        await LoadRosterAsync();
+
+        if (Guid.TryParse(BatchIdRaw, out var batchId))
+        {
+            _batch = await Bulk.GetAsync(GuildId, batchId);
+        }
+    }
+
+    private async Task LoadRosterAsync()
+    {
+        if (Page < 0) Page = 0;
+        var page = await MemberSvc.GetRosterAsync(GuildId, Code!, Search, Page * PageSize, PageSize);
+        _rows = page.Rows;
+        _total = page.Total;
+        _totalPages = Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
+        if (Page >= _totalPages) Page = _totalPages - 1;
+    }
+
+    private async Task HandleAsync()
+    {
+        switch (Action)
+        {
+            case "next": Page++; break;
+            case "prev": Page--; break;
+            case "cancel": _showConfirm = false; break;
+            case "refresh": break; // batch reloaded in LoadAsync
+            case "sync": await SyncAsync(); break;
+            case "preview": await PreviewAsync(); break;
+            case "queue": await QueueAsync(); break;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task<List<ulong>> ResolveTargetsAsync()
+        => Mode == "role" && ulong.TryParse(RoleIdRaw, out var roleId)
+            ? (await MemberSvc.GetRoleTargetsAsync(GuildId, roleId)).ToList()
+            : SelectedIds;
+
+    private async Task SyncAsync()
+    {
+        await Bus.PublishAsync(new SyncGuildMembers(GuildId));
+        await AuditAsync("members.syncRequested", "Requested a member sync from Discord");
+        Message = "Requested a sync from Discord — refresh in a moment to see the latest roster.";
+    }
+
+    private async Task PreviewAsync()
+    {
+        if (Delta == 0) { Message = "Amount must be non-zero."; return; }
+        if (string.IsNullOrWhiteSpace(Reason)) { Message = "A reason is required."; return; }
+
+        var targets = await ResolveTargetsAsync();
+        if (targets.Count == 0) { Message = Mode == "role" ? "That role has no members." : "Select at least one member."; return; }
+
+        _confirmCount = targets.Count;
+        _showConfirm = true;
+    }
+
+    private async Task QueueAsync()
+    {
+        var targets = await ResolveTargetsAsync();
+        var result = await Bulk.QueueAsync(GuildId, UserId, Code!, Delta, Reason ?? "", targets);
+        Message = result.Message;
+        _showConfirm = false;
+        if (result.Ok)
+        {
+            BatchIdRaw = result.BatchId?.ToString();
+            await AuditAsync("currency.bulkQueue", $"{Delta:+#,##0;-#,##0} {Code} to {targets.Count} member(s)");
+            SelectedIds = [];
+            Delta = 0;
+            Reason = "";
+        }
+    }
+}
