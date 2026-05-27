@@ -10,12 +10,12 @@ public record VoiceLeaderboardEntry(ulong UserId, int VoiceMinutes);
 
 /// <summary>An in-progress tracking session (live ops view).</summary>
 public record ActiveSessionView(
-    Guid Id, TrackingSessionSource Source, ulong VoiceChannelId, ulong? ScheduledEventId,
+    Guid Id, string Name, TrackingSessionSource Source, ulong VoiceChannelId, ulong? ScheduledEventId,
     DateTimeOffset StartedAt, int Attendees, int PresentNow);
 
 /// <summary>A finished tracking session (history view).</summary>
 public record RecentSessionView(
-    Guid Id, TrackingSessionSource Source, ulong VoiceChannelId,
+    Guid Id, string Name, TrackingSessionSource Source, ulong VoiceChannelId,
     DateTimeOffset StartedAt, DateTimeOffset? EndedAt, int Attendees, int TotalMinutes);
 
 /// <summary>A member's own voice participation summary (self-view).</summary>
@@ -132,7 +132,7 @@ public class ParticipationReadService(MusterDbContext db)
             .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active)
             .OrderBy(s => s.StartedAt)
             .Select(s => new ActiveSessionView(
-                s.Id, s.Source, s.VoiceChannelId, s.ScheduledEventId, s.StartedAt,
+                s.Id, s.Name, s.Source, s.VoiceChannelId, s.ScheduledEventId, s.StartedAt,
                 s.Attendance.Count,
                 s.Attendance.Count(a => a.OpenSegmentStart != null)))
             .ToListAsync(ct);
@@ -144,7 +144,7 @@ public class ParticipationReadService(MusterDbContext db)
             .OrderByDescending(s => s.EndedAt)
             .Take(take)
             .Select(s => new RecentSessionView(
-                s.Id, s.Source, s.VoiceChannelId, s.StartedAt, s.EndedAt,
+                s.Id, s.Name, s.Source, s.VoiceChannelId, s.StartedAt, s.EndedAt,
                 s.Attendance.Count,
                 s.Attendance.Sum(a => a.TotalMinutes)))
             .ToListAsync(ct);

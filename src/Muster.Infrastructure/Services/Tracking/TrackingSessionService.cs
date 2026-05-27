@@ -16,17 +16,26 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 {
     public const int DefaultPointsPerMinute = 1;
 
+    /// <summary>
+    /// Open a manual session. Anti-AFK guards default to <paramref name="requireUnmuted"/>/<paramref name="requireNotAlone"/>
+    /// when supplied; a null falls back to the guild's <c>ApplyAfkGuardsToSessions</c> policy.
+    /// </summary>
     public async Task<TrackingSession> OpenManualAsync(
-        ulong guildId, ulong voiceChannelId, ulong openedBy, CancellationToken ct = default)
-        => await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.Manual, scheduledEventId: null, openedBy, ct);
+        ulong guildId, ulong voiceChannelId, ulong openedBy,
+        string? name = null, bool? requireUnmuted = null, bool? requireNotAlone = null, CancellationToken ct = default)
+        => await OpenAsync(
+            guildId, voiceChannelId, TrackingSessionSource.Manual, scheduledEventId: null, openedBy,
+            name ?? "Manual session", requireUnmuted, requireNotAlone, ct);
 
     public async Task<TrackingSession> OpenForScheduledEventAsync(
-        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, CancellationToken ct = default)
-        => await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0, ct);
+        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, string? name = null, CancellationToken ct = default)
+        => await OpenAsync(
+            guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0,
+            name ?? "Scheduled event", requireUnmuted: null, requireNotAlone: null, ct);
 
     /// <summary>Open a session bound to a scheduled event, unless one is already active for it.</summary>
     public async Task<TrackingSession?> EnsureForScheduledEventAsync(
-        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, CancellationToken ct = default)
+        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, string? name = null, CancellationToken ct = default)
     {
         var alreadyOpen = await db.HasActiveSessionForEventAsync(guildId, scheduledEventId, ct);
         if (alreadyOpen)
@@ -34,7 +43,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             return null;
         }
 
-        return await OpenAsync(guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0, ct);
+        return await OpenForScheduledEventAsync(guildId, voiceChannelId, scheduledEventId, name, ct);
     }
 
     /// <summary>Close the active session bound to a scheduled event, if any.</summary>
@@ -49,18 +58,24 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
     private async Task<TrackingSession> OpenAsync(
         ulong guildId, ulong voiceChannelId, TrackingSessionSource source, ulong? scheduledEventId,
-        ulong openedBy, CancellationToken ct)
+        ulong openedBy, string name, bool? requireUnmuted, bool? requireNotAlone, CancellationToken ct)
     {
+        // A null guard defaults to the guild's session-guard policy (so scheduled events follow it).
+        var applyGuards = (await db.GetSettingsAsync(guildId, ct)).ApplyAfkGuardsToSessions;
+
         var session = new TrackingSession
         {
             Id = Guid.NewGuid(),
             GuildId = guildId,
+            Name = name,
             Source = source,
             ScheduledEventId = scheduledEventId,
             VoiceChannelId = voiceChannelId,
             StartedAt = DateTimeOffset.UtcNow,
             Status = TrackingSessionStatus.Active,
             OpenedBy = openedBy,
+            RequireUnmuted = requireUnmuted ?? applyGuards,
+            RequireNotAlone = requireNotAlone ?? applyGuards,
         };
         db.TrackingSessions.Add(session);
         await db.SaveChangesAsync(ct);
@@ -84,7 +99,6 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         var now = at ?? DateTimeOffset.UtcNow;
-        var guardsOn = (await db.GetSettingsAsync(guildId, ct)).ApplyAfkGuardsToSessions;
 
         foreach (var session in sessions)
         {
@@ -95,7 +109,8 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
             foreach (var member in humans)
             {
-                var eligible = !guardsOn || (!member.IsMutedOrDeafened && humans.Count >= 2);
+                var eligible = (!session.RequireUnmuted || !member.IsMutedOrDeafened)
+                    && (!session.RequireNotAlone || humans.Count >= 2);
                 var att = GetOrCreateAttendance(session.Id, byUser, member.UserId, now);
 
                 if (eligible)

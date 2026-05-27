@@ -6,11 +6,22 @@ namespace Muster.Infrastructure.Commands.Tracking;
 public class TrackingCommandService(TrackingSessionService sessions)
 {
     public async Task<CommandResult> StartAsync(
-        ulong guildId, ulong actorId, ulong voiceChannelId, CancellationToken ct = default)
+        ulong guildId, ulong actorId, ulong voiceChannelId, string name,
+        bool requireUnmuted, bool requireNotAlone, CancellationToken ct = default)
     {
-        var session = await sessions.OpenManualAsync(guildId, voiceChannelId, actorId, ct);
+        var cleanName = string.IsNullOrWhiteSpace(name) ? "Manual session" : name.Trim();
+        var session = await sessions.OpenManualAsync(
+            guildId, voiceChannelId, actorId, cleanName, requireUnmuted, requireNotAlone, ct);
+
+        var guards = (requireUnmuted, requireNotAlone) switch
+        {
+            (false, false) => "counting all presence",
+            (true, false) => "skipping muted members",
+            (false, true) => "skipping when alone",
+            _ => "skipping muted or alone members",
+        };
         return CommandResult.Ok(
-            $"Started tracking session `{session.Id}` in <#{voiceChannelId}>. Close it with `/track-stop`.");
+            $"Started **{cleanName}** in <#{voiceChannelId}> ({guards}). Close it with `/track-stop`.");
     }
 
     public async Task<CommandResult> StopAsync(ulong guildId, string sessionIdRaw, CancellationToken ct = default)

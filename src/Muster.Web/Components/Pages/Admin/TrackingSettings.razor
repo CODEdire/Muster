@@ -1,0 +1,227 @@
+@page "/guilds/{GuildIdRaw}/tracking"
+@layout GuildLayout
+@inherits GuildAdminComponentBase
+@inject ConfigCommandService Config
+@inject TrackedChannelCommandService Channels
+@inject Muster.Infrastructure.Services.Currencies.ICurrencyReadService Reader
+@inject MusterDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using Muster.Domain.Entities
+@using Muster.Domain.Entities.Guilds
+@using Muster.Domain.Enums
+@using Muster.Persistence
+@using Muster.Persistence.Queries
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Commands.Membership
+@using Muster.Infrastructure.Commands.Tracking
+
+<PageTitle>Tracking — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Tracking</h1>
+        <p class="subtitle">Monitored channels, reward rates, anti-AFK guards, and privacy defaults.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Rewards &amp; privacy</h2>
+        <EditForm class="form-grid" Model="Settings" FormName="tracking-settings" OnValidSubmit="SaveSettingsAsync">
+            <input type="hidden" name="Settings.Submitted" value="1" />
+            <label class="check"><InputCheckbox @bind-Value="Settings.BackgroundOptIn" /> Background tracking is opt-in (members must opt in via <code>/track-privacy</code>)</label>
+            <label class="check"><InputCheckbox @bind-Value="Settings.ApplyGuardsToSessions" /> New sessions pause reward time while muted or alone (default)</label>
+            <label>Session payout currency
+                <InputSelect @bind-Value="Settings.CoinCurrency">
+                    <option value="">— none (POINTS only) —</option>
+                    @foreach (var c in _spendable)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>Minutes per coin <InputNumber @bind-Value="Settings.MinutesPerCoin" /> <span class="subtitle">0 = no coin on session close</span></label>
+            <div class="btn-row"><button type="submit">Save</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass">
+        <h2>Monitored channels</h2>
+        @if (_channels.Count == 0)
+        {
+            <p class="empty">No channels monitored yet. Add one below (or use <code>/track-voice</code> / <code>/track-text</code> in Discord).</p>
+        }
+        else
+        {
+            <table class="leaderboard">
+                <thead><tr><th>Kind</th><th>Channel</th><th>Mode</th><th>Rate</th><th>Guards</th></tr></thead>
+                <tbody>
+                    @foreach (var c in _channels)
+                    {
+                        <tr>
+                            <td>@(c.Kind == TrackedChannelKind.Voice ? "🔊 Voice" : "💬 Text")</td>
+                            <td>#@c.ChannelId</td>
+                            <td>@c.Mode</td>
+                            <td>@(c.Kind == TrackedChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")@(c.DailyCapPoints > 0 ? $" (cap {c.DailyCapPoints}/day)" : "")</td>
+                            <td>@(c.Kind == TrackedChannelKind.Voice ? $"{(c.RequireUnmuted ? "unmuted" : "")} {(c.RequireNotAlone ? "not-alone" : "")}".Trim() : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="panel glass">
+        <h2>Add / update a channel</h2>
+        <EditForm class="form-grid" Model="AddChannel" FormName="add-channel" OnValidSubmit="AddChannelAsync">
+            <input type="hidden" name="AddChannel.Submitted" value="1" />
+            <label>Channel id <InputText @bind-Value="AddChannel.ChannelId" /></label>
+            <label>Kind
+                <InputSelect @bind-Value="AddChannel.Kind">
+                    <option value="voice">Voice (reward by minute)</option>
+                    <option value="text">Text (stats)</option>
+                </InputSelect>
+            </label>
+            <label>Points per minute <InputNumber @bind-Value="AddChannel.PointsPerMinute" /> <span class="subtitle">voice only</span></label>
+            <label>Daily cap <InputNumber @bind-Value="AddChannel.DailyCap" /> <span class="subtitle">0 = uncapped</span></label>
+            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipMuted" /> Skip muted/deafened</label>
+            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipAlone" /> Skip when alone</label>
+            <div class="btn-row"><button type="submit">Save channel</button></div>
+        </EditForm>
+    </div>
+
+    @if (_channels.Count > 0)
+    {
+        <div class="panel glass">
+            <h2>Stop monitoring</h2>
+            <EditForm class="form-grid" Model="RemoveChannel" FormName="remove-channel" OnValidSubmit="RemoveChannelAsync">
+                <input type="hidden" name="RemoveChannel.Submitted" value="1" />
+                <label>Channel
+                    <InputSelect @bind-Value="RemoveChannel.ChannelId">
+                        <option value="0">— select —</option>
+                        @foreach (var c in _channels)
+                        {
+                            <option value="@c.ChannelId">@(c.Kind == TrackedChannelKind.Voice ? "🔊" : "💬") #@c.ChannelId</option>
+                        }
+                    </InputSelect>
+                </label>
+                <div class="btn-row"><button type="submit">Remove</button></div>
+            </EditForm>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "tracking-settings")] private SettingsInput Settings { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "add-channel")] private AddChannelInput AddChannel { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "remove-channel")] private RemoveChannelInput RemoveChannel { get; set; } = new();
+
+    private IReadOnlyList<CurrencyInfo> _spendable = [];
+    private IReadOnlyList<TrackedChannel> _channels = [];
+
+    protected override async Task LoadAsync()
+    {
+        _spendable = (await Reader.GetCurrenciesAsync(GuildId)).Where(c => c.Spendable).ToList();
+        _channels = await Db.ListTrackedChannelsAsync(GuildId);
+
+        if (string.IsNullOrEmpty(Settings.Submitted))
+        {
+            var s = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
+            Settings.BackgroundOptIn = s.BackgroundTrackingOptIn;
+            Settings.ApplyGuardsToSessions = s.ApplyAfkGuardsToSessions;
+            Settings.CoinCurrency = s.SessionCoinCurrencyCode;
+            Settings.MinutesPerCoin = s.MinutesPerCoin;
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        await Config.SetBackgroundOptInAsync(GuildId, Settings.BackgroundOptIn);
+        await Config.SetApplyGuardsToSessionsAsync(GuildId, Settings.ApplyGuardsToSessions);
+        var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
+
+        await AuditAsync("config.tracking", $"background-opt-in={Settings.BackgroundOptIn}; session-guards={Settings.ApplyGuardsToSessions}; coin={Settings.CoinCurrency}/{Settings.MinutesPerCoin}");
+        Message = coin.IsError ? coin.Message : "Tracking settings saved.";
+        await LoadAsync();
+    }
+
+    private async Task AddChannelAsync()
+    {
+        if (!ulong.TryParse(AddChannel.ChannelId, out var channelId) || channelId == 0)
+        {
+            Message = "Enter a valid channel id.";
+            return;
+        }
+
+        var result = AddChannel.Kind == "text"
+            ? await Channels.SetTextAsync(GuildId, channelId)
+            : await Channels.SetVoiceAsync(GuildId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipAlone);
+
+        if (!result.IsError)
+        {
+            await AuditAsync("config.trackChannel", result.Message);
+        }
+
+        Message = result.Message;
+        AddChannel = new AddChannelInput();
+        await LoadAsync();
+    }
+
+    private async Task RemoveChannelAsync()
+    {
+        if (RemoveChannel.ChannelId == 0)
+        {
+            Message = "Choose a channel to remove.";
+            return;
+        }
+
+        var result = await Channels.RemoveAsync(GuildId, RemoveChannel.ChannelId);
+        if (!result.IsError)
+        {
+            await AuditAsync("config.untrackChannel", result.Message);
+        }
+
+        Message = result.Message;
+        RemoveChannel = new RemoveChannelInput();
+        await LoadAsync();
+    }
+
+    public class SettingsInput
+    {
+        public string? Submitted { get; set; }
+        public bool BackgroundOptIn { get; set; }
+        public bool ApplyGuardsToSessions { get; set; }
+        public string? CoinCurrency { get; set; }
+        public int MinutesPerCoin { get; set; }
+    }
+
+    public class AddChannelInput
+    {
+        public string? Submitted { get; set; }
+        public string? ChannelId { get; set; }
+        public string Kind { get; set; } = "voice";
+        public int PointsPerMinute { get; set; } = 1;
+        public int DailyCap { get; set; }
+        public bool SkipMuted { get; set; } = true;
+        public bool SkipAlone { get; set; } = true;
+    }
+
+    public class RemoveChannelInput
+    {
+        public string? Submitted { get; set; }
+        public ulong ChannelId { get; set; }
+    }
+}

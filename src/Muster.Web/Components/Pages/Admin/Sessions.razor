@@ -41,11 +41,12 @@ else if (State == AccessState.Ready)
         else
         {
             <table class="leaderboard">
-                <thead><tr><th>Source</th><th>Channel</th><th>Started</th><th>In voice now</th><th>Attendees</th></tr></thead>
+                <thead><tr><th>Name</th><th>Source</th><th>Channel</th><th>Started</th><th>In voice now</th><th>Attendees</th></tr></thead>
                 <tbody>
                     @foreach (var s in _active)
                     {
                         <tr>
+                            <td>@s.Name</td>
                             <td>@SourceLabel(s.Source)</td>
                             <td>#@s.VoiceChannelId</td>
                             <td>@s.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
@@ -96,11 +97,12 @@ else if (State == AccessState.Ready)
         else
         {
             <table class="leaderboard">
-                <thead><tr><th>Source</th><th>Channel</th><th>Ended</th><th>Duration</th><th>Attendees</th><th>Minutes</th></tr></thead>
+                <thead><tr><th>Name</th><th>Source</th><th>Channel</th><th>Ended</th><th>Duration</th><th>Attendees</th><th>Minutes</th></tr></thead>
                 <tbody>
                     @foreach (var s in _recent)
                     {
                         <tr>
+                            <td>@s.Name</td>
                             <td>@SourceLabel(s.Source)</td>
                             <td>#@s.VoiceChannelId</td>
                             <td>@(s.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC</td>

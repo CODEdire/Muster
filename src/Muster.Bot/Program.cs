@@ -82,6 +82,7 @@ builder.Services.AddTransient<Muster.Bot.Autocomplete.CurrencyAutocompleteProvid
 builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestCurrencyAutocompleteProvider>();
 builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestAutocompleteProvider>();
 builder.Services.AddTransient<Muster.Bot.Autocomplete.TimezoneAutocompleteProvider>();
+builder.Services.AddTransient<Muster.Bot.Autocomplete.ActiveSessionAutocompleteProvider>();
 
 var host = builder.Build();
 

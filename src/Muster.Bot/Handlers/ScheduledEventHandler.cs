@@ -22,7 +22,7 @@ public class ScheduledEventHandler(IServiceScopeFactory scopeFactory)
         switch (scheduledEvent.Status)
         {
             case GuildScheduledEventStatus.Active when scheduledEvent.ChannelId is { } channelId:
-                await sessions.EnsureForScheduledEventAsync(scheduledEvent.GuildId, channelId, scheduledEvent.Id);
+                await sessions.EnsureForScheduledEventAsync(scheduledEvent.GuildId, channelId, scheduledEvent.Id, scheduledEvent.Name);
                 break;
 
             case GuildScheduledEventStatus.Completed:

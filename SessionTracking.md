@@ -188,6 +188,15 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   Server-rendered (reload to refresh); the live read is isolated in `ActiveSessionsAsync` as the single seam a
   future **SSE/SignalR** feed replaces to push updates — no markup change needed then.
   *Future (noted, not in scope):* let members claim event roles / ship positions in the live-ops view.
+- **P6.1 — Session UX + admin web polish. ✅ Done.** Sessions now have a **name** and **per-session
+  anti-AFK guards** (`TrackingSession.Name/RequireUnmuted/RequireNotAlone`): `/track-start` takes a name +
+  `skip-muted` (default on) / `skip-alone` (default **off**, so a solo admin op tracks the opener);
+  `ApplyAfkGuardsToSessions` seeds the defaults and `ReconcileSessionsAsync` reads per-session flags.
+  `/track-stop` uses an **active-only autocomplete** (pick by name, no GUID). Scheduled-event sessions take
+  the event name. Web: every admin page now renders in the guild shell (`@layout GuildLayout`); the admin hub
+  gains **Sessions** + **Tracking** cards; new **Tracking settings** page (`/guilds/{id}/tracking`) edits
+  background opt-in, session guards, session-coin currency + minutes-per-coin, and the monitored-channel list.
+  Migration `SessionNameAndGuards`.
 - **P7 — Hardening.** Minimum segment threshold (ignore sub-minute drive-bys to cut noise); other
   robustness/cleanup as it surfaces.
 - **P8 — Multipliers.** Time-bounded reward multipliers: event windows (2× during a scheduled event /

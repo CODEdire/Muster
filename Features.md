@@ -71,6 +71,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Participation reports + leaderboards (P4)** — `ParticipationReadService` (voice-time leaderboard season/all-time + per-member report of voice mins, messages, points by source); `/voice-leaderboard` command; admin CSV export `GET /guilds/{guildId}/participation/export.csv`.
 - [x] **Guarded sessions (P5)** — session reward time runs on the snapshot/occupancy engine (`ReconcileSessionsAsync`); `GuildSettings.ApplyAfkGuardsToSessions` (default on) pauses muted/alone time; `VoiceAttendance.CarrySeconds` + startup void.
 - [x] **Live ops + member self-view (P6)** — admin `Sessions.razor` (`/guilds/{id}/sessions`: active ops + voice leaderboard + CSV + history), nav-wired; voice panel on `MyProfile.razor`; read methods `ActiveSessionsAsync`/`RecentSessionsAsync`/`MemberVoiceStatsAsync` (live read isolated for a later SSE/SignalR push).
+- [x] **Session UX + admin web polish (P6.1)** — named sessions + per-session anti-AFK guards (`/track-start name + skip-muted/skip-alone`, `skip-alone` off by default); `/track-stop` active-only autocomplete; all admin pages render in the guild shell; admin hub **Sessions** + **Tracking** cards; **Tracking settings** page (`/guilds/{id}/tracking`) for background opt-in, session guards, session-coin, and monitored channels.
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
 ## M4 — Scoring, currency & messaging

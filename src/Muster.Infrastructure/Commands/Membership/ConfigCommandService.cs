@@ -121,6 +121,25 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         return CommandResult.Ok($"Sessions will mint **1 {code}** per **{minutesPerCoin}** eligible minute(s) on close.");
     }
 
+    /// <summary>Toggle whether bounded Sessions honor anti-AFK guards (pause muted/alone time) by default.</summary>
+    public async Task<CommandResult> SetApplyGuardsToSessionsAsync(ulong guildId, bool apply, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.ApplyAfkGuardsToSessions = apply;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(apply
+            ? "New sessions will pause reward time while a member is muted or alone (per-session override still applies)."
+            : "New sessions will count all presence by default.");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

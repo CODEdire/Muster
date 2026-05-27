@@ -1,4 +1,5 @@
 @page "/guilds/{GuildIdRaw}/admin"
+@layout GuildLayout
 @inherits GuildAdminComponentBase
 
 <PageTitle>Admin — Muster</PageTitle>
@@ -31,6 +32,14 @@ else if (State == AccessState.Ready)
         <a class="card glass" href="/guilds/@GuildId/seasons">
             <h3>Seasons</h3>
             <p>Start a new season or end the current one.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/sessions">
+            <h3>Sessions</h3>
+            <p>Live operations, recent history, and the voice-participation leaderboard.</p>
+        </a>
+        <a class="card glass" href="/guilds/@GuildId/tracking">
+            <h3>Tracking</h3>
+            <p>Monitored channels, background &amp; session reward rates, anti-AFK guards, and privacy defaults.</p>
         </a>
         <a class="card glass" href="/guilds/@GuildId/config">
             <h3>Role mapping</h3>

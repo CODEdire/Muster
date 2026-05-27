@@ -1,5 +1,6 @@
 @page "/guilds/{GuildIdRaw}/currencies/new"
 @page "/guilds/{GuildIdRaw}/currencies/{CurrencyId}/edit"
+@layout GuildLayout
 @inherits GuildAdminComponentBase
 @inject ICurrencyAdminService CurrencyAdmin
 @inject Wolverine.IMessageBus Bus

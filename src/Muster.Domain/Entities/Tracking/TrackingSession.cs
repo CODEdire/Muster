@@ -12,6 +12,9 @@ public class TrackingSession
     public Guid Id { get; set; }
     public ulong GuildId { get; set; }
 
+    /// <summary>Human label for the session (manual op title, or the Discord scheduled-event name).</summary>
+    public string Name { get; set; } = string.Empty;
+
     public TrackingSessionSource Source { get; set; }
 
     /// <summary>Discord scheduled event snowflake when <see cref="Source"/> is DiscordScheduledEvent.</summary>
@@ -25,6 +28,12 @@ public class TrackingSession
     public TrackingSessionStatus Status { get; set; } = TrackingSessionStatus.Active;
 
     public ulong OpenedBy { get; set; }
+
+    /// <summary>Anti-AFK: when true, reward time pauses while a member is self/server muted or deafened.</summary>
+    public bool RequireUnmuted { get; set; }
+
+    /// <summary>Anti-AFK: when true, reward time pauses while a member is alone in the channel (&lt;2 humans).</summary>
+    public bool RequireNotAlone { get; set; }
 
     public List<VoiceAttendance> Attendance { get; set; } = [];
 }
