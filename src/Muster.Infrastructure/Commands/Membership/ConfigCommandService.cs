@@ -74,6 +74,53 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             : "Background tracking is now **on by default** — members may opt out with `/track-privacy`. Sessions/events are unaffected.");
     }
 
+    /// <summary>Set which spendable currency a Session mints on close and the minutes-per-coin rate. A blank code or
+    /// 0 minutes disables session coin minting.</summary>
+    public async Task<CommandResult> SetSessionCoinAsync(ulong guildId, string? currencyCode, int minutesPerCoin, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (minutesPerCoin < 0)
+        {
+            return CommandResult.Error("Minutes-per-coin can't be negative (0 disables session coin minting).");
+        }
+
+        var code = string.IsNullOrWhiteSpace(currencyCode) ? null : currencyCode.Trim().ToUpperInvariant();
+        var settings = guild.Settings;
+
+        // Disable when no currency or no rate.
+        if (code is null || minutesPerCoin == 0)
+        {
+            settings.SessionCoinCurrencyCode = null;
+            settings.MinutesPerCoin = 0;
+            guild.Settings = settings;
+            await db.SaveChangesAsync(ct);
+            return CommandResult.Ok("Session coin minting is **off**.");
+        }
+
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is null)
+        {
+            return CommandResult.Error($"No currency with code `{code}` exists. Create it first.");
+        }
+
+        if (!currency.IsSpendable)
+        {
+            return CommandResult.Error($"`{code}` isn't a spendable currency — pick a spendable one for session payouts.");
+        }
+
+        settings.SessionCoinCurrencyCode = code;
+        settings.MinutesPerCoin = minutesPerCoin;
+        guild.Settings = settings;
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok($"Sessions will mint **1 {code}** per **{minutesPerCoin}** eligible minute(s) on close.");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

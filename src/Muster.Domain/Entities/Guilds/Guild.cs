@@ -51,6 +51,13 @@ public class GuildSettings
     /// </summary>
     public bool BackgroundTrackingOptIn { get; set; }
 
+    /// <summary>Spendable currency code that a Session mints on close (in addition to POINTS), or null to mint none.</summary>
+    public string? SessionCoinCurrencyCode { get; set; }
+
+    /// <summary>Eligible voice minutes per 1 unit of <see cref="SessionCoinCurrencyCode"/> on session close
+    /// (floored). 0 (default) disables session coin minting.</summary>
+    public int MinutesPerCoin { get; set; }
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>

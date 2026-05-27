@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Muster.Bot.Autocomplete;
 using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Services.ApplicationCommands;
@@ -41,6 +42,13 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
     public Task BackgroundTrackingAsync(
         [SlashCommandParameter(Name = "opt-in", Description = "true = members must opt in; false = on by default (members may opt out)")] bool optIn)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetBackgroundOptInAsync(guildId, optIn), RequiredRole.Admin, "config.backgroundTracking");
+
+    [SlashCommand("config-session-coin", "Set which spendable currency sessions mint on close, and the minutes-per-coin rate.")]
+    public Task SessionCoinAsync(
+        [SlashCommandParameter(Name = "currency", Description = "Spendable currency code to mint (leave blank to disable)",
+            AutocompleteProviderType = typeof(CurrencyAutocompleteProvider))] string? currency = null,
+        [SlashCommandParameter(Name = "minutes-per-coin", Description = "Eligible minutes per 1 coin (0 = disable)")] int minutesPerCoin = 0)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetSessionCoinAsync(guildId, currency, minutesPerCoin), RequiredRole.Admin, "config.sessionCoin");
 
     [SlashCommand("config-show", "Show the current role mapping.")]
     public Task ShowAsync()

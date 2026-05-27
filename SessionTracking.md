@@ -162,10 +162,12 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   write; `AllOut` also skips Session reward. Migration `P2ActiveTimeSeasonsOptOut`. Over-award clamp + startup
   void extended to the active lane.
   *Deferred:* message-reward anti-spam throttle → P7; transparency notice → P9.
-- **P3 — Session COIN minting.** Admin-picked `SessionCoinCurrencyCode` + `MinutesPerCoin`; on session
-  close, mint that spendable currency to each attendee = floor(eligibleMinutes / MinutesPerCoin), via
-  `CurrencyLedgerSource.TrackingSession` (idempotent `session:{id}:user:{id}:coin`). POINTS award unchanged.
-  Background mints no COIN.
+- **P3 — Session COIN minting. ✅ Done.** Guild settings `SessionCoinCurrencyCode` + `MinutesPerCoin`
+  (`/config-session-coin`, currency autocomplete, validates spendable). On `CloseAsync`, each rewarded
+  attendee is also minted `floor(eligibleMinutes / MinutesPerCoin)` of that currency via
+  `CurrencyLedgerSource.TrackingSession` with idempotent key `session:{id}:user:{id}:coin` (distinct from the
+  POINTS key). Honors the same participant + `AllOut` opt-out gates. POINTS award unchanged; Background mints
+  no COIN. Settings are JSON (empty migration `P3SessionCoin` keeps the model snapshot in sync).
 - **P4 — Admin participation reports + CSV; participation leaderboards.**
 - **P5 — Guarded Sessions.** Unify Session accrual onto the snapshot/occupancy reconcile engine so
   `RequireUnmuted`/`RequireNotAlone` apply to Sessions per `ApplyAfkGuardsToSessions`.

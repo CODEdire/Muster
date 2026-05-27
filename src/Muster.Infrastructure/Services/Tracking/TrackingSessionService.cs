@@ -144,6 +144,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         await db.SaveChangesAsync(ct);
 
         var rate = pointsPerMinute ?? await ResolvePointsPerMinuteAsync(session.GuildId, ct);
+        var (coinCurrency, minutesPerCoin) = await ResolveSessionCoinAsync(session.GuildId, ct);
 
         var rewardable = session.Attendance.Where(a => a.TotalMinutes > 0).ToList();
         var choices = await db.TrackingChoicesAsync(
@@ -167,6 +168,19 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 session.GuildId, attendance.UserId, attendance.TotalMinutes * rate,
                 CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}",
                 "Voice attendance", ct);
+
+            // Sessions (only) also mint the guild's chosen spendable currency, by minutes / minutes-per-coin.
+            if (coinCurrency is not null)
+            {
+                var coins = attendance.TotalMinutes / minutesPerCoin;
+                if (coins > 0)
+                {
+                    await awards.AwardAsync(
+                        session.GuildId, attendance.UserId, coinCurrency.Id, coins,
+                        CurrencyLedgerSource.TrackingSession, $"session:{sessionId}:user:{attendance.UserId}:coin",
+                        "Session participation", ct);
+                }
+            }
         }
 
         return true;
@@ -177,6 +191,21 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var guild = await db.FindGuildAsync(guildId, ct);
         var rate = guild?.Settings.PointsPerVoiceMinute ?? DefaultPointsPerMinute;
         return rate > 0 ? rate : DefaultPointsPerMinute;
+    }
+
+    /// <summary>The spendable currency a session mints on close + its minutes-per-coin rate, or (null, 0) when
+    /// unconfigured or the currency code no longer resolves.</summary>
+    private async Task<(Currency? currency, int minutesPerCoin)> ResolveSessionCoinAsync(ulong guildId, CancellationToken ct)
+    {
+        var settings = (await db.FindGuildAsync(guildId, ct))?.Settings;
+        var code = settings?.SessionCoinCurrencyCode;
+        var minutesPerCoin = settings?.MinutesPerCoin ?? 0;
+        if (string.IsNullOrWhiteSpace(code) || minutesPerCoin <= 0)
+        {
+            return (null, 0);
+        }
+
+        return (await db.FindCurrencyAsync(guildId, code, ct), minutesPerCoin);
     }
 
     private static void CloseSegment(VoiceAttendance attendance, DateTimeOffset start, DateTimeOffset end)

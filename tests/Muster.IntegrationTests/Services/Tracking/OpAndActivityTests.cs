@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
@@ -94,6 +95,47 @@ public class OpAndActivityTests
         Assert.Equal(2, await db.ActivityRecords.CountAsync()); // 555 once + 556
         var rollup = await db.DailyActivityRollups.SingleAsync();
         Assert.Equal(2, rollup.MessageCount);
+    }
+
+    [Fact]
+    public async Task SessionClose_MintsSessionCoin_ByMinutes()
+    {
+        using var db = await SeededAsync();
+        var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
+        db.Currencies.Add(coin);
+        var guild = await db.FindGuildAsync(1);
+        guild!.Settings.SessionCoinCurrencyCode = "COIN";
+        guild.Settings.MinutesPerCoin = 30;
+        guild.Settings = guild.Settings;
+        await db.SaveChangesAsync();
+
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var now = DateTimeOffset.UtcNow;
+        var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        await sut.ProcessVoiceStateAsync(1, userId: 10, currentChannelId: 500, at: now);
+        await sut.CloseAsync(session.Id, at: now.AddMinutes(60)); // 60 eligible minutes
+
+        var coinBalance = (await db.Wallets.SingleAsync(w => w.UserId == 10 && w.CurrencyId == coin.Id)).Balance;
+        Assert.Equal(2, coinBalance); // floor(60 / 30)
+    }
+
+    [Fact]
+    public async Task SetSessionCoin_RejectsNonSpendableAndUnknown_AcceptsSpendable()
+    {
+        using var db = await SeededAsync();
+        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "SP", Name = "Spend", IsSpendable = true });
+        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "NS", Name = "NotSpend", IsSpendable = false });
+        await db.SaveChangesAsync();
+        var sut = new Muster.Infrastructure.Commands.Membership.ConfigCommandService(
+            db, Microsoft.Extensions.Options.Options.Create(new Muster.Infrastructure.Services.Currencies.CurrencyRetentionOptions()));
+
+        Assert.True((await sut.SetSessionCoinAsync(1, "MISSING", 30)).IsError);
+        Assert.True((await sut.SetSessionCoinAsync(1, "NS", 30)).IsError);
+        Assert.False((await sut.SetSessionCoinAsync(1, "SP", 30)).IsError);
+
+        var settings = (await db.FindGuildAsync(1))!.Settings;
+        Assert.Equal("SP", settings.SessionCoinCurrencyCode);
+        Assert.Equal(30, settings.MinutesPerCoin);
     }
 
     [Fact]
