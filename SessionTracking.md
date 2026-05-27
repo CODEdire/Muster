@@ -276,10 +276,26 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   Nav: sidebar gains **Me** (`/me`) + **Wallet** (`/wallet`); the bottom "You" tab points at the dashboard.
   Migration `SessionOptOut`.
 
+## Channel sync & web wizard
+
+A `GuildChannel` snapshot (voice/text only — threads/categories/forums skipped) mirrors the guild's channels
+into the DB so the web UI can offer channel **pickers by name** without a live Discord call. Synced on
+`GuildCreate` (`ChannelSyncService.SyncAllAsync` from `guild.Channels`) and kept current by
+`ChannelLifecycleHandler` (`IGuildChannelCreate/Update/Delete` → upsert/remove). `ChannelLifecycleHandler.MapKind`
+classifies a NetCord `IGuildChannel`: `IVoiceGuildChannel` → Voice, `TextGuildChannel` (excluding `GuildThread`) →
+Text, everything else ignored. Migration `GuildChannelSync`.
+
+`WebLinkBuilder` (singleton over `Web:BaseUrl`) turns bot replies into "open in web" deep links (returns null
+when no base URL is set). `/track session new` returns the wizard link; `/track leaderboard` appends a full
+sessions-view link. The web **create-session wizard** (`/guilds/{id}/sessions/new`, admin-gated) lets staff open
+a session from a synced voice-channel dropdown + guard toggles — members already present are credited on the
+next reconcile sweep (the web host has no gateway roster to reconcile immediately). The Tracking settings
+add/remove-channel forms now use synced-channel dropdowns (kind auto-detected, shown by name).
+
 ## Command surface
 
 All tracking slash commands live under one `/track` root (mirroring `/quest`'s sub-command tree):
-`/track session start|stop`, `/track background voice|text|remove|list`, `/track privacy`, `/track leaderboard`.
+`/track session start|stop|new`, `/track background voice|text|remove|list`, `/track privacy`, `/track leaderboard`.
 `session start` takes rich slash options (native channel picker + name + per-guard toggles) rather than a modal —
 Discord modals are text-input-only, so they can't host a channel picker or boolean toggles, and the native
 option form is the better "fill-out" experience. (A guided component flow — channel-select message → modal —
