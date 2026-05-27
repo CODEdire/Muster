@@ -72,6 +72,9 @@ builder.Services.AddHostedService<Muster.Bot.LedgerPruneScheduler>();
 // Periodically flushes always-on background voice accrual for still-present members (idempotent, gateway-cache-driven).
 builder.Services.AddHostedService<Muster.Bot.BackgroundFlushScheduler>();
 
+// Daily: prunes raw activity records beyond each guild's retention window (rollups kept).
+builder.Services.AddHostedService<Muster.Bot.ActivityPruneScheduler>();
+
 // NetCord-backed implementation of the muster publisher abstraction, plus the muster command
 // service that depends on it (a bot-only concern — the web doesn't post muster messages).
 builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();

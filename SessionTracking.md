@@ -208,8 +208,16 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   `TrackingChoice` via `TrackingPreferenceCommandService`). Read layer gained `PagedResult<T>`,
   `ActiveSessionsPageAsync`/`RecentSessionsPageAsync` (search/sort/page), and `SessionDetailAsync`.
   *Future:* the Active tab stays the single SSE/SignalR seam.
-- **P7 — Hardening.** Minimum segment threshold (ignore sub-minute drive-bys to cut noise); other
-  robustness/cleanup as it surfaces.
+- **P7 — Hardening. ✅ Done (a/b/c).**
+  - *P7a — consent + lifecycle:* session reconcile excludes `AllOut` members entirely (no row); opting out
+    mid-session evicts in-progress rows (AllOut → active attendance + background presence; BackgroundOut →
+    background presence); `MaxSessionHours` auto-close sweep so a never-stopped session can't accrue forever.
+  - *P7b — message anti-spam:* per-channel `MessagesPerPoint` + `MessageCooldownSeconds` + `MessageDailyCapPoints`,
+    tracked in `MessageRewardState`; closes the spam-to-mint hole. Configurable via `/track-text` + web.
+  - *P7c — activity pruning:* `ActivityRetentionDays` + daily `ActivityPruneScheduler` deletes raw
+    `ActivityRecord` rows beyond the window (rollups kept).
+  - *Deferred:* minimum-segment threshold (lowest value; 0-minute flushes are already harmless) and the
+    stream/video mute-exemption — nice-to-haves, not scheduled.
 - **P8 — Multipliers & bonuses.** Time-bounded reward multipliers: event windows (2× during a scheduled
   event / admin "happy hour") **and recurring peak-time schedules** (e.g. ×1.5 on weeknights 7–10pm in the
   guild's time zone). Applies to POINTS (and Session COIN). Stacking rules TBD. **Plus configurable

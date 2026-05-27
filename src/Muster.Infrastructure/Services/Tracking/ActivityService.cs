@@ -79,6 +79,37 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Delete raw <see cref="ActivityRecord"/> rows older than each guild's <c>ActivityRetentionDays</c>. Daily
+    /// rollups are kept, so stats and leaderboards are unaffected — only the line-item log is compacted. Returns
+    /// how many rows were deleted. Run on a daily sweep.
+    /// </summary>
+    public async Task<int> PruneOldRecordsAsync(DateTimeOffset? at = null, CancellationToken ct = default)
+    {
+        var now = at ?? DateTimeOffset.UtcNow;
+        var total = 0;
+
+        foreach (var guild in await db.ListActiveGuildsAsync(ct))
+        {
+            var days = guild.Settings.ActivityRetentionDays;
+            if (days <= 0)
+            {
+                continue;
+            }
+
+            var cutoff = now.AddDays(-days);
+            var stale = await db.StaleActivityRecordsAsync(guild.Id, cutoff, ct);
+            if (stale.Count > 0)
+            {
+                db.ActivityRecords.RemoveRange(stale);
+                await db.SaveChangesAsync(ct);
+                total += stale.Count;
+            }
+        }
+
+        return total;
+    }
+
     private async Task TryRewardMessageAsync(
         TrackedChannel channel, ulong userId, ulong messageId, DateTimeOffset now, CancellationToken ct)
     {

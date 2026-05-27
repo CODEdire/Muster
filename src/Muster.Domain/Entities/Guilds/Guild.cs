@@ -67,6 +67,10 @@ public class GuildSettings
     /// never stopped — a forgotten manual op, a deleted channel, etc.). 0 = never auto-close.</summary>
     public int MaxSessionHours { get; set; } = 24;
 
+    /// <summary>How many days of raw <c>ActivityRecord</c> rows to keep before the prune sweep deletes them
+    /// (daily rollups are kept, so stats survive). 0 (default) = keep raw rows forever.</summary>
+    public int ActivityRetentionDays { get; set; }
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>

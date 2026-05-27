@@ -140,6 +140,54 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             : "New sessions will count all presence by default.");
     }
 
+    /// <summary>Set the auto-close cap (hours) for a never-stopped session (0 = never auto-close).</summary>
+    public async Task<CommandResult> SetMaxSessionHoursAsync(ulong guildId, int hours, CancellationToken ct = default)
+    {
+        if (hours < 0)
+        {
+            return CommandResult.Error("Max session hours can't be negative (0 = never auto-close).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.MaxSessionHours = hours;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(hours == 0
+            ? "Sessions never auto-close (stop them manually)."
+            : $"Sessions auto-close after {hours} hour(s).");
+    }
+
+    /// <summary>Set how many days of raw activity records to keep (0 = keep forever). Rollups are always kept.</summary>
+    public async Task<CommandResult> SetActivityRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
+    {
+        if (days < 0)
+        {
+            return CommandResult.Error("Retention days can't be negative (0 = keep forever).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.ActivityRetentionDays = days;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(days == 0
+            ? "Raw activity records are kept indefinitely (rollups always persist)."
+            : $"Raw activity records older than {days} day(s) will be pruned (rollups kept).");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

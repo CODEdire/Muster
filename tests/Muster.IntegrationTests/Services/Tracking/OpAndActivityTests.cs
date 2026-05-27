@@ -206,6 +206,25 @@ public class OpAndActivityTests
     }
 
     [Fact]
+    public async Task PruneOldRecords_DeletesBeyondRetention_KeepsRecent()
+    {
+        using var db = await SeededAsync();
+        var guild = await db.FindGuildAsync(1);
+        guild!.Settings.ActivityRetentionDays = 30;
+        guild.Settings = guild.Settings;
+        var now = DateTimeOffset.UtcNow;
+        db.ActivityRecords.Add(new ActivityRecord { GuildId = 1, ChannelId = 100, UserId = 10, Type = ActivityType.Message, Timestamp = now.AddDays(-40), SourceMessageId = 1 });
+        db.ActivityRecords.Add(new ActivityRecord { GuildId = 1, ChannelId = 100, UserId = 10, Type = ActivityType.Message, Timestamp = now.AddDays(-1), SourceMessageId = 2 });
+        await db.SaveChangesAsync();
+
+        var pruned = await Activity(db).PruneOldRecordsAsync(now);
+
+        Assert.Equal(1, pruned);
+        var remaining = await db.ActivityRecords.SingleAsync();
+        Assert.Equal(2ul, remaining.SourceMessageId); // the recent one survives
+    }
+
+    [Fact]
     public async Task MessageActivity_UntrackedChannel_Ignored()
     {
         using var db = await SeededAsync();
