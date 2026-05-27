@@ -88,7 +88,8 @@
             var items = new List<NavItem>
             {
                 new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
-                new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/me", "/me"),
+                new("Me", "person", $"/guilds/{_guildId}/me", "/me"),
+                new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/wallet", "/wallet"),
                 new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
                 new("Sessions", "schedule", $"/guilds/{_guildId}/sessions", "/sessions"),
                 new("Musters", "groups", null, "/musters"),

@@ -77,6 +77,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Scale & robustness (P7.5)** — `GuildReconcileCoordinator` debounces voice-event bursts + serializes reconciles per guild (kills the thundering herd + bookkeeping races); 12h session flush clamp for gateway gaps. Config cache + leader-gating deliberately deferred (see SessionTracking.md).
 - [x] **Min-segment threshold (P7d)** — `MinTrackedSeconds` drops drive-by session attendees (under the minimum) from the roster/award at leave + close.
 - [x] **Sessions UX round A** — channels shown by name (stored + cache-refreshed); Background tab (who's tracked where, live); SessionDetail header + rules panel + member status (Active/Paused/Left via `VoiceAttendance.LastSeenAt`).
+- [x] **Sessions UX round B** — wallet moved to `/wallet`; new `/me` dashboard (points/voice summary + active sessions you're in + your recent sessions); one-time per-session opt-out (`SessionOptOut` + `OptOutMemberAsync`, excluded in reconcile); nav adds Me + Wallet.
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
 ## M4 — Scoring, currency & messaging

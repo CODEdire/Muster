@@ -24,6 +24,10 @@ public record BackgroundChannelView(ulong ChannelId, string ChannelName, IReadOn
 /// <summary>A member's own voice participation summary (self-view).</summary>
 public record MemberVoiceStats(int SeasonMinutes, int AllTimeMinutes, int SeasonRank);
 
+/// <summary>A session from the member's own perspective (their minutes), for the Me dashboard + personal history.</summary>
+public record MemberSessionView(
+    Guid SessionId, string Name, string VoiceChannelName, int MyMinutes, bool PresentNow, DateTimeOffset StartedAt, DateTimeOffset? EndedAt);
+
 /// <summary>A page of grid rows plus the totals a pager needs.</summary>
 public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int Total)
 {
@@ -306,4 +310,33 @@ public class ParticipationReadService(MusterDbContext db)
 
     private static IQueryable<TrackingSession> Page(IQueryable<TrackingSession> q, int page, int pageSize)
         => q.Skip(Math.Max(0, page - 1) * pageSize).Take(pageSize);
+
+    /// <summary>Active sessions the member is currently in, from their own perspective (their minutes).</summary>
+    public async Task<IReadOnlyList<MemberSessionView>> MemberActiveSessionsAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        var rows = await (
+            from a in db.VoiceAttendance
+            join s in db.TrackingSessions on a.TrackingSessionId equals s.Id
+            where s.GuildId == guildId && s.Status == TrackingSessionStatus.Active && a.UserId == userId
+            orderby s.StartedAt
+            select new { s.Id, s.Name, s.VoiceChannelName, a.TotalMinutes, Present = a.OpenSegmentStart != null, s.StartedAt })
+            .ToListAsync(ct);
+
+        return rows.Select(r => new MemberSessionView(r.Id, r.Name, r.VoiceChannelName, r.TotalMinutes, r.Present, r.StartedAt, null)).ToList();
+    }
+
+    /// <summary>The member's most recent finished sessions, from their own perspective (their minutes).</summary>
+    public async Task<IReadOnlyList<MemberSessionView>> MemberSessionHistoryAsync(ulong guildId, ulong userId, int take = 25, CancellationToken ct = default)
+    {
+        var rows = await (
+            from a in db.VoiceAttendance
+            join s in db.TrackingSessions on a.TrackingSessionId equals s.Id
+            where s.GuildId == guildId && s.Status == TrackingSessionStatus.Closed && a.UserId == userId
+            orderby s.EndedAt descending
+            select new { s.Id, s.Name, s.VoiceChannelName, a.TotalMinutes, s.StartedAt, s.EndedAt })
+            .Take(take)
+            .ToListAsync(ct);
+
+        return rows.Select(r => new MemberSessionView(r.Id, r.Name, r.VoiceChannelName, r.TotalMinutes, false, r.StartedAt, r.EndedAt)).ToList();
+    }
 }

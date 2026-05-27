@@ -256,9 +256,15 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   richer member **status** — Active (accruing) / Present-not-earning (muted/alone) / Left (with last-seen time),
   derived from a new `VoiceAttendance.LastSeenAt` updated for every present member each reconcile. Migration
   `ChannelNamesAndLastSeen`.
-- **Round B — Me dashboard + per-session opt-out + personal history.** *(next)* Split the wallet page into a Me
-  dashboard (active sessions you're in + wallet/points summary) with a per-session one-time opt-out, and a
-  personal session history.
+- **Round B — Me dashboard + per-session opt-out + personal history. ✅ Done.** Wallet page moved to `/wallet`;
+  new **Me dashboard** at `/me` (a reverse of the admin Sessions view): a stat-grid summary (points balance,
+  season/all-time voice + rank, link to the wallet), the **active sessions you're in** (`MemberActiveSessionsAsync`,
+  your minutes + status), and **your recent sessions** (`MemberSessionHistoryAsync`, your own perspective). A
+  **one-time per-session opt-out** (`SessionOptOut` + `TrackingSessionService.OptOutMemberAsync`) removes you from
+  that single session for its remainder — the reconcile excludes opted-out users (alongside `AllOut`) and your
+  attendance row is deleted — distinct from the standing `TrackingChoice` preference (still on the wallet page).
+  Nav: sidebar gains **Me** (`/me`) + **Wallet** (`/wallet`); the bottom "You" tab points at the dashboard.
+  Migration `SessionOptOut`.
 
 ## Privacy & consent
 

@@ -1,4 +1,4 @@
-@page "/guilds/{GuildIdRaw}/me"
+@page "/guilds/{GuildIdRaw}/wallet"
 @layout GuildLayout
 @inherits GuildMemberComponentBase
 @inject WebMemberService Members
@@ -27,7 +27,7 @@
 else if (State == AccessState.Ready && _detail is not null)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId">← Leaderboard</a>
+        <a class="back-link" href="/guilds/@GuildId/me">← Me</a>
         <h1>Wallet</h1>
         <p class="subtitle">@_detail.DisplayName</p>
     </div>

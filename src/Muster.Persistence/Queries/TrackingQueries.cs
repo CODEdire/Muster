@@ -59,6 +59,18 @@ public static class TrackingQueries
     public static Task<List<VoiceAttendance>> AttendanceForSessionAsync(this MusterDbContext db, Guid sessionId, CancellationToken ct = default)
         => db.VoiceAttendance.Where(a => a.TrackingSessionId == sessionId).ToListAsync(ct);
 
+    /// <summary>User ids who have opted out of a specific session (reconcile excludes them).</summary>
+    public static async Task<HashSet<ulong>> OptedOutUserIdsAsync(this MusterDbContext db, Guid sessionId, CancellationToken ct = default)
+        => (await db.SessionOptOuts.Where(o => o.SessionId == sessionId).Select(o => o.UserId).ToListAsync(ct)).ToHashSet();
+
+    /// <summary>Whether the session exists, is active, and belongs to the guild.</summary>
+    public static Task<bool> IsActiveSessionAsync(this MusterDbContext db, ulong guildId, Guid sessionId, CancellationToken ct = default)
+        => db.TrackingSessions.AnyAsync(s => s.Id == sessionId && s.GuildId == guildId && s.Status == TrackingSessionStatus.Active, ct);
+
+    /// <summary>Whether a member has already opted out of a session.</summary>
+    public static Task<bool> HasSessionOptOutAsync(this MusterDbContext db, Guid sessionId, ulong userId, CancellationToken ct = default)
+        => db.SessionOptOuts.AnyAsync(o => o.SessionId == sessionId && o.UserId == userId, ct);
+
     /// <summary>A session with its attendance loaded (the full session aggregate, for close).</summary>
     public static Task<TrackingSession?> FindSessionWithAttendanceAsync(this MusterDbContext db, Guid sessionId, CancellationToken ct = default)
         => db.TrackingSessions.Include(s => s.Attendance).FirstOrDefaultAsync(s => s.Id == sessionId, ct);

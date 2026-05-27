@@ -174,6 +174,23 @@ public class ParticipationTests
     }
 
     [Fact]
+    public async Task OptOutOfSession_RemovesAttendance_AndExcludesFromReconcile()
+    {
+        var (db, _) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        var t0 = DateTimeOffset.UtcNow;
+
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10), t0);                 // user 10 accrues
+        var opted = await sessions.OptOutMemberAsync(1, session.Id, 10);                 // opts out of this session
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10), t0.AddMinutes(10));  // still present, but excluded
+
+        Assert.True(opted);
+        Assert.Empty(await db.VoiceAttendance.ToListAsync()); // removed on opt-out and not re-created
+    }
+
+    [Fact]
     public async Task MinTrackedSeconds_DropsDriveBy_KeepsLongerAttendee()
     {
         var (db, _) = await SeededAsync();

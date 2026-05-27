@@ -81,3 +81,13 @@ public class MessageRewardStateConfiguration : IEntityTypeConfiguration<MessageR
         e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId }).IsUnique();
     }
 }
+
+public class SessionOptOutConfiguration : IEntityTypeConfiguration<SessionOptOut>
+{
+    public void Configure(EntityTypeBuilder<SessionOptOut> e)
+    {
+        e.HasKey(x => x.Id);
+        // One opt-out per member per session.
+        e.HasIndex(x => new { x.SessionId, x.UserId }).IsUnique();
+    }
+}

@@ -108,8 +108,11 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
         foreach (var session in sessions)
         {
+            var optedOut = await db.OptedOutUserIdsAsync(session.Id, ct);
             var occupants = occupantsByChannel.TryGetValue(session.VoiceChannelId, out var list) ? list : [];
-            var humans = occupants.Where(o => !o.IsBot && choices.GetValueOrDefault(o.UserId) != TrackingChoice.AllOut).ToList();
+            var humans = occupants
+                .Where(o => !o.IsBot && choices.GetValueOrDefault(o.UserId) != TrackingChoice.AllOut && !optedOut.Contains(o.UserId))
+                .ToList();
             var present = humans.Select(h => h.UserId).ToHashSet();
             var byUser = (await db.AttendanceForSessionAsync(session.Id, ct)).ToDictionary(a => a.UserId);
 
@@ -189,6 +192,33 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         return closed;
+    }
+
+    /// <summary>
+    /// A member's one-time opt-out from a single active session: record the opt-out (so the reconcile skips them
+    /// for the rest of the session) and remove their current attendance row. Returns false if the session isn't
+    /// an active session of the guild.
+    /// </summary>
+    public async Task<bool> OptOutMemberAsync(ulong guildId, Guid sessionId, ulong userId, CancellationToken ct = default)
+    {
+        if (!await db.IsActiveSessionAsync(guildId, sessionId, ct))
+        {
+            return false;
+        }
+
+        if (!await db.HasSessionOptOutAsync(sessionId, userId, ct))
+        {
+            db.SessionOptOuts.Add(new SessionOptOut { SessionId = sessionId, UserId = userId });
+        }
+
+        var attendance = await db.FindAttendanceAsync(sessionId, userId, ct);
+        if (attendance is not null)
+        {
+            db.VoiceAttendance.Remove(attendance);
+        }
+
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>Clear open attendance segments on startup — a stale watermark after a restart must not credit downtime.</summary>
