@@ -79,7 +79,7 @@ else if (State == AccessState.Ready)
                             <td>#@c.ChannelId</td>
                             <td>@c.Mode</td>
                             <td>@(c.Kind == TrackedChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")@(c.DailyCapPoints > 0 ? $" (cap {c.DailyCapPoints}/day)" : "")</td>
-                            <td>@(c.Kind == TrackedChannelKind.Voice ? string.Join(" ", new[] { c.RequireUnmuted ? "unmuted" : null, c.RequireUndeafened ? "undeafened" : null, c.RequireNotAlone ? "not-alone" : null }.Where(x => x != null)) : "—")</td>
+                            <td>@(c.Kind == TrackedChannelKind.Voice ? string.Join(" ", new[] { c.Guards.Unmuted() ? "unmuted" : null, c.Guards.Undeafened() ? "undeafened" : null, c.Guards.NotAlone() ? "not-alone" : null }.Where(x => x != null)) : "—")</td>
                         </tr>
                     }
                 </tbody>

@@ -144,9 +144,9 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
             // Reward time: guarded + suppressed while a Session owns the channel.
             var eligible = isReward && !sessionActive
-                && (!cfg.RequireUnmuted || !member.IsMuted)
-                && (!cfg.RequireUndeafened || !member.IsDeafened)
-                && (!cfg.RequireNotAlone || humans.Count >= 2);
+                && (!cfg.Guards.Unmuted() || !member.IsMuted)
+                && (!cfg.Guards.Undeafened() || !member.IsDeafened)
+                && (!cfg.Guards.NotAlone() || humans.Count >= 2);
 
             if (eligible)
             {

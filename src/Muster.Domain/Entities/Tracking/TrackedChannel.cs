@@ -39,13 +39,6 @@ public class TrackedChannel
     /// <summary>Cap on background points a member can earn in this channel per UTC day (0 = uncapped).</summary>
     public int DailyCapPoints { get; set; }
 
-    /// <summary>Anti-AFK: skip members who are muted (self or server) — they can't speak. Off by default
-    /// (a muted member may still be present and listening, e.g. on a phone call).</summary>
-    public bool RequireUnmuted { get; set; }
-
-    /// <summary>Anti-AFK: skip members who are deafened (self or server) — they can't hear, i.e. checked out.</summary>
-    public bool RequireUndeafened { get; set; } = true;
-
-    /// <summary>Anti-AFK: skip accrual when fewer than two humans are present in the channel.</summary>
-    public bool RequireNotAlone { get; set; } = true;
+    /// <summary>Anti-AFK guards that pause background reward accrual (default: skip deafened + alone, allow muted).</summary>
+    public AfkGuards Guards { get; set; } = AfkGuards.Undeafened | AfkGuards.NotAlone;
 }

@@ -43,8 +43,7 @@ public class BackgroundTrackingTests
             Mode = TrackedChannelMode.Reward,
             PointsPerMinute = rate,
             DailyCapPoints = dailyCap,
-            RequireUnmuted = requireUnmuted,
-            RequireNotAlone = requireNotAlone,
+            Guards = AfkGuardsExtensions.Compose(requireUnmuted, undeafened: false, requireNotAlone),
         });
         await db.SaveChangesAsync();
     }

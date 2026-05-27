@@ -49,9 +49,9 @@ else if (State == AccessState.Ready && _detail is not null)
         <h2>Rules</h2>
         <p class="subtitle">
             Anti-AFK guards for this session (for reference):
-            pause while muted — <strong>@(_detail.RequireUnmuted ? "on" : "off")</strong>;
-            pause while deafened — <strong>@(_detail.RequireUndeafened ? "on" : "off")</strong>;
-            pause while alone — <strong>@(_detail.RequireNotAlone ? "on" : "off")</strong>.
+            pause while muted — <strong>@(_detail.Guards.Unmuted() ? "on" : "off")</strong>;
+            pause while deafened — <strong>@(_detail.Guards.Undeafened() ? "on" : "off")</strong>;
+            pause while alone — <strong>@(_detail.Guards.NotAlone() ? "on" : "off")</strong>.
         </p>
     </div>
 

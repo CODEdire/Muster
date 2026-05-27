@@ -64,6 +64,8 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         // A null guard defaults to the guild's session-guard policy (so scheduled events follow it). Deafened
         // (checked out) and alone are the default AFK signals; merely muted (present, can't speak) is opt-in.
         var applyGuards = (await db.GetSettingsAsync(guildId, ct)).ApplyAfkGuardsToSessions;
+        var guards = AfkGuardsExtensions.Compose(
+            requireUnmuted ?? false, requireUndeafened ?? applyGuards, requireNotAlone ?? applyGuards);
 
         var session = new TrackingSession
         {
@@ -77,9 +79,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             StartedAt = DateTimeOffset.UtcNow,
             Status = TrackingSessionStatus.Active,
             OpenedBy = openedBy,
-            RequireUnmuted = requireUnmuted ?? false,
-            RequireUndeafened = requireUndeafened ?? applyGuards,
-            RequireNotAlone = requireNotAlone ?? applyGuards,
+            Guards = guards,
         };
         db.TrackingSessions.Add(session);
         await db.SaveChangesAsync(ct);
@@ -121,9 +121,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
             foreach (var member in humans)
             {
-                var eligible = (!session.RequireUnmuted || !member.IsMuted)
-                    && (!session.RequireUndeafened || !member.IsDeafened)
-                    && (!session.RequireNotAlone || humans.Count >= 2);
+                var eligible = (!session.Guards.Unmuted() || !member.IsMuted)
+                    && (!session.Guards.Undeafened() || !member.IsDeafened)
+                    && (!session.Guards.NotAlone() || humans.Count >= 2);
                 var att = GetOrCreateAttendance(session.Id, byUser, member.UserId, now);
                 att.LastSeenAt = now; // present in the channel (eligible or not)
 

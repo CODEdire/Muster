@@ -79,16 +79,19 @@ free.
 
 ## Anti-AFK guards
 
-From NetCord `VoiceState`, three independent, configurable guards:
-- **`RequireUnmuted`** — skip muted (self/server) members. They *can't speak* but may still be present and
-  listening (e.g. on a phone call), so this is **off by default**.
-- **`RequireUndeafened`** — skip deafened (self/server) members. They *can't hear* = checked out, so this is
-  the primary AFK signal and **on by default** (with guards).
-- **`RequireNotAlone`** — skip when fewer than two humans are in the channel (occupancy from the gateway roster).
+Stored as a single `[Flags] AfkGuards` value (`Unmuted=1 | Undeafened=2 | NotAlone=4`) on `TrackedChannel`
+and `TrackingSession` — one column, easy to read/configure — composed from the per-guard toggles the UI shows.
+A reward minute counts only when none of the set guards trip:
+- **`Unmuted`** — skip muted (self/server) members. They *can't speak* but may still be present and listening
+  (e.g. on a phone call), so it's **off by default**.
+- **`Undeafened`** — skip deafened (self/server) members. They *can't hear* = checked out — the primary AFK
+  signal, **on by default** (with guards).
+- **`NotAlone`** — skip when fewer than two humans are in the channel (occupancy from the gateway roster).
 
-Plus the per-member-per-day cap (`DailyCapPoints`). Each guard is set per background channel (`/track-voice`,
-web) and per session (`/track-start`, seeded from `ApplyAfkGuardsToSessions`). Existing rows from before the
-split keep their prior combined behavior (migration backfills `RequireUndeafened = RequireUnmuted`).
+Plus the per-member-per-day cap (`DailyCapPoints`). Set per background channel (`/track-voice`, web) and per
+session (`/track-start`, seeded from `ApplyAfkGuardsToSessions` → `Undeafened | NotAlone`). Migrations preserve
+prior behavior across the bool→flags change (`SplitMuteDeafenGuards` then `AfkGuardsFlag` fold the old columns
+into the flag).
 
 **Guards now apply to Sessions too** (a planned change, P5): a Session can be opened with the same
 pause-while-muted / pause-while-alone rules so AFK sitters in a raid channel don't bank reward time.

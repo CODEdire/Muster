@@ -45,6 +45,39 @@ public enum TrackingChoice
     AllOut = 3,
 }
 
+/// <summary>
+/// Anti-AFK guards that pause reward accrual. A reward minute counts only when none of the set guards trip.
+/// Combinable: e.g. <c>Undeafened | NotAlone</c> pauses a checked-out or alone member but still credits a
+/// muted-but-listening one (a phone call). Deafened/alone are the usual signals; muted is opt-in.
+/// </summary>
+[Flags]
+public enum AfkGuards
+{
+    None = 0,
+
+    /// <summary>Pause while muted (self/server) — can't speak.</summary>
+    Unmuted = 1,
+
+    /// <summary>Pause while deafened (self/server) — can't hear, i.e. checked out.</summary>
+    Undeafened = 2,
+
+    /// <summary>Pause while fewer than two humans are present in the channel.</summary>
+    NotAlone = 4,
+}
+
+/// <summary>Helpers for composing/reading <see cref="AfkGuards"/> from the per-guard toggles the UI presents.</summary>
+public static class AfkGuardsExtensions
+{
+    public static AfkGuards Compose(bool unmuted, bool undeafened, bool notAlone)
+        => (unmuted ? AfkGuards.Unmuted : 0)
+            | (undeafened ? AfkGuards.Undeafened : 0)
+            | (notAlone ? AfkGuards.NotAlone : 0);
+
+    public static bool Unmuted(this AfkGuards g) => g.HasFlag(AfkGuards.Unmuted);
+    public static bool Undeafened(this AfkGuards g) => g.HasFlag(AfkGuards.Undeafened);
+    public static bool NotAlone(this AfkGuards g) => g.HasFlag(AfkGuards.NotAlone);
+}
+
 /// <summary>How a monitored channel is treated for background (always-on) participation.</summary>
 public enum TrackedChannelMode
 {

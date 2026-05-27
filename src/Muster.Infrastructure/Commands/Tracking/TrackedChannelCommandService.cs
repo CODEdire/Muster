@@ -25,9 +25,7 @@ public class TrackedChannelCommandService(MusterDbContext db)
         channel.Mode = TrackedChannelMode.Reward;
         channel.PointsPerMinute = pointsPerMinute;
         channel.DailyCapPoints = dailyCapPoints;
-        channel.RequireUnmuted = requireUnmuted;
-        channel.RequireUndeafened = requireUndeafened;
-        channel.RequireNotAlone = requireNotAlone;
+        channel.Guards = AfkGuardsExtensions.Compose(requireUnmuted, requireUndeafened, requireNotAlone);
         await db.SaveChangesAsync(ct);
 
         var cap = dailyCapPoints == 0 ? "no daily cap" : $"cap {dailyCapPoints}/day";
