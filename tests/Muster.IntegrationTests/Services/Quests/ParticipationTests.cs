@@ -11,6 +11,8 @@ using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Tracking;
+using Muster.Infrastructure.Commands.Tracking;
+using Muster.Persistence.Queries;
 
 namespace Muster.IntegrationTests;
 
@@ -137,6 +139,53 @@ public class ParticipationTests
 
         Assert.Equal(0, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 10)).TotalMinutes);  // muted: paused
         Assert.Equal(10, (await db.VoiceAttendance.SingleAsync(a => a.UserId == 20)).TotalMinutes); // unmuted peer
+    }
+
+    [Fact]
+    public async Task Session_AllOutMember_NotTracked()
+    {
+        var (db, _) = await SeededAsync();
+        db.GuildMembers.Add(new GuildMember { GuildId = 1, UserId = 10, Tracking = TrackingChoice.AllOut, JoinedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false) } };
+        await sessions.ReconcileSessionsAsync(1, roster, DateTimeOffset.UtcNow);
+
+        Assert.Empty(await db.VoiceAttendance.ToListAsync()); // opted out of all tracking → no attendance row
+    }
+
+    [Fact]
+    public async Task OptOutAll_EvictsActiveAttendanceAndBackground()
+    {
+        var (db, _) = await SeededAsync();
+        var sid = Guid.NewGuid();
+        db.TrackingSessions.Add(new TrackingSession { Id = sid, GuildId = 1, Name = "Op", Source = TrackingSessionSource.Manual, VoiceChannelId = 500, StartedAt = DateTimeOffset.UtcNow, Status = TrackingSessionStatus.Active });
+        db.VoiceAttendance.Add(new VoiceAttendance { Id = Guid.NewGuid(), TrackingSessionId = sid, UserId = 10, FirstJoinedAt = DateTimeOffset.UtcNow, TotalMinutes = 5 });
+        db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = 1, UserId = 10, ChannelId = 600 });
+        await db.SaveChangesAsync();
+
+        var result = await new TrackingPreferenceCommandService(db).SetAsync(1, 10, TrackingChoice.AllOut);
+
+        Assert.False(result.IsError);
+        Assert.Empty(await db.VoiceAttendance.ToListAsync());
+        Assert.Empty(await db.BackgroundVoicePresences.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CloseStaleSessions_ClosesPastMaxHours()
+    {
+        var (db, _) = await SeededAsync(); // MaxSessionHours defaults to 24
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        session.StartedAt = DateTimeOffset.UtcNow.AddHours(-25);
+        await db.SaveChangesAsync();
+
+        var closed = await sessions.CloseStaleSessionsAsync(DateTimeOffset.UtcNow);
+
+        Assert.Equal(1, closed);
+        Assert.Equal(TrackingSessionStatus.Closed, (await db.TrackingSessions.SingleAsync()).Status);
     }
 
     [Fact]

@@ -20,6 +20,20 @@ public class TrackingPreferenceCommandService(MusterDbContext db)
         member.Tracking = choice;
         await db.SaveChangesAsync(ct);
 
+        // Opting out takes effect immediately, even mid-session: evict in-progress tracking rows so the member
+        // stops being counted (and stops showing in live ops) right away.
+        if (choice is TrackingChoice.AllOut or TrackingChoice.BackgroundOut)
+        {
+            db.BackgroundVoicePresences.RemoveRange(await db.ListBackgroundPresencesForMemberAsync(guildId, userId, ct));
+        }
+
+        if (choice is TrackingChoice.AllOut)
+        {
+            db.VoiceAttendance.RemoveRange(await db.ListActiveAttendanceForMemberAsync(guildId, userId, ct));
+        }
+
+        await db.SaveChangesAsync(ct);
+
         return CommandResult.Ok(choice switch
         {
             TrackingChoice.In => "You're opted **in** to all participation tracking on this server.",

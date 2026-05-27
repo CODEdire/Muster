@@ -62,6 +62,13 @@ public class BackgroundFlushScheduler(
                     await sessions.ReconcileSessionsAsync(guildId, roster, ct: stoppingToken);
                     await background.ReconcileGuildAsync(guildId, roster, ct: stoppingToken);
                 }
+
+                // Safety net: close any session that's run past its guild's MaxSessionHours.
+                var staleClosed = await sessions.CloseStaleSessionsAsync(ct: stoppingToken);
+                if (staleClosed > 0)
+                {
+                    logger.LogInformation("Auto-closed {Count} stale session(s) past their max duration.", staleClosed);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

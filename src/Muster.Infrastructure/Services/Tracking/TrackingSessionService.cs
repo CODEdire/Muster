@@ -100,10 +100,14 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
         var now = at ?? DateTimeOffset.UtcNow;
 
+        // Members who opted out of all tracking are excluded from sessions entirely (no attendance row).
+        var presentUserIds = occupantsByChannel.Values.SelectMany(v => v).Where(m => !m.IsBot).Select(m => m.UserId).Distinct().ToList();
+        var choices = await db.TrackingChoicesAsync(guildId, presentUserIds, ct);
+
         foreach (var session in sessions)
         {
             var occupants = occupantsByChannel.TryGetValue(session.VoiceChannelId, out var list) ? list : [];
-            var humans = occupants.Where(o => !o.IsBot).ToList();
+            var humans = occupants.Where(o => !o.IsBot && choices.GetValueOrDefault(o.UserId) != TrackingChoice.AllOut).ToList();
             var present = humans.Select(h => h.UserId).ToHashSet();
             var byUser = (await db.AttendanceForSessionAsync(session.Id, ct)).ToDictionary(a => a.UserId);
 
@@ -139,6 +143,41 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Close active sessions that have run past their guild's <c>MaxSessionHours</c> — a safety net so a session
+    /// that's never stopped (forgotten manual op, deleted channel, bot kicked) can't accrue forever. Closing
+    /// finalizes attendance and awards as normal. Returns how many were closed.
+    /// </summary>
+    public async Task<int> CloseStaleSessionsAsync(DateTimeOffset? at = null, CancellationToken ct = default)
+    {
+        var now = at ?? DateTimeOffset.UtcNow;
+        var active = await db.ListAllActiveSessionsAsync(ct);
+        if (active.Count == 0)
+        {
+            return 0;
+        }
+
+        var maxHoursByGuild = new Dictionary<ulong, int>();
+        var closed = 0;
+
+        foreach (var session in active)
+        {
+            if (!maxHoursByGuild.TryGetValue(session.GuildId, out var maxHours))
+            {
+                maxHours = (await db.GetSettingsAsync(session.GuildId, ct)).MaxSessionHours;
+                maxHoursByGuild[session.GuildId] = maxHours;
+            }
+
+            if (maxHours > 0 && now - session.StartedAt >= TimeSpan.FromHours(maxHours))
+            {
+                await CloseAsync(session.Id, now, ct: ct);
+                closed++;
+            }
+        }
+
+        return closed;
     }
 
     /// <summary>Clear open attendance segments on startup — a stale watermark after a restart must not credit downtime.</summary>

@@ -31,6 +31,21 @@ public static class TrackingQueries
         => db.TrackingSessions.Where(s => s.Status == TrackingSessionStatus.Active)
             .Select(s => s.GuildId).Distinct().ToListAsync(ct);
 
+    /// <summary>Every active session across all guilds (the stale-session sweep checks these against MaxSessionHours).</summary>
+    public static Task<List<TrackingSession>> ListAllActiveSessionsAsync(this MusterDbContext db, CancellationToken ct = default)
+        => db.TrackingSessions.Where(s => s.Status == TrackingSessionStatus.Active).ToListAsync(ct);
+
+    /// <summary>A member's background presence rows in a guild (opt-out eviction deletes these).</summary>
+    public static Task<List<BackgroundVoicePresence>> ListBackgroundPresencesForMemberAsync(this MusterDbContext db, ulong guildId, ulong userId, CancellationToken ct = default)
+        => db.BackgroundVoicePresences.Where(p => p.GuildId == guildId && p.UserId == userId).ToListAsync(ct);
+
+    /// <summary>A member's attendance rows in the guild's currently-active sessions (opt-out eviction deletes these).</summary>
+    public static Task<List<VoiceAttendance>> ListActiveAttendanceForMemberAsync(this MusterDbContext db, ulong guildId, ulong userId, CancellationToken ct = default)
+        => (from a in db.VoiceAttendance
+            join s in db.TrackingSessions on a.TrackingSessionId equals s.Id
+            where s.GuildId == guildId && s.Status == TrackingSessionStatus.Active && a.UserId == userId
+            select a).ToListAsync(ct);
+
     /// <summary>Attendance rows with an open segment (startup voids these — stale after a restart).</summary>
     public static Task<List<VoiceAttendance>> ListOpenAttendanceAsync(this MusterDbContext db, CancellationToken ct = default)
         => db.VoiceAttendance.Where(a => a.OpenSegmentStart != null).ToListAsync(ct);

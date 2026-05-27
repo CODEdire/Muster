@@ -63,6 +63,10 @@ public class GuildSettings
     /// raw presence.</summary>
     public bool ApplyAfkGuardsToSessions { get; set; } = true;
 
+    /// <summary>Auto-close an active session once it has run this many hours (safety net for a session that's
+    /// never stopped — a forgotten manual op, a deleted channel, etc.). 0 = never auto-close.</summary>
+    public int MaxSessionHours { get; set; } = 24;
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>
