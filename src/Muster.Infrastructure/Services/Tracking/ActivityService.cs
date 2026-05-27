@@ -1,6 +1,7 @@
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
@@ -8,10 +9,10 @@ using Muster.Infrastructure.Services.Membership;
 namespace Muster.Infrastructure.Services.Tracking;
 
 /// <summary>
-/// Records message activity for monitored text channels (background plane). Scoped to channels with a
-/// <see cref="TrackedChannel"/> rule (Mode != Off); untracked channels are ignored. Honors the member's
-/// background consent. Stats always; Reward-mode channels also mint POINTS per message
-/// (<see cref="TrackedChannel.PointsPerMessage"/>). Dedupes on the message id so gateway redelivery never
+/// Records message activity for monitored text channels (background plane). Scoped to configured
+/// <see cref="GuildChannel"/> rows (Mode != Off, not soft-deleted); untracked channels are ignored. Honors the
+/// member's background consent. Stats always; Reward-mode channels also mint POINTS per message
+/// (<see cref="GuildChannel.PointsPerMessage"/>). Dedupes on the message id so gateway redelivery never
 /// inflates counts or double-pays.
 /// </summary>
 public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth)
@@ -20,9 +21,9 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
         ulong guildId, ulong channelId, ulong userId, ulong messageId, DateTimeOffset timestamp,
         CancellationToken ct = default)
     {
-        // Scope: only monitored text channels are recorded.
-        var channel = await db.FindTrackedChannelAsync(guildId, channelId, ct);
-        if (channel is null || channel.Kind != TrackedChannelKind.Text || channel.Mode == TrackedChannelMode.Off)
+        // Scope: only monitored, live text channels are recorded.
+        var channel = await db.FindChannelAsync(guildId, channelId, ct);
+        if (channel is null || channel.Kind != GuildChannelKind.Text || channel.Mode == TrackedChannelMode.Off || channel.DeletedAt is not null)
         {
             return;
         }
@@ -111,7 +112,7 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
     }
 
     private async Task TryRewardMessageAsync(
-        TrackedChannel channel, ulong userId, ulong messageId, DateTimeOffset now, CancellationToken ct)
+        GuildChannel channel, ulong userId, ulong messageId, DateTimeOffset now, CancellationToken ct)
     {
         var state = await db.FindMessageRewardStateAsync(channel.GuildId, userId, channel.ChannelId, ct);
         if (state is null)

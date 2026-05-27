@@ -80,21 +80,18 @@ public static class TrackingQueries
         => db.TrackingSessions.AnyAsync(
             s => s.GuildId == guildId && s.VoiceChannelId == channelId && s.Status == TrackingSessionStatus.Active, ct);
 
-    // --- Background tracking (per-channel config + always-on voice accrual) ---
+    // --- Background tracking (per-channel config lives on GuildChannel + always-on voice accrual) ---
 
-    /// <summary>A channel's monitoring rule, if configured.</summary>
-    public static Task<TrackedChannel?> FindTrackedChannelAsync(this MusterDbContext db, ulong guildId, ulong channelId, CancellationToken ct = default)
-        => db.TrackedChannels.FirstOrDefaultAsync(c => c.GuildId == guildId && c.ChannelId == channelId, ct);
+    /// <summary>A guild's <b>configured</b> channels (Mode != Off), including soft-deleted ones so admins can
+    /// see and clean up config for channels whose Discord channel is gone.</summary>
+    public static Task<List<GuildChannel>> ListTrackedChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.GuildChannels.Where(c => c.GuildId == guildId && c.Mode != TrackedChannelMode.Off).ToListAsync(ct);
 
-    /// <summary>All of a guild's channel monitoring rules.</summary>
-    public static Task<List<TrackedChannel>> ListTrackedChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
-        => db.TrackedChannels.Where(c => c.GuildId == guildId).ToListAsync(ct);
-
-    /// <summary>A guild's monitored voice channels (Mode != Off) — reconcile accrues active-time for all of
-    /// these and reward only for the Reward-mode subset.</summary>
-    public static Task<List<TrackedChannel>> ListVoiceTrackedChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
-        => db.TrackedChannels
-            .Where(c => c.GuildId == guildId && c.Kind == TrackedChannelKind.Voice && c.Mode != TrackedChannelMode.Off)
+    /// <summary>A guild's monitored voice channels (Mode != Off, not soft-deleted) — reconcile accrues active-time
+    /// for all of these and reward only for the Reward-mode subset.</summary>
+    public static Task<List<GuildChannel>> ListVoiceTrackedChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.GuildChannels
+            .Where(c => c.GuildId == guildId && c.Kind == GuildChannelKind.Voice && c.Mode != TrackedChannelMode.Off && c.DeletedAt == null)
             .ToListAsync(ct);
 
     /// <summary>All background presence rows for a channel (reconcile reads these to award/close per member).</summary>
@@ -107,8 +104,8 @@ public static class TrackingQueries
 
     /// <summary>Guild ids that have at least one monitored voice channel (the flush sweep only visits these).</summary>
     public static Task<List<ulong>> ListGuildIdsWithVoiceTrackingAsync(this MusterDbContext db, CancellationToken ct = default)
-        => db.TrackedChannels
-            .Where(c => c.Kind == TrackedChannelKind.Voice && c.Mode != TrackedChannelMode.Off)
+        => db.GuildChannels
+            .Where(c => c.Kind == GuildChannelKind.Voice && c.Mode != TrackedChannelMode.Off && c.DeletedAt == null)
             .Select(c => c.GuildId).Distinct().ToListAsync(ct);
 
     /// <summary>A member's season participation accumulator for a season, if it exists.</summary>

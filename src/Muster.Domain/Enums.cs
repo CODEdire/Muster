@@ -18,15 +18,9 @@ public enum ActivityType
     Voice = 1,
 }
 
-/// <summary>Which signal a <see cref="Muster.Domain.Entities.Tracking.TrackedChannel"/> monitors.</summary>
-public enum TrackedChannelKind
-{
-    Voice = 0,
-    Text = 1,
-}
-
-/// <summary>Kind of a synced Discord <see cref="Muster.Domain.Entities.Members.GuildChannel"/> (the local
-/// channel roster the web pickers read). Threads/categories/forums are not synced.</summary>
+/// <summary>Kind of a synced Discord <see cref="Muster.Domain.Entities.Members.GuildChannel"/>. Governs both
+/// the roster (web pickers) and what background tracking the channel supports. Threads/categories/forums
+/// are not synced.</summary>
 public enum GuildChannelKind
 {
     Text = 0,

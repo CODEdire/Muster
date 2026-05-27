@@ -238,7 +238,7 @@ else if (State == AccessState.Ready)
     protected override async Task LoadAsync()
     {
         _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
-        _hasBackground = _isStaff && await Db.TrackedChannels.AnyAsync(c => c.GuildId == GuildId && c.Kind == TrackedChannelKind.Voice && c.Mode != TrackedChannelMode.Off);
+        _hasBackground = _isStaff && await Db.GuildChannels.AnyAsync(c => c.GuildId == GuildId && c.Kind == GuildChannelKind.Voice && c.Mode != TrackedChannelMode.Off && c.DeletedAt == null);
         Tab = CurrentTab;
         var page = Page <= 0 ? 1 : Page;
 

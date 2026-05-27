@@ -76,11 +76,11 @@ else if (State == AccessState.Ready)
                     @foreach (var c in _channels)
                     {
                         <tr>
-                            <td>@(c.Kind == TrackedChannelKind.Voice ? "🔊 Voice" : "💬 Text")</td>
-                            <td>@ChannelLabel(c.ChannelId, c.ChannelName)</td>
+                            <td>@(c.Kind == GuildChannelKind.Voice ? "🔊 Voice" : "💬 Text")</td>
+                            <td>@ChannelLabel(c.ChannelId, c.Name)@(c.DeletedAt is not null ? " ⚠️ deleted" : "")</td>
                             <td>@c.Mode</td>
-                            <td>@(c.Kind == TrackedChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")@(c.DailyCapPoints > 0 ? $" (cap {c.DailyCapPoints}/day)" : "")</td>
-                            <td>@(c.Kind == TrackedChannelKind.Voice ? string.Join(" ", new[] { c.Guards.Unmuted() ? "unmuted" : null, c.Guards.Undeafened() ? "undeafened" : null, c.Guards.NotAlone() ? "not-alone" : null }.Where(x => x != null)) : "—")</td>
+                            <td>@(c.Kind == GuildChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")@(c.DailyCapPoints > 0 ? $" (cap {c.DailyCapPoints}/day)" : "")</td>
+                            <td>@(c.Kind == GuildChannelKind.Voice ? string.Join(" ", new[] { c.Guards.Unmuted() ? "unmuted" : null, c.Guards.Undeafened() ? "undeafened" : null, c.Guards.NotAlone() ? "not-alone" : null }.Where(x => x != null)) : "—")</td>
                         </tr>
                     }
                 </tbody>
@@ -152,7 +152,7 @@ else if (State == AccessState.Ready)
                         <option value="0">— select —</option>
                         @foreach (var c in _channels)
                         {
-                            <option value="@c.ChannelId">@(c.Kind == TrackedChannelKind.Voice ? "🔊" : "💬") @ChannelLabel(c.ChannelId, c.ChannelName)</option>
+                            <option value="@c.ChannelId">@(c.Kind == GuildChannelKind.Voice ? "🔊" : "💬") @ChannelLabel(c.ChannelId, c.Name)</option>
                         }
                     </InputSelect>
                 </label>
@@ -168,7 +168,7 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "remove-channel")] private RemoveChannelInput RemoveChannel { get; set; } = new();
 
     private IReadOnlyList<CurrencyInfo> _spendable = [];
-    private IReadOnlyList<TrackedChannel> _channels = [];
+    private IReadOnlyList<GuildChannel> _channels = [];
     private IReadOnlyList<GuildChannel> _voice = [];
     private IReadOnlyList<GuildChannel> _text = [];
     private Dictionary<ulong, GuildChannel> _syncedById = new();

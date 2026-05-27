@@ -1,6 +1,7 @@
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
 
 namespace Muster.Infrastructure.Commands.Tracking;
@@ -21,7 +22,7 @@ public class TrackedChannelCommandService(MusterDbContext db)
             return CommandResult.Error("Points per minute and the daily cap can't be negative (0 = uncapped).");
         }
 
-        var channel = await Upsert(guildId, channelId, TrackedChannelKind.Voice, channelName, ct);
+        var channel = await Upsert(guildId, channelId, GuildChannelKind.Voice, channelName, ct);
         channel.Mode = TrackedChannelMode.Reward;
         channel.PointsPerMinute = pointsPerMinute;
         channel.DailyCapPoints = dailyCapPoints;
@@ -45,7 +46,7 @@ public class TrackedChannelCommandService(MusterDbContext db)
             return CommandResult.Error("Message-reward values can't be negative.");
         }
 
-        var channel = await Upsert(guildId, channelId, TrackedChannelKind.Text, channelName, ct);
+        var channel = await Upsert(guildId, channelId, GuildChannelKind.Text, channelName, ct);
         channel.Mode = pointsPerMessage > 0 ? TrackedChannelMode.Reward : TrackedChannelMode.StatsOnly;
         channel.PointsPerMessage = pointsPerMessage;
         channel.MessagesPerPoint = Math.Max(1, messagesPerPoint);
@@ -65,16 +66,25 @@ public class TrackedChannelCommandService(MusterDbContext db)
             $"Rewarding text <#{channelId}>: {pointsPerMessage} pt per {perPoint} msg(s), {cd}, {cap}.");
     }
 
-    /// <summary>Stop monitoring a channel (removes its rule).</summary>
+    /// <summary>Stop monitoring a channel. A live channel keeps its roster row (Mode → Off); a channel whose
+    /// Discord channel is already gone (soft-deleted) is removed outright so the stale config is cleaned up.</summary>
     public async Task<CommandResult> RemoveAsync(ulong guildId, ulong channelId, CancellationToken ct = default)
     {
-        var channel = await db.FindTrackedChannelAsync(guildId, channelId, ct);
-        if (channel is null)
+        var channel = await db.FindChannelAsync(guildId, channelId, ct);
+        if (channel is null || channel.Mode == TrackedChannelMode.Off)
         {
             return CommandResult.Error($"<#{channelId}> isn't being tracked.");
         }
 
-        db.TrackedChannels.Remove(channel);
+        if (channel.DeletedAt is not null)
+        {
+            db.GuildChannels.Remove(channel); // gone from Discord — clear the leftover config
+        }
+        else
+        {
+            channel.Mode = TrackedChannelMode.Off; // keep the roster entry, just stop monitoring
+        }
+
         await db.SaveChangesAsync(ct);
         return CommandResult.Ok($"Stopped tracking <#{channelId}>.");
     }
@@ -89,27 +99,31 @@ public class TrackedChannelCommandService(MusterDbContext db)
 
         var lines = channels
             .OrderBy(c => c.Kind).ThenBy(c => c.ChannelId)
-            .Select(c => c.Kind == TrackedChannelKind.Voice
+            .Select(c => (c.Kind == GuildChannelKind.Voice
                 ? $"- 🔊 <#{c.ChannelId}> — {c.Mode}, {c.PointsPerMinute} pt/min" +
                   (c.DailyCapPoints > 0 ? $", cap {c.DailyCapPoints}/day" : string.Empty)
-                : $"- 💬 <#{c.ChannelId}> — {c.Mode}");
+                : $"- 💬 <#{c.ChannelId}> — {c.Mode}")
+                + (c.DeletedAt is not null ? " *(channel deleted)*" : string.Empty));
 
         return CommandResult.Ok("**Tracked channels**\n" + string.Join('\n', lines));
     }
 
-    private async Task<TrackedChannel> Upsert(ulong guildId, ulong channelId, TrackedChannelKind kind, string? channelName, CancellationToken ct)
+    private async Task<GuildChannel> Upsert(ulong guildId, ulong channelId, GuildChannelKind kind, string? channelName, CancellationToken ct)
     {
-        var channel = await db.FindTrackedChannelAsync(guildId, channelId, ct);
+        var channel = await db.FindChannelAsync(guildId, channelId, ct);
         if (channel is null)
         {
-            channel = new TrackedChannel { Id = Guid.NewGuid(), GuildId = guildId, ChannelId = channelId };
-            db.TrackedChannels.Add(channel);
+            // Tracking a channel the roster sync hasn't captured yet — create a config-bearing row; a later
+            // sync fills in the synced name/position without disturbing this config.
+            channel = new GuildChannel { GuildId = guildId, ChannelId = channelId };
+            db.GuildChannels.Add(channel);
         }
 
         channel.Kind = kind;
-        if (!string.IsNullOrWhiteSpace(channelName))
+        channel.DeletedAt = null; // (re)tracking implies the channel is in use
+        if (!string.IsNullOrWhiteSpace(channelName) && string.IsNullOrWhiteSpace(channel.Name))
         {
-            channel.ChannelName = channelName; // keep an existing name on web edits that don't supply one
+            channel.Name = channelName; // only fill a missing name; sync owns the authoritative name
         }
 
         return channel;

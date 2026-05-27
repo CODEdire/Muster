@@ -278,12 +278,24 @@ spanning a season rollover is split exactly at the boundary by construction. Day
 
 ## Channel sync & web wizard
 
-A `GuildChannel` snapshot (voice/text only — threads/categories/forums skipped) mirrors the guild's channels
-into the DB so the web UI can offer channel **pickers by name** without a live Discord call. Synced on
-`GuildCreate` (`ChannelSyncService.SyncAllAsync` from `guild.Channels`) and kept current by
-`ChannelLifecycleHandler` (`IGuildChannelCreate/Update/Delete` → upsert/remove). `ChannelLifecycleHandler.MapKind`
-classifies a NetCord `IGuildChannel`: `IVoiceGuildChannel` → Voice, `TextGuildChannel` (excluding `GuildThread`) →
-Text, everything else ignored. Migration `GuildChannelSync`.
+`GuildChannel` is the **single source of truth** for a guild's voice/text channels (threads/categories/forums
+skipped): it holds both the synced roster (name/kind/position, so the web can offer channel **pickers by name**
+without a live Discord call) **and** the background-tracking config (`Mode`, points, guards, caps) — the old
+separate `TrackedChannel` table was merged in. `Mode == Off` is a roster-only row; non-Off is monitored.
+Everything else references a channel by `(GuildId, ChannelId)` (no hard FK), so a channel delete never cascades
+config/history away.
+
+Synced on `GuildCreate`/reconnect (`ChannelSyncService.SyncAllAsync` from `guild.Channels` — covers rename/add/
+remove during downtime) and kept live by `ChannelLifecycleHandler` (`IGuildChannelCreate/Update/Delete`).
+`ChannelLifecycleHandler.MapKind` classifies a NetCord `IGuildChannel`: `IVoiceGuildChannel` → Voice,
+`TextGuildChannel` (excluding `GuildThread`) → Text, else ignored. Sync only writes roster fields, never config.
+
+**Soft delete.** When a Discord channel disappears, an unconfigured row is removed outright; a configured one
+keeps its row with `DeletedAt` set so its config + name survive until an admin cleans up (the Tracking page flags
+it "⚠️ deleted"; untracking it removes the leftover). A reappearing channel clears `DeletedAt`. Reward reconcile
+and pickers skip soft-deleted rows. The per-reconcile gateway-cache name refresh was retired (redundant now).
+Migrations `GuildChannelSync` (roster table) + `MergeTrackedChannelIntoGuildChannel` (config columns + data move
++ drop `TrackedChannels`).
 
 `WebLinkBuilder` (singleton over `Web:BaseUrl`) turns bot replies into "open in web" deep links (returns null
 when no base URL is set). `/track session new` returns the wizard link; `/track leaderboard` appends a full

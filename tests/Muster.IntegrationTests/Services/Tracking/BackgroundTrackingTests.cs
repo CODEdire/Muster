@@ -34,12 +34,11 @@ public class BackgroundTrackingTests
     private static async Task AddRewardVoiceAsync(
         MusterDbContext db, int rate = 2, int dailyCap = 0, bool requireUnmuted = true, bool requireNotAlone = true)
     {
-        db.TrackedChannels.Add(new TrackedChannel
+        db.GuildChannels.Add(new GuildChannel
         {
-            Id = Guid.NewGuid(),
             GuildId = Guild,
             ChannelId = Channel,
-            Kind = TrackedChannelKind.Voice,
+            Kind = GuildChannelKind.Voice,
             Mode = TrackedChannelMode.Reward,
             PointsPerMinute = rate,
             DailyCapPoints = dailyCap,

@@ -1,6 +1,7 @@
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
@@ -101,7 +102,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
     /// <summary>Returns true if any presence row was touched (so the caller knows to commit).</summary>
     private async Task<bool> ReconcileChannelAsync(
-        TrackedChannel cfg, IReadOnlyList<VoiceMemberSnapshot> occupants, DateTimeOffset now,
+        GuildChannel cfg, IReadOnlyList<VoiceMemberSnapshot> occupants, DateTimeOffset now,
         bool guildBackgroundOptIn, IReadOnlyDictionary<ulong, TrackingChoice> choices, Guid? seasonId, CancellationToken ct)
     {
         var presences = await db.ListPresencesForChannelAsync(cfg.GuildId, cfg.ChannelId, ct);
@@ -203,7 +204,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
     }
 
     private BackgroundVoicePresence GetOrCreate(
-        Dictionary<ulong, BackgroundVoicePresence> byUser, TrackedChannel cfg, ulong userId, DateTimeOffset now)
+        Dictionary<ulong, BackgroundVoicePresence> byUser, GuildChannel cfg, ulong userId, DateTimeOffset now)
     {
         if (byUser.TryGetValue(userId, out var existing))
         {
@@ -275,7 +276,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
     /// Convert eligible elapsed reward time into a POINTS award (whole minutes; remainder carries), then advance
     /// the watermark. Idempotent on the segment-start source key, daily-capped, gated to participants.
     /// </summary>
-    private async Task FlushRewardAsync(TrackedChannel cfg, BackgroundVoicePresence p, DateTimeOffset now, CancellationToken ct)
+    private async Task FlushRewardAsync(GuildChannel cfg, BackgroundVoicePresence p, DateTimeOffset now, CancellationToken ct)
     {
         if (p.OpenSegmentStart is not { } start)
         {

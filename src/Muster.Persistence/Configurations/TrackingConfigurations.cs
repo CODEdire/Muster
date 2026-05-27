@@ -42,16 +42,6 @@ public class DailyActivityRollupConfiguration : IEntityTypeConfiguration<DailyAc
     }
 }
 
-public class TrackedChannelConfiguration : IEntityTypeConfiguration<TrackedChannel>
-{
-    public void Configure(EntityTypeBuilder<TrackedChannel> e)
-    {
-        e.HasKey(x => x.Id);
-        // One rule per channel per guild.
-        e.HasIndex(x => new { x.GuildId, x.ChannelId }).IsUnique();
-    }
-}
-
 public class BackgroundVoicePresenceConfiguration : IEntityTypeConfiguration<BackgroundVoicePresence>
 {
     public void Configure(EntityTypeBuilder<BackgroundVoicePresence> e)

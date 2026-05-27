@@ -176,7 +176,7 @@ public class ParticipationReadTests
     public async Task BackgroundNow_GroupsPresentByChannel()
     {
         using var db = await SeededAsync();
-        db.TrackedChannels.Add(new TrackedChannel { Id = Guid.NewGuid(), GuildId = Guild, ChannelId = 500, ChannelName = "General", Kind = TrackedChannelKind.Voice, Mode = TrackedChannelMode.Reward });
+        db.GuildChannels.Add(new GuildChannel { GuildId = Guild, ChannelId = 500, Name = "General", Kind = GuildChannelKind.Voice, Mode = TrackedChannelMode.Reward });
         var t = DateTimeOffset.UtcNow;
         db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 10, ChannelId = 500, ActiveOpenSegmentStart = t });
         db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 20, ChannelId = 500, ActiveOpenSegmentStart = null }); // not present

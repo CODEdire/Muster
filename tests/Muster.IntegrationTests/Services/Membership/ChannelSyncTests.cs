@@ -68,6 +68,76 @@ public class ChannelSyncTests
     }
 
     [Fact]
+    public async Task SyncAll_SoftDeletesConfigured_HardRemovesUnconfigured()
+    {
+        using var db = NewDb();
+        var sut = new ChannelSyncService(db);
+
+        await sut.SyncAllAsync(1,
+        [
+            (10, "tracked", GuildChannelKind.Voice, 0),
+            (20, "plain", GuildChannelKind.Text, 1),
+        ]);
+        // Configure channel 10 (it now carries tracking config).
+        var tracked = await db.FindChannelAsync(1, 10);
+        tracked!.Mode = TrackedChannelMode.Reward;
+        await db.SaveChangesAsync();
+
+        // Both channels vanish from Discord.
+        var at = DateTimeOffset.UtcNow;
+        await sut.SyncAllAsync(1, [], at: at);
+
+        // Configured one is soft-deleted (kept); plain one is gone.
+        var stillThere = await db.FindChannelAsync(1, 10);
+        Assert.NotNull(stillThere);
+        Assert.Equal(at, stillThere!.DeletedAt);
+        Assert.Equal(TrackedChannelMode.Reward, stillThere.Mode); // config preserved
+        Assert.Null(await db.FindChannelAsync(1, 20));
+
+        // Pickers exclude soft-deleted; the tracked-config list keeps it (so admins can clean it up).
+        Assert.Empty(await db.ListChannelsByKindAsync(1, GuildChannelKind.Voice));
+        Assert.Contains(await db.ListTrackedChannelsAsync(1), c => c.ChannelId == 10);
+    }
+
+    [Fact]
+    public async Task SyncAll_Reappearing_ClearsSoftDelete()
+    {
+        using var db = NewDb();
+        var sut = new ChannelSyncService(db);
+
+        await sut.SyncAllAsync(1, [(10, "v", GuildChannelKind.Voice, 0)]);
+        var c = await db.FindChannelAsync(1, 10);
+        c!.Mode = TrackedChannelMode.Reward;
+        await db.SaveChangesAsync();
+
+        await sut.SyncAllAsync(1, []);                                   // gone -> soft-deleted
+        Assert.NotNull((await db.FindChannelAsync(1, 10))!.DeletedAt);
+
+        await sut.SyncAllAsync(1, [(10, "v", GuildChannelKind.Voice, 0)]); // back
+        var back = await db.FindChannelAsync(1, 10);
+        Assert.Null(back!.DeletedAt);
+        Assert.Equal(TrackedChannelMode.Reward, back.Mode);
+    }
+
+    [Fact]
+    public async Task Remove_SoftDeletesConfigured()
+    {
+        using var db = NewDb();
+        var sut = new ChannelSyncService(db);
+
+        await sut.UpsertAsync(1, 10, "v", GuildChannelKind.Voice, 0);
+        var c = await db.FindChannelAsync(1, 10);
+        c!.Mode = TrackedChannelMode.Reward;
+        await db.SaveChangesAsync();
+
+        await sut.RemoveAsync(1, 10);
+
+        var row = await db.FindChannelAsync(1, 10);
+        Assert.NotNull(row);
+        Assert.NotNull(row!.DeletedAt);
+    }
+
+    [Fact]
     public async Task ListByKind_FiltersAndOrders()
     {
         using var db = NewDb();

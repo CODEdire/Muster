@@ -71,10 +71,10 @@ public static class MembershipQueries
     public static Task<List<GuildChannel>> ListChannelsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.GuildChannels.Where(c => c.GuildId == guildId).ToListAsync(ct);
 
-    /// <summary>A guild's synced channels of one kind, ordered by position then name (untracked read for pickers).</summary>
+    /// <summary>A guild's live (non-deleted) synced channels of one kind, ordered by position then name (for pickers).</summary>
     public static Task<List<GuildChannel>> ListChannelsByKindAsync(this MusterDbContext db, ulong guildId, GuildChannelKind kind, CancellationToken ct = default)
         => db.GuildChannels.AsNoTracking()
-            .Where(c => c.GuildId == guildId && c.Kind == kind)
+            .Where(c => c.GuildId == guildId && c.Kind == kind && c.DeletedAt == null)
             .OrderBy(c => c.Position ?? int.MaxValue).ThenBy(c => c.Name)
             .ToListAsync(ct);
 

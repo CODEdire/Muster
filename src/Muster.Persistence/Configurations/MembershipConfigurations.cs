@@ -45,6 +45,8 @@ public class GuildChannelConfiguration : IEntityTypeConfiguration<GuildChannel>
     {
         e.HasKey(x => new { x.GuildId, x.ChannelId });
         e.HasIndex(x => new { x.GuildId, x.Kind });
+        // Background reconcile + the admin "tracked channels" list filter on Mode.
+        e.HasIndex(x => new { x.GuildId, x.Mode });
         e.Property(x => x.Name).HasMaxLength(100);
     }
 }

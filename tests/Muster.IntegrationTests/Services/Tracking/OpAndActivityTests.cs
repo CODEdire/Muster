@@ -85,10 +85,10 @@ public class OpAndActivityTests
     public async Task MessageActivity_RecordsRollup_AndDedupes()
     {
         using var db = await SeededAsync();
-        db.TrackedChannels.Add(new TrackedChannel
+        db.GuildChannels.Add(new GuildChannel
         {
-            Id = Guid.NewGuid(), GuildId = 1, ChannelId = 100,
-            Kind = TrackedChannelKind.Text, Mode = TrackedChannelMode.StatsOnly,
+            GuildId = 1, ChannelId = 100,
+            Kind = GuildChannelKind.Text, Mode = TrackedChannelMode.StatsOnly,
         });
         await db.SaveChangesAsync();
 
@@ -151,9 +151,9 @@ public class OpAndActivityTests
 
     private static async Task AddRewardTextAsync(MusterDbContext db, int pointsPerMessage, int messagesPerPoint = 1, int cooldown = 0, int dailyCap = 0)
     {
-        db.TrackedChannels.Add(new TrackedChannel
+        db.GuildChannels.Add(new GuildChannel
         {
-            Id = Guid.NewGuid(), GuildId = 1, ChannelId = 100, Kind = TrackedChannelKind.Text, Mode = TrackedChannelMode.Reward,
+            GuildId = 1, ChannelId = 100, Kind = GuildChannelKind.Text, Mode = TrackedChannelMode.Reward,
             PointsPerMessage = pointsPerMessage, MessagesPerPoint = messagesPerPoint, MessageCooldownSeconds = cooldown, MessageDailyCapPoints = dailyCap,
         });
         await db.SaveChangesAsync();
@@ -239,10 +239,10 @@ public class OpAndActivityTests
     public async Task MessageActivity_RewardChannel_AwardsPointsPerMessage()
     {
         using var db = await SeededAsync();
-        db.TrackedChannels.Add(new TrackedChannel
+        db.GuildChannels.Add(new GuildChannel
         {
-            Id = Guid.NewGuid(), GuildId = 1, ChannelId = 100,
-            Kind = TrackedChannelKind.Text, Mode = TrackedChannelMode.Reward, PointsPerMessage = 3,
+            GuildId = 1, ChannelId = 100,
+            Kind = GuildChannelKind.Text, Mode = TrackedChannelMode.Reward, PointsPerMessage = 3,
         });
         await db.SaveChangesAsync();
 

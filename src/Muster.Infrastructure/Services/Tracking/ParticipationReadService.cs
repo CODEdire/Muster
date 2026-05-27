@@ -297,7 +297,7 @@ public class ParticipationReadService(MusterDbContext db)
             return [];
         }
 
-        var names = (await db.ListTrackedChannelsAsync(guildId, ct)).ToDictionary(c => c.ChannelId, c => c.ChannelName);
+        var names = (await db.ListTrackedChannelsAsync(guildId, ct)).ToDictionary(c => c.ChannelId, c => c.Name);
 
         return present
             .GroupBy(p => p.ChannelId)
