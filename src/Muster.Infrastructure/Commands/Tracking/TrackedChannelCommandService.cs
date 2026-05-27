@@ -35,13 +35,35 @@ public class TrackedChannelCommandService(MusterDbContext db)
             $"Tracking voice <#{channelId}>: {pointsPerMinute} pt/min, {cap}, {guards}. Background pauses while a session runs there.");
     }
 
-    /// <summary>Monitor a text channel for stats (message activity). Rewarding messages is a later phase.</summary>
-    public async Task<CommandResult> SetTextAsync(ulong guildId, ulong channelId, CancellationToken ct = default)
+    /// <summary>Monitor a text channel. With <paramref name="pointsPerMessage"/> &gt; 0 it rewards (gated by
+    /// messages-per-point, a cooldown, and a daily cap); otherwise it's stats-only.</summary>
+    public async Task<CommandResult> SetTextAsync(
+        ulong guildId, ulong channelId, int pointsPerMessage = 0, int messagesPerPoint = 1,
+        int cooldownSeconds = 0, int dailyCapPoints = 0, CancellationToken ct = default)
     {
+        if (pointsPerMessage < 0 || messagesPerPoint < 0 || cooldownSeconds < 0 || dailyCapPoints < 0)
+        {
+            return CommandResult.Error("Message-reward values can't be negative.");
+        }
+
         var channel = await Upsert(guildId, channelId, TrackedChannelKind.Text, ct);
-        channel.Mode = TrackedChannelMode.StatsOnly;
+        channel.Mode = pointsPerMessage > 0 ? TrackedChannelMode.Reward : TrackedChannelMode.StatsOnly;
+        channel.PointsPerMessage = pointsPerMessage;
+        channel.MessagesPerPoint = Math.Max(1, messagesPerPoint);
+        channel.MessageCooldownSeconds = cooldownSeconds;
+        channel.MessageDailyCapPoints = dailyCapPoints;
         await db.SaveChangesAsync(ct);
-        return CommandResult.Ok($"Tracking text <#{channelId}> for activity stats.");
+
+        if (pointsPerMessage == 0)
+        {
+            return CommandResult.Ok($"Tracking text <#{channelId}> for activity stats.");
+        }
+
+        var perPoint = Math.Max(1, messagesPerPoint);
+        var cap = dailyCapPoints == 0 ? "no daily cap" : $"cap {dailyCapPoints}/day";
+        var cd = cooldownSeconds == 0 ? "no cooldown" : $"{cooldownSeconds}s cooldown";
+        return CommandResult.Ok(
+            $"Rewarding text <#{channelId}>: {pointsPerMessage} pt per {perPoint} msg(s), {cd}, {cap}.");
     }
 
     /// <summary>Stop monitoring a channel (removes its rule).</summary>

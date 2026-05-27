@@ -146,6 +146,65 @@ public class OpAndActivityTests
         Assert.Equal(30, settings.MinutesPerCoin);
     }
 
+    private static ActivityService Activity(MusterDbContext db)
+        => new(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+
+    private static async Task AddRewardTextAsync(MusterDbContext db, int pointsPerMessage, int messagesPerPoint = 1, int cooldown = 0, int dailyCap = 0)
+    {
+        db.TrackedChannels.Add(new TrackedChannel
+        {
+            Id = Guid.NewGuid(), GuildId = 1, ChannelId = 100, Kind = TrackedChannelKind.Text, Mode = TrackedChannelMode.Reward,
+            PointsPerMessage = pointsPerMessage, MessagesPerPoint = messagesPerPoint, MessageCooldownSeconds = cooldown, MessageDailyCapPoints = dailyCap,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static Task<long> BalanceAsync(MusterDbContext db, ulong userId)
+        => db.Wallets.Where(w => w.UserId == userId).Select(w => w.Balance).SingleOrDefaultAsync();
+
+    [Fact]
+    public async Task MessageReward_MessagesPerPoint_AwardsEveryNth()
+    {
+        using var db = await SeededAsync();
+        await AddRewardTextAsync(db, pointsPerMessage: 2, messagesPerPoint: 3);
+        var sut = Activity(db);
+        var t = DateTimeOffset.UtcNow;
+
+        await sut.RecordMessageAsync(1, 100, 10, 1, t);
+        await sut.RecordMessageAsync(1, 100, 10, 2, t);
+        Assert.Equal(0, await BalanceAsync(db, 10)); // 2 of 3
+        await sut.RecordMessageAsync(1, 100, 10, 3, t);
+        Assert.Equal(2, await BalanceAsync(db, 10)); // 3rd message → 2 points
+    }
+
+    [Fact]
+    public async Task MessageReward_DailyCap_Clamps()
+    {
+        using var db = await SeededAsync();
+        await AddRewardTextAsync(db, pointsPerMessage: 5, dailyCap: 8);
+        var sut = Activity(db);
+        var t = DateTimeOffset.UtcNow;
+
+        await sut.RecordMessageAsync(1, 100, 10, 1, t); // +5 = 5
+        await sut.RecordMessageAsync(1, 100, 10, 2, t); // +3 (clamped) = 8
+        await sut.RecordMessageAsync(1, 100, 10, 3, t); // capped, +0
+        Assert.Equal(8, await BalanceAsync(db, 10));
+    }
+
+    [Fact]
+    public async Task MessageReward_Cooldown_BlocksWithinWindow()
+    {
+        using var db = await SeededAsync();
+        await AddRewardTextAsync(db, pointsPerMessage: 1, cooldown: 60);
+        var sut = Activity(db);
+        var t = DateTimeOffset.UtcNow;
+
+        await sut.RecordMessageAsync(1, 100, 10, 1, t);                    // +1
+        await sut.RecordMessageAsync(1, 100, 10, 2, t.AddSeconds(30));     // within cooldown → +0
+        await sut.RecordMessageAsync(1, 100, 10, 3, t.AddSeconds(61));     // past cooldown → +1
+        Assert.Equal(2, await BalanceAsync(db, 10));
+    }
+
     [Fact]
     public async Task MessageActivity_UntrackedChannel_Ignored()
     {

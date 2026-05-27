@@ -20,8 +20,18 @@ public class TrackedChannel
     /// <summary>Points awarded per eligible minute of voice presence (Voice + Reward).</summary>
     public int PointsPerMinute { get; set; } = 1;
 
-    /// <summary>Points awarded per message (Text + Reward). Reserved for P2; unused while text is stats-only.</summary>
+    /// <summary>Points awarded per reward event (Text + Reward).</summary>
     public int PointsPerMessage { get; set; }
+
+    /// <summary>Messages required per reward event (Text + Reward). 1 (default) = every message; higher rewards
+    /// sustained chat over bursts.</summary>
+    public int MessagesPerPoint { get; set; } = 1;
+
+    /// <summary>Minimum seconds between rewarded messages for a member in this channel (anti-burst). 0 = no cooldown.</summary>
+    public int MessageCooldownSeconds { get; set; }
+
+    /// <summary>Cap on message-reward points a member can earn in this channel per UTC day. 0 = uncapped.</summary>
+    public int MessageDailyCapPoints { get; set; }
 
     /// <summary>Cap on background points a member can earn in this channel per UTC day (0 = uncapped).</summary>
     public int DailyCapPoints { get; set; }

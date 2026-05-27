@@ -105,6 +105,12 @@ public static class TrackingQueries
         => db.SeasonParticipations.FirstOrDefaultAsync(
             p => p.GuildId == guildId && p.UserId == userId && p.SeasonId == seasonId, ct);
 
+    /// <summary>A member's message-reward anti-spam state for a channel, if it exists.</summary>
+    public static Task<MessageRewardState?> FindMessageRewardStateAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, ulong channelId, CancellationToken ct = default)
+        => db.MessageRewardStates.FirstOrDefaultAsync(
+            s => s.GuildId == guildId && s.UserId == userId && s.ChannelId == channelId, ct);
+
     /// <summary>A single member's tracking/privacy preference (Default when the member isn't tracked yet).</summary>
     public static async Task<TrackingChoice> MemberTrackingChoiceAsync(
         this MusterDbContext db, ulong guildId, ulong userId, CancellationToken ct = default)

@@ -67,16 +67,71 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
 
         rollup.MessageCount++;
 
-        // Reward: Reward-mode channels mint POINTS per message to participants. (Anti-spam throttling: P7.)
+        // Reward: Reward-mode channels mint POINTS per reward event, gated by messages-per-point, a cooldown,
+        // and a per-day cap (any of which may be off). Dedupe above means this runs once per unique message.
         if (channel.Mode == TrackedChannelMode.Reward
             && channel.PointsPerMessage > 0
             && await auth.IsParticipantAsync(guildId, userId, ct))
         {
-            await awards.StagePointsAsync(
-                guildId, userId, channel.PointsPerMessage, CurrencyLedgerSource.Background,
-                $"bgmsg:{messageId}", "Message activity", ct);
+            await TryRewardMessageAsync(channel, userId, messageId, timestamp, ct);
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    private async Task TryRewardMessageAsync(
+        TrackedChannel channel, ulong userId, ulong messageId, DateTimeOffset now, CancellationToken ct)
+    {
+        var state = await db.FindMessageRewardStateAsync(channel.GuildId, userId, channel.ChannelId, ct);
+        if (state is null)
+        {
+            state = new MessageRewardState { GuildId = channel.GuildId, UserId = userId, ChannelId = channel.ChannelId };
+            db.MessageRewardStates.Add(state);
+        }
+
+        state.MessagesSinceAward++;
+
+        // messages-per-point gate
+        var perPoint = Math.Max(1, channel.MessagesPerPoint);
+        if (state.MessagesSinceAward < perPoint)
+        {
+            return;
+        }
+
+        // cooldown gate (messages keep counting; the reward just waits until the window passes)
+        if (channel.MessageCooldownSeconds > 0
+            && state.LastRewardAt is { } last
+            && now - last < TimeSpan.FromSeconds(channel.MessageCooldownSeconds))
+        {
+            return;
+        }
+
+        // daily-cap gate
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        if (state.AwardedDate != today)
+        {
+            state.AwardedDate = today;
+            state.AwardedPointsToday = 0;
+        }
+
+        var points = channel.PointsPerMessage;
+        if (channel.MessageDailyCapPoints > 0)
+        {
+            var remaining = channel.MessageDailyCapPoints - state.AwardedPointsToday;
+            if (remaining <= 0)
+            {
+                return;
+            }
+
+            points = Math.Min(points, remaining);
+        }
+
+        state.MessagesSinceAward -= perPoint;
+        state.LastRewardAt = now;
+        state.AwardedPointsToday += points;
+
+        await awards.StagePointsAsync(
+            channel.GuildId, userId, points, CurrencyLedgerSource.Background,
+            $"bgmsg:{messageId}", "Message activity", ct);
     }
 }

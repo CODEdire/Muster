@@ -97,8 +97,11 @@ else if (State == AccessState.Ready)
             </label>
             <label>Points per minute <InputNumber @bind-Value="AddChannel.PointsPerMinute" /> <span class="subtitle">voice only</span></label>
             <label>Daily cap <InputNumber @bind-Value="AddChannel.DailyCap" /> <span class="subtitle">0 = uncapped</span></label>
-            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipMuted" /> Skip muted/deafened</label>
-            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipAlone" /> Skip when alone</label>
+            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipMuted" /> Skip muted/deafened <span class="subtitle">voice</span></label>
+            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipAlone" /> Skip when alone <span class="subtitle">voice</span></label>
+            <label>Points per message <InputNumber @bind-Value="AddChannel.PointsPerMessage" /> <span class="subtitle">text reward (0 = stats only)</span></label>
+            <label>Messages per point <InputNumber @bind-Value="AddChannel.MessagesPerPoint" /> <span class="subtitle">text</span></label>
+            <label>Message cooldown (s) <InputNumber @bind-Value="AddChannel.CooldownSeconds" /> <span class="subtitle">text anti-burst</span></label>
             <div class="btn-row"><button type="submit">Save channel</button></div>
         </EditForm>
     </div>
@@ -167,7 +170,7 @@ else if (State == AccessState.Ready)
         }
 
         var result = AddChannel.Kind == "text"
-            ? await Channels.SetTextAsync(GuildId, channelId)
+            ? await Channels.SetTextAsync(GuildId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap)
             : await Channels.SetVoiceAsync(GuildId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipAlone);
 
         if (!result.IsError)
@@ -217,6 +220,9 @@ else if (State == AccessState.Ready)
         public int DailyCap { get; set; }
         public bool SkipMuted { get; set; } = true;
         public bool SkipAlone { get; set; } = true;
+        public int PointsPerMessage { get; set; }
+        public int MessagesPerPoint { get; set; } = 1;
+        public int CooldownSeconds { get; set; }
     }
 
     public class RemoveChannelInput

@@ -21,11 +21,16 @@ public class TrackChannelModule(IServiceScopeFactory scopeFactory) : MusterModul
             RequiredRole.Admin,
             auditAction: "track.voice");
 
-    [SlashCommand("track-text", "Monitor a text channel for activity stats.")]
+    [SlashCommand("track-text", "Monitor a text channel for activity (optionally rewarding messages).")]
     public Task TextAsync(
-        [SlashCommandParameter(Name = "channel", Description = "Text channel to monitor")] Channel channel)
+        [SlashCommandParameter(Name = "channel", Description = "Text channel to monitor")] Channel channel,
+        [SlashCommandParameter(Name = "points-per-message", Description = "Points per reward event (0 = stats only)")] int pointsPerMessage = 0,
+        [SlashCommandParameter(Name = "messages-per-point", Description = "Messages required per reward event (default 1)")] int messagesPerPoint = 1,
+        [SlashCommandParameter(Name = "cooldown-seconds", Description = "Min seconds between rewarded messages (0 = none)")] int cooldownSeconds = 0,
+        [SlashCommandParameter(Name = "daily-cap", Description = "Max message points per member per day (0 = uncapped)")] int dailyCap = 0)
         => RunAsync(
-            (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>().SetTextAsync(guildId, channel.Id),
+            (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>()
+                .SetTextAsync(guildId, channel.Id, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap),
             RequiredRole.Admin,
             auditAction: "track.text");
 

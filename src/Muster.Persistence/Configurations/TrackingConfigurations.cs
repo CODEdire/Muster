@@ -71,3 +71,13 @@ public class SeasonParticipationConfiguration : IEntityTypeConfiguration<SeasonP
         e.HasIndex(x => new { x.GuildId, x.UserId, x.SeasonId }).IsUnique();
     }
 }
+
+public class MessageRewardStateConfiguration : IEntityTypeConfiguration<MessageRewardState>
+{
+    public void Configure(EntityTypeBuilder<MessageRewardState> e)
+    {
+        e.HasKey(x => x.Id);
+        // One anti-spam state per member per channel.
+        e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId }).IsUnique();
+    }
+}
