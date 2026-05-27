@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NetCord.Gateway;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.Bot;
@@ -66,6 +68,7 @@ public sealed class GuildReconcileCoordinator(
             var roster = VoiceRoster.Snapshot(client, guildId);
             await scope.ServiceProvider.GetRequiredService<TrackingSessionService>().ReconcileSessionsAsync(guildId, roster, ct: ct);
             await scope.ServiceProvider.GetRequiredService<BackgroundTrackingService>().ReconcileGuildAsync(guildId, roster, ct: ct);
+            await RefreshChannelNamesAsync(scope.ServiceProvider.GetRequiredService<MusterDbContext>(), guildId, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -74,6 +77,40 @@ public sealed class GuildReconcileCoordinator(
         finally
         {
             gate.Release();
+        }
+    }
+
+    /// <summary>Keep stored channel names current from the gateway cache (covers web-added channels + renames).</summary>
+    private async Task RefreshChannelNamesAsync(MusterDbContext db, ulong guildId, CancellationToken ct)
+    {
+        if (!client.Cache.Guilds.TryGetValue(guildId, out var guild))
+        {
+            return;
+        }
+
+        var changed = false;
+
+        foreach (var tc in await db.ListTrackedChannelsAsync(guildId, ct))
+        {
+            if (guild.Channels.TryGetValue(tc.ChannelId, out var ch) && ch.Name is { Length: > 0 } name && tc.ChannelName != name)
+            {
+                tc.ChannelName = name;
+                changed = true;
+            }
+        }
+
+        foreach (var session in await db.ListActiveSessionsAsync(guildId, ct))
+        {
+            if (guild.Channels.TryGetValue(session.VoiceChannelId, out var ch) && ch.Name is { Length: > 0 } name && session.VoiceChannelName != name)
+            {
+                session.VoiceChannelName = name;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(ct);
         }
     }
 }

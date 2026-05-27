@@ -6,12 +6,12 @@ namespace Muster.Infrastructure.Commands.Tracking;
 public class TrackingCommandService(TrackingSessionService sessions)
 {
     public async Task<CommandResult> StartAsync(
-        ulong guildId, ulong actorId, ulong voiceChannelId, string name,
+        ulong guildId, ulong actorId, ulong voiceChannelId, string name, string? channelName,
         bool requireUnmuted, bool requireNotAlone, CancellationToken ct = default)
     {
         var cleanName = string.IsNullOrWhiteSpace(name) ? "Manual session" : name.Trim();
         var session = await sessions.OpenManualAsync(
-            guildId, voiceChannelId, actorId, cleanName, requireUnmuted, requireNotAlone, ct);
+            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireNotAlone, ct);
 
         var guards = (requireUnmuted, requireNotAlone) switch
         {

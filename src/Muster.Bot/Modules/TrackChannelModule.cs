@@ -17,7 +17,7 @@ public class TrackChannelModule(IServiceScopeFactory scopeFactory) : MusterModul
         [SlashCommandParameter(Name = "require-not-alone", Description = "Skip when alone in the channel (default true)")] bool requireNotAlone = true)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>()
-                .SetVoiceAsync(guildId, channel.Id, pointsPerMinute, dailyCap, requireUnmuted, requireNotAlone),
+                .SetVoiceAsync(guildId, channel.Id, pointsPerMinute, dailyCap, requireUnmuted, requireNotAlone, channelName: (channel as IGuildChannel)?.Name),
             RequiredRole.Admin,
             auditAction: "track.voice");
 
@@ -30,7 +30,7 @@ public class TrackChannelModule(IServiceScopeFactory scopeFactory) : MusterModul
         [SlashCommandParameter(Name = "daily-cap", Description = "Max message points per member per day (0 = uncapped)")] int dailyCap = 0)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>()
-                .SetTextAsync(guildId, channel.Id, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap),
+                .SetTextAsync(guildId, channel.Id, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap, channelName: (channel as IGuildChannel)?.Name),
             RequiredRole.Admin,
             auditAction: "track.text");
 

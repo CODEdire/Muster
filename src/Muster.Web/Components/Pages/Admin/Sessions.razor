@@ -37,6 +37,10 @@ else if (State == AccessState.Ready)
         {
             <a class="@(Tab == "history" ? "active" : "")" href="@TabUrl("history")">History</a>
         }
+        @if (_isStaff && _hasBackground)
+        {
+            <a class="@(Tab == "background" ? "active" : "")" href="@TabUrl("background")">Background</a>
+        }
     </nav>
 
     @if (Tab == "leaderboard")
@@ -56,6 +60,34 @@ else if (State == AccessState.Ready)
                         {
                             <tr><td>@rank</td><td>@Name(e.UserId)</td><td>@Dur(e.VoiceMinutes)</td></tr>
                             rank++;
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+    else if (Tab == "background" && _isStaff)
+    {
+        <div class="panel glass">
+            <div class="panel-head">
+                <h2>Background — tracked right now</h2>
+                <a class="btn btn-ghost btn-sm" href="@TabUrl("background")">Refresh</a>
+            </div>
+            @if (_background.Count == 0)
+            {
+                <p class="empty">No one is being tracked in a monitored channel right now.</p>
+            }
+            else
+            {
+                <table class="leaderboard">
+                    <thead><tr><th>Channel</th><th>Members present</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in _background)
+                        {
+                            <tr>
+                                <td>@Chan(c.ChannelId, c.ChannelName)</td>
+                                <td>@string.Join(", ", c.PresentUserIds.Select(Name))</td>
+                            </tr>
                         }
                     </tbody>
                 </table>
@@ -98,7 +130,7 @@ else if (State == AccessState.Ready)
                             <tr>
                                 <td><a href="/guilds/@GuildId/sessions/@s.Id">@s.Name</a></td>
                                 <td>@Src(s.Source)</td>
-                                <td>#@s.VoiceChannelId</td>
+                                <td>@Chan(s.VoiceChannelId, s.VoiceChannelName)</td>
                                 <td>@(s.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC</td>
                                 <td>@Dur(s.EndedAt is { } e ? Math.Max(0, (int)(e - s.StartedAt).TotalMinutes) : 0)</td>
                                 <td>@s.Attendees</td>
@@ -156,7 +188,7 @@ else if (State == AccessState.Ready)
                             <tr>
                                 <td><a href="/guilds/@GuildId/sessions/@s.Id">@s.Name</a></td>
                                 <td>@Src(s.Source)</td>
-                                <td>#@s.VoiceChannelId</td>
+                                <td>@Chan(s.VoiceChannelId, s.VoiceChannelName)</td>
                                 <td>@s.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
                                 <td>@s.PresentNow</td>
                                 <td>@s.Attendees</td>
@@ -189,16 +221,19 @@ else if (State == AccessState.Ready)
 
     private bool _isStaff;
     private bool _present;
+    private bool _hasBackground;
     private PagedResult<ActiveSessionView>? _active;
     private PagedResult<RecentSessionView>? _history;
     private IReadOnlyList<VoiceLeaderboardEntry> _leaderboard = [];
+    private IReadOnlyList<BackgroundChannelView> _background = [];
     private Dictionary<ulong, string> _names = [];
 
-    private string CurrentTab => Tab is "leaderboard" or "history" ? Tab : "active";
+    private string CurrentTab => Tab is "leaderboard" or "history" or "background" ? Tab : "active";
 
     protected override async Task LoadAsync()
     {
         _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
+        _hasBackground = _isStaff && await Db.TrackedChannels.AnyAsync(c => c.GuildId == GuildId && c.Kind == TrackedChannelKind.Voice && c.Mode != TrackedChannelMode.Off);
         Tab = CurrentTab;
         var page = Page <= 0 ? 1 : Page;
 
@@ -212,6 +247,11 @@ else if (State == AccessState.Ready)
         {
             _leaderboard = await Participation.VoiceLeaderboardAsync(GuildId, 50);
             _names = await Db.UserDisplayNameMapAsync(_leaderboard.Select(e => e.UserId).ToList());
+        }
+        else if (Tab == "background" && _isStaff)
+        {
+            _background = await Participation.BackgroundNowAsync(GuildId);
+            _names = await Db.UserDisplayNameMapAsync(_background.SelectMany(c => c.PresentUserIds).Distinct().ToList());
         }
         else if (Tab == "history" && _isStaff)
         {
@@ -227,6 +267,8 @@ else if (State == AccessState.Ready)
     private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");
 
     private static string Src(TrackingSessionSource s) => s == TrackingSessionSource.DiscordScheduledEvent ? "Scheduled event" : "Manual";
+
+    private static string Chan(ulong id, string name) => string.IsNullOrWhiteSpace(name) ? $"#{id}" : $"#{name}";
 
     private static string Dur(int minutes)
     {

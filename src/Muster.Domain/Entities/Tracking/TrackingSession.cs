@@ -23,6 +23,9 @@ public class TrackingSession
     /// <summary>Voice channel the session tracks presence in.</summary>
     public ulong VoiceChannelId { get; set; }
 
+    /// <summary>Channel name captured when the session opened (so the web can show a name, not a snowflake).</summary>
+    public string VoiceChannelName { get; set; } = string.Empty;
+
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? EndedAt { get; set; }
     public TrackingSessionStatus Status { get; set; } = TrackingSessionStatus.Active;
@@ -47,6 +50,11 @@ public class VoiceAttendance
 
     public DateTimeOffset FirstJoinedAt { get; set; }
     public DateTimeOffset? LastLeftAt { get; set; }
+
+    /// <summary>Last time the member was seen present in the channel (eligible or not) — distinguishes "still
+    /// here but paused" (muted/alone) from "disconnected/left" in the roster view.</summary>
+    public DateTimeOffset? LastSeenAt { get; set; }
+
     public int TotalMinutes { get; set; }
 
     /// <summary>Eligible seconds accrued but not yet rolled into a whole minute (sub-minute precision across flushes).</summary>

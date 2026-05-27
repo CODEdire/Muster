@@ -23,10 +23,34 @@ else if (State == AccessState.Ready && _detail is not null)
     <div class="page-head">
         <a class="back-link" href="/guilds/@GuildId/sessions">← Sessions</a>
         <h1>@_detail.Name</h1>
+        <p class="subtitle">@(_detail.Active ? "🟢 Active now" : "Ended")</p>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Type</div>
+            <div class="num">@(_detail.Source == TrackingSessionSource.DiscordScheduledEvent ? "Scheduled event" : "Manual")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Channel</div>
+            <div class="num">@(string.IsNullOrWhiteSpace(_detail.VoiceChannelName) ? $"#{_detail.VoiceChannelId}" : "#" + _detail.VoiceChannelName)</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Started</div>
+            <div class="num">@_detail.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">@(_detail.Active ? "Status" : "Ended")</div>
+            <div class="num">@(_detail.Active ? "Active" : _detail.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC")</div>
+        </div>
+    </div>
+
+    <div class="panel glass">
+        <h2>Rules</h2>
         <p class="subtitle">
-            @(_detail.Source == TrackingSessionSource.DiscordScheduledEvent ? "Scheduled event" : "Manual")
-            · #@_detail.VoiceChannelId
-            · @(_detail.Active ? "Active now" : "Ended " + (_detail.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—") + " UTC")
+            Anti-AFK guards for this session (for reference):
+            pause while muted/deafened — <strong>@(_detail.RequireUnmuted ? "on" : "off")</strong>;
+            pause while alone — <strong>@(_detail.RequireNotAlone ? "on" : "off")</strong>.
         </p>
     </div>
 
@@ -47,7 +71,7 @@ else if (State == AccessState.Ready && _detail is not null)
                             <td>@Name(m.UserId)</td>
                             <td>@m.FirstJoinedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
                             <td>@m.TotalMinutes</td>
-                            <td>@(m.PresentNow ? "🟢 in voice" : "—")</td>
+                            <td>@Status(m)</td>
                         </tr>
                     }
                 </tbody>
@@ -77,4 +101,25 @@ else if (State == AccessState.Ready && _detail is not null)
     }
 
     private string Name(ulong userId) => _names.GetValueOrDefault(userId, $"User {userId}");
+
+    /// <summary>Active = accruing; Paused = still present but muted/alone; Left = stale last-seen (disconnected).</summary>
+    private string Status(SessionMemberRow m)
+    {
+        if (_detail is not { Active: true })
+        {
+            return "—";
+        }
+
+        if (m.PresentNow)
+        {
+            return "🟢 Active";
+        }
+
+        if (m.LastSeenAt is { } seen && DateTimeOffset.UtcNow - seen < TimeSpan.FromMinutes(6))
+        {
+            return "🟡 Present (not earning)";
+        }
+
+        return m.LastSeenAt is { } last ? $"⚪ Left {last.UtcDateTime:HH:mm} UTC" : "⚪ Left";
+    }
 }

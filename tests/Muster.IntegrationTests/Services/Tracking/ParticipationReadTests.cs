@@ -173,6 +173,23 @@ public class ParticipationReadTests
     }
 
     [Fact]
+    public async Task BackgroundNow_GroupsPresentByChannel()
+    {
+        using var db = await SeededAsync();
+        db.TrackedChannels.Add(new TrackedChannel { Id = Guid.NewGuid(), GuildId = Guild, ChannelId = 500, ChannelName = "General", Kind = TrackedChannelKind.Voice, Mode = TrackedChannelMode.Reward });
+        var t = DateTimeOffset.UtcNow;
+        db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 10, ChannelId = 500, ActiveOpenSegmentStart = t });
+        db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 20, ChannelId = 500, ActiveOpenSegmentStart = null }); // not present
+        await db.SaveChangesAsync();
+
+        var bg = await new ParticipationReadService(db).BackgroundNowAsync(Guild);
+
+        var ch = Assert.Single(bg);
+        Assert.Equal("General", ch.ChannelName);
+        Assert.Equal(new[] { 10ul }, ch.PresentUserIds);
+    }
+
+    [Fact]
     public async Task SessionDetail_ReturnsRoster()
     {
         using var db = await SeededAsync();

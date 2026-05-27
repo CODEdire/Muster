@@ -14,6 +14,9 @@ public class TrackedChannel
     public ulong GuildId { get; set; }
     public ulong ChannelId { get; set; }
 
+    /// <summary>Channel name captured when configured (refreshed by the bot) so the web can show a name, not a snowflake.</summary>
+    public string ChannelName { get; set; } = string.Empty;
+
     public TrackedChannelKind Kind { get; set; }
     public TrackedChannelMode Mode { get; set; } = TrackedChannelMode.StatsOnly;
 

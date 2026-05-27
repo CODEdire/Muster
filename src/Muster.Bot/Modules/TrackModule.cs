@@ -20,7 +20,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             async (sp, guildId) =>
             {
                 var result = await sp.GetRequiredService<TrackingCommandService>()
-                    .StartAsync(guildId, Context.User.Id, channel.Id, name, requireUnmuted: skipMuted, requireNotAlone: skipAlone);
+                    .StartAsync(guildId, Context.User.Id, channel.Id, name, (channel as IGuildChannel)?.Name, requireUnmuted: skipMuted, requireNotAlone: skipAlone);
 
                 // Members already in the channel produce no voice event, so scan the current roster now
                 // (otherwise they wouldn't be counted until the next periodic sweep).

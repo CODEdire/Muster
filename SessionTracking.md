@@ -245,6 +245,21 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   and/or Session-start) **without broadcasting to every member**. Deferred deliberately — needs design
   (e.g. ephemeral on first interaction, a pinned info message, or onboarding text — not a mass DM/ping).
 
+## Sessions UX round 2 (post-P7)
+
+- **Round A — channel names, Background tab, detail polish. ✅ Done.** Channels show **by name** everywhere
+  (stored `TrackingSession.VoiceChannelName` / `TrackedChannel.ChannelName`, captured at creation and refreshed
+  from the gateway cache each reconcile by `GuildReconcileCoordinator`; falls back to `#id`). New **Background**
+  tab on the Sessions page (staff, shown when the guild has monitored voice channels): channels currently
+  carrying tracked presence + who's in them (`BackgroundNowAsync`). `SessionDetail` reworked: a stat-grid header
+  (type, channel, started, status), a **Rules** panel showing the session's anti-AFK guards (reference), and a
+  richer member **status** — Active (accruing) / Present-not-earning (muted/alone) / Left (with last-seen time),
+  derived from a new `VoiceAttendance.LastSeenAt` updated for every present member each reconcile. Migration
+  `ChannelNamesAndLastSeen`.
+- **Round B — Me dashboard + per-session opt-out + personal history.** *(next)* Split the wallet page into a Me
+  dashboard (active sessions you're in + wallet/points summary) with a per-session one-time opt-out, and a
+  personal session history.
+
 ## Privacy & consent
 
 Tracking voice/activity on a public bot needs a clear consent model.

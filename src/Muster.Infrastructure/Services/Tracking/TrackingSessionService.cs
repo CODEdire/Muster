@@ -22,20 +22,20 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
     /// </summary>
     public async Task<TrackingSession> OpenManualAsync(
         ulong guildId, ulong voiceChannelId, ulong openedBy,
-        string? name = null, bool? requireUnmuted = null, bool? requireNotAlone = null, CancellationToken ct = default)
+        string? name = null, string? channelName = null, bool? requireUnmuted = null, bool? requireNotAlone = null, CancellationToken ct = default)
         => await OpenAsync(
-            guildId, voiceChannelId, TrackingSessionSource.Manual, scheduledEventId: null, openedBy,
+            guildId, voiceChannelId, channelName, TrackingSessionSource.Manual, scheduledEventId: null, openedBy,
             name ?? "Manual session", requireUnmuted, requireNotAlone, ct);
 
     public async Task<TrackingSession> OpenForScheduledEventAsync(
-        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, string? name = null, CancellationToken ct = default)
+        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, string? name = null, string? channelName = null, CancellationToken ct = default)
         => await OpenAsync(
-            guildId, voiceChannelId, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0,
+            guildId, voiceChannelId, channelName, TrackingSessionSource.DiscordScheduledEvent, scheduledEventId, openedBy: 0,
             name ?? "Scheduled event", requireUnmuted: null, requireNotAlone: null, ct);
 
     /// <summary>Open a session bound to a scheduled event, unless one is already active for it.</summary>
     public async Task<TrackingSession?> EnsureForScheduledEventAsync(
-        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, string? name = null, CancellationToken ct = default)
+        ulong guildId, ulong voiceChannelId, ulong scheduledEventId, string? name = null, string? channelName = null, CancellationToken ct = default)
     {
         var alreadyOpen = await db.HasActiveSessionForEventAsync(guildId, scheduledEventId, ct);
         if (alreadyOpen)
@@ -43,7 +43,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             return null;
         }
 
-        return await OpenForScheduledEventAsync(guildId, voiceChannelId, scheduledEventId, name, ct);
+        return await OpenForScheduledEventAsync(guildId, voiceChannelId, scheduledEventId, name, channelName, ct);
     }
 
     /// <summary>Close the active session bound to a scheduled event, if any.</summary>
@@ -57,7 +57,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
     }
 
     private async Task<TrackingSession> OpenAsync(
-        ulong guildId, ulong voiceChannelId, TrackingSessionSource source, ulong? scheduledEventId,
+        ulong guildId, ulong voiceChannelId, string? channelName, TrackingSessionSource source, ulong? scheduledEventId,
         ulong openedBy, string name, bool? requireUnmuted, bool? requireNotAlone, CancellationToken ct)
     {
         // A null guard defaults to the guild's session-guard policy (so scheduled events follow it).
@@ -71,6 +71,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             Source = source,
             ScheduledEventId = scheduledEventId,
             VoiceChannelId = voiceChannelId,
+            VoiceChannelName = channelName ?? string.Empty,
             StartedAt = DateTimeOffset.UtcNow,
             Status = TrackingSessionStatus.Active,
             OpenedBy = openedBy,
@@ -117,6 +118,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 var eligible = (!session.RequireUnmuted || !member.IsMutedOrDeafened)
                     && (!session.RequireNotAlone || humans.Count >= 2);
                 var att = GetOrCreateAttendance(session.Id, byUser, member.UserId, now);
+                att.LastSeenAt = now; // present in the channel (eligible or not)
 
                 if (eligible)
                 {

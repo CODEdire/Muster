@@ -76,6 +76,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Hardening (P7)** — AllOut excluded from sessions + mid-session opt-out eviction + `MaxSessionHours` auto-close (P7a); configurable message anti-spam (`MessagesPerPoint`/cooldown/daily cap via `MessageRewardState`) (P7b); raw `ActivityRecord` pruning (`ActivityRetentionDays` + daily sweep) (P7c).
 - [x] **Scale & robustness (P7.5)** — `GuildReconcileCoordinator` debounces voice-event bursts + serializes reconciles per guild (kills the thundering herd + bookkeeping races); 12h session flush clamp for gateway gaps. Config cache + leader-gating deliberately deferred (see SessionTracking.md).
 - [x] **Min-segment threshold (P7d)** — `MinTrackedSeconds` drops drive-by session attendees (under the minimum) from the roster/award at leave + close.
+- [x] **Sessions UX round A** — channels shown by name (stored + cache-refreshed); Background tab (who's tracked where, live); SessionDetail header + rules panel + member status (Active/Paused/Left via `VoiceAttendance.LastSeenAt`).
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
 ## M4 — Scoring, currency & messaging
