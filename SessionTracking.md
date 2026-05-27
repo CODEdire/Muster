@@ -210,9 +210,12 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   *Future:* the Active tab stays the single SSE/SignalR seam.
 - **P7 — Hardening.** Minimum segment threshold (ignore sub-minute drive-bys to cut noise); other
   robustness/cleanup as it surfaces.
-- **P8 — Multipliers.** Time-bounded reward multipliers: event windows (2× during a scheduled event /
-  admin "happy hour") **and recurring peak-time schedules** (e.g. ×1.5 on weeknights 7–10pm in the
-  guild's time zone). Applies to POINTS (and Session COIN). Stacking rules TBD.
+- **P8 — Multipliers & bonuses.** Time-bounded reward multipliers: event windows (2× during a scheduled
+  event / admin "happy hour") **and recurring peak-time schedules** (e.g. ×1.5 on weeknights 7–10pm in the
+  guild's time zone). Applies to POINTS (and Session COIN). Stacking rules TBD. **Plus configurable
+  presence bonuses** — a flat bonus for being there at the **start** and/or **end** of a session (rewards
+  punctuality + staying to the finish); per-guild amounts, awarded on session close to members whose
+  attendance window covered the open/close moments.
 - **P9 — Tracking transparency notice.** How to inform members that participation is tracked (first-touch
   and/or Session-start) **without broadcasting to every member**. Deferred deliberately — needs design
   (e.g. ephemeral on first interaction, a pinned info message, or onboarding text — not a mass DM/ping).
