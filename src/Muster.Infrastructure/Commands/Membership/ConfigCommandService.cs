@@ -164,6 +164,30 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             : $"Sessions auto-close after {hours} hour(s).");
     }
 
+    /// <summary>Set the minimum seconds a member must accrue in a session to stay on its roster (0 = keep everyone).</summary>
+    public async Task<CommandResult> SetMinTrackedSecondsAsync(ulong guildId, int seconds, CancellationToken ct = default)
+    {
+        if (seconds < 0)
+        {
+            return CommandResult.Error("Minimum tracked seconds can't be negative (0 = keep everyone).");
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.MinTrackedSeconds = seconds;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(seconds == 0
+            ? "Drive-by filtering off — every attendee is kept."
+            : $"Members who accrue under {seconds}s in a session are dropped from its roster.");
+    }
+
     /// <summary>Set how many days of raw activity records to keep (0 = keep forever). Rollups are always kept.</summary>
     public async Task<CommandResult> SetActivityRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
     {

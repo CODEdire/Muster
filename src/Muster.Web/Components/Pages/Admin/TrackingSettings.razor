@@ -56,6 +56,7 @@ else if (State == AccessState.Ready)
             <label>Minutes per coin <InputNumber @bind-Value="Settings.MinutesPerCoin" /> <span class="subtitle">0 = no coin on session close</span></label>
             <label>Max session hours <InputNumber @bind-Value="Settings.MaxSessionHours" /> <span class="subtitle">auto-close a never-stopped session (0 = off)</span></label>
             <label>Activity retention (days) <InputNumber @bind-Value="Settings.ActivityRetentionDays" /> <span class="subtitle">prune raw records; rollups kept (0 = forever)</span></label>
+            <label>Min session seconds <InputNumber @bind-Value="Settings.MinTrackedSeconds" /> <span class="subtitle">drop drive-by attendees under this (0 = keep all)</span></label>
             <div class="btn-row"><button type="submit">Save</button></div>
         </EditForm>
     </div>
@@ -151,6 +152,7 @@ else if (State == AccessState.Ready)
             Settings.MinutesPerCoin = s.MinutesPerCoin;
             Settings.MaxSessionHours = s.MaxSessionHours;
             Settings.ActivityRetentionDays = s.ActivityRetentionDays;
+            Settings.MinTrackedSeconds = s.MinTrackedSeconds;
         }
     }
 
@@ -160,6 +162,7 @@ else if (State == AccessState.Ready)
         await Config.SetApplyGuardsToSessionsAsync(GuildId, Settings.ApplyGuardsToSessions);
         await Config.SetMaxSessionHoursAsync(GuildId, Settings.MaxSessionHours);
         await Config.SetActivityRetentionAsync(GuildId, Settings.ActivityRetentionDays);
+        await Config.SetMinTrackedSecondsAsync(GuildId, Settings.MinTrackedSeconds);
         var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
 
         await AuditAsync("config.tracking", $"background-opt-in={Settings.BackgroundOptIn}; session-guards={Settings.ApplyGuardsToSessions}; coin={Settings.CoinCurrency}/{Settings.MinutesPerCoin}; max-session-h={Settings.MaxSessionHours}; activity-retention={Settings.ActivityRetentionDays}");
@@ -217,6 +220,7 @@ else if (State == AccessState.Ready)
         public int MinutesPerCoin { get; set; }
         public int MaxSessionHours { get; set; }
         public int ActivityRetentionDays { get; set; }
+        public int MinTrackedSeconds { get; set; }
     }
 
     public class AddChannelInput

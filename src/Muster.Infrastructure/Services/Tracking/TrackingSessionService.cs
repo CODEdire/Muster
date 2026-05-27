@@ -103,6 +103,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         // Members who opted out of all tracking are excluded from sessions entirely (no attendance row).
         var presentUserIds = occupantsByChannel.Values.SelectMany(v => v).Where(m => !m.IsBot).Select(m => m.UserId).Distinct().ToList();
         var choices = await db.TrackingChoicesAsync(guildId, presentUserIds, ct);
+        var minTracked = (await db.GetSettingsAsync(guildId, ct)).MinTrackedSeconds;
 
         foreach (var session in sessions)
         {
@@ -139,11 +140,19 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             {
                 FlushAttendance(att, now);
                 att.OpenSegmentStart = null;
+
+                // Drop a drive-by: a member who left having accrued less than the guild's minimum.
+                if (minTracked > 0 && TotalSeconds(att) < minTracked)
+                {
+                    db.VoiceAttendance.Remove(att);
+                }
             }
         }
 
         await db.SaveChangesAsync(ct);
     }
+
+    private static int TotalSeconds(VoiceAttendance a) => a.TotalMinutes * 60 + a.CarrySeconds;
 
     /// <summary>
     /// Close active sessions that have run past their guild's <c>MaxSessionHours</c> — a safety net so a session
@@ -247,6 +256,18 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         {
             FlushAttendance(attendance, now);
             attendance.OpenSegmentStart = null;
+        }
+
+        // Drop drive-bys (members who never accrued the guild's minimum) so they're neither counted nor rewarded.
+        var minTracked = (await db.GetSettingsAsync(session.GuildId, ct)).MinTrackedSeconds;
+        if (minTracked > 0)
+        {
+            var driveBys = session.Attendance.Where(a => TotalSeconds(a) < minTracked).ToList();
+            foreach (var d in driveBys)
+            {
+                db.VoiceAttendance.Remove(d);
+                session.Attendance.Remove(d);
+            }
         }
 
         await db.SaveChangesAsync(ct);

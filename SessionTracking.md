@@ -216,8 +216,11 @@ spanning a season rollover is split exactly at the boundary by construction. Day
     tracked in `MessageRewardState`; closes the spam-to-mint hole. Configurable via `/track-text` + web.
   - *P7c — activity pruning:* `ActivityRetentionDays` + daily `ActivityPruneScheduler` deletes raw
     `ActivityRecord` rows beyond the window (rollups kept).
-  - *Deferred:* minimum-segment threshold (lowest value; 0-minute flushes are already harmless) and the
-    stream/video mute-exemption — nice-to-haves, not scheduled.
+  - *P7d — minimum-segment threshold:* `MinTrackedSeconds` (0 = off) drops drive-by attendees — a member who
+    leaves a session having accrued less than the minimum is removed from its roster (at the leave reconcile and
+    again at close), so they don't inflate the attendee count or get rewarded. Scoped to sessions; the background
+    plane is already noise-free (sub-minute presence floors to 0 minutes and writes no rollup).
+  - *Deferred:* stream/video mute-exemption — nice-to-have, not scheduled.
 - **P7.5 — Scale & robustness. ✅ Done (with reasoned scope).**
   - *Thundering-herd + concurrency:* `GuildReconcileCoordinator` (bot singleton) debounces voice-event bursts
     into one reconcile per guild (~2s window) and serializes per guild via a keyed semaphore — so the voice

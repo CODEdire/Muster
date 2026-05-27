@@ -174,6 +174,30 @@ public class ParticipationTests
     }
 
     [Fact]
+    public async Task MinTrackedSeconds_DropsDriveBy_KeepsLongerAttendee()
+    {
+        var (db, _) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+        var guild = await db.Guilds.FirstAsync();
+        guild.Settings.MinTrackedSeconds = 60;
+        guild.Settings = guild.Settings;
+        await db.SaveChangesAsync();
+
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+        await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        var t0 = DateTimeOffset.UtcNow;
+
+        // Both join; user 10 leaves after 20s (drive-by), user 20 leaves after 5 min.
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10, 20), t0);
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 20), t0.AddSeconds(20));   // 10 left
+        await sessions.ReconcileSessionsAsync(1, NoOne, t0.AddMinutes(5));                // 20 left
+
+        var rows = await db.VoiceAttendance.ToListAsync();
+        var row = Assert.Single(rows);          // the drive-by row was dropped
+        Assert.Equal(20ul, row.UserId);
+    }
+
+    [Fact]
     public async Task SessionFlush_ClampsAbsurdGap()
     {
         var (db, _) = await SeededAsync();

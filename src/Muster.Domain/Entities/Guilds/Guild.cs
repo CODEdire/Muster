@@ -71,6 +71,10 @@ public class GuildSettings
     /// (daily rollups are kept, so stats survive). 0 (default) = keep raw rows forever.</summary>
     public int ActivityRetentionDays { get; set; }
 
+    /// <summary>Minimum seconds a member must accrue in a session to be kept on its attendance roster — drops
+    /// drive-by join/leaves so they don't clutter the roster or attendee count. 0 (default) = keep everyone.</summary>
+    public int MinTrackedSeconds { get; set; }
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>
