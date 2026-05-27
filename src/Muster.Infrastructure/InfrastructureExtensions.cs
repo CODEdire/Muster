@@ -42,6 +42,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<BackgroundTrackingService>();
+        builder.Services.AddScoped<RewardMultiplierService>();
         builder.Services.AddScoped<ParticipationReadService>();
         builder.Services.AddScoped<ActivityService>();
         builder.Services.AddScoped<SeasonService>();
