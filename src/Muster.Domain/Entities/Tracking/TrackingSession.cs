@@ -57,6 +57,12 @@ public class VoiceAttendance
     /// <summary>Eligible seconds accrued but not yet rolled into a whole minute (sub-minute precision across flushes).</summary>
     public int CarrySeconds { get; set; }
 
+    /// <summary>Multiplier-weighted eligible seconds: each flush adds <c>elapsedSeconds × factor</c> where factor is
+    /// the reward multiplier active for that segment. The reward at close is computed from this (weighted) total,
+    /// while <see cref="TotalMinutes"/>/<see cref="CarrySeconds"/> keep the raw time-present for display. Equals the
+    /// raw seconds when no multiplier ever applied.</summary>
+    public decimal WeightedSeconds { get; set; }
+
     /// <summary>Start of the currently-open eligible presence segment, or null when the member isn't present
     /// (or isn't currently eligible under the session's anti-AFK guards).</summary>
     public DateTimeOffset? OpenSegmentStart { get; set; }

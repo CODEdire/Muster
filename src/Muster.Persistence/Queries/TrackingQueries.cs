@@ -108,6 +108,20 @@ public static class TrackingQueries
             .Where(c => c.Kind == GuildChannelKind.Voice && c.Mode != TrackedChannelMode.Off && c.DeletedAt == null)
             .Select(c => c.GuildId).Distinct().ToListAsync(ct);
 
+    // --- Reward multipliers (P8) ---
+
+    /// <summary>A guild's reward multipliers (all, for the admin list).</summary>
+    public static Task<List<RewardMultiplier>> ListMultipliersAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.RewardMultipliers.Where(m => m.GuildId == guildId).ToListAsync(ct);
+
+    /// <summary>A guild's enabled reward multipliers (untracked — the resolver reads these in the hot path).</summary>
+    public static Task<List<RewardMultiplier>> ListEnabledMultipliersAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.RewardMultipliers.AsNoTracking().Where(m => m.GuildId == guildId && m.Enabled).ToListAsync(ct);
+
+    /// <summary>Find one of a guild's reward multipliers (tracked, for edit/remove).</summary>
+    public static Task<RewardMultiplier?> FindMultiplierAsync(this MusterDbContext db, ulong guildId, Guid id, CancellationToken ct = default)
+        => db.RewardMultipliers.FirstOrDefaultAsync(m => m.GuildId == guildId && m.Id == id, ct);
+
     /// <summary>A member's season participation accumulator for a season, if it exists.</summary>
     public static Task<SeasonParticipation?> FindSeasonParticipationAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid seasonId, CancellationToken ct = default)

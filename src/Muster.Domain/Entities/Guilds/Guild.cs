@@ -75,6 +75,29 @@ public class GuildSettings
     /// drive-by join/leaves so they don't clutter the roster or attendee count. 0 (default) = keep everyone.</summary>
     public int MinTrackedSeconds { get; set; }
 
+    // --- Reward multipliers & presence bonuses (P8) ---
+
+    /// <summary>How overlapping time-window multipliers combine: take the highest active factor (default) or
+    /// multiply them together. The role-multiplier factor always multiplies the resulting time factor.</summary>
+    public Enums.MultiplierStacking MultiplierStacking { get; set; } = Enums.MultiplierStacking.HighestWins;
+
+    /// <summary>Upper clamp on the final effective multiplier (after stacking + role factor). 0 (default) = no cap.</summary>
+    public decimal MultiplierCap { get; set; }
+
+    /// <summary>Flat POINTS bonus awarded on session close to members present at the start (see
+    /// <see cref="StartBonusWindowMinutes"/>). 0 (default) = no start bonus.</summary>
+    public int SessionStartBonus { get; set; }
+
+    /// <summary>Flat POINTS bonus awarded on session close to members present at the end (see
+    /// <see cref="EndBonusWindowMinutes"/>). 0 (default) = no end bonus.</summary>
+    public int SessionEndBonus { get; set; }
+
+    /// <summary>A member qualifies for the start bonus if they joined within this many minutes of the session start.</summary>
+    public int StartBonusWindowMinutes { get; set; } = 5;
+
+    /// <summary>A member qualifies for the end bonus if they were still present within this many minutes of the session end.</summary>
+    public int EndBonusWindowMinutes { get; set; } = 5;
+
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
     /// unchanged); only line-item history is compacted. 0 (default) = never prune (keep full history).</summary>

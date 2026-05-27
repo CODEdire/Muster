@@ -80,6 +80,55 @@ public static class AfkGuardsExtensions
     public static bool NotAlone(this AfkGuards g) => g.HasFlag(AfkGuards.NotAlone);
 }
 
+/// <summary>What kind of window/condition a <see cref="Muster.Domain.Entities.Tracking.RewardMultiplier"/> matches.</summary>
+public enum MultiplierKind
+{
+    /// <summary>A single absolute time window (StartsAt..EndsAt) — a one-off "happy hour" / event boost.</summary>
+    OneOff = 0,
+
+    /// <summary>A weekly recurring window (WeekDays + StartTime..EndTime), evaluated in the guild's time zone.</summary>
+    Recurring = 1,
+
+    /// <summary>Always-on factor for members holding a given role (VIP / booster). Multiplies the time factor.</summary>
+    Role = 2,
+}
+
+/// <summary>Which reward planes a multiplier applies to (combinable).</summary>
+[Flags]
+public enum MultiplierScope
+{
+    None = 0,
+    BackgroundVoice = 1,
+    Messages = 2,
+    Sessions = 4,
+    All = BackgroundVoice | Messages | Sessions,
+}
+
+/// <summary>How overlapping time-window multipliers combine into one factor.</summary>
+public enum MultiplierStacking
+{
+    /// <summary>Use the single highest active factor (predictable, no runaway).</summary>
+    HighestWins = 0,
+
+    /// <summary>Multiply all active factors together.</summary>
+    Multiplicative = 1,
+}
+
+/// <summary>Days of the week a recurring multiplier is active (combinable). Mirrors <see cref="System.DayOfWeek"/> order.</summary>
+[Flags]
+public enum WeekDays
+{
+    None = 0,
+    Sunday = 1,
+    Monday = 2,
+    Tuesday = 4,
+    Wednesday = 8,
+    Thursday = 16,
+    Friday = 32,
+    Saturday = 64,
+    All = Sunday | Monday | Tuesday | Wednesday | Thursday | Friday | Saturday,
+}
+
 /// <summary>How a monitored channel is treated for background (always-on) participation.</summary>
 public enum TrackedChannelMode
 {

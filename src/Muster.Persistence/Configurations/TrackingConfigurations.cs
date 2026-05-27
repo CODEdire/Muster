@@ -81,3 +81,14 @@ public class SessionOptOutConfiguration : IEntityTypeConfiguration<SessionOptOut
         e.HasIndex(x => new { x.SessionId, x.UserId }).IsUnique();
     }
 }
+
+public class RewardMultiplierConfiguration : IEntityTypeConfiguration<RewardMultiplier>
+{
+    public void Configure(EntityTypeBuilder<RewardMultiplier> e)
+    {
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => new { x.GuildId, x.Enabled });
+        e.Property(x => x.Name).HasMaxLength(100);
+        e.Property(x => x.Factor).HasPrecision(6, 3);
+    }
+}
