@@ -55,7 +55,7 @@ else if (State == AccessState.Ready)
         else
         {
             <table class="leaderboard">
-                <thead><tr><th>Session</th><th>Channel</th><th>Your time</th><th>Status</th></tr></thead>
+                <thead><tr><th>Session</th><th>Channel</th><th>Your time</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var s in _active)
                     {
@@ -64,22 +64,15 @@ else if (State == AccessState.Ready)
                             <td>@Chan(s.VoiceChannelName)</td>
                             <td>@Dur(s.MyMinutes)</td>
                             <td>@(s.PresentNow ? "🟢 Active" : "🟡 Paused")</td>
+                            <td>
+                                <EditForm Model="_optOutMarker" FormName="@($"optout-{s.SessionId}")" OnValidSubmit="() => OptOutAsync(s.SessionId)" Enhance>
+                                    <button type="submit" class="btn btn-sm btn-ghost">Opt out</button>
+                                </EditForm>
+                            </td>
                         </tr>
                     }
                 </tbody>
             </table>
-            <EditForm class="form-grid" Model="OptOut" FormName="session-optout" OnValidSubmit="OptOutAsync" Enhance>
-                <label>Opt out of a session (one time)
-                    <InputSelect @bind-Value="OptOut.SessionId">
-                        <option value="">— select —</option>
-                        @foreach (var s in _active)
-                        {
-                            <option value="@s.SessionId">@s.Name</option>
-                        }
-                    </InputSelect>
-                </label>
-                <div class="btn-row"><button type="submit">Opt out</button></div>
-            </EditForm>
             <p class="subtitle">Opting out removes you from that one session for the rest of it — it doesn't change your standing preference (set that on the <a href="/guilds/@GuildId/wallet#privacy">wallet page</a>).</p>
         }
     </div>
@@ -111,7 +104,7 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    [SupplyParameterFromForm] private OptOutInput OptOut { get; set; } = new();
+    private readonly object _optOutMarker = new();
 
     private long _points;
     private MemberVoiceStats _voice = new(0, 0, 0);
@@ -132,14 +125,13 @@ else if (State == AccessState.Ready)
         }
     }
 
-    private async Task OptOutAsync()
+    private async Task OptOutAsync(Guid sessionId)
     {
-        if (Guid.TryParse(OptOut.SessionId, out var id) && await Sessions.OptOutMemberAsync(GuildId, id, UserId))
+        if (await Sessions.OptOutMemberAsync(GuildId, sessionId, UserId))
         {
             Message = "You've opted out of that session.";
         }
 
-        OptOut = new OptOutInput();
         await LoadAsync();
     }
 
@@ -150,10 +142,5 @@ else if (State == AccessState.Ready)
         var h = minutes / 60;
         var m = minutes % 60;
         return h > 0 ? $"{h}h {m}m" : $"{m}m";
-    }
-
-    public class OptOutInput
-    {
-        public string? SessionId { get; set; }
     }
 }

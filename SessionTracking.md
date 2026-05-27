@@ -312,7 +312,8 @@ session from the active list (per-row "End" button) or its detail page — both 
 These pages use Blazor **enhanced navigation + enhanced forms** (`blazor.web.js`): link clicks and form posts
 fetch + DOM-patch instead of full reloads, so buttons feel responsive — **no SignalR circuit, still stateless
 HTTP**. The per-row End button is a `<EditForm Enhance>` with a unique `FormName` per row (the session id rides
-the FormName→handler match, avoiding per-row model binding). Enhanced nav is global; the progressive-enhancement
+the FormName→handler match, avoiding per-row model binding). The Me dashboard uses the same per-row pattern
+for one-time session **opt-out** (replacing the old single-picker form). Enhanced nav is global; the progressive-enhancement
 scripts (theme, time zone, EasyMDE, CodeMirror) re-run on Blazor's `enhancedload` event (`enhanced-init.js`,
 all idempotent) so the markdown/JSON editors survive navigation. The Tracking settings
 add/remove-channel forms now use synced-channel dropdowns (kind auto-detected, shown by name).
