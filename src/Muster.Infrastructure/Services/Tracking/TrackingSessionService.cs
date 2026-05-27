@@ -145,8 +145,18 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
         var rate = pointsPerMinute ?? await ResolvePointsPerMinuteAsync(session.GuildId, ct);
 
-        foreach (var attendance in session.Attendance.Where(a => a.TotalMinutes > 0))
+        var rewardable = session.Attendance.Where(a => a.TotalMinutes > 0).ToList();
+        var choices = await db.TrackingChoicesAsync(
+            session.GuildId, rewardable.Select(a => a.UserId).ToList(), ct);
+
+        foreach (var attendance in rewardable)
         {
+            // Members who opted out of all tracking aren't rewarded (or counted) even for a deliberate session.
+            if (choices.GetValueOrDefault(attendance.UserId) == TrackingChoice.AllOut)
+            {
+                continue;
+            }
+
             // Attendance is still recorded for everyone, but only eligible participants are rewarded.
             if (!await auth.IsParticipantAsync(session.GuildId, attendance.UserId, ct))
             {

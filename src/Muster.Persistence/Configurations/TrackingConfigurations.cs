@@ -41,3 +41,33 @@ public class DailyActivityRollupConfiguration : IEntityTypeConfiguration<DailyAc
         e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId, x.Date }).IsUnique();
     }
 }
+
+public class TrackedChannelConfiguration : IEntityTypeConfiguration<TrackedChannel>
+{
+    public void Configure(EntityTypeBuilder<TrackedChannel> e)
+    {
+        e.HasKey(x => x.Id);
+        // One rule per channel per guild.
+        e.HasIndex(x => new { x.GuildId, x.ChannelId }).IsUnique();
+    }
+}
+
+public class BackgroundVoicePresenceConfiguration : IEntityTypeConfiguration<BackgroundVoicePresence>
+{
+    public void Configure(EntityTypeBuilder<BackgroundVoicePresence> e)
+    {
+        e.HasKey(x => x.Id);
+        // One accrual row per member per channel; reconcile looks it up by this key.
+        e.HasIndex(x => new { x.GuildId, x.UserId, x.ChannelId }).IsUnique();
+    }
+}
+
+public class SeasonParticipationConfiguration : IEntityTypeConfiguration<SeasonParticipation>
+{
+    public void Configure(EntityTypeBuilder<SeasonParticipation> e)
+    {
+        e.HasKey(x => x.Id);
+        // One accumulator per member per season.
+        e.HasIndex(x => new { x.GuildId, x.UserId, x.SeasonId }).IsUnique();
+    }
+}

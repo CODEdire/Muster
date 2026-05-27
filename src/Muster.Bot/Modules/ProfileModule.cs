@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Bot.Autocomplete;
+using Muster.Domain.Enums;
 using Muster.Infrastructure.Commands;
+using Muster.Infrastructure.Commands.Tracking;
 using Muster.Infrastructure.Services.Platform;
 using NetCord.Services.ApplicationCommands;
 
@@ -9,6 +11,14 @@ namespace Muster.Bot.Modules;
 /// <summary>Per-user preferences. The time zone controls how quest start/expiry dates you enter are read.</summary>
 public class ProfileModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
 {
+    [SlashCommand("track-privacy", "Choose how this server tracks your participation.")]
+    public Task PrivacyAsync(
+        [SlashCommandParameter(Name = "choice", Description = "Default = follow server; In = opt in; BackgroundOut = no passive tracking; AllOut = none")]
+        TrackingChoice choice)
+        => RunAsync(
+            (sp, guildId) => sp.GetRequiredService<TrackingPreferenceCommandService>().SetAsync(guildId, Context.User.Id, choice),
+            RequiredRole.None);
+
     [SlashCommand("timezone", "Show your time zone — or set it by picking one (controls how quest dates you enter are read).")]
     public Task TimeZoneAsync(
         [SlashCommandParameter(Name = "zone", Description = "Pick a zone to set it — leave empty to see your current one",

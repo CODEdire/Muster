@@ -41,11 +41,15 @@ public class GuildSettings
     /// </summary>
     public List<ulong> ParticipantRoleIds { get; set; } = [];
 
-    /// <summary>Channels whose activity is recorded (empty = all).</summary>
-    public List<ulong> TrackedChannelIds { get; set; } = [];
-
     /// <summary>Points awarded per minute of voice attendance when a tracking session closes.</summary>
     public int PointsPerVoiceMinute { get; set; } = 1;
+
+    /// <summary>
+    /// Background-plane consent default for members who haven't set their own preference. <c>false</c> (default)
+    /// = opt-out: background tracking is on, members may leave. <c>true</c> = opt-in: members aren't
+    /// background-tracked until they explicitly opt in. Does not affect bounded Sessions.
+    /// </summary>
+    public bool BackgroundTrackingOptIn { get; set; }
 
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is

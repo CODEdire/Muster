@@ -37,6 +37,11 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "days", Description = "Days of detail to keep before compacting to checkpoints (0 = platform default)")] int days)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetLedgerRetentionAsync(guildId, days), RequiredRole.Admin, "config.ledgerRetention");
 
+    [SlashCommand("config-background-tracking", "Set background tracking to opt-in (members must opt in) or opt-out (on by default).")]
+    public Task BackgroundTrackingAsync(
+        [SlashCommandParameter(Name = "opt-in", Description = "true = members must opt in; false = on by default (members may opt out)")] bool optIn)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetBackgroundOptInAsync(guildId, optIn), RequiredRole.Admin, "config.backgroundTracking");
+
     [SlashCommand("config-show", "Show the current role mapping.")]
     public Task ShowAsync()
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ShowAsync(guildId), RequiredRole.Admin);

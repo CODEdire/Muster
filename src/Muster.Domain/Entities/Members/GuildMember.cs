@@ -1,4 +1,5 @@
 using Muster.Domain.Entities.Guilds;
+using Muster.Domain.Enums;
 
 namespace Muster.Domain.Entities.Members;
 
@@ -14,6 +15,9 @@ public class GuildMember
     public List<ulong> RoleIds { get; set; } = [];
 
     public DateTimeOffset JoinedAt { get; set; }
+
+    /// <summary>The member's tracking/privacy preference for this guild (see <see cref="TrackingChoice"/>).</summary>
+    public TrackingChoice Tracking { get; set; } = TrackingChoice.Default;
 
     public Guild? Guild { get; set; }
     public DiscordUser? User { get; set; }

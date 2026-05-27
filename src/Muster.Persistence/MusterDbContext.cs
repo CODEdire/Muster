@@ -20,6 +20,9 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<VoiceAttendance> VoiceAttendance => Set<VoiceAttendance>();
     public DbSet<ActivityRecord> ActivityRecords => Set<ActivityRecord>();
     public DbSet<DailyActivityRollup> DailyActivityRollups => Set<DailyActivityRollup>();
+    public DbSet<TrackedChannel> TrackedChannels => Set<TrackedChannel>();
+    public DbSet<BackgroundVoicePresence> BackgroundVoicePresences => Set<BackgroundVoicePresence>();
+    public DbSet<SeasonParticipation> SeasonParticipations => Set<SeasonParticipation>();
 
     public DbSet<GuildQuest> Quests => Set<GuildQuest>();
     public DbSet<QuestParticipant> QuestParticipants => Set<QuestParticipant>();

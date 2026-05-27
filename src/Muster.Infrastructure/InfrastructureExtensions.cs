@@ -41,6 +41,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<MusterService>();
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
+        builder.Services.AddScoped<BackgroundTrackingService>();
         builder.Services.AddScoped<ActivityService>();
         builder.Services.AddScoped<SeasonService>();
         builder.Services.AddScoped<MemberSyncService>();
@@ -63,6 +64,8 @@ public static class InfrastructureExtensions
 
         // Platform-independent command services (used by the bot adapters and, later, the web/API).
         builder.Services.AddScoped<TrackingCommandService>();
+        builder.Services.AddScoped<TrackedChannelCommandService>();
+        builder.Services.AddScoped<TrackingPreferenceCommandService>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();

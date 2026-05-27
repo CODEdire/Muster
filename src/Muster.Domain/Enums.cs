@@ -18,6 +18,46 @@ public enum ActivityType
     Voice = 1,
 }
 
+/// <summary>Which signal a <see cref="Muster.Domain.Entities.Tracking.TrackedChannel"/> monitors.</summary>
+public enum TrackedChannelKind
+{
+    Voice = 0,
+    Text = 1,
+}
+
+/// <summary>
+/// A member's per-guild tracking preference. Governs the always-on "background" plane (active-time stats +
+/// background reward) and, at the strongest level, bounded Sessions too. <see cref="Default"/> follows the
+/// guild's background policy (<c>GuildSettings.BackgroundTrackingOptIn</c>).
+/// </summary>
+public enum TrackingChoice
+{
+    /// <summary>Follow the guild policy: background on unless the guild is opt-in; Sessions always tracked.</summary>
+    Default = 0,
+
+    /// <summary>Explicitly opt into all tracking (overrides a guild opt-in default).</summary>
+    In = 1,
+
+    /// <summary>Opt out of the background plane (no active-time stats, no background reward); Sessions still tracked.</summary>
+    BackgroundOut = 2,
+
+    /// <summary>Opt out of everything — background and Sessions.</summary>
+    AllOut = 3,
+}
+
+/// <summary>How a monitored channel is treated for background (always-on) participation.</summary>
+public enum TrackedChannelMode
+{
+    /// <summary>Not monitored (a row exists only to hold disabled config / history).</summary>
+    Off = 0,
+
+    /// <summary>Activity is recorded for stats/leaderboards but never awards currency.</summary>
+    StatsOnly = 1,
+
+    /// <summary>Activity accrues and awards currency (subject to anti-AFK guards + daily cap).</summary>
+    Reward = 2,
+}
+
 public enum QuestStatus
 {
     Draft = 0,
@@ -138,6 +178,7 @@ public enum CurrencyLedgerSource
     Transfer = 6, // member-to-member move (two legs share one source key with :out/:in suffixes)
     Adjustment = 7, // staff balance correction (mint/adjust outside the connector loop)
     Checkpoint = 8, // carry-forward opening balance written when pruning history (sum of the pruned rows)
+    Background = 9, // always-on per-channel participation (voice presence / activity outside a bounded session)
 }
 
 public enum AppRole

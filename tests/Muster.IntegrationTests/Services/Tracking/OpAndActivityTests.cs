@@ -77,7 +77,14 @@ public class OpAndActivityTests
     public async Task MessageActivity_RecordsRollup_AndDedupes()
     {
         using var db = await SeededAsync();
-        var sut = new ActivityService(db);
+        db.TrackedChannels.Add(new TrackedChannel
+        {
+            Id = Guid.NewGuid(), GuildId = 1, ChannelId = 100,
+            Kind = TrackedChannelKind.Text, Mode = TrackedChannelMode.StatsOnly,
+        });
+        await db.SaveChangesAsync();
+
+        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
         var now = DateTimeOffset.UtcNow;
 
         await sut.RecordMessageAsync(1, channelId: 100, userId: 10, messageId: 555, now);
@@ -87,5 +94,35 @@ public class OpAndActivityTests
         Assert.Equal(2, await db.ActivityRecords.CountAsync()); // 555 once + 556
         var rollup = await db.DailyActivityRollups.SingleAsync();
         Assert.Equal(2, rollup.MessageCount);
+    }
+
+    [Fact]
+    public async Task MessageActivity_UntrackedChannel_Ignored()
+    {
+        using var db = await SeededAsync();
+        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+
+        await sut.RecordMessageAsync(1, channelId: 999, userId: 10, messageId: 1, DateTimeOffset.UtcNow);
+
+        Assert.Equal(0, await db.ActivityRecords.CountAsync()); // not a tracked text channel
+    }
+
+    [Fact]
+    public async Task MessageActivity_RewardChannel_AwardsPointsPerMessage()
+    {
+        using var db = await SeededAsync();
+        db.TrackedChannels.Add(new TrackedChannel
+        {
+            Id = Guid.NewGuid(), GuildId = 1, ChannelId = 100,
+            Kind = TrackedChannelKind.Text, Mode = TrackedChannelMode.Reward, PointsPerMessage = 3,
+        });
+        await db.SaveChangesAsync();
+
+        var sut = new ActivityService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db));
+
+        await sut.RecordMessageAsync(1, channelId: 100, userId: 10, messageId: 1, DateTimeOffset.UtcNow);
+
+        Assert.Equal(3, (await db.Wallets.SingleAsync(w => w.UserId == 10)).Balance);
+        Assert.Equal(1, await db.ActivityRecords.CountAsync());
     }
 }

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muster.Persistence;
 
@@ -11,9 +12,11 @@ using Muster.Persistence;
 namespace Muster.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    partial class MusterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260527030217_AddSessionTrackingChannels")]
+    partial class AddSessionTrackingChannels
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -455,9 +458,6 @@ namespace Muster.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("Tracking")
-                        .HasColumnType("int");
-
                     b.HasKey("GuildId", "UserId");
 
                     b.HasIndex("UserId");
@@ -826,12 +826,6 @@ namespace Muster.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("ActiveCarrySeconds")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("ActiveOpenSegmentStart")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<DateOnly>("AwardedDate")
                         .HasColumnType("date");
 
@@ -893,32 +887,6 @@ namespace Muster.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("DailyActivityRollups");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.Tracking.SeasonParticipation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<Guid>("SeasonId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("UserId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<int>("VoiceMinutes")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GuildId", "UserId", "SeasonId")
-                        .IsUnique();
-
-                    b.ToTable("SeasonParticipations");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Tracking.TrackedChannel", b =>
@@ -1261,8 +1229,6 @@ namespace Muster.Persistence.Migrations
 
                             b1.PrimitiveCollection<string>("AdminRoleIds")
                                 .IsRequired();
-
-                            b1.Property<bool>("BackgroundTrackingOptIn");
 
                             b1.Property<int>("LedgerRetentionDays");
 

@@ -6,8 +6,11 @@ using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.Bot.Handlers;
 
-/// <summary>Feeds Discord voice-state changes into tracking-session attendance accumulation.</summary>
-public class VoiceAttendanceHandler(IServiceScopeFactory scopeFactory) : IVoiceStateUpdateGatewayHandler
+/// <summary>
+/// Feeds Discord voice-state changes into both tracking planes: bounded-session attendance, and the
+/// always-on background plane (reconciled against the live voice roster from the gateway cache).
+/// </summary>
+public class VoiceAttendanceHandler(IServiceScopeFactory scopeFactory, GatewayClient client) : IVoiceStateUpdateGatewayHandler
 {
     public async ValueTask HandleAsync(VoiceState arg)
     {
@@ -21,5 +24,8 @@ public class VoiceAttendanceHandler(IServiceScopeFactory scopeFactory) : IVoiceS
 
         var sessions = scope.ServiceProvider.GetRequiredService<TrackingSessionService>();
         await sessions.ProcessVoiceStateAsync(arg.GuildId, arg.UserId, arg.ChannelId);
+
+        var background = scope.ServiceProvider.GetRequiredService<BackgroundTrackingService>();
+        await background.ReconcileGuildAsync(arg.GuildId, VoiceRoster.Snapshot(client, arg.GuildId));
     }
 }

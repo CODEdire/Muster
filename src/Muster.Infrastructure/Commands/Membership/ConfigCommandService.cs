@@ -55,6 +55,25 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         return CommandResult.Ok($"Ledger retention set to {chosen} — effective window: {window}.");
     }
 
+    /// <summary>Set the guild's background-tracking consent default: opt-in (members must opt in) vs opt-out (on by default).</summary>
+    public async Task<CommandResult> SetBackgroundOptInAsync(ulong guildId, bool optIn, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.BackgroundTrackingOptIn = optIn;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(optIn
+            ? "Background tracking is now **opt-in** — members aren't passively tracked until they run `/track-privacy` and opt in."
+            : "Background tracking is now **on by default** — members may opt out with `/track-privacy`. Sessions/events are unaffected.");
+    }
+
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
 

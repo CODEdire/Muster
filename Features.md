@@ -65,6 +65,8 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] **Slash-command modules** — `/muster` (REST post+react via `IMusterPublisher`) and `/quest-post|list|claim|submit|approve`
 - [x] **Slash-command modules** — `/op-create|list|signup|close` (event ops)
 - [x] Stats-only message activity + daily rollups + dedupe (`ActivityService` + `MessageActivityHandler`)
+- [x] **Background tracking (P1)** — per-channel monitoring config (`TrackedChannel`) + always-on voice reward accrual with anti-AFK guards (unmuted/not-alone), daily cap, and Session-wins overlap (`BackgroundTrackingService`, `BackgroundFlushScheduler`, `/track-voice|track-text|track-untrack|track-channels`). See [SessionTracking.md](SessionTracking.md).
+- [x] **Active-time stats + seasons + privacy (P2)** — unguarded active-time accrual → `DailyActivityRollup.VoiceMinutes` + per-season `SeasonParticipation` counter; message stats scoped to tracked text channels + `PointsPerMessage` reward; 4-state member tracking preference (`/track-privacy`) + guild `BackgroundTrackingOptIn` toggle (`/config-background-tracking`), enforced via `TrackingConsentResolver`.
 - [ ] Command registration strategy verified end-to-end (needs a live Discord app)
 
 ## M4 — Scoring, currency & messaging
