@@ -118,6 +118,43 @@ public class RewardMultiplierTests
     }
 
     [Fact]
+    public void NextBoundaryAfter_OneOff_ReturnsStartThenEnd()
+    {
+        var m = new RewardMultiplier
+        {
+            Kind = MultiplierKind.OneOff, Factor = 2m, Scope = MultiplierScope.All,
+            StartsAt = Wed7pm, EndsAt = Wed7pm.AddHours(3),
+        };
+        var set = Set(m: m);
+
+        Assert.Equal(Wed7pm, set.NextBoundaryAfter(Wed7pm.AddHours(-1)));            // before → start edge
+        Assert.Equal(Wed7pm.AddHours(3), set.NextBoundaryAfter(Wed7pm.AddHours(1))); // inside → end edge
+        Assert.Null(set.NextBoundaryAfter(Wed7pm.AddHours(5)));                       // after → none
+    }
+
+    [Fact]
+    public void NextBoundaryAfter_Recurring_ReturnsNextDailyEdge()
+    {
+        var m = new RewardMultiplier
+        {
+            Kind = MultiplierKind.Recurring, Factor = 1.5m, Scope = MultiplierScope.All,
+            Days = WeekDays.Wednesday, StartTime = new TimeOnly(19, 0), EndTime = new TimeOnly(22, 0),
+        };
+        var set = Set(m: m);
+
+        // 6pm Wed → next edge is the 7pm start; 8pm Wed → next edge is the 10pm end.
+        Assert.Equal(new DateTimeOffset(2026, 5, 27, 19, 0, 0, TimeSpan.Zero), set.NextBoundaryAfter(new DateTimeOffset(2026, 5, 27, 18, 0, 0, TimeSpan.Zero)));
+        Assert.Equal(new DateTimeOffset(2026, 5, 27, 22, 0, 0, TimeSpan.Zero), set.NextBoundaryAfter(new DateTimeOffset(2026, 5, 27, 20, 0, 0, TimeSpan.Zero)));
+    }
+
+    [Fact]
+    public void NextBoundaryAfter_RoleOnly_IsNull()
+    {
+        var role = new RewardMultiplier { Kind = MultiplierKind.Role, Factor = 2m, Scope = MultiplierScope.All, RoleId = 1 };
+        Assert.Null(Set(m: role).NextBoundaryAfter(Wed7pm));
+    }
+
+    [Fact]
     public void DisabledOrZeroFactor_Ignored()
     {
         // The service only loads enabled rows, but a zero/negative factor must never zero out rewards.

@@ -315,7 +315,9 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
             p.AwardedPointsToday = 0;
         }
 
-        var factor = mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.BackgroundVoice, now, rolesByUser.GetValueOrDefault(p.UserId));
+        // Attribute the segment to the regime in force when it started (boundary flushes keep a segment within
+        // one regime, so the start-time factor is exact for the whole segment).
+        var factor = mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.BackgroundVoice, start, rolesByUser.GetValueOrDefault(p.UserId));
         var points = (int)Math.Floor(minutes * cfg.PointsPerMinute * factor);
         if (points <= 0)
         {

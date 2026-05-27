@@ -245,12 +245,20 @@ spanning a season rollover is split exactly at the boundary by construction. Day
     path is net-negative (staleness + churn) for the remaining gain. **Leader-gated sweeps** — the codebase's
     pattern is idempotent/multi-node-safe (per `QuestSweepScheduler`), not leader election; gating adds risk for
     no benefit on a single-node deploy. Revisit both if real traffic/scale-out demands it.
-- **P8 — Multipliers & bonuses.** Time-bounded reward multipliers: event windows (2× during a scheduled
-  event / admin "happy hour") **and recurring peak-time schedules** (e.g. ×1.5 on weeknights 7–10pm in the
-  guild's time zone). Applies to POINTS (and Session COIN). Stacking rules TBD. **Plus configurable
-  presence bonuses** — a flat bonus for being there at the **start** and/or **end** of a session (rewards
-  punctuality + staying to the finish); per-guild amounts, awarded on session close to members whose
-  attendance window covered the open/close moments.
+- **P8 — Multipliers & bonuses. ✅ shipped.** `RewardMultiplier` rules per guild: **one-off** windows (happy
+  hour / event boost), **recurring** weekly schedules (days + time-of-day in the guild's time zone, midnight-wrap
+  aware), and **per-role** boosts (VIP/booster). Each rule has a factor (>1 boosts, <1 dampens) and a `Scope`
+  (background voice / messages / sessions). `RewardMultiplierService.LoadAsync` snapshots a guild's rules once
+  per reconcile into an immutable `MultiplierSet`; `Factor(plane, at, roles)` is pure (time-window factors
+  combine per the guild's **stacking** mode — highest-wins or multiplicative — the member's highest role factor
+  multiplies that, clamped by the guild **cap**). Applied to all three sinks: background voice + messages floor
+  `raw × factor`; sessions accrue **multiplier-weighted seconds** (`VoiceAttendance.WeightedSeconds`) per flush
+  and reward from the weighted total at close (no-multiplier path is byte-identical). **Precision:** each segment
+  is credited at the factor in force *when it started*, and `MultiplierBoundaryScheduler` reconciles at every
+  window edge so no segment spans a regime change → exact per-period weighting. **Presence bonuses:** flat
+  start/end POINTS on close to members inside the configurable buffer windows (`Start/EndBonusWindowMinutes`),
+  optionally scaled by the multiplier (`MultiplyPresenceBonuses` toggle). Config: Tracking settings form
+  (stacking/cap/bonuses) + a `/guilds/{id}/multipliers` admin page (CRUD). Migration `P8MultipliersAndBonuses`.
 - **P9 — Tracking transparency notice.** How to inform members that participation is tracked (first-touch
   and/or Session-start) **without broadcasting to every member**. Deferred deliberately — needs design
   (e.g. ephemeral on first interaction, a pinned info message, or onboarding text — not a mass DM/ping).

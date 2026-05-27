@@ -72,6 +72,9 @@ builder.Services.AddHostedService<Muster.Bot.LedgerPruneScheduler>();
 // Periodically flushes always-on background voice accrual for still-present members (idempotent, gateway-cache-driven).
 builder.Services.AddHostedService<Muster.Bot.BackgroundFlushScheduler>();
 
+// Reconciles voice accrual at reward-multiplier window edges so each segment is credited at one exact regime.
+builder.Services.AddHostedService<Muster.Bot.MultiplierBoundaryScheduler>();
+
 // Daily: prunes raw activity records beyond each guild's retention window (rollups kept).
 builder.Services.AddHostedService<Muster.Bot.ActivityPruneScheduler>();
 

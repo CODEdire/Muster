@@ -115,6 +115,75 @@ public sealed class MultiplierSet
         return effective;
     }
 
+    /// <summary>
+    /// The next instant after <paramref name="at"/> at which the effective time-window factor could change
+    /// (a window opening or closing). The boundary-flush scheduler reconciles at these edges so no accrual
+    /// segment straddles a multiplier change. Returns null when nothing is upcoming (or only role multipliers,
+    /// which are always-on and never create an edge).
+    /// </summary>
+    public DateTimeOffset? NextBoundaryAfter(DateTimeOffset at)
+    {
+        DateTimeOffset? best = null;
+
+        void Consider(DateTimeOffset? edge)
+        {
+            if (edge is { } e && e > at && (best is null || e < best))
+            {
+                best = e;
+            }
+        }
+
+        foreach (var m in _multipliers)
+        {
+            switch (m.Kind)
+            {
+                case MultiplierKind.OneOff:
+                    Consider(m.StartsAt);
+                    Consider(m.EndsAt);
+                    break;
+                case MultiplierKind.Recurring when m.StartTime is { } s && m.EndTime is { } e && m.Days != WeekDays.None:
+                    Consider(NextRecurringEdge(m.Days, s, at));
+                    Consider(NextRecurringEdge(m.Days, e, at));
+                    break;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>The next UTC instant strictly after <paramref name="at"/> when the guild-local clock hits
+    /// <paramref name="tod"/> on one of <paramref name="days"/>. Searches a week ahead; null if none.</summary>
+    private DateTimeOffset? NextRecurringEdge(WeekDays days, TimeOnly tod, DateTimeOffset at)
+    {
+        var local = TimeZoneInfo.ConvertTime(at, _zone);
+        var startDate = DateOnly.FromDateTime(local.DateTime);
+
+        for (var i = 0; i <= 7; i++)
+        {
+            var date = startDate.AddDays(i);
+            if (!Has(days, ToFlag(date.DayOfWeek)))
+            {
+                continue;
+            }
+
+            try
+            {
+                var candidateLocal = DateTime.SpecifyKind(date.ToDateTime(tod), DateTimeKind.Unspecified);
+                var utc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(candidateLocal, _zone), TimeSpan.Zero);
+                if (utc > at)
+                {
+                    return utc;
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Local time invalid for that date (DST spring-forward gap) — skip to the next matching day.
+            }
+        }
+
+        return null;
+    }
+
     private bool WindowActive(RewardMultiplier m, DateTimeOffset at)
     {
         if (m.Kind == MultiplierKind.OneOff)

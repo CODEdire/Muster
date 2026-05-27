@@ -112,7 +112,8 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         // Reward multipliers weight each flush by the factor active now (time window + member role).
         var mult = await multipliers.LoadAsync(guildId, ct);
         var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(guildId, presentUserIds, ct);
-        decimal Factor(ulong userId) => mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, now, rolesByUser.GetValueOrDefault(userId));
+        // Credit each segment at the regime in force when it started (boundary flushes keep a segment in one regime).
+        decimal Factor(ulong userId, DateTimeOffset at) => mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, at, rolesByUser.GetValueOrDefault(userId));
 
         foreach (var session in sessions)
         {
@@ -140,19 +141,19 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                     }
                     else
                     {
-                        FlushAttendance(att, now, Factor(member.UserId));
+                        FlushAttendance(att, now, Factor(member.UserId, att.OpenSegmentStart ?? now));
                     }
                 }
                 else if (att.OpenSegmentStart is not null)
                 {
-                    FlushAttendance(att, now, Factor(member.UserId));
+                    FlushAttendance(att, now, Factor(member.UserId, att.OpenSegmentStart ?? now));
                     att.OpenSegmentStart = null;
                 }
             }
 
             foreach (var att in byUser.Values.Where(a => !present.Contains(a.UserId) && a.OpenSegmentStart is not null))
             {
-                FlushAttendance(att, now, Factor(att.UserId));
+                FlushAttendance(att, now, Factor(att.UserId, att.OpenSegmentStart ?? now));
                 att.OpenSegmentStart = null;
 
                 // Drop a drive-by: a member who left having accrued less than the guild's minimum.
@@ -303,7 +304,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
         foreach (var attendance in session.Attendance)
         {
-            FlushAttendance(attendance, now, SessionFactor(attendance.UserId, now));
+            FlushAttendance(attendance, now, SessionFactor(attendance.UserId, attendance.OpenSegmentStart ?? now));
             attendance.OpenSegmentStart = null;
         }
 
