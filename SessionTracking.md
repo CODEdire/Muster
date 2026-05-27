@@ -297,6 +297,10 @@ and pickers skip soft-deleted rows. The per-reconcile gateway-cache name refresh
 Migrations `GuildChannelSync` (roster table) + `MergeTrackedChannelIntoGuildChannel` (config columns + data move
 + drop `TrackedChannels`).
 
+All web channel pickers now read this synced roster (`GuildChannelOptions` over `ListChannelsByKindAsync`):
+the tracking add-channel + session-wizard pickers and the quest board/mod pickers. The old live Discord REST
+lookup (`DiscordChannelLookup`) was retired — no settings page makes a live Discord call to list channels.
+
 `WebLinkBuilder` (singleton over `Web:BaseUrl`) turns bot replies into "open in web" deep links (returns null
 when no base URL is set). `/track session new` returns the wizard link; `/track leaderboard` appends a full
 sessions-view link. The web **create-session wizard** (`/guilds/{id}/sessions/new`, admin-gated) lets staff open

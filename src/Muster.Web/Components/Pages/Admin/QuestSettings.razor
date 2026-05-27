@@ -3,7 +3,7 @@
 @inherits GuildAdminComponentBase
 @inject ConfigCommandService Config
 @inject MusterDbContext Db
-@inject Muster.Web.DiscordChannelLookup Channels
+@inject Muster.Web.GuildChannelOptions Channels
 @using Muster.Domain.Entities
 @using Muster.Persistence
 @using Muster.Domain.Enums
@@ -148,11 +148,11 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "quest-automation")] private AutomationInput Auto { get; set; } = new();
     [SupplyParameterFromForm(FormName = "quest-channel")] private ChannelInput Channel { get; set; } = new();
 
-    private IReadOnlyList<DiscordChannelLookup.ChannelOption> _channels = [];
+    private IReadOnlyList<GuildChannelOptions.ChannelOption> _channels = [];
 
     protected override async Task LoadAsync()
     {
-        _channels = await Channels.GetTextChannelsAsync(GuildId);
+        _channels = await Channels.TextAsync(GuildId);
 
         var settings = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
 

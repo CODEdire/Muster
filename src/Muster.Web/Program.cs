@@ -17,8 +17,8 @@ builder.AddMusterMessaging();
 builder.Services.AddRazorComponents();
 builder.Services.AddCascadingAuthenticationState();
 
-// Lists a guild's channels (Discord REST, bot token) for the quest-board channel picker on the settings page.
-builder.Services.AddHttpClient<Muster.Web.DiscordChannelLookup>();
+// Channel-picker options from the synced GuildChannel roster (no live Discord call).
+builder.Services.AddScoped<Muster.Web.GuildChannelOptions>();
 
 // Discord OAuth: cookie session, challenge via Discord. Credentials come from configuration
 // (user-secrets locally, Key Vault in Azure). Discord is only registered when configured — the
