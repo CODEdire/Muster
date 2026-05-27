@@ -48,6 +48,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<MemberSyncService>();
         builder.Services.AddScoped<RoleSyncService>();
         builder.Services.AddScoped<ChannelSyncService>();
+        builder.Services.AddSingleton<Platform.WebLinkBuilder>();
         builder.Services.AddScoped<GuildAuthorizationService>();
         builder.Services.AddScoped<WebGuildService>();
         builder.Services.AddScoped<WebAdminService>();

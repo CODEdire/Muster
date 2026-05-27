@@ -20,6 +20,10 @@ else if (State == AccessState.Ready)
     <div class="page-head">
         <h1>Sessions</h1>
         <p class="subtitle">Live operations, voice participation@(_isStaff ? ", and history" : "").</p>
+        @if (_isStaff)
+        {
+            <a class="btn btn-sm" href="/guilds/@GuildId/sessions/new">+ Start session</a>
+        }
     </div>
 
     @if (_present)

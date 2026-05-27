@@ -36,7 +36,15 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             }
 
             var lines = board.Select((e, i) => $"{i + 1}. <@{e.UserId}> — **{FormatDuration(e.VoiceMinutes)}**");
-            return CommandResult.Ok("**Voice participation**\n" + string.Join("\n", lines));
+            var body = "**Voice participation**\n" + string.Join("\n", lines);
+
+            var url = sp.GetRequiredService<Muster.Infrastructure.Platform.WebLinkBuilder>().Sessions(guildId);
+            if (url is not null)
+            {
+                body += $"\n\n🌐 Full sessions view: {url}";
+            }
+
+            return CommandResult.Ok(body);
         });
 
     internal static string FormatDuration(int minutes)
@@ -79,6 +87,18 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                 (sp, guildId) => sp.GetRequiredService<TrackingCommandService>().StopAsync(guildId, session),
                 RequiredRole.Admin,
                 auditAction: "track.session.stop");
+
+        [SubSlashCommand("new", "Get a link to the web wizard for starting a session (channel pickers + options).")]
+        public Task NewAsync()
+            => RunAsync(
+                (sp, guildId) =>
+                {
+                    var url = sp.GetRequiredService<Muster.Infrastructure.Platform.WebLinkBuilder>().NewSession(guildId);
+                    return Task.FromResult(url is null
+                        ? CommandResult.Error("No web URL is configured for this server — use `/track session start` instead.")
+                        : CommandResult.Ok($"🌐 Start a session in the web wizard: {url}"));
+                },
+                RequiredRole.Admin);
     }
 
     /// <summary>Background (always-on) channel monitoring config (admin).</summary>

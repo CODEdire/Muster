@@ -8,6 +8,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Muster.Domain.Entities
 @using Muster.Domain.Entities.Guilds
+@using Muster.Domain.Entities.Members
 @using Muster.Domain.Enums
 @using Muster.Persistence
 @using Muster.Persistence.Queries
@@ -76,7 +77,7 @@ else if (State == AccessState.Ready)
                     {
                         <tr>
                             <td>@(c.Kind == TrackedChannelKind.Voice ? "🔊 Voice" : "💬 Text")</td>
-                            <td>#@c.ChannelId</td>
+                            <td>@ChannelLabel(c.ChannelId, c.ChannelName)</td>
                             <td>@c.Mode</td>
                             <td>@(c.Kind == TrackedChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")@(c.DailyCapPoints > 0 ? $" (cap {c.DailyCapPoints}/day)" : "")</td>
                             <td>@(c.Kind == TrackedChannelKind.Voice ? string.Join(" ", new[] { c.Guards.Unmuted() ? "unmuted" : null, c.Guards.Undeafened() ? "undeafened" : null, c.Guards.NotAlone() ? "not-alone" : null }.Where(x => x != null)) : "—")</td>
@@ -91,13 +92,43 @@ else if (State == AccessState.Ready)
         <h2>Add / update a channel</h2>
         <EditForm class="form-grid" Model="AddChannel" FormName="add-channel" OnValidSubmit="AddChannelAsync">
             <input type="hidden" name="AddChannel.Submitted" value="1" />
-            <label>Channel id <InputText @bind-Value="AddChannel.ChannelId" /></label>
-            <label>Kind
-                <InputSelect @bind-Value="AddChannel.Kind">
-                    <option value="voice">Voice (reward by minute)</option>
-                    <option value="text">Text (stats)</option>
-                </InputSelect>
-            </label>
+            @if (_voice.Count > 0 || _text.Count > 0)
+            {
+                <label>Channel
+                    <InputSelect @bind-Value="AddChannel.ChannelId">
+                        <option value="">— select —</option>
+                        @if (_voice.Count > 0)
+                        {
+                            <optgroup label="🔊 Voice">
+                                @foreach (var c in _voice)
+                                {
+                                    <option value="@c.ChannelId">@c.Name</option>
+                                }
+                            </optgroup>
+                        }
+                        @if (_text.Count > 0)
+                        {
+                            <optgroup label="💬 Text">
+                                @foreach (var c in _text)
+                                {
+                                    <option value="@c.ChannelId">#@c.Name</option>
+                                }
+                            </optgroup>
+                        }
+                    </InputSelect>
+                    <span class="subtitle">Kind is detected from the channel.</span>
+                </label>
+            }
+            else
+            {
+                <label>Channel id <InputText @bind-Value="AddChannel.ChannelId" /> <span class="subtitle">no synced channels — enter an id</span></label>
+                <label>Kind
+                    <InputSelect @bind-Value="AddChannel.Kind">
+                        <option value="voice">Voice (reward by minute)</option>
+                        <option value="text">Text (stats)</option>
+                    </InputSelect>
+                </label>
+            }
             <label>Points per minute <InputNumber @bind-Value="AddChannel.PointsPerMinute" /> <span class="subtitle">voice only</span></label>
             <label>Daily cap <InputNumber @bind-Value="AddChannel.DailyCap" /> <span class="subtitle">0 = uncapped</span></label>
             <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipMuted" /> Skip muted <span class="subtitle">voice — can't speak (off = count phone-call presence)</span></label>
@@ -121,7 +152,7 @@ else if (State == AccessState.Ready)
                         <option value="0">— select —</option>
                         @foreach (var c in _channels)
                         {
-                            <option value="@c.ChannelId">@(c.Kind == TrackedChannelKind.Voice ? "🔊" : "💬") #@c.ChannelId</option>
+                            <option value="@c.ChannelId">@(c.Kind == TrackedChannelKind.Voice ? "🔊" : "💬") @ChannelLabel(c.ChannelId, c.ChannelName)</option>
                         }
                     </InputSelect>
                 </label>
@@ -138,11 +169,26 @@ else if (State == AccessState.Ready)
 
     private IReadOnlyList<CurrencyInfo> _spendable = [];
     private IReadOnlyList<TrackedChannel> _channels = [];
+    private IReadOnlyList<GuildChannel> _voice = [];
+    private IReadOnlyList<GuildChannel> _text = [];
+    private Dictionary<ulong, GuildChannel> _syncedById = new();
+
+    private string ChannelLabel(ulong channelId, string? storedName)
+    {
+        if (_syncedById.TryGetValue(channelId, out var c) && !string.IsNullOrWhiteSpace(c.Name))
+        {
+            return (c.Kind == GuildChannelKind.Text ? "#" : "") + c.Name;
+        }
+        return string.IsNullOrWhiteSpace(storedName) ? $"#{channelId}" : storedName!;
+    }
 
     protected override async Task LoadAsync()
     {
         _spendable = (await Reader.GetCurrenciesAsync(GuildId)).Where(c => c.Spendable).ToList();
         _channels = await Db.ListTrackedChannelsAsync(GuildId);
+        _voice = await Db.ListChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+        _text = await Db.ListChannelsByKindAsync(GuildId, GuildChannelKind.Text);
+        _syncedById = _voice.Concat(_text).ToDictionary(c => c.ChannelId);
 
         if (string.IsNullOrEmpty(Settings.Submitted))
         {
@@ -179,9 +225,14 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        var result = AddChannel.Kind == "text"
-            ? await Channels.SetTextAsync(GuildId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap)
-            : await Channels.SetVoiceAsync(GuildId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipDeafened, AddChannel.SkipAlone);
+        // Prefer the synced channel's actual kind/name; fall back to the manual Kind picker for unsynced ids.
+        _syncedById.TryGetValue(channelId, out var synced);
+        var isText = synced is not null ? synced.Kind == GuildChannelKind.Text : AddChannel.Kind == "text";
+        var name = synced?.Name;
+
+        var result = isText
+            ? await Channels.SetTextAsync(GuildId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap, channelName: name)
+            : await Channels.SetVoiceAsync(GuildId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipDeafened, AddChannel.SkipAlone, channelName: name);
 
         if (!result.IsError)
         {

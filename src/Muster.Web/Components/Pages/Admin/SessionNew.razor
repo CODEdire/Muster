@@ -1,0 +1,113 @@
+@page "/guilds/{GuildIdRaw}/sessions/new"
+@layout GuildLayout
+@inherits GuildAdminComponentBase
+@inject TrackingCommandService Tracking
+@inject MusterDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using Muster.Domain.Entities.Members
+@using Muster.Domain.Enums
+@using Muster.Persistence
+@using Muster.Persistence.Queries
+@using Muster.Infrastructure.Commands.Tracking
+
+<PageTitle>New session — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/sessions">← Sessions</a>
+        <h1>Start a tracking session</h1>
+        <p class="subtitle">Open a named voice session. Anyone already in the channel is picked up on the next sync.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_voice.Count == 0)
+    {
+        <div class="panel glass empty">
+            No voice channels are synced yet for this server. They sync when the bot (re)joins;
+            you can still start sessions from Discord with <code>/track session start</code>.
+        </div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <EditForm class="form-grid" Model="Input" FormName="session-new" OnValidSubmit="StartAsync">
+                <input type="hidden" name="Input.Submitted" value="1" />
+                <label>Voice channel
+                    <InputSelect @bind-Value="Input.ChannelId">
+                        <option value="0">— select —</option>
+                        @foreach (var c in _voice)
+                        {
+                            <option value="@c.ChannelId">@c.Name</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label>Session name <InputText @bind-Value="Input.Name" placeholder="e.g. Friday raid" /></label>
+                <label class="check"><InputCheckbox @bind-Value="Input.SkipMuted" /> Pause while muted <span class="subtitle">can't speak (off counts phone-call presence)</span></label>
+                <label class="check"><InputCheckbox @bind-Value="Input.SkipDeafened" /> Pause while deafened <span class="subtitle">checked out (default)</span></label>
+                <label class="check"><InputCheckbox @bind-Value="Input.SkipAlone" /> Pause while alone <span class="subtitle">fewer than two members present</span></label>
+                <div class="btn-row"><button type="submit">Start session</button></div>
+            </EditForm>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "session-new")] private SessionInput Input { get; set; } = new();
+
+    private IReadOnlyList<GuildChannel> _voice = [];
+
+    protected override async Task LoadAsync()
+        => _voice = await Db.ListChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+
+    private async Task StartAsync()
+    {
+        if (Input.ChannelId == 0)
+        {
+            Message = "Choose a voice channel.";
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(Input.Name) ? "Web session" : Input.Name.Trim();
+        var channelName = _voice.FirstOrDefault(c => c.ChannelId == Input.ChannelId)?.Name;
+
+        var result = await Tracking.StartAsync(
+            GuildId, UserId, Input.ChannelId, name, channelName,
+            requireUnmuted: Input.SkipMuted, requireUndeafened: Input.SkipDeafened, requireNotAlone: Input.SkipAlone);
+
+        if (!result.IsError)
+        {
+            await AuditAsync("track.session.start", $"web: {name} in #{channelName ?? Input.ChannelId.ToString()}");
+            Message = $"{result.Message} Members already present are credited on the next sync.";
+            Input = new SessionInput();
+        }
+        else
+        {
+            Message = result.Message;
+        }
+
+        await LoadAsync();
+    }
+
+    public class SessionInput
+    {
+        public string? Submitted { get; set; }
+        public ulong ChannelId { get; set; }
+        public string? Name { get; set; }
+        public bool SkipMuted { get; set; }
+        public bool SkipDeafened { get; set; } = true;
+        public bool SkipAlone { get; set; }
+    }
+}
