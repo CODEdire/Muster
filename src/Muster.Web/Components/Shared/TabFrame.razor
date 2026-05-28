@@ -1,0 +1,79 @@
+@* Reusable folder-tab frame. Declare <TabPane> children; this renders the strip from them and shows only
+   the active pane's content. The parent owns the active id (bindable via @bind-ActiveId); when it's null or
+   unknown the first pane wins. Fill="true" (default) makes the frame claim the viewport height and scroll
+   its body. Styling lives in app.css under "Reusable tab frame". See docs/ux/sessions-datagrid.md. *@
+<CascadingValue Value="this" IsFixed="true">
+    <div class="tabframe @(Fill ? "tabframe-fill" : null)">
+        <div class="tabframe-strip" role="tablist">
+            @foreach (var pane in _panes)
+            {
+                var isActive = pane.Id == EffectiveActiveId;
+                <button type="button" role="tab" aria-selected="@(isActive ? "true" : "false")"
+                        class="tabframe-tab @(isActive ? "active" : null)"
+                        @onclick="() => SelectAsync(pane.Id)">
+                    @if (!string.IsNullOrEmpty(pane.Icon))
+                    {
+                        <span class="material-symbols-outlined">@pane.Icon</span>
+                    }
+                    @pane.Label
+                </button>
+            }
+        </div>
+
+        <div class="panel glass tabframe-frame">
+            @* Renders all panes (so they self-register); each renders its body only when it's the active one. *@
+            <div class="tabframe-body">
+                @ChildContent
+            </div>
+        </div>
+    </div>
+</CascadingValue>
+
+@code {
+    /// <summary>The selected pane's id. Bindable; null/unknown falls back to the first pane.</summary>
+    [Parameter] public string? ActiveId { get; set; }
+
+    [Parameter] public EventCallback<string> ActiveIdChanged { get; set; }
+
+    /// <summary>The <see cref="TabPane"/> children.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>When true (default) the frame fills the remaining viewport height on desktop and the body scrolls.</summary>
+    [Parameter] public bool Fill { get; set; } = true;
+
+    private readonly List<TabPane> _panes = [];
+
+    /// <summary>The id actually shown: the bound id when it matches a pane, else the first registered pane.</summary>
+    internal string? EffectiveActiveId => _panes.Exists(p => p.Id == ActiveId) ? ActiveId : (_panes.Count > 0 ? _panes[0].Id : null);
+
+    internal bool IsActive(string id) => id == EffectiveActiveId;
+
+    internal void AddPane(TabPane pane)
+    {
+        if (!_panes.Contains(pane))
+        {
+            _panes.Add(pane);
+            StateHasChanged(); // panes register during the first body render; reflect them in the strip
+        }
+    }
+
+    internal void RemovePane(TabPane pane)
+    {
+        if (_panes.Remove(pane))
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectAsync(string id)
+    {
+        if (id == ActiveId)
+        {
+            return;
+        }
+
+        ActiveId = id;
+        await ActiveIdChanged.InvokeAsync(id);
+        StateHasChanged();
+    }
+}

@@ -59,7 +59,7 @@ public class MessagingAndSeasonTests
         guild.Settings.ApplyAfkGuardsToSessions = false; // single-user accrual test
         await db.SaveChangesAsync();
 
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var joined = DateTimeOffset.UtcNow.AddMinutes(-10);

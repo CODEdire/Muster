@@ -24,6 +24,11 @@ public class BackgroundVoicePresence
     /// null when the member isn't present in the channel. Stats only — never pays.</summary>
     public DateTimeOffset? ActiveOpenSegmentStart { get; set; }
 
+    /// <summary>When the member joined the channel for their current continuous stint (UTC); null when not present.
+    /// Unlike <see cref="ActiveOpenSegmentStart"/> this is <b>not</b> advanced on flush — it's the true "here since"
+    /// for the live view, cleared when they leave.</summary>
+    public DateTimeOffset? PresentSince { get; set; }
+
     /// <summary>Active-time seconds accrued but not yet rolled into a whole stat minute.</summary>
     public int ActiveCarrySeconds { get; set; }
 

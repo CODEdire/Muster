@@ -44,7 +44,7 @@ else if (State == AccessState.Ready)
         else
         {
             <table class="leaderboard">
-                <thead><tr><th>Name</th><th>×</th><th>Kind</th><th>When</th><th>Applies to</th><th>State</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>×</th><th>Kind</th><th>When</th><th>Applies to</th><th>Conditions</th><th>State</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var m in _multipliers)
                     {
@@ -54,6 +54,7 @@ else if (State == AccessState.Ready)
                             <td>@m.Kind</td>
                             <td>@When(m)</td>
                             <td>@ScopeLabel(m.Scope)</td>
+                            <td>@Conditions(m)</td>
                             <td>@(m.Enabled ? "🟢 on" : "⚪ off")</td>
                             <td class="row-actions">
                                 <EditForm Model="_marker" FormName="@($"toggle-{m.Id}")" OnValidSubmit="() => ToggleAsync(m.Id, !m.Enabled)" Enhance>
@@ -88,6 +89,14 @@ else if (State == AccessState.Ready)
                 <label class="check"><InputCheckbox @bind-Value="Add.ScopeVoice" /> Background voice</label>
                 <label class="check"><InputCheckbox @bind-Value="Add.ScopeMessages" /> Messages</label>
                 <label class="check"><InputCheckbox @bind-Value="Add.ScopeSessions" /> Sessions</label>
+                <label class="check"><InputCheckbox @bind-Value="Add.ScopeQuests" /> Quests</label>
+            </fieldset>
+
+            <fieldset class="check-group">
+                <legend>Conditions (one-off / recurring windows only; 0 = none)</legend>
+                <label>Min people in channel <InputNumber @bind-Value="Add.MinPeople" min="0" /></label>
+                <label>Min minutes channel active <InputNumber @bind-Value="Add.MinMinutes" min="0" /></label>
+                <span class="subtitle">Channel-wide: the rule only applies while the voice channel has at least this many people and has been continuously occupied this long (resets when it empties). Ignored for Messages/Quests.</span>
             </fieldset>
 
             <label>One-off: start <InputText type="datetime-local" @bind-Value="Add.StartLocal" /> <span class="subtitle">guild time (@_zoneId)</span></label>
@@ -156,7 +165,8 @@ else if (State == AccessState.Ready)
     {
         var scope = (Add.ScopeVoice ? MultiplierScope.BackgroundVoice : 0)
             | (Add.ScopeMessages ? MultiplierScope.Messages : 0)
-            | (Add.ScopeSessions ? MultiplierScope.Sessions : 0);
+            | (Add.ScopeSessions ? MultiplierScope.Sessions : 0)
+            | (Add.ScopeQuests ? MultiplierScope.Quests : 0);
 
         CommandResult result;
         switch (Add.Kind)
@@ -169,7 +179,7 @@ else if (State == AccessState.Ready)
                 }
                 var days = (Add.Sun ? WeekDays.Sunday : 0) | (Add.Mon ? WeekDays.Monday : 0) | (Add.Tue ? WeekDays.Tuesday : 0)
                     | (Add.Wed ? WeekDays.Wednesday : 0) | (Add.Thu ? WeekDays.Thursday : 0) | (Add.Fri ? WeekDays.Friday : 0) | (Add.Sat ? WeekDays.Saturday : 0);
-                result = await Mults.AddRecurringAsync(GuildId, Add.Name, Add.Factor, scope, days, st, et);
+                result = await Mults.AddRecurringAsync(GuildId, Add.Name, Add.Factor, scope, days, st, et, minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
                 break;
 
             case "role":
@@ -182,7 +192,7 @@ else if (State == AccessState.Ready)
                     Message = "Enter valid start/end date-times.";
                     return;
                 }
-                result = await Mults.AddOneOffAsync(GuildId, Add.Name, Add.Factor, scope, ToUtc(sLocal), ToUtc(eLocal));
+                result = await Mults.AddOneOffAsync(GuildId, Add.Name, Add.Factor, scope, ToUtc(sLocal), ToUtc(eLocal), minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
                 break;
         }
 
@@ -214,7 +224,16 @@ else if (State == AccessState.Ready)
             s.HasFlag(MultiplierScope.BackgroundVoice) ? "voice" : null,
             s.HasFlag(MultiplierScope.Messages) ? "messages" : null,
             s.HasFlag(MultiplierScope.Sessions) ? "sessions" : null,
+            s.HasFlag(MultiplierScope.Quests) ? "quests" : null,
         }.Where(x => x != null));
+
+    private static string Conditions(RewardMultiplier m)
+    {
+        var parts = new List<string>();
+        if (m.MinPeopleInChannel > 0) parts.Add($"≥{m.MinPeopleInChannel} ppl");
+        if (m.MinMinutes > 0) parts.Add($"≥{m.MinMinutes}m active");
+        return parts.Count > 0 ? string.Join(", ", parts) : "—";
+    }
 
     public class AddInput
     {
@@ -225,6 +244,9 @@ else if (State == AccessState.Ready)
         public bool ScopeVoice { get; set; } = true;
         public bool ScopeMessages { get; set; } = true;
         public bool ScopeSessions { get; set; } = true;
+        public bool ScopeQuests { get; set; }
+        public int MinPeople { get; set; }
+        public int MinMinutes { get; set; }
         public string? StartLocal { get; set; }
         public string? EndLocal { get; set; }
         public bool Sun { get; set; }

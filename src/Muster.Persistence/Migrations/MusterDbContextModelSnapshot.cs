@@ -474,6 +474,9 @@ namespace Muster.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTimeOffset?>("OccupiedSince")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("PointsPerMessage")
                         .HasColumnType("int");
 
@@ -905,6 +908,9 @@ namespace Muster.Persistence.Migrations
                     b.Property<DateTimeOffset?>("OpenSegmentStart")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("PresentSince")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<decimal>("UserId")
                         .HasColumnType("decimal(20,0)");
 
@@ -1015,6 +1021,12 @@ namespace Muster.Persistence.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("int");
 
+                    b.Property<int>("MinMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinPeopleInChannel")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1087,6 +1099,37 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("SessionOptOuts");
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Tracking.SessionPresenceEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "AtUtc");
+
+                    b.ToTable("SessionPresenceEvents");
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Tracking.TrackingSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1146,6 +1189,9 @@ namespace Muster.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("FirstJoinedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("InChannel")
+                        .HasColumnType("bit");
 
                     b.Property<DateTimeOffset?>("LastLeftAt")
                         .HasColumnType("datetimeoffset");
@@ -1426,6 +1472,8 @@ namespace Muster.Persistence.Migrations
                             b1.Property<decimal>("MultiplierCap");
 
                             b1.Property<int>("MultiplierStacking");
+
+                            b1.Property<bool>("MultiplyPresenceBonuses");
 
                             b1.PrimitiveCollection<string>("OfficerRoleIds")
                                 .IsRequired();

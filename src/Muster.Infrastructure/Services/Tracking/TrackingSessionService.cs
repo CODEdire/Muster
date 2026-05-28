@@ -1,9 +1,11 @@
+using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
+using Wolverine;
 
 namespace Muster.Infrastructure.Services.Tracking;
 
@@ -12,7 +14,7 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
 /// are opened manually by an admin or bound to a Discord scheduled event.
 /// </summary>
-public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers)
+public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers, IMessageBus bus)
 {
     public const int DefaultPointsPerMinute = 1;
 
@@ -57,6 +59,29 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
     }
 
+    /// <summary>
+    /// Safety net for a missed/unhandled "event ended" gateway update: close any active session bound to a
+    /// scheduled event that is no longer running. <paramref name="activeScheduledEventIds"/> are the events still
+    /// Active per the gateway; a bound session whose event isn't in that set is orphaned and gets closed. Returns
+    /// how many were closed. Called from the periodic reconcile, so a stuck session recovers within a sweep.
+    /// </summary>
+    public async Task<int> CloseEndedScheduledEventSessionsAsync(
+        ulong guildId, IReadOnlyCollection<ulong> activeScheduledEventIds, CancellationToken ct = default)
+    {
+        var bound = await db.ListActiveScheduledEventSessionsAsync(guildId, ct);
+        var closed = 0;
+        foreach (var session in bound)
+        {
+            if (session.ScheduledEventId is { } eventId && !activeScheduledEventIds.Contains(eventId))
+            {
+                await CloseAsync(session.Id, ct: ct);
+                closed++;
+            }
+        }
+
+        return closed;
+    }
+
     private async Task<TrackingSession> OpenAsync(
         ulong guildId, ulong voiceChannelId, string? channelName, TrackingSessionSource source, ulong? scheduledEventId,
         ulong openedBy, string name, bool? requireUnmuted, bool? requireUndeafened, bool? requireNotAlone, CancellationToken ct)
@@ -83,6 +108,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         };
         db.TrackingSessions.Add(session);
         await db.SaveChangesAsync(ct);
+
+        // Tell live session lists a new session exists (an empty channel produces no reconcile change to ping on).
+        await bus.PublishAsync(new SessionAttendanceChanged(guildId, session.Id, SessionChangeKind.Opened));
         return session;
     }
 
@@ -113,10 +141,17 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var mult = await multipliers.LoadAsync(guildId, ct);
         var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(guildId, presentUserIds, ct);
         // Credit each segment at the regime in force when it started (boundary flushes keep a segment in one regime).
-        decimal Factor(ulong userId, DateTimeOffset at) => mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, at, rolesByUser.GetValueOrDefault(userId));
+        // ctx carries the session's channel-wide bonus conditions (occupants + minutes since it started).
+        decimal Factor(ulong userId, DateTimeOffset at, MultiplierContext ctx)
+            => mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, at, rolesByUser.GetValueOrDefault(userId), ctx);
+
+        // Sessions whose visible roster/status changed this pass — a live watcher would see the difference.
+        // We re-fetch nothing here; we just note which sessions to ping so the web view re-reads + re-renders.
+        var changedSessions = new List<Guid>();
 
         foreach (var session in sessions)
         {
+            var changed = false;
             var optedOut = await db.OptedOutUserIdsAsync(session.Id, ct);
             var occupants = occupantsByChannel.TryGetValue(session.VoiceChannelId, out var list) ? list : [];
             var humans = occupants
@@ -125,46 +160,77 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             var present = humans.Select(h => h.UserId).ToHashSet();
             var byUser = (await db.AttendanceForSessionAsync(session.Id, ct)).ToDictionary(a => a.UserId);
 
+            // Channel-wide bonus context for this session: occupants now + minutes the session has run.
+            var sctx = new MultiplierContext(humans.Count, Math.Max(0, (int)(now - session.StartedAt).TotalMinutes));
+
             foreach (var member in humans)
             {
-                var eligible = (!session.Guards.Unmuted() || !member.IsMuted)
-                    && (!session.Guards.Undeafened() || !member.IsDeafened)
-                    && (!session.Guards.NotAlone() || humans.Count >= 2);
+                var eligible = session.Guards.Allows(member.IsMuted, member.IsDeafened, humans.Count);
                 var att = GetOrCreateAttendance(session.Id, byUser, member.UserId, now);
                 att.LastSeenAt = now; // present in the channel (eligible or not)
+
+                if (!att.InChannel)
+                {
+                    att.InChannel = true; // entered (brand new, or re-joined after leaving)
+                    AddPresenceEvent(session.Id, member.UserId, SessionPresenceKind.Join, null, now);
+                    changed = true;
+                }
 
                 if (eligible)
                 {
                     if (att.OpenSegmentStart is null)
                     {
-                        att.OpenSegmentStart = now;
+                        att.OpenSegmentStart = now; // resumed earning (paused -> active)
+                        AddPresenceEvent(session.Id, member.UserId, SessionPresenceKind.Resume, null, now);
+                        changed = true;
                     }
                     else
                     {
-                        FlushAttendance(att, now, Factor(member.UserId, att.OpenSegmentStart ?? now));
+                        FlushAttendance(att, now, Factor(member.UserId, att.OpenSegmentStart ?? now, sctx));
                     }
                 }
                 else if (att.OpenSegmentStart is not null)
                 {
-                    FlushAttendance(att, now, Factor(member.UserId, att.OpenSegmentStart ?? now));
-                    att.OpenSegmentStart = null;
+                    FlushAttendance(att, now, Factor(member.UserId, att.OpenSegmentStart ?? now, sctx));
+                    att.OpenSegmentStart = null; // paused (active -> not earning)
+                    AddPresenceEvent(session.Id, member.UserId, SessionPresenceKind.Pause, PauseReason(session.Guards, member, humans.Count), now);
+                    changed = true;
                 }
             }
 
-            foreach (var att in byUser.Values.Where(a => !present.Contains(a.UserId) && a.OpenSegmentStart is not null))
+            // Anyone in the channel last pass but gone now has left (whether they were earning or paused).
+            foreach (var att in byUser.Values.Where(a => a.InChannel && !present.Contains(a.UserId)))
             {
-                FlushAttendance(att, now, Factor(att.UserId, att.OpenSegmentStart ?? now));
-                att.OpenSegmentStart = null;
+                if (att.OpenSegmentStart is not null)
+                {
+                    FlushAttendance(att, now, Factor(att.UserId, att.OpenSegmentStart ?? now, sctx));
+                    att.OpenSegmentStart = null;
+                }
 
-                // Drop a drive-by: a member who left having accrued less than the guild's minimum.
+                att.InChannel = false;
+                AddPresenceEvent(session.Id, att.UserId, SessionPresenceKind.Leave, null, now);
+                changed = true; // left the channel
+
+                // Drop a drive-by: a member who left having accrued less than the guild's minimum. Their presence
+                // events are harmless if left (the timeline filters to members with an attendance row).
                 if (minTracked > 0 && TotalSeconds(att) < minTracked)
                 {
                     db.VoiceAttendance.Remove(att);
                 }
             }
+
+            if (changed)
+            {
+                changedSessions.Add(session.Id);
+            }
         }
 
         await db.SaveChangesAsync(ct);
+
+        foreach (var sessionId in changedSessions)
+        {
+            await bus.PublishAsync(new SessionAttendanceChanged(guildId, sessionId, SessionChangeKind.Roster));
+        }
     }
 
     private static int TotalSeconds(VoiceAttendance a) => a.TotalMinutes * 60 + a.CarrySeconds;
@@ -228,6 +294,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         await db.SaveChangesAsync(ct);
+        await bus.PublishAsync(new SessionAttendanceChanged(guildId, sessionId, SessionChangeKind.OptOut));
         return true;
     }
 
@@ -269,6 +336,27 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         return created;
     }
 
+    /// <summary>Append a presence transition to the session's event stream (drives the timeline charts + audit log).</summary>
+    private void AddPresenceEvent(Guid sessionId, ulong userId, SessionPresenceKind kind, string? reason, DateTimeOffset at)
+        => db.SessionPresenceEvents.Add(new SessionPresenceEvent
+        {
+            SessionId = sessionId,
+            UserId = userId,
+            Kind = kind,
+            Reason = reason,
+            AtUtc = at,
+        });
+
+    /// <summary>The tripped anti-AFK guard(s) that paused a member, as a short label for the audit log; null if none.</summary>
+    private static string? PauseReason(AfkGuards guards, VoiceMemberSnapshot member, int humanCount)
+    {
+        var parts = new List<string>(3);
+        if (guards.Unmuted() && member.IsMuted) { parts.Add("muted"); }
+        if (guards.Undeafened() && member.IsDeafened) { parts.Add("deafened"); }
+        if (guards.NotAlone() && humanCount < 2) { parts.Add("alone"); }
+        return parts.Count > 0 ? string.Join(", ", parts) : null;
+    }
+
     /// <summary>
     /// Close a session: finalize open presence segments and award points by minutes attended.
     /// When <paramref name="pointsPerMinute"/> is null the guild's configured rate is used.
@@ -299,8 +387,10 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var attendeeIds = session.Attendance.Select(a => a.UserId).ToList();
         var mult = await multipliers.LoadAsync(session.GuildId, ct);
         var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(session.GuildId, attendeeIds, ct);
+        // Channel-wide bonus context at close: total attendees + the session's run length.
+        var cctx = new MultiplierContext(session.Attendance.Count, Math.Max(0, (int)(now - session.StartedAt).TotalMinutes));
         decimal SessionFactor(ulong userId, DateTimeOffset at) =>
-            mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, at, rolesByUser.GetValueOrDefault(userId));
+            mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.Sessions, at, rolesByUser.GetValueOrDefault(userId), cctx);
 
         foreach (var attendance in session.Attendance)
         {
@@ -321,6 +411,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         await db.SaveChangesAsync(ct);
+
+        // The session now reads as Ended — tell watchers before the (slower) award pass runs.
+        await bus.PublishAsync(new SessionAttendanceChanged(session.GuildId, sessionId, SessionChangeKind.Closed));
 
         var rate = pointsPerMinute ?? await ResolvePointsPerMinuteAsync(session.GuildId, ct);
         var (coinCurrency, minutesPerCoin) = await ResolveSessionCoinAsync(session.GuildId, ct);

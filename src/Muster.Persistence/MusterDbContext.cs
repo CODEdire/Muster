@@ -25,6 +25,7 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<SeasonParticipation> SeasonParticipations => Set<SeasonParticipation>();
     public DbSet<MessageRewardState> MessageRewardStates => Set<MessageRewardState>();
     public DbSet<SessionOptOut> SessionOptOuts => Set<SessionOptOut>();
+    public DbSet<SessionPresenceEvent> SessionPresenceEvents => Set<SessionPresenceEvent>();
     public DbSet<RewardMultiplier> RewardMultipliers => Set<RewardMultiplier>();
 
     public DbSet<GuildQuest> Quests => Set<GuildQuest>();

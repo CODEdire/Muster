@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.JSInterop;
 using Muster.Web;
 using Muster.Infrastructure.Services.Membership;
 
@@ -36,6 +37,15 @@ public abstract class GuildPageComponentBase : ComponentBase
     [Inject] protected Muster.Infrastructure.Services.Platform.TimeZoneService TimeZones { get; set; } = default!;
 
     [Inject] protected NavigationManager Nav { get; set; } = default!;
+
+    [Inject] protected IJSRuntime JS { get; set; } = default!;
+
+    [Inject] protected BrowserTimeZone Browser { get; set; } = default!;
+
+    /// <summary>The viewer's browser IANA zone (shared cache; detected after the circuit connects on interactive
+    /// pages). Null until detected/unavailable. <see cref="LocalTime"/> uses this itself — pages only need it for
+    /// non-component formatting (e.g. a zone label or a string built in code).</summary>
+    protected string? BrowserZoneId => Browser.Zone;
 
     protected AccessState State { get; private set; } = AccessState.Loading;
 
@@ -96,6 +106,17 @@ public abstract class GuildPageComponentBase : ComponentBase
 
         State = AccessState.Ready;
         await LoadAsync();
+    }
+
+    // After the circuit connects (interactive pages), make sure the shared browser-zone cache is populated, then
+    // re-render so page-side zone labels/strings pick it up. No-op on static SSR (this never runs).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && State == AccessState.Ready)
+        {
+            await Browser.EnsureAsync(JS);
+            StateHasChanged();
+        }
     }
 
     private void Forbid()

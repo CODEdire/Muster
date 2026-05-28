@@ -24,6 +24,16 @@ public static class WolverineExtensions
     /// holds the gateway client to pull the roster).</summary>
     public const string MemberSyncQueue = "member-sync";
 
+    /// <summary>Durable SQL queue live session-attendance changes flow through to reach the web's push-updated
+    /// session views. Mostly published by the bot (voice reconcile); only the web listens + fans out to circuits.</summary>
+    public const string SessionEventsQueue = "session-events";
+
+    /// <summary>Durable SQL queue that carries a <b>copy</b> of every quest lifecycle event to the web's push-updated
+    /// quest views. The same <c>QuestLifecycleNotified</c> already feeds the bot's board on <see cref="QuestBoardQueue"/>;
+    /// routing it here too (publisher fan-out — SQL transport has no topic/subscription) gives the web its own copy so
+    /// it never competes with the bot. Only the web listens + fans out to circuits.</summary>
+    public const string QuestViewsQueue = "quest-views";
+
     /// <summary>
     /// Configures the Wolverine command/query bus and discovers handlers in the Infrastructure assembly.
     /// When a SQL connection is available it enables the durable outbox/inbox (EF Core + SQL Server) so
@@ -36,7 +46,7 @@ public static class WolverineExtensions
     /// from web/API/the sweep still reaches the bot), and only the bot listens on them + renders the Discord channel
     /// board / sends DM receipts.
     /// </summary>
-    public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, bool listenForQuestBoard = false, bool listenForCurrencyEvents = false, bool listenForMemberSync = false, string connectionName = "musterdb")
+    public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, bool listenForQuestBoard = false, bool listenForCurrencyEvents = false, bool listenForMemberSync = false, bool listenForSessionEvents = false, bool listenForQuestViews = false, string connectionName = "musterdb")
         where TBuilder : IHostApplicationBuilder
     {
         var connectionString = builder.Configuration.GetConnectionString(connectionName);
@@ -77,6 +87,15 @@ public static class WolverineExtensions
                     opts.ListenToSqlServerQueue(QuestBoardQueue);
                 }
 
+                // A second copy of every quest lifecycle event goes to the web's push-updated quest board/detail.
+                // Routing the same message to a second queue is publisher fan-out (the web gets its own copy and
+                // never competes with the bot's board listener). Only the web listens here.
+                opts.PublishMessage<QuestLifecycleNotified>().ToSqlServerQueue(QuestViewsQueue);
+                if (listenForQuestViews)
+                {
+                    opts.ListenToSqlServerQueue(QuestViewsQueue);
+                }
+
                 // Currency movements drive DM receipts (grant received / staff mint+adjust), which only the Bot can
                 // deliver. Route them over a durable SQL queue so a grant from any origin reaches the bot; only the
                 // bot listens + handles (CurrencyDmHandler in the bot assembly). Pruning checkpoints bypass StageAsync,
@@ -92,6 +111,16 @@ public static class WolverineExtensions
                 if (listenForMemberSync)
                 {
                     opts.ListenToSqlServerQueue(MemberSyncQueue);
+                }
+
+                // Live session-attendance changes drive the web's push-updated session views. The mutation usually
+                // happens in the bot (voice reconcile) while the Blazor circuit lives in the web, so route over a
+                // durable SQL queue. Publishing is configured in every host; only the web listens + handles (the
+                // handler fans out to connected circuits via ISessionUpdateNotifier).
+                opts.PublishMessage<SessionAttendanceChanged>().ToSqlServerQueue(SessionEventsQueue);
+                if (listenForSessionEvents)
+                {
+                    opts.ListenToSqlServerQueue(SessionEventsQueue);
                 }
             }
         });

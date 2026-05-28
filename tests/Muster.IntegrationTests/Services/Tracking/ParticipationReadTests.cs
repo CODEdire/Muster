@@ -173,20 +173,57 @@ public class ParticipationReadTests
     }
 
     [Fact]
+    public async Task SessionsPage_StatusFilterSourceAndSort()
+    {
+        using var db = await SeededAsync();
+        var t = DateTimeOffset.UtcNow;
+        db.TrackingSessions.Add(new TrackingSession { Id = Guid.NewGuid(), GuildId = Guild, Name = "Live manual", Source = TrackingSessionSource.Manual, VoiceChannelId = 1, StartedAt = t.AddMinutes(-5), Status = TrackingSessionStatus.Active });
+        db.TrackingSessions.Add(new TrackingSession { Id = Guid.NewGuid(), GuildId = Guild, Name = "Live event", Source = TrackingSessionSource.DiscordScheduledEvent, VoiceChannelId = 2, StartedAt = t, Status = TrackingSessionStatus.Active });
+        db.TrackingSessions.Add(new TrackingSession { Id = Guid.NewGuid(), GuildId = Guild, Name = "Old one", Source = TrackingSessionSource.Manual, VoiceChannelId = 3, StartedAt = t.AddHours(-2), EndedAt = t.AddHours(-1), Status = TrackingSessionStatus.Closed });
+        await db.SaveChangesAsync();
+        var svc = new ParticipationReadService(db);
+
+        // All statuses, newest-started first.
+        var all = await svc.SessionsPageAsync(Guild, SessionStatusFilter.All, search: null, source: null, sort: "started", desc: true, page: 1);
+        Assert.Equal(3, all.Total);
+        Assert.Equal("Live event", all.Items[0].Name);
+
+        // Ended-only filter.
+        var ended = await svc.SessionsPageAsync(Guild, SessionStatusFilter.Ended, search: null, source: null, sort: "started", desc: true, page: 1);
+        Assert.Equal("Old one", Assert.Single(ended.Items).Name);
+        Assert.False(ended.Items[0].Active);
+
+        // Active + source filter narrows to the one manual live session.
+        var manualLive = await svc.SessionsPageAsync(Guild, SessionStatusFilter.Active, search: null, source: TrackingSessionSource.Manual, sort: "started", desc: true, page: 1);
+        Assert.Equal("Live manual", Assert.Single(manualLive.Items).Name);
+        Assert.True(manualLive.Items[0].Active);
+    }
+
+    [Fact]
     public async Task BackgroundNow_GroupsPresentByChannel()
     {
         using var db = await SeededAsync();
-        db.GuildChannels.Add(new GuildChannel { GuildId = Guild, ChannelId = 500, Name = "General", Kind = GuildChannelKind.Voice, Mode = TrackedChannelMode.Reward });
+        db.GuildChannels.Add(new GuildChannel { GuildId = Guild, ChannelId = 500, Name = "General", Kind = GuildChannelKind.Voice, Mode = TrackedChannelMode.Reward, PointsPerMinute = 2 });
         var t = DateTimeOffset.UtcNow;
-        db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 10, ChannelId = 500, ActiveOpenSegmentStart = t });
+        var today = DateOnly.FromDateTime(t.UtcDateTime);
+        var joined = t.AddHours(-3);
+        db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 10, ChannelId = 500, ActiveOpenSegmentStart = t, OpenSegmentStart = t, PresentSince = joined, AwardedPointsToday = 5 }); // present + earning
         db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = Guild, UserId = 20, ChannelId = 500, ActiveOpenSegmentStart = null }); // not present
+        db.DailyActivityRollups.Add(new DailyActivityRollup { GuildId = Guild, UserId = 10, ChannelId = 500, Date = today, VoiceMinutes = 42 }); // cumulative today
         await db.SaveChangesAsync();
 
         var bg = await new ParticipationReadService(db).BackgroundNowAsync(Guild);
 
         var ch = Assert.Single(bg);
         Assert.Equal("General", ch.ChannelName);
-        Assert.Equal(new[] { 10ul }, ch.PresentUserIds);
+        Assert.Equal(TrackedChannelMode.Reward, ch.Mode);
+        Assert.Equal(2, ch.PointsPerMinute);
+        var m = Assert.Single(ch.Members);
+        Assert.Equal(10ul, m.UserId);
+        Assert.True(m.Earning);
+        Assert.Equal(5, m.PointsToday);
+        Assert.Equal(42, m.MinutesToday);
+        Assert.Equal(joined, m.PresentSince);
     }
 
     [Fact]

@@ -68,7 +68,7 @@ public class OpAndActivityTests
     public async Task ScheduledEvent_OpensOnce_ThenCloses()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
 
         var first = await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001);
         var second = await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001);
@@ -79,6 +79,25 @@ public class OpAndActivityTests
 
         await sut.CloseForScheduledEventAsync(1, 9001);
         Assert.Equal(0, await db.TrackingSessions.CountAsync(s => s.Status == TrackingSessionStatus.Active));
+    }
+
+    [Fact]
+    public async Task CloseEndedScheduledEventSessions_ClosesOrphansOnly()
+    {
+        using var db = await SeededAsync();
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
+
+        await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 500, scheduledEventId: 9001); // event still Active
+        await sut.EnsureForScheduledEventAsync(1, voiceChannelId: 501, scheduledEventId: 9002); // event ended
+        await sut.OpenManualAsync(1, voiceChannelId: 502, openedBy: 5);                         // manual, not event-bound
+
+        // Only 9001 is still active on the gateway → 9002's session is the orphan to close.
+        var closed = await sut.CloseEndedScheduledEventSessionsAsync(1, new HashSet<ulong> { 9001 });
+
+        Assert.Equal(1, closed);
+        Assert.True(await db.TrackingSessions.AnyAsync(s => s.ScheduledEventId == 9001 && s.Status == TrackingSessionStatus.Active));
+        Assert.True(await db.TrackingSessions.AnyAsync(s => s.ScheduledEventId == 9002 && s.Status == TrackingSessionStatus.Closed));
+        Assert.True(await db.TrackingSessions.AnyAsync(s => s.ScheduledEventId == null && s.Status == TrackingSessionStatus.Active)); // manual untouched
     }
 
     [Fact]
@@ -117,7 +136,7 @@ public class OpAndActivityTests
         guild.Settings = guild.Settings;
         await db.SaveChangesAsync();
 
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var now = DateTimeOffset.UtcNow;
         var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);
@@ -146,7 +165,7 @@ public class OpAndActivityTests
         });
         await db.SaveChangesAsync();
 
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);
         await sut.CloseAsync(session.Id, at: now.AddMinutes(60)); // 60 eligible minutes, weighted ×2 = 120
@@ -166,7 +185,7 @@ public class OpAndActivityTests
         guild.Settings = guild.Settings;
         await db.SaveChangesAsync();
 
-        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var now = DateTimeOffset.UtcNow;
         var session = await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         await sut.ReconcileSessionsAsync(1, Occupant(500, 10), now);      // present at start

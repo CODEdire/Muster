@@ -1,0 +1,45 @@
+@* A tab within a TabFrame. Registers itself with the parent for the tab strip (Id/Label/Icon) and renders
+   its body only while it's the active pane, so inactive panes cost nothing. *@
+@implements IDisposable
+
+@if (Parent.IsActive(Id))
+{
+    @ChildContent
+}
+
+@code {
+    [CascadingParameter] private TabFrame Parent { get; set; } = default!;
+
+    /// <summary>Stable id used for selection + the URL/bound value.</summary>
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+
+    /// <summary>Tab label shown in the strip.</summary>
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+
+    /// <summary>Optional Material Symbols icon name shown before the label.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>The pane body, rendered only when this pane is active.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _registered;
+
+    protected override void OnInitialized()
+    {
+        if (Parent is null)
+        {
+            throw new InvalidOperationException($"{nameof(TabPane)} must be used inside a {nameof(TabFrame)}.");
+        }
+
+        Parent.AddPane(this);
+        _registered = true;
+    }
+
+    public void Dispose()
+    {
+        if (_registered)
+        {
+            Parent.RemovePane(this);
+        }
+    }
+}

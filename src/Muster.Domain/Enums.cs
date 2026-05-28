@@ -18,6 +18,23 @@ public enum ActivityType
     Voice = 1,
 }
 
+/// <summary>A presence transition logged for a session attendee, so the timeline can be reconstructed exactly
+/// (vs. inferring it from first-join/last-seen). Emitted by the session reconcile at each state change.</summary>
+public enum SessionPresenceKind
+{
+    /// <summary>Entered the tracked voice channel.</summary>
+    Join = 0,
+
+    /// <summary>Started earning (eligible under the anti-AFK guards) — paused → active, or eligible at join.</summary>
+    Resume = 1,
+
+    /// <summary>Stopped earning while still in the channel (tripped a guard: muted/deafened/alone).</summary>
+    Pause = 2,
+
+    /// <summary>Left the tracked voice channel.</summary>
+    Leave = 3,
+}
+
 /// <summary>Kind of a synced Discord <see cref="Muster.Domain.Entities.Members.GuildChannel"/>. Governs both
 /// the roster (web pickers) and what background tracking the channel supports. Threads/categories/forums
 /// are not synced.</summary>
@@ -78,6 +95,14 @@ public static class AfkGuardsExtensions
     public static bool Unmuted(this AfkGuards g) => g.HasFlag(AfkGuards.Unmuted);
     public static bool Undeafened(this AfkGuards g) => g.HasFlag(AfkGuards.Undeafened);
     public static bool NotAlone(this AfkGuards g) => g.HasFlag(AfkGuards.NotAlone);
+
+    /// <summary>Whether a member currently passes the anti-AFK guards: not muted (when the Unmuted guard is on),
+    /// not deafened (Undeafened), and not alone (NotAlone, i.e. at least 2 humans present). Shared by the session
+    /// and background reconcilers so "is this member eligible to accrue?" is defined in exactly one place.</summary>
+    public static bool Allows(this AfkGuards g, bool muted, bool deafened, int humanCount)
+        => (!g.Unmuted() || !muted)
+            && (!g.Undeafened() || !deafened)
+            && (!g.NotAlone() || humanCount >= 2);
 }
 
 /// <summary>What kind of window/condition a <see cref="Muster.Domain.Entities.Tracking.RewardMultiplier"/> matches.</summary>
@@ -101,7 +126,8 @@ public enum MultiplierScope
     BackgroundVoice = 1,
     Messages = 2,
     Sessions = 4,
-    All = BackgroundVoice | Messages | Sessions,
+    Quests = 8,
+    All = BackgroundVoice | Messages | Sessions | Quests,
 }
 
 /// <summary>How overlapping time-window multipliers combine into one factor.</summary>

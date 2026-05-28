@@ -126,7 +126,7 @@ public class ParticipationTests
     public async Task Session_GuardsOn_PausesDeafenedAndCreditsPeer()
     {
         var (db, _) = await SeededAsync(); // ApplyAfkGuardsToSessions defaults true → undeafened + not-alone guards on
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
@@ -145,7 +145,7 @@ public class ParticipationTests
     public async Task Session_GuardsOn_AllowsMutedButPresent()
     {
         var (db, _) = await SeededAsync(); // guards on, but muted is allowed by default (phone-call case)
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>>
@@ -165,7 +165,7 @@ public class ParticipationTests
         var (db, _) = await SeededAsync();
         db.GuildMembers.Add(new GuildMember { GuildId = 1, UserId = 10, Tracking = TrackingChoice.AllOut, JoinedAt = DateTimeOffset.UtcNow });
         await db.SaveChangesAsync();
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false, false) } };
@@ -196,7 +196,7 @@ public class ParticipationTests
     {
         var (db, _) = await SeededAsync();
         await DisableSessionGuardsAsync(db);
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         var t0 = DateTimeOffset.UtcNow;
 
@@ -218,7 +218,7 @@ public class ParticipationTests
         guild.Settings = guild.Settings;
         await db.SaveChangesAsync();
 
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         var t0 = DateTimeOffset.UtcNow;
 
@@ -237,7 +237,7 @@ public class ParticipationTests
     {
         var (db, _) = await SeededAsync();
         await DisableSessionGuardsAsync(db);
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var t0 = DateTimeOffset.UtcNow;
@@ -252,7 +252,7 @@ public class ParticipationTests
     public async Task CloseStaleSessions_ClosesPastMaxHours()
     {
         var (db, _) = await SeededAsync(); // MaxSessionHours defaults to 24
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
         session.StartedAt = DateTimeOffset.UtcNow.AddHours(-25);
         await db.SaveChangesAsync();
@@ -267,7 +267,7 @@ public class ParticipationTests
     public async Task Session_GuardsOn_AloneMember_NotAccrued()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         var roster = new Dictionary<ulong, IReadOnlyList<VoiceMemberSnapshot>> { [500] = new[] { new VoiceMemberSnapshot(10, false, false, false) } };
@@ -282,7 +282,7 @@ public class ParticipationTests
     public async Task TrackingSession_AwardsByVoiceMinutes_OnClose()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
 
         await DisableSessionGuardsAsync(db);
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
@@ -300,7 +300,7 @@ public class ParticipationTests
     public async Task TrackingSession_ClosingSegment_OnChannelLeave()
     {
         var (db, _) = await SeededAsync();
-        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db));
+        var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         await DisableSessionGuardsAsync(db);
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 

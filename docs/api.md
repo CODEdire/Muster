@@ -135,12 +135,14 @@ writes use `write:tracking`, all reusing the same domain services.
 | GET | `/api/v1/guilds/{guildId}/tracking/leaderboard?top=` | `read:tracking` | top members by voice time |
 | GET | `/api/v1/guilds/{guildId}/tracking/sessions/active?page=&pageSize=` | `read:tracking` | active sessions |
 | GET | `/api/v1/guilds/{guildId}/tracking/sessions?page=&pageSize=` | `read:tracking` | closed session history |
-| GET | `/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}` | `read:tracking` | session detail + roster |
+| GET | `/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}` | `read:tracking` | session detail + roster (no event stream) |
+| GET | `/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}/events?page=&pageSize=` | `read:tracking` | presence-event audit log (join/resume/pause/leave) |
 | GET | `/api/v1/guilds/{guildId}/members/{userId}/tracking` | `read:tracking` | member voice stats |
 | GET | `/api/v1/guilds/{guildId}/tracking/channels` | `read:tracking` | monitored channels |
 | GET | `/api/v1/guilds/{guildId}/tracking/multipliers` | `read:tracking` | reward multipliers |
 | POST | `…/tracking/sessions` | `write:tracking` (actor-bound) | open a session `{ channelId, name, skipMuted?, skipDeafened?, skipAlone? }` |
 | POST | `…/tracking/sessions/{sessionId}/stop` | `write:tracking` | close + award |
+| POST | `…/tracking/sessions/{sessionId}/optout` | `write:tracking` (actor-bound) | opt a member out of this session `{ userId }` |
 | PUT | `…/tracking/channels/voice` | `write:tracking` | monitor voice `{ channelId, pointsPerMinute, dailyCap, requireUnmuted, requireUndeafened, requireNotAlone }` |
 | PUT | `…/tracking/channels/text` | `write:tracking` | monitor text `{ channelId, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap }` |
 | DELETE | `…/tracking/channels/{channelId}` | `write:tracking` | stop monitoring |

@@ -20,6 +20,11 @@ public sealed class RewardMultiplierService(MusterDbContext db)
         return new MultiplierSet(multipliers, settings.MultiplierStacking, settings.MultiplierCap, ResolveZone(zoneId));
     }
 
+    /// <summary>The base (role-agnostic, time-window) multiplier factor for a plane right now — 1.0 when none is
+    /// active. For a live "⚡ N× active" indicator; a member's own role bonus can push their actual factor higher.</summary>
+    public async Task<decimal> ActiveFactorAsync(ulong guildId, MultiplierScope plane, CancellationToken ct = default)
+        => (await LoadAsync(guildId, ct)).Factor(plane, DateTimeOffset.UtcNow);
+
     private static TimeZoneInfo ResolveZone(string? id)
     {
         if (string.IsNullOrWhiteSpace(id))
@@ -37,6 +42,10 @@ public sealed class RewardMultiplierService(MusterDbContext db)
 /// function of (plane, instant, member roles): time-window factors combine per the guild's stacking mode, the
 /// member's highest matching role factor multiplies that, and the result is clamped by the guild cap.
 /// </summary>
+/// <summary>Channel/event-wide context for evaluating a multiplier's bonus conditions: how many people are
+/// present, and how long the channel/event has been continuously active (minutes; resets when it empties).</summary>
+public readonly record struct MultiplierContext(int Occupants, int ChannelMinutes);
+
 public sealed class MultiplierSet
 {
     private readonly IReadOnlyList<RewardMultiplier> _multipliers;
@@ -57,9 +66,12 @@ public sealed class MultiplierSet
 
     /// <summary>
     /// The effective factor for the given reward plane at <paramref name="at"/> (UTC), optionally including the
-    /// member's role multipliers. Returns 1.0 when nothing applies.
+    /// member's role multipliers. Returns 1.0 when nothing applies. When <paramref name="context"/> is supplied,
+    /// a window rule with min-people / min-time conditions only counts while the channel/event meets them; when
+    /// it's null (e.g. a guild-wide "is a window live" indicator) conditions are ignored.
     /// </summary>
-    public decimal Factor(MultiplierScope plane, DateTimeOffset at, IReadOnlyCollection<ulong>? roleIds = null)
+    public decimal Factor(
+        MultiplierScope plane, DateTimeOffset at, IReadOnlyCollection<ulong>? roleIds = null, MultiplierContext? context = null)
     {
         if (_multipliers.Count == 0)
         {
@@ -88,6 +100,15 @@ public sealed class MultiplierSet
             }
 
             if (!WindowActive(m, at))
+            {
+                continue;
+            }
+
+            // Bonus conditions (channel/event-wide). Enforced only when the caller supplies context; the badge
+            // path passes none, so it reflects "window is live" regardless of who currently meets the conditions.
+            if (context is { } cx
+                && ((m.MinPeopleInChannel > 0 && cx.Occupants < m.MinPeopleInChannel)
+                    || (m.MinMinutes > 0 && cx.ChannelMinutes < m.MinMinutes)))
             {
                 continue;
             }

@@ -13,6 +13,7 @@ public record StartSessionRequest(ulong ChannelId, string? Name, bool SkipMuted 
 public record TrackVoiceRequest(ulong ChannelId, int PointsPerMinute = 1, int DailyCap = 0, bool RequireUnmuted = false, bool RequireUndeafened = true, bool RequireNotAlone = true);
 public record TrackTextRequest(ulong ChannelId, int PointsPerMessage = 0, int MessagesPerPoint = 1, int CooldownSeconds = 0, int DailyCap = 0);
 public record SetPrivacyRequest(TrackingChoice Choice);
+public record OptOutRequest(ulong UserId);
 public record CreateMultiplierRequest(
     string Kind, string? Name, decimal Factor, MultiplierScope Scope,
     DateTimeOffset? StartsAt = null, DateTimeOffset? EndsAt = null,
@@ -46,13 +47,23 @@ public static class ApiTrackingEndpoints
     public static async Task<IResult> SessionHistory(ulong guildId, ParticipationReadService participation, int page = 1, int pageSize = 25)
         => Results.Ok(await participation.RecentSessionsPageAsync(guildId, null, "ended", desc: true, Page(page), Size(pageSize)));
 
-    /// <summary>One session with its attendance roster.</summary>
+    /// <summary>One session with its attendance roster. The presence-event stream is not inlined here (it can be
+    /// large) — fetch it from the <c>/events</c> endpoint.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}")]
     [RequireApiScope("read:tracking")]
     public static async Task<IResult> SessionDetail(ulong guildId, Guid sessionId, ParticipationReadService participation)
     {
-        var detail = await participation.SessionDetailAsync(guildId, sessionId);
+        var detail = await participation.SessionDetailAsync(guildId, sessionId, includeEvents: false);
         return detail is null ? Results.NotFound(new { error = "session_not_found" }) : Results.Ok(detail);
+    }
+
+    /// <summary>A session's presence-event stream (join/resume/pause/leave), paged chronologically — the audit log.</summary>
+    [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}/events")]
+    [RequireApiScope("read:tracking")]
+    public static async Task<IResult> SessionEvents(ulong guildId, Guid sessionId, ParticipationReadService participation, int page = 1, int pageSize = 100)
+    {
+        var events = await participation.SessionEventsAsync(guildId, sessionId, Page(page), Size(pageSize, 500));
+        return events is null ? Results.NotFound(new { error = "session_not_found" }) : Results.Ok(events);
     }
 
     /// <summary>A member's voice participation stats (season + all-time + rank).</summary>
@@ -96,6 +107,12 @@ public static class ApiTrackingEndpoints
     [RequireApiScope("write:tracking")]
     public static async Task<IResult> StopSession(ulong guildId, Guid sessionId, TrackingCommandService sessions)
         => Map(await sessions.StopAsync(guildId, sessionId.ToString()));
+
+    /// <summary>Opt a member out of one active session (its remainder) — mirrors the web per-session opt-out.</summary>
+    [WolverinePost("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}/optout")]
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> OptOut(ulong guildId, Guid sessionId, OptOutRequest body, HttpContext http, TrackingCommandService sessions)
+        => Map(await sessions.OptOutAsync(guildId, sessionId.ToString(), http.ApiActor(), body.UserId, actorIsStaff: true));
 
     /// <summary>Monitor a voice channel for background reward accrual.</summary>
     [WolverinePut("/api/v1/guilds/{guildId}/tracking/channels/voice")]
@@ -155,7 +172,7 @@ public static class ApiTrackingEndpoints
         => Map(await mults.RemoveAsync(guildId, id));
 
     private static int Page(int page) => page <= 0 ? 1 : page;
-    private static int Size(int size) => size <= 0 ? 25 : Math.Min(size, 100);
+    private static int Size(int size, int max = 100) => size <= 0 ? 25 : Math.Min(size, max);
 
     private static IResult Map(CommandResult result)
         => result.IsError ? Results.BadRequest(new { error = result.Message }) : Results.Ok(new { message = result.Message });

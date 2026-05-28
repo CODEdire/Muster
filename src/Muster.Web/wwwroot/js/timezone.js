@@ -18,6 +18,10 @@
         }
     };
 
+    // Interactive components read this to localize displayed times to the viewer's actual browser zone
+    // (preferred over the server-stored preference, which may be unset/UTC). Returns an IANA id or "".
+    window.musterBrowserTimeZone = detected;
+
     function seedHint() {
         var input = document.getElementById("tz-input");
         var zone = detected();

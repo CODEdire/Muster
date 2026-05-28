@@ -11,14 +11,37 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
 builder.AddMusterConnectorProtection(); // Data Protection for connector secrets (web reads/writes them)
-builder.AddMusterMessaging();
+// The web is the live-views consumer: it listens on the session-events and quest-views queues and fans changes
+// out to connected Blazor circuits (the bot publishes most session events; quest events come from any origin).
+builder.AddMusterMessaging(listenForSessionEvents: true, listenForQuestViews: true);
 
-// Blazor static SSR (no interactive/SignalR render mode).
-builder.Services.AddRazorComponents();
+// Blazor static SSR by default; specific pages opt into InteractiveServer (a SignalR circuit) via
+// @rendermode for live, push-driven views. Static SSR + enhanced nav stays the default everywhere else.
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
+
+// The interactive circuit runs over SignalR. In production we offload it to a pre-provisioned Azure SignalR
+// Service (set "Azure:SignalR:ConnectionString" — Key Vault in Azure), which the SDK reads by default; this is
+// also what makes scale-out safe (the in-process circuit hub is single-instance). UAT/local has no connection
+// string, so the circuit stays in-process — no Azure dependency needed to run.
+var signalR = builder.Services.AddSignalR();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Azure:SignalR:ConnectionString"]))
+{
+    signalR.AddAzureSignalR();
+}
 
 // Channel-picker options from the synced GuildChannel roster (no live Discord call).
 builder.Services.AddScoped<Muster.Web.GuildChannelOptions>();
+
+// In-process fan-out of live session changes to interactive Blazor circuits (fed by the session-events handler).
+builder.Services.AddSingleton<Muster.Web.Live.ISessionUpdateNotifier, Muster.Web.Live.SessionUpdateNotifier>();
+
+// In-process fan-out of live quest changes to interactive Blazor circuits (fed by the quest-views handler).
+builder.Services.AddSingleton<Muster.Web.Live.IQuestUpdateNotifier, Muster.Web.Live.QuestUpdateNotifier>();
+
+// Per-circuit cache of the viewer's browser time zone, shared by every <LocalTime> for consistent localization.
+builder.Services.AddScoped<Muster.Web.BrowserTimeZone>();
 
 // Discord OAuth: cookie session, challenge via Discord. Credentials come from configuration
 // (user-secrets locally, Key Vault in Azure). Discord is only registered when configured — the
@@ -108,7 +131,8 @@ app.MapGet("/account/logout", async (HttpContext http) =>
 });
 
 app.MapStaticAssets();
-app.MapRazorComponents<App>();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
 // Public API (/api/v1) and any future CQRS endpoints are Wolverine.HTTP endpoints,
 // discovered by assembly scanning.

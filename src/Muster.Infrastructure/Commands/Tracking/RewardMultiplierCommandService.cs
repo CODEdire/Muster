@@ -14,7 +14,8 @@ public class RewardMultiplierCommandService(MusterDbContext db)
 
     public async Task<CommandResult> AddOneOffAsync(
         ulong guildId, string name, decimal factor, MultiplierScope scope,
-        DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken ct = default)
+        DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken ct = default,
+        int minPeople = 0, int minMinutes = 0)
     {
         if (endsAt <= startsAt)
         {
@@ -25,12 +26,13 @@ public class RewardMultiplierCommandService(MusterDbContext db)
         {
             GuildId = guildId, Kind = MultiplierKind.OneOff,
             StartsAt = startsAt, EndsAt = endsAt,
-        }, name, factor, scope, ct);
+        }, name, factor, scope, ct, minPeople, minMinutes);
     }
 
     public async Task<CommandResult> AddRecurringAsync(
         ulong guildId, string name, decimal factor, MultiplierScope scope,
-        WeekDays days, TimeOnly startTime, TimeOnly endTime, CancellationToken ct = default)
+        WeekDays days, TimeOnly startTime, TimeOnly endTime, CancellationToken ct = default,
+        int minPeople = 0, int minMinutes = 0)
     {
         if (days == WeekDays.None)
         {
@@ -41,7 +43,7 @@ public class RewardMultiplierCommandService(MusterDbContext db)
         {
             GuildId = guildId, Kind = MultiplierKind.Recurring,
             Days = days, StartTime = startTime, EndTime = endTime,
-        }, name, factor, scope, ct);
+        }, name, factor, scope, ct, minPeople, minMinutes);
     }
 
     public async Task<CommandResult> AddRoleAsync(
@@ -84,7 +86,9 @@ public class RewardMultiplierCommandService(MusterDbContext db)
         return CommandResult.Ok($"Removed **{m.Name}**.");
     }
 
-    private async Task<CommandResult> AddAsync(RewardMultiplier m, string name, decimal factor, MultiplierScope scope, CancellationToken ct)
+    private async Task<CommandResult> AddAsync(
+        RewardMultiplier m, string name, decimal factor, MultiplierScope scope, CancellationToken ct,
+        int minPeople = 0, int minMinutes = 0)
     {
         if (factor <= 0m)
         {
@@ -100,6 +104,8 @@ public class RewardMultiplierCommandService(MusterDbContext db)
         m.Name = string.IsNullOrWhiteSpace(name) ? $"{m.Kind} ×{factor}" : name.Trim();
         m.Factor = factor;
         m.Scope = scope;
+        m.MinPeopleInChannel = Math.Max(0, minPeople);
+        m.MinMinutes = Math.Max(0, minMinutes);
         m.Enabled = true;
 
         db.RewardMultipliers.Add(m);

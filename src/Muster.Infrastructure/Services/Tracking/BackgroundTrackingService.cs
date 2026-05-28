@@ -47,6 +47,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
             p.CarrySeconds = 0;
             p.ActiveOpenSegmentStart = null;
             p.ActiveCarrySeconds = 0;
+            p.PresentSince = null;
         }
 
         if (open.Count > 0)
@@ -119,6 +120,25 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
         var isReward = cfg.Mode == TrackedChannelMode.Reward;
         var touched = false;
 
+        // Channel-wide multiplier context: occupants now + how long the channel has been continuously occupied
+        // (resets when it empties). Drives the min-people / min-time bonus conditions for everyone in the channel.
+        if (humans.Count > 0)
+        {
+            if (cfg.OccupiedSince is null)
+            {
+                cfg.OccupiedSince = now;
+                touched = true;
+            }
+        }
+        else if (cfg.OccupiedSince is not null)
+        {
+            cfg.OccupiedSince = null;
+            touched = true;
+        }
+
+        var channelMinutes = cfg.OccupiedSince is { } since ? Math.Max(0, (int)(now - since).TotalMinutes) : 0;
+        var context = new MultiplierContext(humans.Count, channelMinutes);
+
         foreach (var member in humans)
         {
             var consent = TrackingConsentResolver.Resolve(choices.GetValueOrDefault(member.UserId), guildBackgroundOptIn);
@@ -139,6 +159,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
             touched = true;
 
             // Active time: raw presence, unguarded, overlaps everything.
+            p.PresentSince ??= now; // true "here since" for this stint — set on join, never advanced on flush
             if (p.ActiveOpenSegmentStart is null)
             {
                 p.ActiveOpenSegmentStart = now;
@@ -150,9 +171,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
             // Reward time: guarded + suppressed while a Session owns the channel.
             var eligible = isReward && !sessionActive
-                && (!cfg.Guards.Unmuted() || !member.IsMuted)
-                && (!cfg.Guards.Undeafened() || !member.IsDeafened)
-                && (!cfg.Guards.NotAlone() || humans.Count >= 2);
+                && cfg.Guards.Allows(member.IsMuted, member.IsDeafened, humans.Count);
 
             if (eligible)
             {
@@ -162,12 +181,12 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
                 }
                 else
                 {
-                    await FlushRewardAsync(cfg, p, now, mult, rolesByUser, ct);
+                    await FlushRewardAsync(cfg, p, now, mult, rolesByUser, context, ct);
                 }
             }
             else if (p.OpenSegmentStart is not null)
             {
-                await FlushRewardAsync(cfg, p, now, mult, rolesByUser, ct);
+                await FlushRewardAsync(cfg, p, now, mult, rolesByUser, context, ct);
                 p.OpenSegmentStart = null;
             }
         }
@@ -181,12 +200,13 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
             {
                 await FlushActiveAsync(p, now, seasonId, ct);
                 p.ActiveOpenSegmentStart = null;
+                p.PresentSince = null; // left the channel — end this stint
                 any = true;
             }
 
             if (p.OpenSegmentStart is not null)
             {
-                await FlushRewardAsync(cfg, p, now, mult, rolesByUser, ct);
+                await FlushRewardAsync(cfg, p, now, mult, rolesByUser, context, ct);
                 p.OpenSegmentStart = null;
                 any = true;
             }
@@ -206,6 +226,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
         p.CarrySeconds = 0;
         p.ActiveOpenSegmentStart = null;
         p.ActiveCarrySeconds = 0;
+        p.PresentSince = null;
     }
 
     private BackgroundVoicePresence GetOrCreate(
@@ -282,7 +303,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
     /// the watermark. Idempotent on the segment-start source key, daily-capped, gated to participants.
     /// </summary>
     private async Task FlushRewardAsync(GuildChannel cfg, BackgroundVoicePresence p, DateTimeOffset now,
-        MultiplierSet mult, IReadOnlyDictionary<ulong, List<ulong>> rolesByUser, CancellationToken ct)
+        MultiplierSet mult, IReadOnlyDictionary<ulong, List<ulong>> rolesByUser, MultiplierContext context, CancellationToken ct)
     {
         if (p.OpenSegmentStart is not { } start)
         {
@@ -317,7 +338,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
         // Attribute the segment to the regime in force when it started (boundary flushes keep a segment within
         // one regime, so the start-time factor is exact for the whole segment).
-        var factor = mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.BackgroundVoice, start, rolesByUser.GetValueOrDefault(p.UserId));
+        var factor = mult.IsEmpty ? 1m : mult.Factor(MultiplierScope.BackgroundVoice, start, rolesByUser.GetValueOrDefault(p.UserId), context);
         var points = (int)Math.Floor(minutes * cfg.PointsPerMinute * factor);
         if (points <= 0)
         {

@@ -127,7 +127,7 @@ else if (State == AccessState.Ready && _detail is not null)
 
     <div class="panel glass">
         <h2>Time zone</h2>
-        <p class="subtitle">Used to read the start/expiry dates you enter on the quest board. Leave blank to use the server's zone (<strong>@_guildZone</strong>).</p>
+        <p class="subtitle">Your <strong>server-side</strong> preference — used to read the dates you type and for timestamps the bot shows in Discord. On the web, displayed times are auto-detected from your browser when possible, so this is mainly the fallback. Leave blank to use the server's zone (<strong>@_guildZone</strong>).</p>
         <EditForm class="form-grid" Model="this" FormName="set-timezone" OnValidSubmit="SaveTimeZoneAsync">
             <label>Time zone
                 <InputSelect @bind-Value="ZoneInput" id="tz-input">
