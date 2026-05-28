@@ -48,6 +48,8 @@
   <ItemGroup Label="Web / Auth">
     <PackageVersion Include="AspNet.Security.OAuth.Discord" Version="10.0.0" />
     <PackageVersion Include="Markdig" Version="0.41.3" />
+    <!-- Azure SignalR Service backplane for the Blazor interactive circuit (production scale-out; UAT runs in-process). -->
+    <PackageVersion Include="Microsoft.Azure.SignalR" Version="1.33.0" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">

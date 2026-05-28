@@ -189,6 +189,50 @@ public class TimeZoneService(MusterDbContext db)
     public static bool IsValidZone(string? id) =>
         !string.IsNullOrWhiteSpace(id) && TimeZoneInfo.TryFindSystemTimeZoneById(id, out _);
 
+    /// <summary>Default display pattern for an instant shown in a user's zone (e.g. "May 27, 2026 2:30 PM").</summary>
+    public const string DisplayPattern = "MMM d, yyyy h:mm tt";
+
+    /// <summary>Render a UTC instant in <paramref name="zoneId"/> for display; an invalid/blank zone falls back to
+    /// UTC. Pair with <see cref="ResolveZoneIdAsync"/> (user pref → guild → UTC) to localize to the viewer.</summary>
+    public static string Format(DateTimeOffset utc, string? zoneId, string? pattern = null)
+    {
+        var local = IsValidZone(zoneId)
+            ? TimeZoneInfo.ConvertTime(utc, TimeZoneInfo.FindSystemTimeZoneById(zoneId!))
+            : utc.ToUniversalTime();
+        return local.ToString(pattern ?? DisplayPattern, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>A short human label for the zone shown to users — the IANA id, or "UTC" when unset/invalid.</summary>
+    public static string ZoneLabel(string? zoneId) => IsValidZone(zoneId) ? zoneId! : Utc;
+
+    /// <summary>A compact, zone-independent relative label for an instant: "just now", "5m ago", "in 3h", "2d ago".
+    /// Computed against <paramref name="now"/> (pass <see cref="DateTimeOffset.UtcNow"/>); doesn't auto-tick.</summary>
+    public static string Relative(DateTimeOffset utc, DateTimeOffset now)
+    {
+        var delta = now - utc;
+        var future = delta < TimeSpan.Zero;
+        var s = Math.Abs(delta.TotalSeconds);
+
+        if (s < 45)
+        {
+            return "just now";
+        }
+
+        var label =
+            s < 90 ? "1m" :
+            s < 3600 ? $"{(int)Math.Round(s / 60)}m" :
+            s < 5400 ? "1h" :
+            s < 86400 ? $"{(int)Math.Round(s / 3600)}h" :
+            s < 172800 ? "1d" :
+            s < 2592000 ? $"{(int)Math.Round(s / 86400)}d" :
+            s < 5184000 ? "1mo" :
+            s < 31536000 ? $"{(int)Math.Round(s / 2592000)}mo" :
+            s < 63072000 ? "1y" :
+            $"{(int)Math.Round(s / 31536000)}y";
+
+        return future ? $"in {label}" : $"{label} ago";
+    }
+
     private static DateTimeOffset LocalToUtc(DateTime local, TimeZoneInfo zone)
     {
         var unspecified = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);

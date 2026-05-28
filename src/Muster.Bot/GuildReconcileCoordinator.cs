@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NetCord;
 using NetCord.Gateway;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
@@ -65,9 +66,22 @@ public sealed class GuildReconcileCoordinator(
         try
         {
             using var scope = scopeFactory.CreateScope();
+            var sessions = scope.ServiceProvider.GetRequiredService<TrackingSessionService>();
             var roster = VoiceRoster.Snapshot(client, guildId);
-            await scope.ServiceProvider.GetRequiredService<TrackingSessionService>().ReconcileSessionsAsync(guildId, roster, ct: ct);
+            await sessions.ReconcileSessionsAsync(guildId, roster, ct: ct);
             await scope.ServiceProvider.GetRequiredService<BackgroundTrackingService>().ReconcileGuildAsync(guildId, roster, ct: ct);
+
+            // Safety net: close any session bound to a scheduled event that's no longer Active (a missed
+            // "event ended" update would otherwise leave it open until the stale-session sweep). Only when the
+            // guild's cache is present, so a not-yet-synced cache can't wrongly close a live event's session.
+            if (client.Cache.Guilds.TryGetValue(guildId, out var cachedGuild))
+            {
+                var activeEventIds = cachedGuild.ScheduledEvents.Values
+                    .Where(e => e.Status == GuildScheduledEventStatus.Active)
+                    .Select(e => e.Id)
+                    .ToHashSet();
+                await sessions.CloseEndedScheduledEventSessionsAsync(guildId, activeEventIds, ct);
+            }
             // Channel names are kept current by ChannelLifecycleHandler (+ GuildCreate resync), so no per-reconcile poke.
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

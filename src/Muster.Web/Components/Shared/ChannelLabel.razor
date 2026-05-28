@@ -1,0 +1,36 @@
+@* A channel reference: a kind-appropriate icon + name (voice speaker, text #, stage, forum, …) so the
+   channel type reads at a glance. Falls back to the id when the name isn't synced, or Empty when nothing
+   is known. Kind defaults to Voice (the common case for tracking sessions). *@
+@if (string.IsNullOrWhiteSpace(Name) && Id == 0)
+{
+    @Empty
+}
+else
+{
+    <span class="channel-ref"><span class="material-symbols-outlined" aria-hidden="true">@Icon</span>@(string.IsNullOrWhiteSpace(Name) ? Id.ToString() : Name)</span>
+}
+
+@code {
+    /// <summary>Channel name (from the synced roster). Blank falls back to <see cref="Id"/>.</summary>
+    [Parameter] public string? Name { get; set; }
+
+    /// <summary>Channel id; shown when the name isn't available. 0 with a blank name renders <see cref="Empty"/>.</summary>
+    [Parameter] public ulong Id { get; set; }
+
+    /// <summary>Which icon to show. Defaults to <see cref="ChannelKind.Voice"/>.</summary>
+    [Parameter] public ChannelKind Kind { get; set; } = ChannelKind.Voice;
+
+    /// <summary>Placeholder when neither name nor id is known.</summary>
+    [Parameter] public string Empty { get; set; } = "—";
+
+    private string Icon => Kind switch
+    {
+        ChannelKind.Text => "tag",
+        ChannelKind.Voice => "volume_up",
+        ChannelKind.Stage => "co_present",
+        ChannelKind.Forum => "forum",
+        ChannelKind.Announcement => "campaign",
+        ChannelKind.Category => "folder",
+        _ => "tag",
+    };
+}

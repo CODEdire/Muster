@@ -103,6 +103,71 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                         : CommandResult.Ok($"🌐 Start a session in the web wizard: {url}"));
                 },
                 RequiredRole.Admin);
+
+        [SubSlashCommand("optout", "Opt yourself out of an active session (this session only — your standing preference is unchanged).")]
+        public Task OptOutAsync(
+            [SlashCommandParameter(Name = "session", Description = "Pick an active session",
+                AutocompleteProviderType = typeof(ActiveSessionAutocompleteProvider))] string session)
+            => RunAsync(
+                (sp, guildId) => sp.GetRequiredService<TrackingCommandService>()
+                    .OptOutAsync(guildId, session, Context.User.Id, Context.User.Id, actorIsStaff: false),
+                RequiredRole.None,
+                auditAction: "track.session.optout");
+
+        [SubSlashCommand("list", "List the active tracking sessions in this server.")]
+        public Task ListAsync()
+            => RunAsync(async (sp, guildId) =>
+            {
+                var actives = await sp.GetRequiredService<ParticipationReadService>().ActiveSessionsAsync(guildId);
+                if (actives.Count == 0)
+                {
+                    return CommandResult.Ok("No active sessions right now.");
+                }
+
+                var lines = actives.Select(s =>
+                    $"• **{s.Name}** — <#{s.VoiceChannelId}> · {s.Attendees} attendee{(s.Attendees == 1 ? "" : "s")}, {s.PresentNow} earning · started <t:{s.StartedAt.ToUnixTimeSeconds()}:R>");
+                var body = "**Active sessions**\n" + string.Join("\n", lines);
+
+                var url = sp.GetRequiredService<Muster.Infrastructure.Platform.WebLinkBuilder>().Sessions(guildId);
+                if (url is not null) { body += $"\n\n🌐 {url}"; }
+                return CommandResult.Ok(body);
+            });
+
+        [SubSlashCommand("info", "Show a session's status, roster size, and live counts.")]
+        public Task InfoAsync(
+            [SlashCommandParameter(Name = "session", Description = "Pick an active session",
+                AutocompleteProviderType = typeof(ActiveSessionAutocompleteProvider))] string session)
+            => RunAsync(async (sp, guildId) =>
+            {
+                if (!Guid.TryParse(session, out var id))
+                {
+                    return CommandResult.Error("That doesn't look like a valid session id.");
+                }
+
+                var d = await sp.GetRequiredService<ParticipationReadService>().SessionDetailAsync(guildId, id, includeEvents: false);
+                if (d is null)
+                {
+                    return CommandResult.Error("No session with that id was found.");
+                }
+
+                var inVoice = d.Members.Count(m => m.InChannel);
+                var earning = d.Members.Count(m => m.PresentNow);
+                var totalMinutes = d.Members.Sum(m => m.TotalMinutes);
+                var when = d.Active
+                    ? $"started <t:{d.StartedAt.ToUnixTimeSeconds()}:R>"
+                    : $"ran <t:{d.StartedAt.ToUnixTimeSeconds()}:f> – <t:{(d.EndedAt ?? d.StartedAt).ToUnixTimeSeconds()}:t>";
+
+                var body =
+                    $"**{d.Name}** — {(d.Active ? "🟢 Live" : "⚪ Completed")}\n" +
+                    $"Channel: <#{d.VoiceChannelId}> · {when}\n" +
+                    $"Attendees: **{d.Members.Count}**" + (d.Active ? $" · In voice: **{inVoice}** · Earning: **{earning}**" : "") + "\n" +
+                    $"Voice minutes: **{totalMinutes}** · Rate: {d.PointsPerMinute} pts/min" +
+                    (d.OpenedBy != 0 ? $"\nOpened by <@{d.OpenedBy}>" : "");
+
+                var url = sp.GetRequiredService<Muster.Infrastructure.Platform.WebLinkBuilder>().Sessions(guildId);
+                if (url is not null) { body += $"\n\n🌐 {url}/{d.Id}"; }
+                return CommandResult.Ok(body);
+            });
     }
 
     /// <summary>Background (always-on) channel monitoring config (admin).</summary>

@@ -38,4 +38,14 @@ public class RewardMultiplier
 
     // --- Role ---
     public ulong RoleId { get; set; }
+
+    // --- Conditions (bonus gating; 0 = no condition) ---
+    // Applied on top of base earning eligibility: the rule only counts while these hold. Channel-scoped
+    // conditions are ignored where there's no channel context (e.g. quests).
+
+    /// <summary>Minimum humans present in the channel for this rule to apply (voice planes). 0 = no requirement.</summary>
+    public int MinPeopleInChannel { get; set; }
+
+    /// <summary>Minimum minutes the member has accrued before this rule applies. 0 = no requirement.</summary>
+    public int MinMinutes { get; set; }
 }

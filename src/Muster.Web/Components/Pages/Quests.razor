@@ -1,10 +1,11 @@
 @page "/guilds/{GuildIdRaw}/quests"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildMemberComponentBase
-@inject TimeZoneService TimeZones
-@inject IQuestReadService Reads
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
 @inject IQuestAuthorizer Authorizer
-@inject Wolverine.IMessageBus Bus
+@inject Muster.Web.Live.IQuestUpdateNotifier Notifier
 @using Muster.Contracts
 @using Muster.Domain
 @using Muster.Domain.Entities
@@ -22,50 +23,53 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="board-head">
-        <div>
-            <div class="eyebrow">Quest board</div>
-            <h1>Quests</h1>
-            <div class="summary">@SummaryText</div>
-        </div>
-        <div class="head-actions">
-            <a class="btn" href="/guilds/@GuildId/quests/new">+ New quest</a>
-        </div>
+    <TopProgress Active="@(_loading || _acting is not null)" />
+
+    <div class="page-head">
+        <h1>Quests</h1>
+        <p class="subtitle">@SummaryText</p>
     </div>
 
     @if (Message is not null)
     {
-        <p class="message">@Message</p>
+        <div class="notice" role="status">
+            <span class="material-symbols-outlined notice-icon">info</span>
+            <span class="notice-text">@Message</span>
+            <button type="button" class="icon-btn notice-close" title="Dismiss" aria-label="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+        </div>
     }
 
-    <div class="board-toolbar glass">
-        <form method="get" class="search">
-            <input type="search" name="search" value="@Search" placeholder="Search missions…" />
-            <input type="hidden" name="tab" value="@CurrentTab" />
-            <input type="hidden" name="type" value="@CurrentType" />
-            <input type="hidden" name="sort" value="@CurrentSort" />
-            <input type="hidden" name="desc" value="@CurrentDesc.ToString().ToLowerInvariant()" />
-        </form>
-        <div class="seg">
-            <a href="@TabUrl("active")" class="@(CurrentTab == "active" ? "active" : "")">Active</a>
-            <a href="@TabUrl("actionneeded")" class="@(CurrentTab == "actionneeded" ? "active" : "")">Action Needed</a>
-            <a href="@TabUrl("history")" class="@(CurrentTab == "history" ? "active" : "")">History</a>
+    <div class="board-toolbar glass full-bleed">
+        <a class="btn btn-sm" href="/guilds/@GuildId/quests/new">
+            <span class="material-symbols-outlined">add</span> New quest
+        </a>
+        <div class="search">
+            <input type="search" placeholder="Search missions…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
         </div>
         <div class="seg">
-            <a href="@TypeUrl("")" class="@(CurrentType == "" ? "active" : "")">All</a>
-            <a href="@TypeUrl("guild")" class="@(CurrentType == "guild" ? "active" : "")">Guild</a>
-            <a href="@TypeUrl("player")" class="@(CurrentType == "player" ? "active" : "")">Player</a>
-            <a href="@TypeUrl("mine")" class="@(CurrentType == "mine" ? "active" : "")">Mine</a>
+            <a href="@TabUrl("active")" @onclick:preventDefault @onclick='() => OnTab("active")' class="@(CurrentTab == "active" ? "active" : "")">Active</a>
+            <a href="@TabUrl("actionneeded")" @onclick:preventDefault @onclick='() => OnTab("actionneeded")' class="@(CurrentTab == "actionneeded" ? "active" : "")">Action Needed</a>
+            <a href="@TabUrl("history")" @onclick:preventDefault @onclick='() => OnTab("history")' class="@(CurrentTab == "history" ? "active" : "")">History</a>
+        </div>
+        <div class="seg">
+            <a href="@TypeUrl("")" @onclick:preventDefault @onclick='() => OnType("")' class="@(CurrentType == "" ? "active" : "")">All</a>
+            <a href="@TypeUrl("guild")" @onclick:preventDefault @onclick='() => OnType("guild")' class="@(CurrentType == "guild" ? "active" : "")">Guild</a>
+            <a href="@TypeUrl("player")" @onclick:preventDefault @onclick='() => OnType("player")' class="@(CurrentType == "player" ? "active" : "")">Player</a>
+            <a href="@TypeUrl("mine")" @onclick:preventDefault @onclick='() => OnType("mine")' class="@(CurrentType == "mine" ? "active" : "")">Mine</a>
         </div>
         <div class="sort-by">
             <span class="lbl">Sort</span>
-            <select onchange="location.href=this.value">
+            <select @onchange="OnSortChange">
                 <option value="@SortValueUrl("reward", true)" selected="@(CurrentSort == "reward" && CurrentDesc)">Reward · high → low</option>
                 <option value="@SortValueUrl("reward", false)" selected="@(CurrentSort == "reward" && !CurrentDesc)">Reward · low → high</option>
                 <option value="@SortValueUrl("closes", false)" selected="@(CurrentSort == "closes")">Closing soonest</option>
                 <option value="@SortValueUrl("created", true)" selected="@(CurrentSort == "created")">Newest</option>
             </select>
         </div>
+        @if (_loading)
+        {
+            <span class="dg-loading" aria-hidden="true"></span>
+        }
     </div>
 
     @if (_quests.Count == 0)
@@ -205,13 +209,11 @@ else if (State == AccessState.Ready)
                     }
                     @if (hasBar)
                     {
-                        <EditForm class="action-bar" Model="this" FormName="@($"quest-{q.Id}")" OnValidSubmit="ActAsync">
-                            <input type="hidden" name="QuestId" value="@q.Id" />
-
+                        <div class="action-bar">
                             <div class="action-left">
                                 @if (CanIntake(q))
                                 {
-                                    <select name="Tier" class="tier-select">
+                                    <select class="tier-select" value="@IntakeTier(q.Id)" @onchange="e => SetIntakeTier(q.Id, e)">
                                         <option value="@QuestTier.None">No tier (0 pts)</option>
                                         @foreach (var t in _tiers)
                                         {
@@ -220,30 +222,31 @@ else if (State == AccessState.Ready)
                                     </select>
                                     @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
                                     {
-                                        <label class="checkbox"><input type="checkbox" name="RequireFinal" value="true" /> final sign-off</label>
+                                        <label class="checkbox"><input type="checkbox" checked="@IntakeFinal(q.Id)" @onchange="e => SetIntakeFinal(q.Id, e)" /> final sign-off</label>
                                     }
                                 }
                                 @if (Noteable(actions))
                                 {
-                                    <input name="Note" class="note-input" placeholder="note (optional)" />
+                                    <input class="note-input" placeholder="note (optional)" value="@NoteFor(q.Id)" @oninput="e => SetNote(q.Id, e)" />
                                 }
                             </div>
 
                             <div class="action-right">
                                 @foreach (var a in primary)
                                 {
-                                    <button type="submit" name="Action" value="@a.Value" title="@a.Label" aria-label="@a.Label"
-                                            class="icon-btn @IconColor(a.Value)"><span class="material-symbols-outlined">@IconFor(a.Value)</span></button>
+                                    <button type="button" title="@a.Label" aria-label="@a.Label" disabled="@(_acting is not null)"
+                                            @onclick="() => ActAsync(q.Id, a.Value)"
+                                            class="icon-btn @IconColor(a.Value)"><span class="@BtnIconClass(q.Id, a.Value)">@BtnIcon(q.Id, a.Value)</span></button>
                                 }
                                 @if (CanIntake(q))
                                 {
-                                    <button type="submit" name="Action" value="accept" title="Accept &amp; open" aria-label="Accept and open" class="icon-btn success"><span class="material-symbols-outlined">thumb_up</span></button>
-                                    <button type="submit" name="Action" value="reject-intake" title="Reject intake (refund owner)" aria-label="Reject intake" class="icon-btn danger"><span class="material-symbols-outlined">thumb_down</span></button>
+                                    <button type="button" title="Accept &amp; open" aria-label="Accept and open" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "accept")' class="icon-btn success"><span class="@BtnIconClass(q.Id, "accept")">@BtnIcon(q.Id, "accept")</span></button>
+                                    <button type="button" title="Reject intake (refund owner)" aria-label="Reject intake" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "reject-intake")' class="icon-btn danger"><span class="@BtnIconClass(q.Id, "reject-intake")">@BtnIcon(q.Id, "reject-intake")</span></button>
                                 }
                                 @if (CanFinalize(q))
                                 {
-                                    <button type="submit" name="Action" value="finalize-pay" title="Pay completer" aria-label="Pay completer" class="icon-btn success"><span class="material-symbols-outlined">paid</span></button>
-                                    <button type="submit" name="Action" value="finalize-refund" title="Refund owner" aria-label="Refund owner" class="icon-btn warn"><span class="material-symbols-outlined">undo</span></button>
+                                    <button type="button" title="Pay completer" aria-label="Pay completer" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "finalize-pay")' class="icon-btn success"><span class="@BtnIconClass(q.Id, "finalize-pay")">@BtnIcon(q.Id, "finalize-pay")</span></button>
+                                    <button type="button" title="Refund owner" aria-label="Refund owner" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "finalize-refund")' class="icon-btn warn"><span class="@BtnIconClass(q.Id, "finalize-refund")">@BtnIcon(q.Id, "finalize-refund")</span></button>
                                 }
                                 @if (CanEdit(q))
                                 {
@@ -251,10 +254,10 @@ else if (State == AccessState.Ready)
                                 }
                                 @if (cancel is not null)
                                 {
-                                    <button type="submit" name="Action" value="cancel" title="@cancel.Label" aria-label="@cancel.Label" class="icon-btn danger far-right"><span class="material-symbols-outlined">delete</span></button>
+                                    <button type="button" title="@cancel.Label" aria-label="@cancel.Label" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "cancel")' class="icon-btn danger far-right"><span class="@BtnIconClass(q.Id, "cancel")">@BtnIcon(q.Id, "cancel")</span></button>
                                 }
                             </div>
-                        </EditForm>
+                        </div>
                     }
                 </article>
             }
@@ -295,6 +298,19 @@ else if (State == AccessState.Ready)
     private int _total;
     private int _totalPages;
     private int _page = 1;
+    private bool _loading;
+    private string? _appliedKey;          // last-applied view key; reload only when the effective view changes
+    private Guid? _acting;                // quest whose action is in flight (disables its buttons)
+    private string? _actingAction;        // the specific action — drives the per-button spinner
+
+    private const int SearchDebounceMs = 350;
+    private string? _searchBox;           // live input value, debounced into the Search query param
+    private CancellationTokenSource? _searchDebounce;
+
+    // Per-card transient action inputs (interactive — no form post): note / intake tier / final-approval toggle.
+    private readonly Dictionary<Guid, string> _notes = [];
+    private readonly Dictionary<Guid, QuestTier> _intakeTier = [];
+    private readonly Dictionary<Guid, bool> _intakeFinal = [];
 
     private static readonly QuestTier[] _tiers = [QuestTier.E, QuestTier.D, QuestTier.C, QuestTier.B, QuestTier.A, QuestTier.S];
 
@@ -332,42 +348,163 @@ else if (State == AccessState.Ready)
     private bool CurrentDesc => string.IsNullOrEmpty(Sort) ? true : Desc;
     private int CurrentSize => PageSizes.Contains(Size) ? Size : 25;
 
+    // One-time gate setup (manager flag + zone); the board itself loads from the query in OnParametersSetAsync.
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
-
-        var board = await Reads.GetBoardAsync(GuildId, UserId, _isManager, CurrentTab, CurrentType, Search, CurrentSort, CurrentDesc, Page, CurrentSize);
-        _quests = board.Items;
-        _total = board.Total;
-        _page = board.Page;
-        _totalPages = board.TotalPages;
-        _codes = board.Codes;
-        _names = board.Names;
-        _avatars = board.Avatars;
-        _settings = board.Settings;
     }
 
-    private async Task ActAsync()
+    // Fires on first render (after the gate) and on every query change (SPA nav). Reload only when the view changed.
+    protected override async Task OnParametersSetAsync()
     {
-        var form = Http?.Request.Form;
-        var id = form?["QuestId"].ToString() ?? "";
-        var action = form?["Action"].ToString() ?? "";
-        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(action))
+        if (State != AccessState.Ready)
         {
             return;
         }
 
-        var note = form?["Note"].ToString() is { Length: > 0 } n ? n.Trim() : null;
-        _ = Guid.TryParse(id, out var questId); // an invalid id ⇒ handler returns NotFound
-        _ = Enum.TryParse<QuestTier>(form?["Tier"].ToString(), out var tier);
-        var requireFinal = form?["RequireFinal"].ToString() == "true";
+        _searchBox = Search; // keep the box in sync with the query on initial load / external nav
+        var key = $"{CurrentTab}|{CurrentType}|{Search}|{CurrentSort}|{CurrentDesc}|{Page}|{CurrentSize}";
+        if (key == _appliedKey)
+        {
+            return;
+        }
 
-        // Every quest action is a command — auditing happens in the command's audit middleware.
-        var result = await QuestActionRunner.RunAsync(Bus, GuildId, questId, UserId, action, note, tier, requireFinal);
-        Message = result.Message;
+        _appliedKey = key;
+        await ReloadAsync();
+    }
 
-        await LoadAsync();
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Notifier.Updated += OnQuestChanged;
+        }
+    }
+
+    // A live quest change in this guild refreshes the board (no URL change). Fans in from any origin (web/bot/api/sweep).
+    private void OnQuestChanged(QuestLifecycleNotified change)
+    {
+        if (State != AccessState.Ready || change.GuildId != GuildId)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var board = await scope.ServiceProvider.GetRequiredService<IQuestReadService>()
+                .GetBoardAsync(GuildId, UserId, _isManager, CurrentTab, CurrentType, Search, CurrentSort, CurrentDesc, Page, CurrentSize);
+            _quests = board.Items;
+            _total = board.Total;
+            _page = board.Page;
+            _totalPages = board.TotalPages;
+            _codes = board.Codes;
+            _names = board.Names;
+            _avatars = board.Avatars;
+            _settings = board.Settings;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ActAsync(Guid questId, string action)
+    {
+        if (_acting is not null || string.IsNullOrEmpty(action))
+        {
+            return;
+        }
+
+        var note = _notes.GetValueOrDefault(questId)?.Trim();
+        note = string.IsNullOrEmpty(note) ? null : note;
+        var tier = _intakeTier.GetValueOrDefault(questId, QuestTier.None);
+        var requireFinal = _intakeFinal.GetValueOrDefault(questId);
+
+        _acting = questId;
+        _actingAction = action;
+        try
+        {
+            // Every quest action is a command — auditing happens in the command's audit middleware.
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            var result = await QuestActionRunner.RunAsync(bus, GuildId, questId, UserId, action, note, tier, requireFinal);
+            Message = result.Message;
+            _notes.Remove(questId);
+        }
+        finally
+        {
+            _acting = null;
+            _actingAction = null;
+            await ReloadAsync();
+        }
+    }
+
+    // Per-button spinner: swap the icon for a spinning `progress_activity` while the matching action is in flight.
+    private bool IsSpinning(Guid id, string action) => _acting == id && _actingAction == action;
+    private string BtnIcon(Guid id, string action) => IsSpinning(id, action) ? "progress_activity" : IconFor(action);
+    private string BtnIconClass(Guid id, string action) => IsSpinning(id, action) ? "material-symbols-outlined spin" : "material-symbols-outlined";
+
+    // ---- Control handlers: each rewrites the query (SPA nav); defaults omitted to keep links clean. ----
+
+    private void OnTab(string tab) => Nav.NavigateTo($"{QPath}?{BuildQuery(tab, CurrentType, CurrentSort, CurrentDesc, 1, Search)}", forceLoad: false);
+
+    private void OnType(string type) => Nav.NavigateTo($"{QPath}?{BuildQuery(CurrentTab, type, CurrentSort, CurrentDesc, 1, Search)}", forceLoad: false);
+
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        if (e.Value is string url && !string.IsNullOrEmpty(url))
+        {
+            Nav.NavigateTo(url, forceLoad: false);
+        }
+    }
+
+    // Filter-as-you-type: each keystroke updates _searchBox; wait for a typing pause, then navigate (replace so a
+    // search doesn't bury the page in back-button history).
+    private async Task DebouncedSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        var cts = _searchDebounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(SearchDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            var search = string.IsNullOrWhiteSpace(_searchBox) ? null : _searchBox;
+            Nav.NavigateTo($"{QPath}?{BuildQuery(CurrentTab, CurrentType, CurrentSort, CurrentDesc, 1, search)}", forceLoad: false, replace: true);
+        }
+    }
+
+    // ---- Per-card action inputs ----
+    private string NoteFor(Guid id) => _notes.GetValueOrDefault(id, "");
+    private void SetNote(Guid id, ChangeEventArgs e) => _notes[id] = e.Value as string ?? "";
+    private QuestTier IntakeTier(Guid id) => _intakeTier.GetValueOrDefault(id, QuestTier.None);
+    private void SetIntakeTier(Guid id, ChangeEventArgs e) => _intakeTier[id] = Enum.TryParse<QuestTier>(e.Value as string, out var t) ? t : QuestTier.None;
+    private bool IntakeFinal(Guid id) => _intakeFinal.GetValueOrDefault(id);
+    private void SetIntakeFinal(Guid id, ChangeEventArgs e) => _intakeFinal[id] = e.Value is true;
+
+    public void Dispose()
+    {
+        Notifier.Updated -= OnQuestChanged;
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
     }
 
     /// <summary>The actions this viewer may take on a quest, given its state and their role.</summary>
@@ -463,13 +600,13 @@ else if (State == AccessState.Ready)
 
     private string QPath => $"/guilds/{GuildId}/quests";
 
-    private string TabUrl(string tab) => $"{QPath}?{BuildQuery(tab, CurrentType, CurrentSort, CurrentDesc, 1)}";
+    private string TabUrl(string tab) => $"{QPath}?{BuildQuery(tab, CurrentType, CurrentSort, CurrentDesc, 1, Search)}";
 
-    private string TypeUrl(string type) => $"{QPath}?{BuildQuery(CurrentTab, type, CurrentSort, CurrentDesc, 1)}";
+    private string TypeUrl(string type) => $"{QPath}?{BuildQuery(CurrentTab, type, CurrentSort, CurrentDesc, 1, Search)}";
 
-    private string SortValueUrl(string sort, bool desc) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, sort, desc, 1)}";
+    private string SortValueUrl(string sort, bool desc) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, sort, desc, 1, Search)}";
 
-    private string PageUrl(int page) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, CurrentSort, CurrentDesc, page)}";
+    private string PageUrl(int page) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, CurrentSort, CurrentDesc, page, Search)}";
 
     /// <summary>One-line tally of the current page's missions for the board header.</summary>
     private string SummaryText
@@ -588,10 +725,10 @@ else if (State == AccessState.Ready)
         return span.TotalHours >= 1 ? $"{(int)span.TotalHours}h left" : $"{(int)span.TotalMinutes}m left";
     }
 
-    private string BuildQuery(string tab, string type, string sort, bool desc, int page)
+    private string BuildQuery(string tab, string type, string sort, bool desc, int page, string? search)
     {
         var parts = new List<string> { $"tab={tab}" };
-        if (!string.IsNullOrEmpty(Search)) parts.Add($"search={Uri.EscapeDataString(Search)}");
+        if (!string.IsNullOrEmpty(search)) parts.Add($"search={Uri.EscapeDataString(search)}");
         if (!string.IsNullOrEmpty(type)) parts.Add($"type={type}");
         parts.Add($"sort={sort}");
         parts.Add($"desc={desc.ToString().ToLowerInvariant()}");

@@ -284,6 +284,20 @@ spanning a season rollover is split exactly at the boundary by construction. Day
   attendance row is deleted — distinct from the standing `TrackingChoice` preference (still on the wallet page).
   Nav: sidebar gains **Me** (`/me`) + **Wallet** (`/wallet`); the bottom "You" tab points at the dashboard.
   Migration `SessionOptOut`.
+- **Round C — presence event log + exact timeline + audit. ✅ Done.** A `SessionPresenceEvent` row
+  (`Join`/`Resume`/`Pause`/`Leave` + a pause `Reason`) is emitted by `ReconcileSessionsAsync` at the four
+  transitions it already detects — gated by a new fire-once `VoiceAttendance.InChannel` latch so Join/Leave fire
+  exactly once (distinct from `OpenSegmentStart`, which only tracks the *earning* segment). The pure, unit-tested
+  `SessionTimeline.Build` folds a session's event stream into exact per-member segments (earning vs paused, with
+  rejoin gaps) + a stepped occupancy curve; open runs clamp to the window end. `SessionDetail` renders this on the
+  **Gantt** tab (green = earning, amber = paused) and a stepped "people in voice over time" curve; a third
+  **Audit** tab (staff-only) lists the raw event stream. Sessions recorded before the log have no events, so the
+  charts fall back to the old first-join → last-seen approximation. Resolution is the reconcile cadence, not
+  millisecond Discord events. Migration `P8cSessionPresenceEvents` (table + `InChannel` column).
+  - **📋 wishlist (revisit later) — presence-event archival/expiration.** The event log grows with churn (every
+    mute/leave per attendee). Needs a retention/prune job (e.g. drop events for sessions closed > N days, or roll
+    a closed session's events into a compact stored timeline before pruning). Deferred — fine to accumulate at
+    current scale; revisit before it's a storage concern.
 
 ## Channel sync & web wizard
 

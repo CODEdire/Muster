@@ -45,6 +45,28 @@ public class RewardMultiplierTests
     }
 
     [Fact]
+    public void Conditions_OnlyApplyWhenChannelContextMeetsThem()
+    {
+        var m = new RewardMultiplier
+        {
+            Kind = MultiplierKind.OneOff, Factor = 2m, Scope = MultiplierScope.BackgroundVoice,
+            StartsAt = Wed7pm.AddHours(-1), EndsAt = Wed7pm.AddHours(1),
+            MinPeopleInChannel = 3, MinMinutes = 10,
+        };
+        var set = Set(m: m);
+
+        // No context → conditions ignored (the guild-wide "window is live" indicator).
+        Assert.Equal(2m, set.Factor(MultiplierScope.BackgroundVoice, Wed7pm));
+
+        // Window live but conditions unmet → does not apply.
+        Assert.Equal(1m, set.Factor(MultiplierScope.BackgroundVoice, Wed7pm, context: new MultiplierContext(2, 30))); // too few people
+        Assert.Equal(1m, set.Factor(MultiplierScope.BackgroundVoice, Wed7pm, context: new MultiplierContext(5, 5)));  // not active long enough
+
+        // Both conditions met → applies.
+        Assert.Equal(2m, set.Factor(MultiplierScope.BackgroundVoice, Wed7pm, context: new MultiplierContext(3, 10)));
+    }
+
+    [Fact]
     public void Recurring_WeeknightWindow()
     {
         var m = new RewardMultiplier

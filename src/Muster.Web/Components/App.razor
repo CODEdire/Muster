@@ -24,12 +24,37 @@
             } catch (e) { }
         })();
     </script>
+    <!-- Browser-zone detector, defined inline (part of the document, never cached as a separate file) so
+         interactive components can always localize displayed times to where the viewer actually is. -->
+    <script>
+        window.musterBrowserTimeZone = function () {
+            try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { return ""; }
+        };
+    </script>
     <HeadOutlet />
 </head>
 
 <body>
     <Routes />
-    <!-- Enhanced navigation/forms: fetch + DOM-patch over plain HTTP (no SignalR circuit). -->
+
+    <!-- Interactive-circuit reconnect overlay. blazor.web.js toggles the components-reconnect-* classes on this
+         element; the CSS in app.css shows the matching message. Inert for static SSR pages (no circuit). -->
+    <div id="components-reconnect-modal" class="reconnect-modal">
+        <div class="reconnect-card glass">
+            <div class="reconnect-spinner" aria-hidden="true"></div>
+            <p class="reconnect-text reconnect-text-show">Connection lost. Reconnecting…</p>
+            <p class="reconnect-text reconnect-text-failed">
+                Couldn't reconnect.
+                <button type="button" class="btn btn-sm" onclick="window.Blazor.reconnect()">Retry</button>
+            </p>
+            <p class="reconnect-text reconnect-text-rejected">
+                This session has expired.
+                <button type="button" class="btn btn-sm" onclick="location.reload()">Reload</button>
+            </p>
+        </div>
+    </div>
+
+    <!-- Enhanced navigation/forms over plain HTTP, plus the InteractiveServer circuit (SignalR) for interactive pages. -->
     <script src="_framework/blazor.web.js"></script>
     <script src="js/theme.js"></script>
     <script src="js/timezone.js"></script>

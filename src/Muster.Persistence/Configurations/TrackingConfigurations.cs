@@ -82,6 +82,17 @@ public class SessionOptOutConfiguration : IEntityTypeConfiguration<SessionOptOut
     }
 }
 
+public class SessionPresenceEventConfiguration : IEntityTypeConfiguration<SessionPresenceEvent>
+{
+    public void Configure(EntityTypeBuilder<SessionPresenceEvent> e)
+    {
+        e.HasKey(x => x.Id);
+        // Timeline + audit read the stream for one session in chronological order.
+        e.HasIndex(x => new { x.SessionId, x.AtUtc });
+        e.Property(x => x.Reason).HasMaxLength(64);
+    }
+}
+
 public class RewardMultiplierConfiguration : IEntityTypeConfiguration<RewardMultiplier>
 {
     public void Configure(EntityTypeBuilder<RewardMultiplier> e)

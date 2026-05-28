@@ -1,0 +1,84 @@
+@* Renders a UTC instant for display, localized to the viewer. It resolves the viewer's actual browser zone
+   itself (via the shared BrowserTimeZone cache) and only falls back to the passed Zone (a server-resolved
+   preference) when the browser zone isn't available — e.g. static SSR. Modes: Relative="true" shows a compact
+   "2h ago"/"in 3d"; otherwise an accurate localized timestamp. Either way the complementary forms (local + UTC
+   + relative) are the hover title, so the zone is never ambiguous. Renders a semantic <time>; Empty (default
+   "—") covers a null value. *@
+@implements IDisposable
+@using Microsoft.JSInterop
+@using Muster.Infrastructure.Services.Platform
+@inject IJSRuntime JS
+@inject BrowserTimeZone Browser
+
+@if (ShowZone)
+{
+    @* Renders just the zone label these times resolve to, with its source — for a footnote next to a grid. *@
+    <span class="local-tz">@ZoneText()</span>
+}
+else if (Value is { } v)
+{
+    <time datetime="@v.UtcDateTime.ToString("o")" title="@Title(v)">@Display(v)</time>
+}
+else
+{
+    @Empty
+}
+
+@code {
+    /// <summary>The instant to show (UTC). Null renders <see cref="Empty"/>. Ignored when <see cref="ShowZone"/>.</summary>
+    [Parameter] public DateTimeOffset? Value { get; set; }
+
+    /// <summary>Render just the effective zone label (with its source) instead of a timestamp — same resolution
+    /// as the times, so a footnote always matches what's displayed.</summary>
+    [Parameter] public bool ShowZone { get; set; }
+
+    /// <summary>Server-resolved fallback zone (user preference → guild → UTC). The viewer's browser zone wins
+    /// over this when it can be detected.</summary>
+    [Parameter] public string? Zone { get; set; }
+
+    /// <summary>Show a relative label ("2h ago") instead of an accurate timestamp.</summary>
+    [Parameter] public bool Relative { get; set; }
+
+    /// <summary>Override the accurate-mode date pattern (defaults to <see cref="TimeZoneService.DisplayPattern"/>).</summary>
+    [Parameter] public string? Pattern { get; set; }
+
+    /// <summary>Placeholder when <see cref="Value"/> is null.</summary>
+    [Parameter] public string Empty { get; set; } = "—";
+
+    // Prefer the viewer's actual browser zone; fall back to the passed (server-resolved) zone, then UTC.
+    private string? EffectiveZone => TimeZoneService.IsValidZone(Browser.Zone) ? Browser.Zone : Zone;
+
+    // The zone label + where it came from (browser auto-detect vs the server-side preference/default).
+    private string ZoneText()
+        => TimeZoneService.IsValidZone(Browser.Zone)
+            ? $"{Browser.Zone} (detected)"
+            : $"{TimeZoneService.ZoneLabel(Zone)} (server default)";
+
+    protected override void OnInitialized() => Browser.Changed += OnZoneResolved;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Browser.EnsureAsync(JS);
+        }
+    }
+
+    // The detection resolves after first render; re-localize when it lands.
+    private void OnZoneResolved() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Browser.Changed -= OnZoneResolved;
+
+    private string Display(DateTimeOffset v)
+        => Relative ? TimeZoneService.Relative(v, DateTimeOffset.UtcNow) : TimeZoneService.Format(v, EffectiveZone, Pattern);
+
+    // The hover title carries the forms that aren't on screen — always both local + UTC, plus the relative
+    // age — so the zone is never ambiguous regardless of which mode is displayed.
+    private string Title(DateTimeOffset v)
+    {
+        var local = $"{TimeZoneService.Format(v, EffectiveZone, Pattern)} {TimeZoneService.ZoneLabel(EffectiveZone)}";
+        var utc = $"{TimeZoneService.Format(v, TimeZoneService.Utc, Pattern)} UTC";
+        var relative = TimeZoneService.Relative(v, DateTimeOffset.UtcNow);
+        return Relative ? $"{local} · {utc}" : $"{local} · {utc} · {relative}";
+    }
+}

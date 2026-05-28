@@ -1,0 +1,11 @@
+@* Thin animated indeterminate progress bar — fixed across the very top of the viewport, YouTube/Vercel-style.
+   No progress %; a single sliding gradient repeats while <see cref="Active"/> is true. The wrapper is always
+   rendered so the on/off transition can fade smoothly. Styling in app.css under "Top progress bar". *@
+<div class="top-progress @(Active ? "on" : null)" aria-hidden="true">
+    <div class="top-progress-bar"></div>
+</div>
+
+@code {
+    /// <summary>Whether the bar is currently visible/animating. False fades it out smoothly.</summary>
+    [Parameter] public bool Active { get; set; }
+}

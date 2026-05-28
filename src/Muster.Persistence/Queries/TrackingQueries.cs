@@ -21,6 +21,12 @@ public static class TrackingQueries
     public static Task<List<TrackingSession>> ListActiveSessionsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.TrackingSessions.Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active).ToListAsync(ct);
 
+    /// <summary>Active sessions in a guild bound to a Discord scheduled event (for reconciling against event status).</summary>
+    public static Task<List<TrackingSession>> ListActiveScheduledEventSessionsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => db.TrackingSessions
+            .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active && s.ScheduledEventId != null)
+            .ToListAsync(ct);
+
     /// <summary>All active sessions in a guild with attendance loaded (for the session reconcile engine).</summary>
     public static Task<List<TrackingSession>> ListActiveSessionsWithAttendanceAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => db.TrackingSessions.Include(s => s.Attendance)

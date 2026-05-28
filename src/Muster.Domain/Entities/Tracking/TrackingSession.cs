@@ -67,5 +67,10 @@ public class VoiceAttendance
     /// (or isn't currently eligible under the session's anti-AFK guards).</summary>
     public DateTimeOffset? OpenSegmentStart { get; set; }
 
+    /// <summary>Whether the member was in the tracked channel as of the last reconcile pass (regardless of earning
+    /// eligibility). A fire-once latch so the reconcile emits exactly one Join when they enter and one Leave when
+    /// they go — distinct from <see cref="OpenSegmentStart"/>, which only tracks the earning segment.</summary>
+    public bool InChannel { get; set; }
+
     public TrackingSession? TrackingSession { get; set; }
 }

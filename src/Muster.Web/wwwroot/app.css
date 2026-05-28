@@ -199,6 +199,11 @@ body::before {
     border-color: var(--border);
     color: var(--text);
 }
+.btn-warn { background: #d97706; color: #fff; border-color: transparent; }
+.btn-warn:hover { filter: brightness(1.08); }
+.btn-danger { background: #dc2626; color: #fff; border-color: transparent; }
+.btn-danger:hover { filter: brightness(1.08); }
+.btn .material-symbols-outlined { font-size: 1.05rem; }
 
 /* ---- Theme toggle (segmented) ------------------------------------------- */
 .theme-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
@@ -249,16 +254,24 @@ table th { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercas
 
 /* ---- Forms --------------------------------------------------------------- */
 form label { display: block; margin-bottom: 0.9rem; color: var(--text-muted); font-size: 0.9rem; }
-form input, form select {
-    display: block;
-    width: 100%;
-    margin-top: 0.3rem;
+/* Themed inputs/selects everywhere (not just inside <form>) — interactive pages drop the form wrapper and
+   drive actions via @onclick + bound state, so the theme can't depend on the wrapper. Width is intentionally
+   NOT set here so inline inputs (note fields, search) keep their content width; <form>-wrapped inputs get
+   full-width via the rule below. The checkbox switch styling further down overrides via its own selector. */
+input:not([type="checkbox"]):not([type="radio"]),
+select {
     padding: 0.5rem 0.65rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
     font: inherit;
+}
+form input:not([type="checkbox"]):not([type="radio"]),
+form select {
+    display: block;
+    width: 100%;
+    margin-top: 0.3rem;
 }
 
 /* ---- Checkboxes render as toggle switches (global) ----------------------- */
@@ -318,6 +331,44 @@ label.checkbox {
     border: 1px solid var(--border);
     margin-bottom: 1rem;
 }
+
+/* Notification box: a clean toast-style status banner with an icon, accent left bar, and a dismiss control. */
+.notice {
+    display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.7rem 0.85rem; margin-bottom: 1rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    color: var(--text);
+}
+.notice .notice-icon { color: var(--accent); font-size: 1.3rem; flex: 0 0 auto; }
+.notice .notice-text { flex: 1 1 auto; min-width: 0; }
+.notice .notice-text .muted { color: var(--text-muted); font-size: 0.85rem; }
+.notice .notice-close { margin-left: auto; flex: 0 0 auto; }
+
+/* Reward + quest-level toolbar strip on the quest detail. Sits below the header's bottom border and above
+   the content panels — reward on the left, available actions on the right. Coupled tight to the header
+   (pull the .sess-head's bottom margin in when this strip follows it) so the line separates header from
+   strip without a yawning gap. */
+.sess-head:has(+ .quest-strip) { margin-bottom: 0.35rem; }
+.quest-strip {
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: 0.5rem 0.25rem 0.9rem;
+    margin-bottom: 1rem;
+}
+.quest-strip-reward { display: inline-flex; align-items: center; gap: 0.5rem; }
+.quest-strip-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-left: auto; }
+.quest-strip-actions .tier-select, .quest-strip-actions .note-input { width: auto; min-width: 11rem; margin-top: 0; }
+.quest-strip-actions .checkbox { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+/* Warning variant: amber accents (e.g. a disputed quest, a paused/AFK situation). */
+.notice.notice-warn {
+    border-color: color-mix(in srgb, #d97706 45%, var(--border));
+    border-left-color: #d97706;
+    background: color-mix(in srgb, #d97706 10%, var(--surface));
+}
+.notice.notice-warn .notice-icon { color: #d97706; }
 
 /* ---- Page header --------------------------------------------------------- */
 .page-head { margin-bottom: 1.25rem; }
@@ -417,14 +468,17 @@ table.leaderboard th a { color: var(--text-muted); }
 .quest-tabs a.active { background: var(--accent); color: #fff; border-color: transparent; }
 /* Generic link-based pill tabs (server-loaded panels, unlike the CSS-only radio .tabs). */
 .pill-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-.pill-tabs a {
+.pill-tabs a, .pill-tabs button {
     padding: 0.35rem 0.85rem;
     border-radius: 999px;
     border: 1px solid var(--border);
     color: var(--text-muted);
+    font: inherit;
     font-size: 0.9rem;
+    background: transparent;
+    cursor: pointer;
 }
-.pill-tabs a.active { background: var(--accent); color: #fff; border-color: transparent; }
+.pill-tabs a.active, .pill-tabs button.active { background: var(--accent); color: #fff; border-color: transparent; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; max-width: none; margin: 0; }
 .row-actions label { margin: 0; }
 .badge.status-open { background: var(--accent-soft); color: #04122b; }
@@ -599,6 +653,12 @@ table.leaderboard th a { color: var(--text-muted); }
     max-width: 1180px;
 }
 
+/* Pages that want the full available width (quests board, etc.) drop the cap by marking any child .full-bleed.
+   Mobile already has max-width: none below. */
+@media (min-width: 861px) {
+    .app-main:has(.full-bleed) { max-width: none; }
+}
+
 /* Bottom tabs: hidden on desktop, fixed bar on mobile. */
 .bottom-tabs { display: none; }
 
@@ -741,12 +801,20 @@ table.leaderboard th a { color: var(--text-muted); }
 .detail-actions .icon-row { gap: 0.5rem; }
 .detail-actions .note-input, .detail-actions .tier-select { width: auto; min-width: 11rem; margin-top: 0; }
 
-.participant-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
-.participant-list li { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.participant-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.participant-list .p-row {
+    display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;
+    padding: 0.5rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);
+}
+.participant-list .p-row.lb-me { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.participant-list .p-identity { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; flex-wrap: wrap; }
 .participant-list .p-name { font-weight: 600; }
-.participant-list .p-note { color: var(--text-muted); font-size: 0.85rem; }
-.participant-list .p-actions { margin-left: auto; display: flex; gap: 0.35rem; align-items: center; }
-.participant-list .p-note-input { width: auto; min-width: 8rem; margin-top: 0; padding: 0.35rem 0.55rem; }
+.participant-list .roster-by { color: var(--text-muted); font-size: 0.78rem; }
+.participant-list .p-note { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
+.participant-list .p-note .material-symbols-outlined { font-size: 1rem; }
+.participant-list .p-note-review { font-style: normal; }
+.participant-list .p-actions { margin-left: auto; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+.participant-list .p-note-input { width: auto; min-width: 10rem; margin-top: 0; padding: 0.35rem 0.55rem; }
 
 /* Rendered Discord markdown */
 .markdown { line-height: 1.55; }
@@ -1022,3 +1090,355 @@ img.avatar-sm { object-fit: cover; }
 
 /* Member "Sync balances" row under the wallet panel. */
 .balance-sync-row { display: flex; align-items: center; gap: .6rem; margin: .25rem 0 1rem; flex-wrap: wrap; }
+
+/* ---- Reusable tab frame (TabFrame.razor) --------------------------------- */
+/* Folder tabs sit on top of a bordered frame and overlap its top border, so the active tab reads as the
+   front of the folder opening into the body. See docs/ux/sessions-datagrid.md for the design rationale. */
+.tabframe { display: flex; flex-direction: column; gap: 0; min-height: 0; }
+/* Square only the top-left corner so the active (leftmost) tab's left border continues the frame's left
+   border as one straight line. Top-right and both bottom corners keep the glass radius. */
+.tabframe-frame { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0; overflow: hidden; margin-bottom: 0; border-top-left-radius: 0; }
+
+/* Fill mode: the content column hosting the frame drops its width cap and fills the viewport height, so
+   the frame is full-width and its body (not the page) scrolls. Scoped via :has to the .tabframe-fill
+   marker; disabled on mobile where the layout is a single scrolling column. */
+@media (min-width: 861px) {
+    .app-main:has(.tabframe-fill) {
+        max-width: none;
+        height: calc(100dvh - 1.8rem);
+        padding-bottom: 0.9rem;
+        display: flex;
+        flex-direction: column;
+    }
+    .app-main:has(.tabframe-fill) .tabframe { flex: 1 1 auto; min-height: 0; }
+}
+
+/* The strip overlaps the frame's top border by 1px; the active tab carries its own top/side borders +
+   glass fill (and no bottom border), so it merges seamlessly into the body — a real folder tab. */
+.tabframe-strip { display: flex; gap: 0.3rem; padding: 0; margin-bottom: -1px; position: relative; z-index: 1; }
+.tabframe-tab {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.5rem 0.95rem 0.6rem;
+    border: 1px solid transparent; border-top-width: 2px; border-bottom: 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: transparent; color: var(--text-muted);
+    font: inherit; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+}
+.tabframe-tab .material-symbols-outlined { font-size: 1.1rem; }
+.tabframe-tab:hover { color: var(--text); }
+.tabframe-tab.active {
+    color: var(--text);
+    background: var(--glass-bg);
+    border-left-color: var(--glass-border);
+    border-right-color: var(--glass-border);
+    border-top-color: var(--accent);
+    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+}
+
+.tabframe-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+
+/* ---- Sessions datagrid content (inside the tab frame) -------------------- */
+
+.dg-toolbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+    padding: 0.9rem 1.4rem; border-bottom: 1px solid var(--border);
+}
+.dg-filters { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.dg-actions { display: flex; align-items: center; gap: 0.5rem; }
+.dg-actions .material-symbols-outlined { font-size: 1.1rem; }
+
+.dg-subhead {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 0.9rem 1.4rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 0.9rem;
+}
+.dg-message { padding: 0.7rem 1.4rem 0; margin: 0; }
+/* A muted footnote inside the frame body, padded to the same gutter as the toolbar/cards. */
+.dg-note { color: var(--text-muted); font-size: 0.82rem; margin: 0; padding: 0.5rem 1.4rem 0.9rem; }
+
+/* "⚡ N× active" — shown when a reward multiplier is live for the current scope. */
+.mult-badge {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    padding: 0.18rem 0.55rem; border-radius: 999px;
+    font-size: 0.8rem; font-weight: 700; white-space: nowrap;
+    background: linear-gradient(90deg, var(--accent), var(--accent-soft)); color: #fff;
+}
+
+/* Segmented status control. */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.seg button {
+    padding: 0.35rem 0.7rem; border: 0; border-left: 1px solid var(--border);
+    background: transparent; color: var(--text-muted); font: inherit; font-size: 0.85rem; cursor: pointer;
+}
+.seg button:first-child { border-left: 0; }
+.seg button.active { background: var(--accent); color: #fff; }
+
+.dg-search, .dg-select {
+    width: auto; margin: 0; padding: 0.38rem 0.6rem;
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font: inherit; font-size: 0.85rem;
+}
+.dg-search { min-width: 11rem; }
+
+/* Spinner shown while a query is in flight. */
+.dg-loading { width: 1rem; height: 1rem; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: reconnect-spin .8s linear infinite; }
+
+/* The only scrolling region: fills the remaining frame height, rows scroll under a sticky header. */
+.dg-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.dg-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.dg-table th, .dg-table td { text-align: left; padding: 0.6rem 1.4rem; border-bottom: 1px solid var(--border); }
+.dg-table th {
+    position: sticky; top: 0; z-index: 1;
+    color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em;
+    background: var(--surface); backdrop-filter: blur(var(--glass-blur));
+}
+.dg-table th.num, .dg-table td.num { text-align: right; }
+.dg-table th.sortable { cursor: pointer; user-select: none; }
+.dg-table th.sortable:hover { color: var(--text); }
+.dg-table tbody tr:hover { background: var(--surface); }
+.dg-table .dg-empty td { text-align: center; color: var(--text-muted); padding: 2.25rem 1rem; }
+
+.dg-actions-col { width: 1%; white-space: nowrap; text-align: right; }
+.dg-row-actions { display: inline-flex; gap: 0.35rem; justify-content: flex-end; }
+
+.status-dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.4rem; vertical-align: middle; flex: 0 0 auto; }
+.status-dot.is-active { background: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18); }
+.status-dot.is-paused { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
+.status-dot.is-stats  { background: var(--accent-soft); }
+.status-dot.is-ended { background: var(--text-muted); opacity: 0.5; }
+
+.dg-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    padding: 0.9rem 1.4rem; border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 0.88rem;
+}
+.dg-footer-left { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
+.dg-pagesize { display: flex; align-items: center; gap: 0.4rem; }
+.dg-pagesize .dg-select { padding: 0.25rem 0.45rem; }
+.dg-tz { font-size: 0.85rem; }
+.dg-pager { display: flex; align-items: center; gap: 0.75rem; }
+
+.banner-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+/* Warning notice (e.g. "you're being tracked"): amber accent + a left status bar + icon. */
+.banner-warn {
+    gap: 0.75rem;
+    border: 1px solid color-mix(in srgb, #d97706 45%, var(--border));
+    border-left: 3px solid #d97706;
+    background: color-mix(in srgb, #d97706 10%, var(--surface));
+}
+.banner-warn .banner-icon { color: #d97706; font-size: 1.5rem; flex: 0 0 auto; }
+.banner-warn .banner-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1 1 16rem; }
+.banner-warn .banner-why { color: var(--text-muted); font-size: 0.82rem; }
+.banner-warn .btn { flex: 0 0 auto; }
+
+/* Channel reference: kind icon (voice speaker, text #, stage, forum, …) + name, so the type reads at a glance. */
+.channel-ref { display: inline-flex; align-items: center; gap: 0.3rem; }
+.channel-ref .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); }
+
+/* ---- Voice leaderboard ---------------------------------------------------- */
+.lb-rank-col { width: 3.25rem; }
+.lb-rank { font-weight: 700; font-size: 1.05rem; }
+.lb-table tbody tr.lb-me { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* Voice time + a slim bar beneath it, scaled to the #1 member (so it's consistent across pages). */
+.lb-bar { display: inline-block; min-width: 6rem; padding-bottom: 0.4rem; position: relative; }
+.lb-bar span { font-variant-numeric: tabular-nums; }
+.lb-bar::after {
+    content: ""; position: absolute; left: 0; bottom: 0; height: 4px;
+    width: var(--lb-pct, 0%); border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-soft));
+}
+
+/* ---- Session detail: live ops dashboard ----------------------------------- */
+.sess-head { padding: 0.2rem 0 1rem; margin-bottom: 1.1rem; border-bottom: 1px solid var(--border); }
+.sess-head-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.sess-back .material-symbols-outlined { font-size: 1.1rem; }
+.sess-head-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.sess-head-actions .btn .material-symbols-outlined { font-size: 1.1rem; }
+.updated { color: var(--text-muted); font-size: 0.8rem; }
+
+.sess-title { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.6rem 0 0.55rem; }
+.sess-title h1 { margin: 0; }
+
+.live-badge {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.18rem 0.6rem; border-radius: 999px; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em;
+    background: rgba(74, 222, 128, 0.16); color: #16a34a;
+}
+.live-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #22c55e; animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.5); } 50% { opacity: 0.6; box-shadow: 0 0 0 5px rgba(34,197,94,0); } }
+.badge.ended-badge { background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); }
+
+.sess-meta { display: flex; align-items: center; gap: 0.3rem 0.5rem; flex-wrap: wrap; color: var(--text-muted); font-size: 0.9rem; }
+.sess-meta > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.sess-meta > span + span::before { content: "·"; margin-right: 0.5rem; }
+.sess-meta .material-symbols-outlined { font-size: 1.05rem; }
+
+.sess-kpis { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0.75rem; margin-bottom: 1rem; }
+.kpi { flex: 1 1 8rem; max-width: 14rem; padding: 0.85rem 1rem; text-align: center; display: flex; flex-direction: column; justify-content: center; }
+.kpi-num { font-size: 1.5rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi-num.accent { color: #16a34a; }
+.kpi-num.warn { color: #d97706; }
+.kpi-num.muted { color: var(--text-muted); }
+.kpi-sub { font-size: 0.95rem; font-weight: 600; color: var(--text-muted); margin-left: 0.25rem; }
+.kpi-unit { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-left: 0.2rem; }
+.kpi-label { color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.2rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; }
+.mult-chip {
+    display: inline-flex; align-items: center; padding: 0.05rem 0.4rem; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 800; letter-spacing: 0; text-transform: none;
+    background: linear-gradient(90deg, var(--accent), var(--accent-soft)); color: #fff;
+}
+
+.sess-rules { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.rules-label { font-weight: 600; }
+.rules-hint { color: var(--text-muted); font-size: 0.8rem; }
+.rule-chip {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.25rem 0.65rem; border-radius: 999px; border: 1px solid var(--border); font-size: 0.85rem;
+}
+.rule-chip .material-symbols-outlined { font-size: 1.05rem; }
+.rule-chip.on { background: var(--accent); color: #fff; border-color: transparent; }
+.rule-chip.off { color: var(--text-muted); opacity: 0.7; }
+
+/* Timeline visuals */
+.viz { padding: 1rem 1.2rem 1.2rem; }
+.viz .panel-head { margin-bottom: 0.6rem; }
+.occ { margin-bottom: 1rem; }
+.occ-svg { width: 100%; height: 5rem; display: block; }
+.occ-area { fill: var(--accent); opacity: 0.14; }
+.occ-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.occ-axis { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.78rem; margin-top: 0.2rem; }
+
+.gantt { display: flex; flex-direction: column; gap: 0.3rem; max-height: 20rem; overflow: hidden auto; }
+.gantt-row { display: flex; align-items: center; gap: 0.6rem; }
+.gantt-name { flex: 0 0 11rem; width: 11rem; display: flex; align-items: center; gap: 0.35rem; min-width: 0; font-size: 0.85rem; }
+.gantt-name .user-chip { min-width: 0; }
+.gantt-name .user-chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-track { position: relative; flex: 1 1 auto; height: 0.85rem; background: var(--surface); border-radius: 999px; overflow: hidden; }
+.gantt-bar { position: absolute; top: 0; height: 100%; border-radius: 999px; background: var(--accent); opacity: 0.7; }
+.gantt-bar.live { opacity: 1; background: linear-gradient(90deg, var(--accent), #22c55e); animation: live-pulse 1.8s ease-in-out infinite; }
+
+/* Exact (event-driven) gantt: each presence run is split into earning (green) / paused (amber) segments. */
+.gantt-seg { position: absolute; top: 0; height: 100%; }
+.gantt-seg.earn { background: #22c55e; }
+.gantt-seg.paused { background: #d97706; opacity: 0.55; }
+.gantt-row .gantt-seg:first-of-type { border-radius: 999px 0 0 999px; }
+.gantt-row .gantt-seg:last-of-type { border-radius: 0 999px 999px 0; }
+.seg-key { display: inline-flex; align-items: center; gap: 0.25rem; margin-left: 0.4rem; }
+.seg-key::before { content: ""; width: 0.6rem; height: 0.6rem; border-radius: 2px; }
+.seg-key.earn::before { background: #22c55e; }
+.seg-key.paused::before { background: #d97706; opacity: 0.55; }
+
+/* Status donut, embedded as a KPI tile on active sessions: donut + chip legend, content-sized. */
+.kpi-donut { flex: 0 1 auto; max-width: none; flex-direction: row; align-items: center; gap: 0.85rem; padding: 0.7rem 0.9rem; text-align: left; }
+.donut { width: 3.6rem; height: 3.6rem; flex: 0 0 auto; }
+.donut-track { fill: none; stroke: var(--border); stroke-width: 3; }
+.donut-seg { fill: none; stroke-width: 3; }
+.donut-seg.earn { stroke: #22c55e; }
+.donut-seg.paused { stroke: #d97706; }
+.donut-seg.left { stroke: var(--text-muted); opacity: 0.5; }
+.donut-center { fill: var(--text); font-size: 0.5rem; font-weight: 800; text-anchor: middle; }
+.donut-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.donut-legend li {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.12rem 0.5rem; border-radius: 999px; border: 1px solid var(--border);
+    font-size: 0.78rem; white-space: nowrap;
+}
+.donut-legend b { margin-left: auto; padding-left: 0.4rem; font-variant-numeric: tabular-nums; }
+
+/* Medal + member name in the attendance grid. */
+.dg-member { display: inline-flex; align-items: center; gap: 0.4rem; }
+.medal { font-size: 1.05rem; line-height: 1; }
+
+/* Per-button loading spinner: pair with the Material Symbol `progress_activity` while a command is in flight. */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; display: inline-block; }
+.btn .spin, .icon-btn .spin { vertical-align: -2px; }
+
+/* Top progress bar (TopProgress.razor): fixed across the viewport's top edge while any page-level work is in
+   flight. Indeterminate — a single gradient bar slides off-left → off-right, repeating with an ease curve.
+   Always-rendered so .on/off fades smoothly via opacity transition. */
+.top-progress {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 2px; overflow: hidden; pointer-events: none;
+    z-index: 9999;
+    opacity: 0; transition: opacity 0.25s ease;
+}
+.top-progress.on { opacity: 1; }
+.top-progress-bar {
+    position: absolute; top: 0; height: 100%; width: 30%;
+    left: -30%;
+    background: linear-gradient(90deg, transparent, var(--accent) 40%, var(--accent) 60%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
+    animation: top-progress-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes top-progress-slide {
+    0%   { left: -30%; }
+    100% { left: 100%; }
+}
+
+/* ---- Background tab (live presence) --------------------------------------- */
+.bg-card { border: 1px solid var(--border); border-radius: var(--radius-sm); margin: 0.9rem 1.4rem; }
+/* Header sticks to the top of the scroll region while its members scroll past (no overflow:hidden on the
+   card, which would clip the sticky). */
+.bg-card-head {
+    position: sticky; top: 0; z-index: 1; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    padding: 0.6rem 0.85rem; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(var(--glass-blur));
+}
+.bg-card-head:hover { color: var(--text); }
+.bg-chevron { font-size: 1.2rem; color: var(--text-muted); }
+.bg-card-head .channel-ref { font-weight: 600; }
+.bg-rate { color: var(--text-muted); font-size: 0.82rem; }
+.bg-count { margin-left: auto; color: var(--text-muted); font-size: 0.82rem; }
+.badge.bg-reward { background: var(--accent); color: #fff; }
+.badge.bg-stats { background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); }
+
+.bg-members { display: flex; flex-direction: column; }
+.bg-member { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.85rem; border-top: 1px solid var(--border); }
+.bg-member:first-child { border-top: 0; }
+.bg-member.lb-me { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.bg-member-meta { margin-left: auto; color: var(--text-muted); font-size: 0.82rem; text-align: right; }
+
+/* Pinned "you" row, rendered outside the grid when the viewer isn't on the current page. */
+.lb-self {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.6rem 1.4rem; border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.lb-self .lb-rank { width: 3.25rem; }
+.lb-self .lb-you { font-weight: 600; }
+.lb-self .lb-self-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Small muted footnote stating which zone times are shown in (detail / me pages have no grid footer). */
+.tz-note { color: var(--text-muted); font-size: 0.82rem; margin: 0.35rem 0.25rem 0; }
+
+/* Interactive-circuit reconnect overlay. Hidden by default; blazor.web.js adds the components-reconnect-*
+   classes to #components-reconnect-modal as the circuit drops/recovers, and these rules reveal the right state. */
+.reconnect-modal { display: none; position: fixed; inset: 0; z-index: 1000;
+    align-items: center; justify-content: center; padding: 1rem;
+    background: rgba(8, 18, 37, 0.45); backdrop-filter: blur(2px); }
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-rejected { display: flex; }
+
+.reconnect-card { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    padding: 1rem 1.25rem; border-radius: var(--radius, 16px); color: var(--text); max-width: 90vw; }
+.reconnect-spinner { width: 1.1rem; height: 1.1rem; flex: none; border-radius: 50%;
+    border: 2px solid var(--border, rgba(127,127,127,.3)); border-top-color: var(--accent, #2563eb);
+    animation: reconnect-spin .8s linear infinite; }
+@keyframes reconnect-spin { to { transform: rotate(360deg); } }
+
+/* One card, three messages — show only the one matching the current circuit state. */
+.reconnect-text { margin: 0; display: none; align-items: center; gap: .5rem; }
+#components-reconnect-modal.components-reconnect-show    .reconnect-text-show     { display: flex; }
+#components-reconnect-modal.components-reconnect-failed   .reconnect-text-failed   { display: flex; }
+#components-reconnect-modal.components-reconnect-rejected .reconnect-text-rejected { display: flex; }
+/* The spinner only makes sense while actively retrying. */
+#components-reconnect-modal.components-reconnect-failed .reconnect-spinner,
+#components-reconnect-modal.components-reconnect-rejected .reconnect-spinner { display: none; }

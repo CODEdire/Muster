@@ -51,6 +51,10 @@ public class GuildChannel
     /// <summary>Anti-AFK guards that pause background voice reward accrual (default: skip deafened + alone, allow muted).</summary>
     public AfkGuards Guards { get; set; } = AfkGuards.Undeafened | AfkGuards.NotAlone;
 
+    /// <summary>Runtime: when this channel last went from empty to occupied (UTC); null when empty. Drives the
+    /// channel-wide "minimum time active" multiplier condition — it resets whenever the channel clears out.</summary>
+    public DateTimeOffset? OccupiedSince { get; set; }
+
     /// <summary>True when this channel is actively monitored (config present and not soft-deleted).</summary>
     public bool IsTracked => Mode != TrackedChannelMode.Off && DeletedAt is null;
 }

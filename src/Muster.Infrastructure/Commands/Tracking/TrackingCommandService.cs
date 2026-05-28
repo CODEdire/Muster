@@ -35,4 +35,27 @@ public class TrackingCommandService(TrackingSessionService sessions)
             ? CommandResult.Ok($"Closed session `{sessionId}` and awarded voice attendance.")
             : CommandResult.Error("No tracking session with that id was found.");
     }
+
+    /// <summary>Opt a member out of one active session (for its remainder). A member may opt only themselves out;
+    /// staff (<paramref name="actorIsStaff"/>) may opt anyone out. Mirrors the web per-session opt-out.</summary>
+    public async Task<CommandResult> OptOutAsync(
+        ulong guildId, string sessionIdRaw, ulong actorId, ulong targetUserId, bool actorIsStaff, CancellationToken ct = default)
+    {
+        if (!Guid.TryParse(sessionIdRaw, out var sessionId))
+        {
+            return CommandResult.Error("That doesn't look like a valid session id.");
+        }
+
+        if (targetUserId != actorId && !actorIsStaff)
+        {
+            return CommandResult.Error("You can only opt yourself out of a session.");
+        }
+
+        var ok = await sessions.OptOutMemberAsync(guildId, sessionId, targetUserId, ct);
+        return ok
+            ? CommandResult.Ok(targetUserId == actorId
+                ? "You've opted out of this session — you won't accrue further attendance in it."
+                : $"<@{targetUserId}> has been opted out of this session.")
+            : CommandResult.Error("No active session with that member was found.");
+    }
 }
