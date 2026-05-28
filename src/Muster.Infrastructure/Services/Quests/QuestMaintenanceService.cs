@@ -81,8 +81,8 @@ public class QuestMaintenanceService(
         {
             var taker = quest.Participants.FirstOrDefault(p => p.Status == QuestParticipantStatus.Submitted);
             var pay = quest.DisputedBy != taker?.UserId; // not the taker's dispute ⇒ pay the completer
-            var label = pay ? "dispute.payCompleter" : "dispute.refundOwner";
-            if (await RunAsync(guildId, quest.Id, quest.Name, label, () => quests.ArbitrateAsync(quest.Id, 0, pay, ct)))
+            var action = AuditActions.Quests.AutoDispute(pay ? "payCompleter" : "refundOwner");
+            if (await RunAsync(guildId, quest.Id, quest.Name, action, () => quests.ArbitrateAsync(quest.Id, 0, pay, ct)))
             {
                 count++;
             }
@@ -99,7 +99,7 @@ public class QuestMaintenanceService(
         var count = 0;
         foreach (var m in stale)
         {
-            var ok = await RunAsync(guildId, m.Id, m.Name, $"intake.{s.IntakeTimeoutAction}", () =>
+            var ok = await RunAsync(guildId, m.Id, m.Name, AuditActions.Quests.AutoIntake(s.IntakeTimeoutAction.ToString()), () =>
                 s.IntakeTimeoutAction == StaleIntakeAction.Accept
                     ? quests.AcceptAsync(m.Id, 0, QuestTier.None, 0, null, ct)
                     : quests.RejectIntakeAsync(m.Id, 0, ct));
@@ -126,7 +126,7 @@ public class QuestMaintenanceService(
                 var released = await quests.ReleaseStaleClaimsAsync(quest.Id, cutoff, ct);
                 foreach (var _ in released)
                 {
-                    await AuditAsync(guildId, quest.Id, quest.Name, "claim.released", ct);
+                    await AuditAsync(guildId, quest.Id, quest.Name, AuditActions.Quests.AutoClaimReleased, ct);
                 }
 
                 count += released.Count;
@@ -149,8 +149,8 @@ public class QuestMaintenanceService(
         foreach (var quest in stale)
         {
             var taker = quest.Participants.First(p => p.Status == QuestParticipantStatus.Submitted);
-            var label = $"submission.{s.SubmissionTimeoutAction}";
-            var ok = await RunAsync(guildId, quest.Id, quest.Name, label, () =>
+            var action = AuditActions.Quests.AutoSubmission(s.SubmissionTimeoutAction.ToString());
+            var ok = await RunAsync(guildId, quest.Id, quest.Name, action, () =>
                 quest.Origin == QuestOrigin.Player
                     ? ResolvePersonalSubmission(quest, taker, s.SubmissionTimeoutAction, ct)
                     : ResolveGuildSubmission(quest, taker, s.SubmissionTimeoutAction, ct));
@@ -186,7 +186,7 @@ public class QuestMaintenanceService(
         foreach (var m in stale)
         {
             var pay = s.FinalApprovalTimeoutAction == StaleFinalAction.Approve;
-            var ok = await RunAsync(guildId, m.Id, m.Name, $"final.{s.FinalApprovalTimeoutAction}",
+            var ok = await RunAsync(guildId, m.Id, m.Name, AuditActions.Quests.AutoFinal(s.FinalApprovalTimeoutAction.ToString()),
                 () => quests.FinalizeAsync(m.Id, 0, pay, ct));
             if (ok)
             {
@@ -200,7 +200,7 @@ public class QuestMaintenanceService(
     /// <summary>Run one auto-resolve action, swallowing races/invalid-state so the sweep keeps going, then audit.
     /// The lifecycle event is published by <see cref="IQuestService"/> as part of the transition.</summary>
     private async Task<bool> RunAsync(
-        ulong guildId, Guid questId, string name, string action, Func<Task<QuestResult>> act)
+        ulong guildId, Guid questId, string name, AuditAction action, Func<Task<QuestResult>> act)
     {
         try
         {
@@ -215,11 +215,12 @@ public class QuestMaintenanceService(
         }
         catch (Exception ex) when (ex is DbUpdateConcurrencyException or InvalidOperationException)
         {
-            logger.LogWarning(ex, "Auto-resolve {Action} on quest {QuestId} skipped.", action, questId);
+            logger.LogWarning(ex, "Auto-resolve {Action} on quest {QuestId} skipped.", action.Key, questId);
             return false;
         }
     }
 
-    private Task AuditAsync(ulong guildId, Guid questId, string name, string action, CancellationToken ct)
-        => audit.RecordAsync(guildId, 0, $"quest.auto.{action}", $"{name} ({questId})", ct);
+    private Task AuditAsync(ulong guildId, Guid questId, string name, AuditAction action, CancellationToken ct)
+        => audit.RecordAsync(guildId, 0, action, $"{name} ({questId})",
+            origin: Muster.Domain.Enums.AuditOrigin.System, ct: ct);
 }

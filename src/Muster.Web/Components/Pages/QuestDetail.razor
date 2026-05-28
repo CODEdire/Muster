@@ -68,7 +68,7 @@ else if (State == AccessState.Ready)
                     <span class="material-symbols-outlined">@(isPersonal ? "person" : "shield")</span>
                     @if (isPersonal)
                     {
-                        <text>issued by </text><UserChip Name="@q.OwnerName" AvatarUrl="@q.OwnerAvatar" />
+                        <text>issued by </text><UserChip Name="@q.OwnerName" AvatarUrl="@q.OwnerAvatar" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, q.OwnerId) : null)" />
                     }
                     else
                     {
@@ -198,7 +198,7 @@ else if (State == AccessState.Ready)
                             && p.Status == QuestParticipantStatus.Submitted;
                         <li class="p-row @(p.UserId == UserId ? "lb-me" : null)">
                             <span class="p-identity">
-                                <UserChip Name="@p.Name" AvatarUrl="@p.AvatarUrl" />
+                                <UserChip Name="@p.Name" AvatarUrl="@p.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, p.UserId) : null)" />
                                 <span class="chip @ParticipantChip(p.Status)">@ParticipantLabel(p.Status)</span>
                                 @if (p.ReviewedByName is { } rb)
                                 {
@@ -273,6 +273,7 @@ else if (State == AccessState.Ready)
     private Guid _questGuid;
     private GuildSettings _settings = new();
     private bool _isManager;
+    private bool _isStaff;
     private string _zoneId = TimeZoneService.Utc;
     private bool _acting;
     private string? _actingAction;        // which action is in flight — drives the per-button spinner
@@ -293,6 +294,7 @@ else if (State == AccessState.Ready)
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+        _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
 
         if (Guid.TryParse(QuestId, out var id))

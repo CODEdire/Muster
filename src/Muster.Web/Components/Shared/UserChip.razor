@@ -1,16 +1,21 @@
 @* Avatar (Discord image when synced, else an initial tile) + display name. Shared by the sidebar,
-   quest cards, and anywhere a user needs to be shown consistently. *@
-<span class="user-chip">
-    @if (!string.IsNullOrEmpty(AvatarUrl))
-    {
-        <img class="avatar-sm" src="@AvatarUrl" alt="" loading="lazy" />
-    }
-    else
-    {
-        <span class="avatar-sm">@Initial</span>
-    }
-    <span class="user-chip-name">@if (!string.IsNullOrEmpty(Prefix)){<span class="sub">@Prefix</span>}<b>@Name</b></span>
-</span>
+   quest cards, and anywhere a user needs to be shown consistently.
+
+   When Href is set, the chip renders as an anchor. Callers build the URL with MusterLinks (single
+   source of truth for templates). Mixed-viewer pages condition Href on staff. *@
+
+@if (!string.IsNullOrEmpty(Href))
+{
+    <a class="user-chip user-chip-link" href="@Href">
+        @ChipBody
+    </a>
+}
+else
+{
+    <span class="user-chip">
+        @ChipBody
+    </span>
+}
 
 @code {
     [Parameter, EditorRequired] public string Name { get; set; } = "";
@@ -21,5 +26,28 @@
     /// <summary>Optional muted prefix before the name, e.g. "by ".</summary>
     [Parameter] public string? Prefix { get; set; }
 
+    /// <summary>Optional href — when set, the chip is a link. Build with <c>MusterLinks</c> to keep route
+    /// templates in one place. Null/empty = plain span.</summary>
+    [Parameter] public string? Href { get; set; }
+
     private string Initial => Name is { Length: > 0 } ? Name[..1].ToUpperInvariant() : "?";
+
+    private RenderFragment ChipBody => __builder =>
+    {
+        if (!string.IsNullOrEmpty(AvatarUrl))
+        {
+            <img class="avatar-sm" src="@AvatarUrl" alt="" loading="lazy" />
+        }
+        else
+        {
+            <span class="avatar-sm">@Initial</span>
+        }
+        <span class="user-chip-name">
+            @if (!string.IsNullOrEmpty(Prefix))
+            {
+                <span class="sub">@Prefix</span>
+            }
+            <b>@Name</b>
+        </span>
+    };
 }

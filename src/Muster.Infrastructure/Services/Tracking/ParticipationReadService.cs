@@ -96,6 +96,20 @@ public record ParticipationRow(
 /// </summary>
 public class ParticipationReadService(MusterDbContext db)
 {
+    /// <summary>True when the guild has an active season open. UI uses this to decide whether to offer the
+    /// season-vs-all-time toggle on leaderboards.</summary>
+    public async Task<bool> HasActiveSeasonAsync(ulong guildId, CancellationToken ct = default)
+        => await db.ActiveSeasonIdAsync(guildId, ct) is not null;
+
+    /// <summary>True when the member is currently being tracked in any live session on this guild.</summary>
+    public Task<bool> IsMemberPresentInLiveSessionAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+        => Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(
+            db.TrackingSessions
+                .Where(s => s.GuildId == guildId && s.Status == TrackingSessionStatus.Active)
+                .SelectMany(s => s.Attendance)
+                .Where(a => a.UserId == userId && a.InChannel),
+            ct);
+
     /// <summary>
     /// Top members by voice minutes. <paramref name="seasonal"/>: null = auto (active season if one is open,
     /// else all time); true = the active season (falls back to all time when none); false = all time.

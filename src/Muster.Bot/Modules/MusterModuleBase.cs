@@ -11,8 +11,12 @@ namespace Muster.Bot.Modules;
 public enum RequiredRole
 {
     None,
-    Officer,
+    Officer,          // legacy umbrella — admin OR OfficerRoleIds. Kept for back-compat.
     QuestManager,
+    EconomyManager,   // mint / adjust / bulk-move currency
+    EventOfficer,     // create / close event ops
+    TrackingManager,  // open/close sessions, configure channels + multipliers
+    Auditor,          // read-only observer (audit log, ledger, participation)
     Admin,
 }
 
@@ -63,6 +67,10 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
             {
                 RequiredRole.Admin => await auth.IsAdminAsync(guild.Id, Context.User.Id),
                 RequiredRole.QuestManager => await auth.IsQuestManagerAsync(guild.Id, Context.User.Id),
+                RequiredRole.EconomyManager => await auth.IsEconomyManagerAsync(guild.Id, Context.User.Id),
+                RequiredRole.EventOfficer => await auth.IsEventOfficerAsync(guild.Id, Context.User.Id),
+                RequiredRole.TrackingManager => await auth.IsTrackingManagerAsync(guild.Id, Context.User.Id),
+                RequiredRole.Auditor => await auth.IsAuditorAsync(guild.Id, Context.User.Id),
                 _ => await auth.IsOfficerAsync(guild.Id, Context.User.Id),
             };
 
@@ -72,6 +80,10 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
                 {
                     RequiredRole.Admin => "You need to be a server admin to use this command.",
                     RequiredRole.QuestManager => "You need to be a quest manager to use this command.",
+                    RequiredRole.EconomyManager => "You need economy-manager access to use this command.",
+                    RequiredRole.EventOfficer => "You need event-officer access to use this command.",
+                    RequiredRole.TrackingManager => "You need tracking-manager access to use this command.",
+                    RequiredRole.Auditor => "You need auditor (read-only) access to use this command.",
                     _ => "You need to be an officer to use this command.",
                 };
             }

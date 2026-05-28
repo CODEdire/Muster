@@ -1,0 +1,69 @@
+@* Renders an ordered list of AuditTokens. Pure presentation — uses the cascaded AuditLookups for entity refs.
+   Inline = true keeps everything in one line (summary cell); false lets it wrap (sheet section body). *@
+
+@foreach (var token in Tokens)
+{
+    @if (token is TextToken text)
+    {
+        <span class="@StyleClass(text.Style)">@text.Text</span>
+    }
+    else if (token is CodeToken codeTok)
+    {
+        <code class="audit-tok-code">@codeTok.Text</code>
+    }
+    else if (token is UserToken user)
+    {
+        var info = Lookups?.GetUser(user.Id);
+        if (info is not null)
+        {
+            <UserChip Name="@info.Name" AvatarUrl="@info.AvatarUrl" />
+        }
+        else
+        {
+            <span class="audit-tok-id">@user.Id</span>
+        }
+    }
+    else if (token is RoleToken role)
+    {
+        <span class="audit-tok-role">@@role:@role.Id</span>
+    }
+    else if (token is ChannelToken channel)
+    {
+        <span class="audit-tok-channel">#@channel.Id</span>
+    }
+    else if (token is CurrencyToken currency)
+    {
+        <span class="audit-tok-currency">@currency.Code</span>
+    }
+    else if (token is AmountToken amount)
+    {
+        <span class="audit-tok-amount @(amount.Value < 0 ? "neg" : "pos")">@(amount.Value >= 0 ? "+" : "")@amount.Value.ToString("N0")@(amount.CurrencyCode is null ? "" : $" {amount.CurrencyCode}")</span>
+    }
+    else if (token is LinkToken link)
+    {
+        <a class="@StyleClass(link.Style)" href="@link.Href">@link.Text</a>
+    }
+}
+
+@code {
+    /// <summary>Tokens to render in order.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<AuditToken> Tokens { get; set; } = [];
+
+    /// <summary>Per-page entity cache. Cascaded from the audit page; null means tokens are rendered without
+    /// resolution (UserToken falls back to showing the raw id).</summary>
+    [CascadingParameter] public AuditLookups? Lookups { get; set; }
+
+    private static string StyleClass(AuditStyle style)
+    {
+        if (style == AuditStyle.None) return "";
+        var parts = new List<string>();
+        if (style.HasFlag(AuditStyle.Bold)) parts.Add("audit-bold");
+        if (style.HasFlag(AuditStyle.Italic)) parts.Add("audit-italic");
+        if (style.HasFlag(AuditStyle.Underline)) parts.Add("audit-underline");
+        if (style.HasFlag(AuditStyle.Muted)) parts.Add("audit-muted");
+        if (style.HasFlag(AuditStyle.Positive)) parts.Add("audit-positive");
+        if (style.HasFlag(AuditStyle.Negative)) parts.Add("audit-negative");
+        if (style.HasFlag(AuditStyle.Warning)) parts.Add("audit-warning");
+        return string.Join(' ', parts);
+    }
+}

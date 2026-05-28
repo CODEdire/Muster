@@ -43,6 +43,22 @@ builder.Services.AddSingleton<Muster.Web.Live.IQuestUpdateNotifier, Muster.Web.L
 // Per-circuit cache of the viewer's browser time zone, shared by every <LocalTime> for consistent localization.
 builder.Services.AddScoped<Muster.Web.BrowserTimeZone>();
 
+// Audit formatter registry — the default catch-all is always present; per-action formatters register themselves
+// alongside it as IAuditFormatter. AuditLookups is a per-request entity cache keyed by the rendered tokens.
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.DefaultAuditFormatter>();
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.AuditFormatterRegistry>();
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.AuditLookups>();
+// Per-action formatters — pure presentation, one per action family. Register additional ones here as they land.
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.IAuditFormatter, Muster.Web.Components.Shared.Audit.Formatters.CurrencyMovementFormatter>();
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.IAuditFormatter, Muster.Web.Components.Shared.Audit.Formatters.ConfigFormatter>();
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.IAuditFormatter, Muster.Web.Components.Shared.Audit.Formatters.QuestFormatter>();
+builder.Services.AddScoped<Muster.Web.Components.Shared.Audit.IAuditFormatter, Muster.Web.Components.Shared.Audit.Formatters.MiscFormatter>();
+
+// Default audit origin for this host = UI. API endpoints + background tasks running inside the web host that
+// don't represent a human-driven page click override per-call (e.g. Api endpoints pass AuditOrigin.Api).
+builder.Services.AddSingleton<Muster.Infrastructure.Services.Platform.IAuditOriginProvider>(
+    _ => new Muster.Infrastructure.Services.Platform.AuditOriginProvider(Muster.Domain.Enums.AuditOrigin.UI));
+
 // Discord OAuth: cookie session, challenge via Discord. Credentials come from configuration
 // (user-secrets locally, Key Vault in Azure). Discord is only registered when configured — the
 // OAuth handler validates ClientId on every request, so registering it without credentials would

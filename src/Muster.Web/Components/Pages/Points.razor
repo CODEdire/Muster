@@ -1,0 +1,257 @@
+@page "/guilds/{GuildIdRaw}/points"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Tracking
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+<PageTitle>Points — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/me">← Me</a>
+        <h1>Points</h1>
+        <p class="subtitle">Seasonal participation score.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Points@(_snapshot.Seasonal ? " (season)" : "")</div>
+            <div class="num">@_snapshot.Balance.ToString("N0")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Voice — season</div>
+            <div class="num">@FormatDuration(_snapshot.Voice.SeasonMinutes)@(_snapshot.Voice.SeasonRank > 0 ? $" · #{_snapshot.Voice.SeasonRank}" : "")</div>
+        </div>
+        <div class="stat glass">
+            <div class="label">Voice — all time</div>
+            <div class="num">@FormatDuration(_snapshot.Voice.AllTimeMinutes)</div>
+        </div>
+    </div>
+
+    <div class="panel glass dg-frame dg-fill">
+    <div class="dg-toolbar">
+        <div class="dg-filters">
+            <select class="dg-select" value="@_preset" @onchange="OnRange">
+                @foreach (var (val, lbl) in RangePresets)
+                {
+                    <option value="@val">@lbl</option>
+                }
+            </select>
+            <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+                <option value="">Any source</option>
+                @foreach (var s in AllSources)
+                {
+                    <option value="@s">@SourceLabel(s)</option>
+                }
+            </select>
+            <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+            @if (_loading)
+            {
+                <span class="dg-loading" aria-hidden="true"></span>
+            }
+        </div>
+    </div>
+
+    <div class="dg-scroll">
+        <table class="dg-table">
+            <thead>
+                <tr>
+                    <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
+                    <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
+                    <th>Source</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_history is null || _history.Items.Count == 0)
+                {
+                    <tr class="dg-empty"><td colspan="4">@(_history is null ? "Loading…" : "No points activity matches.")</td></tr>
+                }
+                else
+                {
+                    @foreach (var h in _history.Items)
+                    {
+                        <tr>
+                            <td><LocalTime Value="h.OccurredAt" /></td>
+                            <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
+                            <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
+                            <td>@h.Reason</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="dg-footer">
+        <div class="dg-footer-left">
+            <div class="dg-pagesize">
+                Rows
+                <select class="dg-select" value="@_size" @onchange="OnSize">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </div>
+        <div class="dg-pager">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+            <span>Page @_page of @TotalPages · @(_history?.Total ?? 0) total</span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+        </div>
+    </div>
+    </div>
+}
+
+@code {
+    private const int SearchDebounceMs = 350;
+    private string? _searchBox;
+    private string _preset = "";
+    private CurrencyLedgerSource? _source;
+    private CancellationTokenSource? _searchDebounce;
+    private string _sortKey = "when";
+    private bool _descending = true;
+    private int _page = 1;
+    private int _size = 25;
+    private bool _loading;
+
+    private PointsSnapshot _snapshot = new(0, false, new Muster.Infrastructure.Services.Tracking.MemberVoiceStats(0, 0, 0));
+    private PagedResult<MemberLedgerRow>? _history;
+
+    private int TotalPages => _history?.TotalPages ?? 1;
+
+    protected override async Task LoadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _snapshot = await scope.ServiceProvider.GetRequiredService<PointsReadService>().GetSnapshotAsync(GuildId, UserId);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State == AccessState.Ready && _history is null)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
+
+            var (from, to) = ResolveRange(_preset);
+            var sources = _source is { } s ? new[] { s } : null;
+            _history = await points.GetHistoryPageAsync(
+                GuildId, UserId, _searchBox, _sortKey, _descending, _page, _size,
+                sources: sources, from: from, to: to);
+            _snapshot = await points.GetSnapshotAsync(GuildId, UserId);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnRange(ChangeEventArgs e)
+    {
+        _preset = (e.Value as string) ?? "";
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnSource(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _source = string.IsNullOrEmpty(raw) || !Enum.TryParse<CurrencyLedgerSource>(raw, out var v) ? null : v;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task DebouncedSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        var cts = _searchDebounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(SearchDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            _page = 1;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task SetSort(string column)
+    {
+        _descending = _sortKey == column ? !_descending : true;
+        _sortKey = column;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnSize(ChangeEventArgs e)
+    {
+        _size = int.TryParse(e.Value as string, out var v) ? v : 25;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task Prev()
+    {
+        if (_page > 1)
+        {
+            _page--;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task Next()
+    {
+        if (_page < TotalPages)
+        {
+            _page++;
+            await ReloadAsync();
+        }
+    }
+
+    private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    public void Dispose()
+    {
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
+    }
+
+    private static string FormatDuration(int minutes)
+    {
+        var hours = minutes / 60;
+        var mins = minutes % 60;
+        return hours > 0 ? $"{hours}h {mins}m" : $"{mins}m";
+    }
+}

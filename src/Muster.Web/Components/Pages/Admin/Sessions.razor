@@ -34,7 +34,7 @@ else if (State == AccessState.Ready)
                 <strong>You're being tracked in a live session.</strong>
                 <span class="banner-why">An admin is running a tracked session in a voice channel you're in, so your voice time counts toward participation rewards.</span>
             </div>
-            <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/wallet#privacy">Privacy settings</a>
+            <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/settings#privacy">Privacy settings</a>
         </div>
     }
 
@@ -192,7 +192,7 @@ else if (State == AccessState.Ready)
                             {
                                 <tr class="@(row.UserId == UserId ? "lb-me" : null)">
                                     <td class="num lb-rank">@Medal(row.Rank)</td>
-                                    <td><UserChip Name="@row.Name" AvatarUrl="@row.AvatarUrl" /></td>
+                                    <td><UserChip Name="@row.Name" AvatarUrl="@row.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, row.UserId) : null)" /></td>
                                     <td><div class="lb-bar" style="--lb-pct:@(row.BarPercent)%"><span>@Dur(row.VoiceMinutes)</span></div></td>
                                 </tr>
                             }
@@ -283,7 +283,7 @@ else if (State == AccessState.Ready)
                                             var (dot, label) = BgStatus(c.Mode, m.Earning);
                                             <div class="bg-member @(m.UserId == UserId ? "lb-me" : null)">
                                                 <span class="status-dot @dot" title="@label"></span>
-                                                <UserChip Name="@m.Name" AvatarUrl="@m.AvatarUrl" />
+                                                <UserChip Name="@m.Name" AvatarUrl="@m.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, m.UserId) : null)" />
                                                 <span class="bg-member-meta">
                                                     @label · @Dur(m.MinutesToday) today@(m.PointsToday > 0 ? $" · {m.PointsToday} pts" : "")
                                                     @if (m.PresentSince is not null)
@@ -377,7 +377,8 @@ else if (State == AccessState.Ready)
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
         var auth = sp.GetRequiredService<GuildAuthorizationService>();
-        var db = sp.GetRequiredService<MusterDbContext>();
+        var adminRead = sp.GetRequiredService<Muster.Infrastructure.Services.Web.WebAdminService>();
+        var participation = sp.GetRequiredService<ParticipationReadService>();
 
         _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
 
@@ -387,13 +388,8 @@ else if (State == AccessState.Ready)
         _bgFactor = mult.Factor(MultiplierScope.BackgroundVoice, now);
 
         _isStaff = await auth.IsAdminAsync(GuildId, UserId) || await auth.IsOfficerAsync(GuildId, UserId);
-        _hasBackground = _isStaff && await db.GuildChannels.AnyAsync(c =>
-            c.GuildId == GuildId && c.Kind == GuildChannelKind.Voice && c.Mode != TrackedChannelMode.Off && c.DeletedAt == null);
-
-        _present = await db.TrackingSessions
-            .Where(s => s.GuildId == GuildId && s.Status == TrackingSessionStatus.Active)
-            .SelectMany(s => s.Attendance)
-            .AnyAsync(a => a.UserId == UserId && a.InChannel);
+        _hasBackground = _isStaff && await adminRead.HasActiveBackgroundTrackingAsync(GuildId);
+        _present = await participation.IsMemberPresentInLiveSessionAsync(GuildId, UserId);
     }
 
     // Fires on first render (after auth) and on every query change. Reload only when the effective view changed.
@@ -471,9 +467,8 @@ else if (State == AccessState.Ready)
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
         var read = sp.GetRequiredService<ParticipationReadService>();
-        var db = sp.GetRequiredService<MusterDbContext>();
 
-        _seasonActive = await db.ActiveSeasonIdAsync(GuildId) is not null;
+        _seasonActive = await read.HasActiveSeasonAsync(GuildId);
         // No season → only all-time exists (force it); otherwise honor the toggle.
         bool? seasonal = _seasonActive ? !_lbAllTime : false;
 
@@ -646,20 +641,22 @@ else if (State == AccessState.Ready)
         {
             await using var scope = Scopes.CreateAsyncScope();
             var sp = scope.ServiceProvider;
-            var db = sp.GetRequiredService<MusterDbContext>();
 
-            // Guard: only close a session that's active and belongs to this guild.
-            if (!await db.IsActiveSessionAsync(GuildId, sessionId))
+            // The command service does the auth check, snapshots metadata, closes, and returns the snapshot so we
+            // can audit + render confirmation without ever touching MusterDbContext from the UI.
+            var result = await sp.GetRequiredService<Muster.Infrastructure.Commands.Tracking.TrackingCommandService>()
+                .StopAsync(GuildId, UserId, sessionId);
+
+            if (result.IsError)
             {
-                Message = "That session is no longer active.";
+                Message = result.Message;
                 return;
             }
 
-            if (await sp.GetRequiredService<TrackingSessionService>().CloseAsync(sessionId))
-            {
-                await sp.GetRequiredService<AuditService>().RecordAsync(GuildId, UserId, "track.session.stop", $"web: {sessionId}");
-                Message = "Session ended and attendance awarded.";
-            }
+            var info = result.Value!;
+            await sp.GetRequiredService<AuditService>().RecordSessionStoppedAsync(
+                GuildId, UserId, info.Id, info.Name, info.VoiceChannelId, info.VoiceChannelName);
+            Message = "Session ended and attendance awarded.";
         }
         finally
         {

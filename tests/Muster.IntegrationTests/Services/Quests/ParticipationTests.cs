@@ -184,7 +184,8 @@ public class ParticipationTests
         db.BackgroundVoicePresences.Add(new BackgroundVoicePresence { Id = Guid.NewGuid(), GuildId = 1, UserId = 10, ChannelId = 600 });
         await db.SaveChangesAsync();
 
-        var result = await new TrackingPreferenceCommandService(db).SetAsync(1, 10, TrackingChoice.AllOut);
+        var result = await new TrackingPreferenceCommandService(db, new AlwaysAllowTrackingAuthorizer())
+            .SetAsync(1, actorId: 10, userId: 10, TrackingChoice.AllOut);
 
         Assert.False(result.IsError);
         Assert.Empty(await db.VoiceAttendance.ToListAsync());

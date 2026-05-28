@@ -1091,6 +1091,11 @@ img.avatar-sm { object-fit: cover; }
 /* Member "Sync balances" row under the wallet panel. */
 .balance-sync-row { display: flex; align-items: center; gap: .6rem; margin: .25rem 0 1rem; flex-wrap: wrap; }
 
+/* Datagrid frame for standalone (non-TabFrame) datagrids. Same glass shell as Sessions' folder-tab frame but
+   with all four corners rounded. Strips the panel's own padding so dg-toolbar/footer borders span edge-to-edge. */
+.dg-frame { padding: 0; overflow: hidden; margin-bottom: 1rem; display: flex; flex-direction: column; min-height: 0; }
+.dg-frame .dg-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
 /* ---- Reusable tab frame (TabFrame.razor) --------------------------------- */
 /* Folder tabs sit on top of a bordered frame and overlap its top border, so the active tab reads as the
    front of the folder opening into the body. See docs/ux/sessions-datagrid.md for the design rationale. */
@@ -1103,7 +1108,7 @@ img.avatar-sm { object-fit: cover; }
    the frame is full-width and its body (not the page) scrolls. Scoped via :has to the .tabframe-fill
    marker; disabled on mobile where the layout is a single scrolling column. */
 @media (min-width: 861px) {
-    .app-main:has(.tabframe-fill) {
+    .app-main:has(.tabframe-fill), .app-main:has(.dg-fill) {
         max-width: none;
         height: calc(100dvh - 1.8rem);
         padding-bottom: 0.9rem;
@@ -1111,6 +1116,7 @@ img.avatar-sm { object-fit: cover; }
         flex-direction: column;
     }
     .app-main:has(.tabframe-fill) .tabframe { flex: 1 1 auto; min-height: 0; }
+    .app-main:has(.dg-fill) .dg-fill { flex: 1 1 auto; min-height: 0; margin-bottom: 0; }
 }
 
 /* The strip overlaps the frame's top border by 1px; the active tab carries its own top/side borders +
@@ -1202,6 +1208,245 @@ img.avatar-sm { object-fit: cover; }
 
 .dg-actions-col { width: 1%; white-space: nowrap; text-align: right; }
 .dg-row-actions { display: inline-flex; gap: 0.35rem; justify-content: flex-end; }
+
+/* Signed amounts: +/- in the data column. Scoped to .dg-table so the existing .leaderboard rule is untouched. */
+.dg-table td.pos { color: #4ade80; font-weight: 600; }
+.dg-table td.neg { color: var(--danger); font-weight: 600; }
+
+/* Ledger source chip — icon + label inline, used in the Source column of the activity/movement grids. */
+.src-chip { display: inline-flex; align-items: center; gap: 0.35rem; }
+.src-chip .material-symbols-outlined { font-size: 1rem; opacity: 0.78; }
+
+/* Audit log specifics. */
+.dg-zone-label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-muted); font-size: 0.85rem; }
+.dg-zone-label .material-symbols-outlined { font-size: 1rem; }
+.audit-action { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
+/* One-line summary cell — chips and amounts stay inline, overflow truncates with ellipsis. The popup carries the
+   full breakdown so nothing's lost. */
+.audit-details {
+    color: var(--text); max-width: 32rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.audit-details .user-chip { display: inline-flex; vertical-align: middle; }
+.audit-details .user-chip-name { display: inline; }
+.audit-details .avatar-sm { display: inline-block; vertical-align: middle; }
+
+/* Category pill that precedes the action key — color-coded per AuditCategory so the eye groups by area. */
+.audit-cat {
+    display: inline-block; margin-right: 0.4rem;
+    padding: 0.08rem 0.4rem; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); white-space: nowrap;
+}
+.audit-cat-configuration { background: rgba(96, 165, 250, 0.18); color: #60a5fa; border-color: transparent; }
+.audit-cat-currency      { background: rgba(74, 222, 128, 0.18); color: #4ade80; border-color: transparent; }
+.audit-cat-tracking      { background: rgba(245, 158, 11, 0.18); color: #f59e0b; border-color: transparent; }
+.audit-cat-quests        { background: rgba(167, 139, 250, 0.18); color: #a78bfa; border-color: transparent; }
+.audit-cat-seasons       { background: rgba(244, 114, 182, 0.18); color: #f472b6; border-color: transparent; }
+.audit-cat-membership    { background: rgba(45, 212, 191, 0.18); color: #2dd4bf; border-color: transparent; }
+.audit-cat-apiclients    { background: rgba(248, 113, 113, 0.18); color: #f87171; border-color: transparent; }
+.audit-cat-system        { background: rgba(148, 163, 184, 0.20); color: #94a3b8; border-color: transparent; }
+
+/* Origin pill — different palette than the category so they don't compete visually. */
+.audit-origin {
+    display: inline-block;
+    padding: 0.08rem 0.45rem; border-radius: var(--radius-sm);
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); white-space: nowrap;
+}
+.audit-origin-ui        { color: #60a5fa; border-color: rgba(96, 165, 250, 0.5); }
+.audit-origin-bot       { color: #5865f2; border-color: rgba(88, 101, 242, 0.5); }
+.audit-origin-api       { color: #f59e0b; border-color: rgba(245, 158, 11, 0.5); }
+.audit-origin-connector { color: #2dd4bf; border-color: rgba(45, 212, 191, 0.5); }
+.audit-origin-system    { color: #94a3b8; border-color: rgba(148, 163, 184, 0.5); }
+.audit-origin-unknown   { color: var(--text-muted); }
+
+/* Outcome badge — three states. Success is muted/subtle so the eye lands on the failures. */
+.audit-outcome {
+    display: inline-block;
+    padding: 0.08rem 0.45rem; border-radius: var(--radius-sm);
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap;
+}
+.audit-outcome-success { color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); }
+.audit-outcome-denied  { color: #f59e0b; background: rgba(245, 158, 11, 0.18); }
+.audit-outcome-failed  { color: var(--danger); background: rgba(248, 113, 113, 0.18); }
+
+/* Correlation link inline with the action — a small chip the admin can click to drill in. */
+.audit-corr {
+    display: inline-flex; align-items: center; gap: 0.2rem; margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem; border-radius: 999px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.7rem;
+    color: var(--text-muted); background: var(--surface); border: 1px solid var(--border);
+    cursor: pointer;
+}
+.audit-corr:hover { color: var(--accent); border-color: var(--accent); }
+.audit-corr .material-symbols-outlined { font-size: 0.85rem; }
+
+/* Audit KPI strip + compact charts row — both kept short so the datagrid below still dominates the page. */
+.audit-kpis .stat .num.audit-kpi-chip { font-size: 0.95rem; }
+.audit-kpis .stat .num.audit-warning { color: #f59e0b; }
+
+.audit-charts {
+    display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 0.8rem; margin-bottom: 0.9rem;
+}
+@media (max-width: 860px) {
+    .audit-charts { grid-template-columns: 1fr; }
+}
+
+.audit-chart { padding: 0.7rem 0.9rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.audit-chart-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+}
+.audit-chart-head .label {
+    color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.audit-chart-head .subtitle { color: var(--text-muted); font-size: 0.78rem; }
+.audit-chart-foot {
+    display: flex; justify-content: space-between;
+    color: var(--text-muted); font-size: 0.7rem;
+}
+.audit-chart-empty { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 0.4rem 0; }
+
+.audit-chart-bars svg { width: 100%; height: 56px; display: block; }
+.audit-bar { fill: var(--accent); opacity: 0.85; }
+.audit-bar:hover { opacity: 1; }
+
+/* Origin breakdown: a single horizontal segmented bar + a tight legend below. */
+.audit-origin-bar {
+    display: flex; height: 12px; border-radius: 999px; overflow: hidden;
+    background: var(--surface);
+}
+.audit-origin-seg { display: block; height: 100%; }
+.audit-origin-seg.audit-origin-ui        { background: #60a5fa; }
+.audit-origin-seg.audit-origin-bot       { background: #5865f2; }
+.audit-origin-seg.audit-origin-api       { background: #f59e0b; }
+.audit-origin-seg.audit-origin-connector { background: #2dd4bf; }
+.audit-origin-seg.audit-origin-system    { background: #94a3b8; }
+.audit-origin-seg.audit-origin-unknown   { background: var(--text-muted); }
+.audit-origin-legend {
+    display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem;
+    font-size: 0.75rem; color: var(--text-muted);
+}
+.audit-origin-legend-item { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
+.audit-origin-dot { width: 8px; height: 8px; border-radius: 50%; }
+.audit-origin-dot.audit-origin-ui        { background: #60a5fa; }
+.audit-origin-dot.audit-origin-bot       { background: #5865f2; }
+.audit-origin-dot.audit-origin-api       { background: #f59e0b; }
+.audit-origin-dot.audit-origin-connector { background: #2dd4bf; }
+.audit-origin-dot.audit-origin-system    { background: #94a3b8; }
+.audit-origin-dot.audit-origin-unknown   { background: var(--text-muted); }
+.audit-origin-name { color: var(--text); }
+.audit-origin-count { color: var(--text-muted); }
+
+.audit-correlation-banner {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    color: var(--text-muted); font-size: 0.85rem;
+}
+
+/* Sub-toolbar row hosting the multi-select pill rows. Sits below the main dg-toolbar with a softer border. */
+.dg-toolbar-sub {
+    border-top: 1px solid var(--border);
+    padding: 0.55rem 1.4rem; gap: 1rem;
+}
+.dg-pill-row { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.dg-pill-label { color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.dg-pill {
+    padding: 0.18rem 0.55rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.dg-pill:hover { color: var(--text); border-color: var(--accent); }
+.dg-pill.active { background: var(--accent); color: #fff; border-color: transparent; }
+.dg-pill-clear { color: var(--text-muted); border: 0; padding: 0 0.3rem; font-size: 0.9rem; }
+.dg-pill-clear:hover { color: var(--danger); }
+.audit-row { cursor: pointer; }
+.audit-row:hover { background: var(--surface); }
+
+/* Audit token styles — driven by the AuditStyle flags emitted by formatters. */
+.audit-bold { font-weight: 600; }
+.audit-italic { font-style: italic; }
+.audit-underline { text-decoration: underline; }
+.audit-muted { color: var(--text-muted); }
+.audit-positive { color: #4ade80; font-weight: 600; }
+.audit-negative { color: var(--danger); font-weight: 600; }
+.audit-warning { color: #f59e0b; font-weight: 600; }
+.audit-tok-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem;
+    background: var(--surface); padding: 0 0.3rem; border-radius: var(--radius-sm);
+}
+.audit-tok-id, .audit-tok-role, .audit-tok-channel, .audit-tok-currency {
+    color: var(--text-muted); font-size: 0.85rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.audit-tok-amount { font-weight: 600; }
+.audit-tok-amount.pos { color: #4ade80; }
+.audit-tok-amount.neg { color: var(--danger); }
+
+/* Detail sheet — centered modal on desktop, right slide-sheet on mobile. Backdrop is a sibling so a click
+   outside the sheet dismisses without leaking events to the underlying row. */
+.audit-backdrop {
+    position: fixed; inset: 0; z-index: 90;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+}
+.audit-sheet {
+    position: fixed; z-index: 91;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    display: flex; flex-direction: column;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    outline: none;
+}
+.audit-sheet-head {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--border);
+}
+.audit-sheet-title { display: flex; flex-direction: column; gap: 0.2rem; flex: 1 1 auto; min-width: 0; }
+.audit-sheet-when { color: var(--text-muted); font-size: 0.82rem; }
+.audit-sheet-actor { color: var(--text-muted); font-size: 0.85rem; white-space: nowrap; }
+.audit-sheet-body {
+    padding: 0.6rem 1.2rem 1.2rem;
+    overflow: auto;
+    display: flex; flex-direction: column; gap: 1rem;
+}
+.audit-sheet-section h3 {
+    margin: 0.6rem 0 0.3rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+.audit-section-body { white-space: pre-wrap; word-break: break-word; }
+
+/* Structured label / value grid for formatter sections. Two columns, baseline-aligned, with a subtle row
+   divider so dense payloads still read at a glance. */
+.audit-kv {
+    display: grid;
+    grid-template-columns: minmax(7rem, auto) 1fr;
+    column-gap: 1rem; row-gap: 0.4rem;
+    margin: 0;
+}
+.audit-kv dt {
+    color: var(--text-muted); font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600;
+    padding-top: 0.1rem;
+}
+.audit-kv dd { margin: 0; color: var(--text); word-break: break-word; }
+.audit-kv dd .user-chip { display: inline-flex; }
+
+/* Desktop: centered modal. */
+@media (min-width: 861px) {
+    .audit-sheet {
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: min(720px, 92vw); max-height: 82vh;
+    }
+}
+
+/* Mobile: right-edge full-height flyout. */
+@media (max-width: 860px) {
+    .audit-sheet {
+        top: 0; right: 0; bottom: 0;
+        width: min(92vw, 28rem); border-radius: 0;
+        border-right: 0; border-top: 0; border-bottom: 0;
+    }
+}
 
 .status-dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.4rem; vertical-align: middle; flex: 0 0 auto; }
 .status-dot.is-active { background: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18); }
@@ -1442,3 +1687,63 @@ img.avatar-sm { object-fit: cover; }
 /* The spinner only makes sense while actively retrying. */
 #components-reconnect-modal.components-reconnect-failed .reconnect-spinner,
 #components-reconnect-modal.components-reconnect-rejected .reconnect-spinner { display: none; }
+
+/* --- Members directory + MemberDetail --- */
+
+/* Tracking-state pill on the Members directory + MemberDetail header. Color-coded by choice. */
+.track-pill { display: inline-flex; align-items: center; gap: .25rem; font-size: .72rem; padding: .12rem .5rem;
+    border-radius: 999px; border: 1px solid var(--border, rgba(127,127,127,.3)); color: var(--text); white-space: nowrap; }
+.track-pill.track-default { background: rgba(127,127,127,.12); }
+.track-pill.track-in { background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.35); }
+.track-pill.track-backgroundout { background: rgba(245,158,11,.16); border-color: rgba(245,158,11,.35); }
+.track-pill.track-allout { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.35); }
+.track-pill.track-dmout { background: rgba(99,102,241,.16); border-color: rgba(99,102,241,.35); margin-left: .25rem; }
+
+/* Role chip in MemberDetail Overview. */
+.role-chip { display: inline-block; font-size: .72rem; padding: .1rem .5rem; margin: .15rem .15rem 0 0;
+    border-radius: 999px; background: rgba(127,127,127,.12); border: 1px solid var(--border, rgba(127,127,127,.25)); }
+.member-roles { display: flex; flex-wrap: wrap; gap: .15rem; margin-top: .25rem; }
+
+/* Section spacing inside MemberDetail tabs (vertical rhythm between Balances/Voice/Roles/etc.). */
+.member-detail-section { display: flex; flex-direction: column; gap: .75rem; }
+.member-detail-section h2 { margin: .75rem 0 .25rem 0; font-size: 1rem; }
+.member-detail-section h3 { margin: .5rem 0 .25rem 0; font-size: .9rem; }
+
+/* Inline checkbox in the Members toolbar (DM opt-outs filter). */
+.dg-check { display: inline-flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--text-soft, #b9c0d4); }
+.dg-check input { margin: 0; }
+
+/* Clickable UserChip — pages pass Href when the viewer can drill into MemberDetail. Underline on hover,
+   inherit color so the chip doesn't repaint as a generic link. */
+a.user-chip-link { text-decoration: none; color: inherit; cursor: pointer; }
+a.user-chip-link:hover .user-chip-name b { text-decoration: underline; }
+a.user-chip-link:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; border-radius: 6px; }
+
+/* --- MemberDetail header (profile card above KPIs + tabs) — no frame; sits on the page background. --- */
+.member-header { display: flex; align-items: center; gap: 1rem; padding: 0 .25rem .75rem .25rem; }
+.member-header-avatar { flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%; overflow: hidden;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(127,127,127,.18); border: 1px solid var(--border, rgba(127,127,127,.3)); }
+.member-header-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.member-header-avatar .avatar-initial { font-size: 1.5rem; font-weight: 600; color: var(--text); }
+.member-header-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .25rem; }
+.member-header-name { margin: 0; font-size: 1.4rem; line-height: 1.2; }
+.member-header-pills { display: flex; flex-wrap: wrap; gap: .25rem; }
+.member-header-meta { font-size: .8rem; color: var(--text-soft, #b9c0d4); display: flex; flex-wrap: wrap; gap: .35rem; }
+
+/* Page-level toolbar under header + KPIs — actions that span the whole member, not one tab. */
+.member-toolbar { display: flex; gap: .5rem; align-items: center; margin: .5rem 0 .75rem 0; }
+
+/* Member audit grid: every non-Details column shrinks to its content (width:1% + nowrap is the
+   table-layout-auto trick); Details (last column) claims the rest with single-line ellipsis. */
+.audit-member-table th, .audit-member-table td { white-space: nowrap; }
+.audit-member-table th:not(:last-child),
+.audit-member-table td:not(:last-child) { width: 1%; }
+.audit-member-table th:last-child,
+.audit-member-table td:last-child { width: auto; max-width: 0;
+    overflow: hidden; text-overflow: ellipsis;
+    color: var(--text-soft, #b9c0d4); font-size: .85rem; }
+.audit-member-table .audit-action { font-size: .8rem; }
+.audit-cat { display: inline-flex; font-size: .7rem; padding: .1rem .45rem; border-radius: 999px;
+    border: 1px solid var(--border, rgba(127,127,127,.3)); background: rgba(127,127,127,.12); }
+

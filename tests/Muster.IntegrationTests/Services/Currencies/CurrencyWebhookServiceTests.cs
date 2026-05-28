@@ -21,10 +21,15 @@ public class CurrencyWebhookServiceTests
         public string? Unprotect(string? ciphertext) => ciphertext?.Replace("enc:", "");
     }
 
+    private sealed class StubHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new();
+    }
+
     private static CurrencyWebhookService Sut(MusterDbContext db)
     {
         var protector = new FakeProtector();
-        var dispatcher = new CurrencyWebhookDispatcher(new HttpClient(), protector);
+        var dispatcher = new CurrencyWebhookDispatcher(new StubHttpClientFactory(), protector);
         return new CurrencyWebhookService(db, protector, dispatcher);
     }
 

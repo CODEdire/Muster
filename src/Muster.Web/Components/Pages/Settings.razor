@@ -1,0 +1,151 @@
+@page "/guilds/{GuildIdRaw}/settings"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject TimeZoneService TimeZones
+@inject WebMemberService Members
+@inject Muster.Infrastructure.Services.Tracking.ParticipationReadService Participation
+@inject Muster.Infrastructure.Commands.Tracking.TrackingPreferenceCommandService TrackingPref
+@inject Muster.Infrastructure.Commands.Membership.MemberPreferencesCommandService Prefs
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Services.Web
+
+<PageTitle>Settings — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <h1>Settings</h1>
+        <p class="subtitle">Your personal preferences for this server.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass" id="privacy">
+        <h2>Voice participation</h2>
+        <p class="subtitle">
+            This season: <strong>@FormatDuration(_voice.SeasonMinutes)</strong>@(_voice.SeasonRank > 0 ? $" · rank #{_voice.SeasonRank}" : "")
+            · All time: <strong>@FormatDuration(_voice.AllTimeMinutes)</strong>
+        </p>
+        <EditForm class="form-grid" Model="Privacy" FormName="tracking-privacy" OnValidSubmit="SavePrivacyAsync">
+            <input type="hidden" name="Privacy.Submitted" value="1" />
+            <label>Tracking
+                <InputSelect @bind-Value="Privacy.Choice">
+                    <option value="@TrackingChoice.Default">Follow server default</option>
+                    <option value="@TrackingChoice.In">Track everything (opt in)</option>
+                    <option value="@TrackingChoice.BackgroundOut">No passive background tracking</option>
+                    <option value="@TrackingChoice.AllOut">Don't track me at all</option>
+                </InputSelect>
+            </label>
+            <div class="btn-row"><button type="submit">Save privacy</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass" id="notifications">
+        <h2>Notifications</h2>
+        <p class="subtitle">Get a private DM from the bot when another member sends you currency or staff award/adjust your balance.</p>
+        <EditForm class="form-grid" Model="Notify" FormName="notify" OnValidSubmit="SaveNotifyAsync">
+            <input type="hidden" name="Notify.Submitted" value="1" />
+            <label class="check"><InputCheckbox @bind-Value="Notify.ReceiptsOn" /> DM me when I receive currency</label>
+            <div class="btn-row"><button type="submit">Save</button></div>
+        </EditForm>
+    </div>
+
+    <div class="panel glass" id="timezone">
+        <h2>Time zone</h2>
+        <p class="subtitle">Your <strong>server-side</strong> preference — used to read the dates you type and for timestamps the bot shows in Discord. On the web, displayed times are auto-detected from your browser when possible, so this is mainly the fallback. Leave blank to use the server's zone (<strong>@_guildZone</strong>).</p>
+        <EditForm class="form-grid" Model="this" FormName="set-timezone" OnValidSubmit="SaveTimeZoneAsync">
+            <label>Time zone
+                <InputSelect @bind-Value="ZoneInput" id="tz-input">
+                    <option value="">— use the server's zone (@_guildZone) —</option>
+                    @foreach (var z in _zones)
+                    {
+                        <option value="@z.Id">@z.Display</option>
+                    }
+                </InputSelect>
+            </label>
+            <div class="btn-row">
+                <button type="button" class="btn btn-ghost" onclick="musterUseBrowserTimeZone()">Use my browser zone</button>
+                <button type="submit">Save</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm] public string? ZoneInput { get; set; }
+    [SupplyParameterFromForm(FormName = "notify")] private NotifyInput Notify { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "tracking-privacy")] private PrivacyInput Privacy { get; set; } = new();
+
+    private Muster.Infrastructure.Services.Tracking.MemberVoiceStats _voice = new(0, 0, 0);
+    private string _guildZone = TimeZoneService.Utc;
+
+    private static readonly IReadOnlyList<(string Id, string Display)> _zones = TimeZoneService.GetKnownZones();
+
+    protected override async Task LoadAsync()
+    {
+        _voice = await Participation.MemberVoiceStatsAsync(GuildId, UserId);
+        if (Privacy.Submitted is null)
+        {
+            Privacy.Choice = await Members.GetTrackingChoiceAsync(GuildId, UserId);
+        }
+
+        _guildZone = await Guilds.GetGuildZoneIdAsync(GuildId) ?? TimeZoneService.Utc;
+        // Prefill from the stored pref on GET only; on a form post the bound value already reflects the submission.
+        ZoneInput ??= await Members.GetStoredZoneIdAsync(UserId);
+        if (Notify.Submitted is null)
+        {
+            Notify.ReceiptsOn = !await Members.GetCurrencyDmOptOutAsync(UserId);
+        }
+    }
+
+    private async Task SaveNotifyAsync()
+    {
+        await Prefs.SetCurrencyDmOptOutAsync(UserId, optOut: !Notify.ReceiptsOn);
+        Message = Notify.ReceiptsOn ? "Currency receipts are on." : "Currency receipts are off.";
+        await LoadAsync();
+    }
+
+    private async Task SaveTimeZoneAsync()
+    {
+        var (ok, error) = await TimeZones.SetUserZoneAsync(UserId, ZoneInput);
+        Message = ok
+            ? (string.IsNullOrWhiteSpace(ZoneInput) ? "Time zone cleared — using the server's zone." : $"Time zone set to {ZoneInput.Trim()}.")
+            : error;
+        await LoadAsync();
+    }
+
+    private async Task SavePrivacyAsync()
+    {
+        // Personal Settings: the user is both the actor and the target.
+        var result = await TrackingPref.SetAsync(GuildId, UserId, UserId, Privacy.Choice);
+        Message = result.Message;
+        await LoadAsync();
+    }
+
+    public class NotifyInput
+    {
+        public string? Submitted { get; set; }
+        public bool ReceiptsOn { get; set; }
+    }
+
+    public class PrivacyInput
+    {
+        public string? Submitted { get; set; }
+        public TrackingChoice Choice { get; set; }
+    }
+
+    private static string FormatDuration(int minutes)
+    {
+        var hours = minutes / 60;
+        var mins = minutes % 60;
+        return hours > 0 ? $"{hours}h {mins}m" : $"{mins}m";
+    }
+}

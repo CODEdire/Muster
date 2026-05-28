@@ -2,13 +2,11 @@
 @layout GuildLayout
 @inherits GuildAdminComponentBase
 @inject TrackingCommandService Tracking
-@inject MusterDbContext Db
-@using Microsoft.EntityFrameworkCore
-@using Muster.Domain.Entities.Members
+@inject WebAdminService AdminRead
+@using Muster.Domain.Entities.Guilds
 @using Muster.Domain.Enums
-@using Muster.Persistence
-@using Muster.Persistence.Queries
 @using Muster.Infrastructure.Commands.Tracking
+@using Muster.Infrastructure.Services.Web
 
 <PageTitle>New session — Muster</PageTitle>
 
@@ -70,7 +68,7 @@ else if (State == AccessState.Ready)
     private IReadOnlyList<GuildChannel> _voice = [];
 
     protected override async Task LoadAsync()
-        => _voice = await Db.ListChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+        => _voice = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
 
     private async Task StartAsync()
     {
@@ -89,7 +87,7 @@ else if (State == AccessState.Ready)
 
         if (!result.IsError)
         {
-            await AuditAsync("track.session.start", $"web: {name} in #{channelName ?? Input.ChannelId.ToString()}");
+            await Audit.RecordSessionStartedAsync(GuildId, UserId, result.Value, name, Input.ChannelId, channelName);
             Message = $"{result.Message} Members already present are credited on the next sync.";
             Input = new SessionInput();
         }

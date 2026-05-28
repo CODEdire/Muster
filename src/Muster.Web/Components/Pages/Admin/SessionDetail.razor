@@ -5,6 +5,7 @@
 @implements IDisposable
 @inject IServiceScopeFactory Scopes
 @inject ISessionUpdateNotifier Notifier
+@using Microsoft.EntityFrameworkCore
 @using Muster.Domain.Enums
 @using Muster.Persistence
 @using Muster.Persistence.Queries
@@ -188,7 +189,7 @@ else if (State == AccessState.Ready && _detail is not null)
                                     {
                                         <span class="medal" title="Top @MinuteRank(gm!) by minutes">@gmedal</span>
                                     }
-                                    <UserChip Name="@NameFor(track.UserId)" AvatarUrl="@gm?.AvatarUrl" />
+                                    <UserChip Name="@NameFor(track.UserId)" AvatarUrl="@gm?.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, track.UserId) : null)" />
                                 </span>
                                 <div class="gantt-track">
                                     @foreach (var seg in track.Segments)
@@ -239,7 +240,7 @@ else if (State == AccessState.Ready && _detail is not null)
                                     {
                                         <span class="medal" title="Top @MinuteRank(m) by minutes">@lmedal</span>
                                     }
-                                    <UserChip Name="@m.Name" AvatarUrl="@m.AvatarUrl" />
+                                    <UserChip Name="@m.Name" AvatarUrl="@m.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, m.UserId) : null)" />
                                 </span>
                                 <div class="gantt-track">
                                     <div class="gantt-bar @(live ? "live" : null)" style="left:@Pct(left);width:@Pct(width)" title="@m.TotalMinutes min"></div>
@@ -296,7 +297,7 @@ else if (State == AccessState.Ready && _detail is not null)
                                         {
                                             <span class="medal" title="Top @MinuteRank(m) by minutes">@medal</span>
                                         }
-                                        <UserChip Name="@m.Name" AvatarUrl="@m.AvatarUrl" />
+                                        <UserChip Name="@m.Name" AvatarUrl="@m.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, m.UserId) : null)" />
                                     </span>
                                 </td>
                                 <td><LocalTime Value="m.FirstJoinedAt" /></td>
@@ -343,7 +344,7 @@ else if (State == AccessState.Ready && _detail is not null)
                             {
                                 <tr>
                                     <td><LocalTime Value="ev.At" Pattern="MMM d, h:mm:ss tt" /></td>
-                                    <td><UserChip Name="@ev.Name" AvatarUrl="@(MemberFor(ev.UserId)?.AvatarUrl)" /></td>
+                                    <td><UserChip Name="@ev.Name" AvatarUrl="@(MemberFor(ev.UserId)?.AvatarUrl)" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, ev.UserId) : null)" /></td>
                                     <td><span class="status-dot @EventDot(ev.Kind)"></span>@ev.Kind</td>
                                     <td class="muted">@ev.Reason</td>
                                 </tr>
@@ -357,7 +358,7 @@ else if (State == AccessState.Ready && _detail is not null)
 
     <p class="tz-note">
         Times in <LocalTime ShowZone="true" />. Opting out removes you from this one session only —
-        it doesn't change your standing preference (set that on the <a href="/guilds/@GuildId/wallet#privacy">wallet page</a>).
+        it doesn't change your standing preference (set that on the <a href="/guilds/@GuildId/settings#privacy">settings page</a>).
     </p>
 }
 
@@ -463,21 +464,21 @@ else if (State == AccessState.Ready && _detail is not null)
         {
             await using var scope = Scopes.CreateAsyncScope();
             var sp = scope.ServiceProvider;
-            if (!await sp.GetRequiredService<MusterDbContext>().IsActiveSessionAsync(GuildId, id))
+
+            // CQRS path: command service runs auth + snapshot + close + returns info for the audit row.
+            var result = await sp.GetRequiredService<Muster.Infrastructure.Commands.Tracking.TrackingCommandService>()
+                .StopAsync(GuildId, UserId, id);
+
+            if (result.IsError)
             {
-                Message = "That session is no longer active.";
+                Message = result.Message;
                 return;
             }
 
-            if (await sp.GetRequiredService<TrackingSessionService>().CloseAsync(id))
-            {
-                await sp.GetRequiredService<AuditService>().RecordAsync(GuildId, UserId, "track.session.stop", $"web: {id}");
-                Message = "Session ended and attendance awarded.";
-            }
-            else
-            {
-                Message = "Couldn't end that session.";
-            }
+            var info = result.Value!;
+            await sp.GetRequiredService<AuditService>().RecordSessionStoppedAsync(
+                GuildId, UserId, info.Id, info.Name, info.VoiceChannelId, info.VoiceChannelName);
+            Message = "Session ended and attendance awarded.";
         }
         finally
         {

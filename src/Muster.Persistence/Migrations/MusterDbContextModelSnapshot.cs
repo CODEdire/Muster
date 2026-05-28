@@ -660,6 +660,10 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("ActorUserId")
                         .HasColumnType("decimal(20,0)");
 
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("Details")
                         .HasColumnType("nvarchar(max)");
 
@@ -669,7 +673,22 @@ namespace Muster.Persistence.Migrations
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("Origin")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("TargetUserId")
+                        .HasColumnType("decimal(20,0)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "CorrelationId");
+
+                    b.HasIndex("GuildId", "OccurredAt");
+
+                    b.HasIndex("GuildId", "TargetUserId");
 
                     b.ToTable("AuditLogs");
                 });
@@ -1457,9 +1476,18 @@ namespace Muster.Persistence.Migrations
 
                             b1.Property<bool>("ApplyAfkGuardsToSessions");
 
+                            b1.PrimitiveCollection<string>("AuditorRoleIds")
+                                .IsRequired();
+
                             b1.Property<bool>("BackgroundTrackingOptIn");
 
+                            b1.PrimitiveCollection<string>("EconomyManagerRoleIds")
+                                .IsRequired();
+
                             b1.Property<int>("EndBonusWindowMinutes");
+
+                            b1.PrimitiveCollection<string>("EventOfficerRoleIds")
+                                .IsRequired();
 
                             b1.Property<int>("LedgerRetentionDays");
 
@@ -1493,6 +1521,9 @@ namespace Muster.Persistence.Migrations
                             b1.Property<int>("SessionStartBonus");
 
                             b1.Property<int>("StartBonusWindowMinutes");
+
+                            b1.PrimitiveCollection<string>("TrackingManagerRoleIds")
+                                .IsRequired();
 
                             b1.HasKey("GuildId");
 

@@ -6,7 +6,15 @@ namespace Muster.Persistence.Configurations;
 
 public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
 {
-    public void Configure(EntityTypeBuilder<AuditLog> e) => e.HasKey(x => x.Id);
+    public void Configure(EntityTypeBuilder<AuditLog> e)
+    {
+        e.HasKey(x => x.Id);
+        e.Property(x => x.CorrelationId).HasMaxLength(64);
+        // Likely queries: by guild + occurred time (the main grid) and by guild + correlation (drill into one op).
+        e.HasIndex(x => new { x.GuildId, x.OccurredAt });
+        e.HasIndex(x => new { x.GuildId, x.CorrelationId });
+        e.HasIndex(x => new { x.GuildId, x.TargetUserId });
+    }
 }
 
 public class ApiClientConfiguration : IEntityTypeConfiguration<ApiClient>

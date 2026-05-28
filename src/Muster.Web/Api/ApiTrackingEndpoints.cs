@@ -104,55 +104,56 @@ public static class ApiTrackingEndpoints
 
     /// <summary>Close an active session and award attendance.</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}/stop")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> StopSession(ulong guildId, Guid sessionId, TrackingCommandService sessions)
-        => Map(await sessions.StopAsync(guildId, sessionId.ToString()));
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> StopSession(ulong guildId, Guid sessionId, HttpContext http, TrackingCommandService sessions)
+        => Map(await sessions.StopAsync(guildId, http.ApiActor(), sessionId.ToString()));
 
     /// <summary>Opt a member out of one active session (its remainder) — mirrors the web per-session opt-out.</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}/optout")]
     [RequireApiScope("write:tracking", requireActor: true)]
     public static async Task<IResult> OptOut(ulong guildId, Guid sessionId, OptOutRequest body, HttpContext http, TrackingCommandService sessions)
-        => Map(await sessions.OptOutAsync(guildId, sessionId.ToString(), http.ApiActor(), body.UserId, actorIsStaff: true));
+        => Map(await sessions.OptOutAsync(guildId, sessionId.ToString(), http.ApiActor(), body.UserId));
 
     /// <summary>Monitor a voice channel for background reward accrual.</summary>
     [WolverinePut("/api/v1/guilds/{guildId}/tracking/channels/voice")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> SetVoice(ulong guildId, TrackVoiceRequest body, TrackedChannelCommandService channels)
-        => Map(await channels.SetVoiceAsync(guildId, body.ChannelId, body.PointsPerMinute, body.DailyCap,
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> SetVoice(ulong guildId, TrackVoiceRequest body, HttpContext http, TrackedChannelCommandService channels)
+        => Map(await channels.SetVoiceAsync(guildId, http.ApiActor(), body.ChannelId, body.PointsPerMinute, body.DailyCap,
             body.RequireUnmuted, body.RequireUndeafened, body.RequireNotAlone));
 
     /// <summary>Monitor a text channel (stats, or rewards when points-per-message &gt; 0).</summary>
     [WolverinePut("/api/v1/guilds/{guildId}/tracking/channels/text")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> SetText(ulong guildId, TrackTextRequest body, TrackedChannelCommandService channels)
-        => Map(await channels.SetTextAsync(guildId, body.ChannelId, body.PointsPerMessage, body.MessagesPerPoint, body.CooldownSeconds, body.DailyCap));
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> SetText(ulong guildId, TrackTextRequest body, HttpContext http, TrackedChannelCommandService channels)
+        => Map(await channels.SetTextAsync(guildId, http.ApiActor(), body.ChannelId, body.PointsPerMessage, body.MessagesPerPoint, body.CooldownSeconds, body.DailyCap));
 
     /// <summary>Stop monitoring a channel.</summary>
     [WolverineDelete("/api/v1/guilds/{guildId}/tracking/channels/{channelId}")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> RemoveChannel(ulong guildId, ulong channelId, TrackedChannelCommandService channels)
-        => Map(await channels.RemoveAsync(guildId, channelId));
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> RemoveChannel(ulong guildId, ulong channelId, HttpContext http, TrackedChannelCommandService channels)
+        => Map(await channels.RemoveAsync(guildId, http.ApiActor(), channelId));
 
-    /// <summary>Set a member's tracking/privacy preference.</summary>
+    /// <summary>Set a member's tracking/privacy preference. Self always; staff for others.</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/members/{userId}/tracking/privacy")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> SetPrivacy(ulong guildId, ulong userId, SetPrivacyRequest body, TrackingPreferenceCommandService prefs)
-        => Map(await prefs.SetAsync(guildId, userId, body.Choice));
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> SetPrivacy(ulong guildId, ulong userId, SetPrivacyRequest body, HttpContext http, TrackingPreferenceCommandService prefs)
+        => Map(await prefs.SetAsync(guildId, http.ApiActor(), userId, body.Choice));
 
     /// <summary>Create a reward multiplier (one-off / recurring / role).</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/tracking/multipliers")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> CreateMultiplier(ulong guildId, CreateMultiplierRequest body, RewardMultiplierCommandService mults)
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> CreateMultiplier(ulong guildId, CreateMultiplierRequest body, HttpContext http, RewardMultiplierCommandService mults)
     {
         var name = body.Name ?? string.Empty;
+        var actor = http.ApiActor();
         var result = body.Kind?.ToLowerInvariant() switch
         {
             "recurring" when body.StartTime is { } st && body.EndTime is { } et
-                => await mults.AddRecurringAsync(guildId, name, body.Factor, body.Scope, body.Days, st, et),
+                => await mults.AddRecurringAsync(guildId, actor, name, body.Factor, body.Scope, body.Days, st, et),
             "recurring" => CommandResult.Error("Recurring multipliers need startTime and endTime."),
-            "role" => await mults.AddRoleAsync(guildId, name, body.Factor, body.Scope, body.RoleId),
+            "role" => await mults.AddRoleAsync(guildId, actor, name, body.Factor, body.Scope, body.RoleId),
             "oneoff" when body.StartsAt is { } s && body.EndsAt is { } e
-                => await mults.AddOneOffAsync(guildId, name, body.Factor, body.Scope, s, e),
+                => await mults.AddOneOffAsync(guildId, actor, name, body.Factor, body.Scope, s, e),
             "oneoff" => CommandResult.Error("One-off multipliers need startsAt and endsAt."),
             _ => CommandResult.Error("kind must be one of: oneoff, recurring, role."),
         };
@@ -161,15 +162,15 @@ public static class ApiTrackingEndpoints
 
     /// <summary>Enable or disable a multiplier.</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/tracking/multipliers/{id}/enabled")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> SetMultiplierEnabled(ulong guildId, Guid id, RewardMultiplierCommandService mults, bool enabled = true)
-        => Map(await mults.SetEnabledAsync(guildId, id, enabled));
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> SetMultiplierEnabled(ulong guildId, Guid id, HttpContext http, RewardMultiplierCommandService mults, bool enabled = true)
+        => Map(await mults.SetEnabledAsync(guildId, http.ApiActor(), id, enabled));
 
     /// <summary>Remove a multiplier.</summary>
     [WolverineDelete("/api/v1/guilds/{guildId}/tracking/multipliers/{id}")]
-    [RequireApiScope("write:tracking")]
-    public static async Task<IResult> RemoveMultiplier(ulong guildId, Guid id, RewardMultiplierCommandService mults)
-        => Map(await mults.RemoveAsync(guildId, id));
+    [RequireApiScope("write:tracking", requireActor: true)]
+    public static async Task<IResult> RemoveMultiplier(ulong guildId, Guid id, HttpContext http, RewardMultiplierCommandService mults)
+        => Map(await mults.RemoveAsync(guildId, http.ApiActor(), id));
 
     private static int Page(int page) => page <= 0 ? 1 : page;
     private static int Size(int size, int max = 100) => size <= 0 ? 25 : Math.Min(size, max);

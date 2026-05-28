@@ -57,9 +57,9 @@ else if (State == AccessState.Ready)
     {
         var result = await Seasons.StartAsync(GuildId, Input.Name ?? string.Empty);
         Message = result.Message;
-        if (!result.IsError)
+        if (!result.IsError && result.Value is { } info)
         {
-            await AuditAsync("season.start", result.Message);
+            await Audit.RecordSeasonStartedAsync(GuildId, UserId, info.Id, info.Name);
         }
 
         Input = new StartInput();
@@ -70,9 +70,9 @@ else if (State == AccessState.Ready)
     {
         var result = await Seasons.EndAsync(GuildId);
         Message = result.Message;
-        if (!result.IsError)
+        if (!result.IsError && result.Value is { } info)
         {
-            await AuditAsync("season.end", result.Message);
+            await Audit.RecordSeasonEndedAsync(GuildId, UserId, info.Id, info.Name, info.OccurredAt);
         }
 
         await LoadAsync();

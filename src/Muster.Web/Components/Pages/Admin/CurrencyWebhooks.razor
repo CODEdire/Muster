@@ -111,7 +111,7 @@ else if (State == AccessState.Ready)
         Message = result.Message;
         if (!result.IsError)
         {
-            await AuditAsync("currency.webhookCreate", Input.Url);
+            await Audit.RecordWebhookCreatedAsync(GuildId, UserId, Guid.Empty, Input.Url ?? "");
             Input = new WebhookInput();
         }
 
@@ -128,15 +128,17 @@ else if (State == AccessState.Ready)
     {
         var result = await Webhooks.SetEnabledAsync(GuildId, id, enabled);
         Message = result.Message;
-        await AuditAsync("currency.webhookToggle", $"{id} -> {(enabled ? "enabled" : "disabled")}");
+        var hook = _hooks.FirstOrDefault(h => h.Id == id);
+        await Audit.RecordWebhookToggledAsync(GuildId, UserId, id, hook?.Url ?? "", enabled);
         await LoadAsync();
     }
 
     private async Task DeleteAsync(Guid id)
     {
+        var hook = _hooks.FirstOrDefault(h => h.Id == id);
         var result = await Webhooks.DeleteAsync(GuildId, id);
         Message = result.Message;
-        await AuditAsync("currency.webhookDelete", id.ToString());
+        await Audit.RecordWebhookDeletedTypedAsync(GuildId, UserId, id, hook?.Url ?? "");
         await LoadAsync();
     }
 

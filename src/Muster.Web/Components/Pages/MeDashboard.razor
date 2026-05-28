@@ -5,11 +5,13 @@
 @implements IDisposable
 @inject IServiceScopeFactory Scopes
 @inject ISessionUpdateNotifier Notifier
-@using Microsoft.EntityFrameworkCore
-@using Muster.Persistence
-@using Muster.Persistence.Queries
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Tracking
+@using Muster.Infrastructure.Services.Web
 @using Muster.Infrastructure.Services.Platform
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
 
 <PageTitle>Me — Muster</PageTitle>
 
@@ -21,7 +23,7 @@ else if (State == AccessState.Ready)
 {
     <div class="page-head">
         <h1>You</h1>
-        <p class="subtitle">Your live sessions and a snapshot of your standing.</p>
+        <p class="subtitle">Your standing, live sessions, and recent activity in this server.</p>
     </div>
 
     @if (Message is not null)
@@ -29,85 +31,89 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    <div class="stat-grid">
-        <div class="stat glass">
-            <div class="label">Points</div>
-            <div class="num">@_points.ToString("N0")</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Voice — season</div>
-            <div class="num">@Dur(_voice.SeasonMinutes)@(_voice.SeasonRank > 0 ? $" · #{_voice.SeasonRank}" : "")</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Voice — all time</div>
-            <div class="num">@Dur(_voice.AllTimeMinutes)</div>
-        </div>
-        <a class="stat glass" href="/guilds/@GuildId/wallet">
-            <div class="label">Wallet</div>
-            <div class="num">Open →</div>
-        </a>
-    </div>
+    <TabFrame ActiveId="@_tab" ActiveIdChanged="t => _tab = t">
+        <TabPane Id="overview" Label="Overview" Icon="dashboard">
+            <div class="member-detail-section">
+                <h2>Balances</h2>
+                <BalancesGrid Points="_points" PointsSeasonal="_pointsSeasonal" Wallets="_wallets" />
 
-    <div class="panel glass">
-        <h2>Active now</h2>
-        @if (_active.Count == 0)
-        {
-            <p class="empty">You're not in any tracked session right now.</p>
-        }
-        else
-        {
-            <table class="leaderboard">
-                <thead><tr><th>Session</th><th>Channel</th><th>Your time</th><th>Status</th><th></th></tr></thead>
-                <tbody>
-                    @foreach (var s in _active)
-                    {
-                        <tr>
-                            <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
-                            <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
-                            <td>@Dur(s.MyMinutes)</td>
-                            <td>@(s.PresentNow ? "🟢 Active" : "🟡 Paused")</td>
-                            <td>
-                                <button type="button" class="btn btn-sm btn-ghost" @onclick="() => OptOutAsync(s.SessionId)">Opt out</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-            <p class="subtitle">Opting out removes you from that one session for the rest of it — it doesn't change your standing preference (set that on the <a href="/guilds/@GuildId/wallet#privacy">wallet page</a>).</p>
-        }
-    </div>
+                <h2>Voice</h2>
+                <VoiceStatsGrid Voice="_voice" />
 
-    <div class="panel glass">
-        <h2>Your recent sessions</h2>
-        @if (_history.Count == 0)
-        {
-            <p class="empty">No past sessions yet.</p>
-        }
-        else
-        {
-            <table class="leaderboard">
-                <thead><tr><th>Session</th><th>Channel</th><th>Ended</th><th>Your time</th></tr></thead>
-                <tbody>
-                    @foreach (var s in _history)
-                    {
-                        <tr>
-                            <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
-                            <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
-                            <td><LocalTime Value="s.EndedAt" Zone="@_zoneId" /></td>
-                            <td>@Dur(s.MyMinutes)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
+                @if (_active.Count > 0)
+                {
+                    <h2>Active now</h2>
+                    <div class="dg-scroll">
+                        <table class="dg-table">
+                            <thead><tr><th>Session</th><th>Channel</th><th>Your time</th><th>Status</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var s in _active)
+                                {
+                                    <tr>
+                                        <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                                        <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
+                                        <td>@Dur(s.MyMinutes)</td>
+                                        <td>@(s.PresentNow ? "🟢 Active" : "🟡 Paused")</td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-ghost" @onclick="() => OptOutAsync(s.SessionId)">Opt out</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="subtitle">Opting out removes you from that one session for the rest of it — it doesn't change your standing preference (set that on the <a href="/guilds/@GuildId/settings#privacy">settings page</a>).</p>
+                }
+            </div>
+        </TabPane>
 
-    <p class="tz-note">Times shown in <LocalTime ShowZone="true" Zone="@_zoneId" />.</p>
+        <TabPane Id="activity" Label="Activity" Icon="timeline">
+            <div class="dg-scroll">
+                <table class="dg-table">
+                    <thead><tr><th>Session</th><th>Channel</th><th>Ended</th><th class="num">Your time</th></tr></thead>
+                    <tbody>
+                        @if (_history.Count == 0)
+                        {
+                            <tr class="dg-empty"><td colspan="4">No past sessions yet.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var s in _history)
+                            {
+                                <tr>
+                                    <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                                    <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
+                                    <td>@if (s.EndedAt is { } e) { <LocalTime Value="e" Zone="@_zoneId" /> } else { <span class="subtitle">—</span> }</td>
+                                    <td class="num">@Dur(s.MyMinutes)</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="dg-footer">
+                <span class="dg-tz">last @HistoryLimit sessions · times in <LocalTime ShowZone="true" Zone="@_zoneId" /></span>
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/sessions">All sessions →</a>
+            </div>
+        </TabPane>
+
+        <TabPane Id="wallet" Label="Wallet" Icon="account_balance_wallet">
+            <div class="member-detail-section">
+                <p class="subtitle">Open your <a href="/guilds/@GuildId/wallet">Wallet</a> for full ledger history, source/range filters, and sending to other members.</p>
+                <p class="subtitle">Or jump to <a href="/guilds/@GuildId/points">Points</a> for points-only history and leaderboard context.</p>
+            </div>
+        </TabPane>
+    </TabFrame>
 }
 
 @code {
+    private const int HistoryLimit = 10;
+
+    private string _tab = "overview";
     private long _points;
+    private bool _pointsSeasonal;
     private MemberVoiceStats _voice = new(0, 0, 0);
+    private IReadOnlyList<WalletBalance> _wallets = [];
     private IReadOnlyList<MemberSessionView> _active = [];
     private IReadOnlyList<MemberSessionView> _history = [];
     private string _zoneId = TimeZoneService.Utc;
@@ -118,23 +124,19 @@ else if (State == AccessState.Ready)
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
         var participation = sp.GetRequiredService<ParticipationReadService>();
-        var db = sp.GetRequiredService<MusterDbContext>();
 
         _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
         _voice = await participation.MemberVoiceStatsAsync(GuildId, UserId);
         _active = await participation.MemberActiveSessionsAsync(GuildId, UserId);
-        _history = await participation.MemberSessionHistoryAsync(GuildId, UserId, 10);
+        _history = await participation.MemberSessionHistoryAsync(GuildId, UserId, HistoryLimit);
 
-        var points = await db.FindPointsAsync(GuildId);
-        if (points is not null)
-        {
-            Guid? seasonId = points.IsSeasonal ? await db.ActiveSeasonIdAsync(GuildId) : null;
-            _points = await db.BalanceAsync(GuildId, UserId, points.Id, seasonId);
-        }
+        var snap = await sp.GetRequiredService<PointsReadService>().GetSnapshotAsync(GuildId, UserId);
+        _points = snap.Balance;
+        _pointsSeasonal = snap.Seasonal;
+
+        _wallets = await sp.GetRequiredService<WalletReadService>().GetWalletsAsync(GuildId, UserId);
     }
 
-    // Refresh on any change within this guild — the "Active now" list spans all the member's live sessions, so
-    // we don't filter to a single session id here.
     protected override void OnAfterRender(bool firstRender)
     {
         if (firstRender)

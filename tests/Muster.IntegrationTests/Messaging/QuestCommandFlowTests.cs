@@ -51,7 +51,7 @@ public class QuestCommandFlowTests
     private static async Task<GuildQuest> ReloadAsync(Ctx c, Guid id) =>
         await c.Db.Quests.AsNoTracking().Include(q => q.Participants).SingleAsync(q => q.Id == id);
 
-    private static Task<Result> PostAsync(Ctx c, QuestOrigin origin, ulong actor, long reward = 40, QuestTier tier = QuestTier.None, bool requestFinal = false) =>
+    private static Task<Result<Guid>> PostAsync(Ctx c, QuestOrigin origin, ulong actor, long reward = 40, QuestTier tier = QuestTier.None, bool requestFinal = false) =>
         PostQuestHandler.Handle(
             new PostQuest(Guild, actor, origin, "Quest", "COIN", reward, "brief", null, null, tier, requestFinal, 1),
             c.Db, c.Auth, c.Quests, default);

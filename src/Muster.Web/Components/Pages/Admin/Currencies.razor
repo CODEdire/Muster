@@ -83,7 +83,7 @@ else if (State == AccessState.Ready)
     {
         var corrected = await Currency.RebuildWalletsAsync(GuildId);
         Message = $"Rebuilt wallets — {corrected} balance(s) corrected.";
-        await AuditAsync("currency.rebuildWallets", Message);
+        await Audit.RecordCurrencyRebuildAsync(GuildId, UserId, corrected);
         await LoadAsync();
     }
 }

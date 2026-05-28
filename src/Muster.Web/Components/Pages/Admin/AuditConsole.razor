@@ -1,7 +1,12 @@
 @page "/guilds/{GuildIdRaw}/audit"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
-@inject AuditService AuditLog
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Web.Components.Shared.Audit
 
 <PageTitle>Audit log — Muster</PageTitle>
 
@@ -16,136 +21,574 @@ else if (State == AccessState.Forbidden)
 else if (State == AccessState.Ready)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
         <h1>Audit log</h1>
         <p class="subtitle">Every admin action, searchable and exportable.</p>
     </div>
 
-    <div class="panel glass">
-        <form method="get" class="filter-bar">
-            <input type="search" name="search" value="@Search" placeholder="Search action or details" />
-            <select name="action">
-                <option value="">All actions</option>
-                @foreach (var a in _actions)
+    @if (_kpis is not null)
+    {
+        <div class="stat-grid audit-kpis">
+            <div class="stat glass">
+                <div class="label">Last 24 hours</div>
+                <div class="num">@_kpis.Last24h.ToString("N0")</div>
+            </div>
+            <div class="stat glass">
+                <div class="label">Last 7 days</div>
+                <div class="num">@_kpis.Last7d.ToString("N0")</div>
+            </div>
+            <div class="stat glass">
+                <div class="label">Failures (24h)</div>
+                <div class="num @(_kpis.Last24hDenied + _kpis.Last24hFailed > 0 ? "audit-warning" : "")">
+                    @((_kpis.Last24hDenied + _kpis.Last24hFailed).ToString("N0"))
+                </div>
+                @if (_kpis.Last24hDenied + _kpis.Last24hFailed > 0)
                 {
-                    <option value="@a" selected="@(a == Action)">@a</option>
+                    <div class="subtitle">@_kpis.Last24hDenied denied · @_kpis.Last24hFailed failed</div>
                 }
-            </select>
-            <input type="date" name="from" value="@From" />
-            <input type="date" name="to" value="@To" />
-            <input type="hidden" name="sort" value="@Sort" />
-            <input type="hidden" name="desc" value="@Desc.ToString().ToLowerInvariant()" />
-            <button type="submit">Filter</button>
-            <a class="btn btn-ghost" href="@ExportUrl()">Export CSV</a>
-        </form>
-    </div>
+            </div>
+            <div class="stat glass">
+                <div class="label">Top actor (7d)</div>
+                @if (_kpis.TopActor7dUserId is { } aid && _lookups?.GetUser(aid) is { } actor)
+                {
+                    <div class="num audit-kpi-chip"><UserChip Name="@actor.Name" AvatarUrl="@actor.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, aid)" /></div>
+                }
+                else
+                {
+                    <div class="num">@(_kpis.TopActor7dName ?? "—")</div>
+                }
+                @if (_kpis.TopActor7dCount > 0)
+                {
+                    <div class="subtitle">@_kpis.TopActor7dCount.ToString("N0") events</div>
+                }
+            </div>
+            <div class="stat glass">
+                <div class="label">Top action (7d)</div>
+                <div class="num"><code class="audit-action">@(_kpis.TopAction7d ?? "—")</code></div>
+                @if (_kpis.TopAction7d is not null)
+                {
+                    <div class="subtitle">@_kpis.TopAction7dCount.ToString("N0") events</div>
+                }
+            </div>
+        </div>
 
-    <div class="panel glass">
-        @if (_page is null || _page.Items.Count == 0)
+        <div class="audit-charts">
+            <div class="panel glass audit-chart audit-chart-bars">
+                <div class="audit-chart-head">
+                    <span class="label">Volume · last 14 days</span>
+                    <span class="subtitle">@_kpis.Last14Days.Sum(b => b.Count).ToString("N0") total</span>
+                </div>
+                <svg viewBox="0 0 280 56" preserveAspectRatio="none" aria-hidden="true">
+                    @{
+                        var maxDay = Math.Max(1, _kpis.Last14Days.Max(b => b.Count));
+                        var barW = 280.0 / _kpis.Last14Days.Count;
+                    }
+                    @for (var i = 0; i < _kpis.Last14Days.Count; i++)
+                    {
+                        var b = _kpis.Last14Days[i];
+                        var h = (b.Count / (double)maxDay) * 48;
+                        var x = i * barW + 1;
+                        var y = 56 - h;
+                        var w = barW - 2;
+                        <rect x="@x.ToString("0.##")" y="@y.ToString("0.##")" width="@w.ToString("0.##")" height="@h.ToString("0.##")"
+                              rx="1" class="audit-bar">
+                            <title>@b.Date.ToString("MMM d"): @b.Count</title>
+                        </rect>
+                    }
+                </svg>
+                <div class="audit-chart-foot">
+                    <span>@_kpis.Last14Days[0].Date.ToString("MMM d")</span>
+                    <span>@_kpis.Last14Days[^1].Date.ToString("MMM d")</span>
+                </div>
+            </div>
+            <div class="panel glass audit-chart audit-chart-origin">
+                <div class="audit-chart-head">
+                    <span class="label">Origin · last 7 days</span>
+                    @{ var totalOrigin = _kpis.OriginLast7d.Sum(s => s.Count); }
+                    <span class="subtitle">@totalOrigin.ToString("N0") total</span>
+                </div>
+                @if (totalOrigin == 0)
+                {
+                    <div class="audit-chart-empty">No activity yet.</div>
+                }
+                else
+                {
+                    <div class="audit-origin-bar">
+                        @foreach (var slice in _kpis.OriginLast7d)
+                        {
+                            var pct = slice.Count * 100.0 / totalOrigin;
+                            <span class="audit-origin-seg audit-origin-@(slice.Origin.ToString().ToLowerInvariant())"
+                                  style="width:@pct.ToString("0.##")%" title="@slice.Origin: @slice.Count (@pct.ToString("0.#")%)"></span>
+                        }
+                    </div>
+                    <div class="audit-origin-legend">
+                        @foreach (var slice in _kpis.OriginLast7d)
+                        {
+                            <span class="audit-origin-legend-item">
+                                <span class="audit-origin-dot audit-origin-@(slice.Origin.ToString().ToLowerInvariant())"></span>
+                                <span class="audit-origin-name">@slice.Origin</span>
+                                <span class="audit-origin-count">@slice.Count</span>
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="panel glass dg-frame dg-fill">
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <select class="dg-select" value="@_preset" @onchange="OnPreset">
+                    <option value="">All time</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="24h">Last 24 hours</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d">Last 30 days</option>
+                </select>
+                <input type="date" class="dg-select" value="@_from" @onchange="OnFrom" title="From (inclusive)" />
+                <input type="date" class="dg-select" value="@_to" @onchange="OnTo" title="To (inclusive)" />
+                <select class="dg-select" value="@(_outcome?.ToString() ?? "")" @onchange="OnOutcome">
+                    <option value="">Any outcome</option>
+                    <option value="Success">Success</option>
+                    <option value="Denied">Denied</option>
+                    <option value="Failed">Failed</option>
+                </select>
+                <select class="dg-select" value="@(_action ?? "")" @onchange="OnAction">
+                    <option value="">All actions</option>
+                    @foreach (var a in _actions)
+                    {
+                        <option value="@a">@a</option>
+                    }
+                </select>
+                <input type="search" class="dg-search" placeholder="Search action or details…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+                @if (_loading)
+                {
+                    <span class="dg-loading" aria-hidden="true"></span>
+                }
+            </div>
+            <div class="dg-actions">
+                <label class="dg-zone-label" title="Display all times in this zone (overrides your browser auto-detect)">
+                    <span class="material-symbols-outlined">schedule</span>
+                    <select class="dg-select" value="@(_zoneOverride ?? "")" @onchange="OnZone">
+                        <option value="">Auto (browser)</option>
+                        <option value="UTC">UTC</option>
+                        @foreach (var z in _zones)
+                        {
+                            <option value="@z.Id">@z.Display</option>
+                        }
+                    </select>
+                </label>
+                <a class="btn btn-ghost btn-sm" href="@ExportUrl()" title="Download the current filter as CSV">
+                    <span class="material-symbols-outlined">download</span> Export CSV
+                </a>
+            </div>
+        </div>
+
+        <div class="dg-toolbar dg-toolbar-sub">
+            <div class="dg-pill-row" aria-label="Category filter">
+                <span class="dg-pill-label">Categories:</span>
+                @foreach (var c in _categoryOptions)
+                {
+                    <button type="button" class="dg-pill @(_categories.Contains(c) ? "active" : null)" @onclick="() => ToggleCategory(c)">@c</button>
+                }
+                @if (_categories.Count > 0)
+                {
+                    <button type="button" class="dg-pill dg-pill-clear" @onclick="ClearCategories" title="Clear category filter">×</button>
+                }
+            </div>
+            <div class="dg-pill-row" aria-label="Origin filter">
+                <span class="dg-pill-label">Origins:</span>
+                @foreach (var o in _originOptions)
+                {
+                    <button type="button" class="dg-pill @(_origins.Contains(o) ? "active" : null)" @onclick="() => ToggleOrigin(o)">@o</button>
+                }
+                @if (_origins.Count > 0)
+                {
+                    <button type="button" class="dg-pill dg-pill-clear" @onclick="ClearOrigins" title="Clear origin filter">×</button>
+                }
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_correlationFilter))
         {
-            <p class="empty">No matching audit entries.</p>
+            <div class="dg-toolbar dg-toolbar-sub">
+                <span class="audit-correlation-banner">
+                    <span class="material-symbols-outlined">link</span>
+                    Filtered to correlation <code>@_correlationFilter[..Math.Min(_correlationFilter.Length, 8)]…</code>
+                    <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearCorrelation">Clear</button>
+                </span>
+            </div>
         }
-        else
-        {
-            <table class="leaderboard">
+
+        <div class="dg-scroll">
+            <table class="dg-table">
                 <thead>
                     <tr>
-                        <th><a href="@SortUrl("date")">When @SortIndicator("date")</a></th>
+                        <th class="sortable" @onclick='() => SetSort("date")'>When @Ind("date")</th>
                         <th>Actor</th>
-                        <th><a href="@SortUrl("action")">Action @SortIndicator("action")</a></th>
+                        <th>Target</th>
+                        <th>Origin</th>
+                        <th class="sortable" @onclick='() => SetSort("action")'>Action @Ind("action")</th>
+                        <th>Outcome</th>
                         <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var e in _page.Items)
+                    @if (_results is null || _results.Items.Count == 0)
                     {
-                        <tr>
-                            <td>@e.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                            <td>@e.ActorName</td>
-                            <td>@e.Action</td>
-                            <td>@_details.GetValueOrDefault(e.Id, e.Details ?? "")</td>
-                        </tr>
+                        <tr class="dg-empty"><td colspan="7">@(_results is null ? "Loading…" : "No matching audit entries.")</td></tr>
+                    }
+                    else
+                    {
+                        <CascadingValue Value="_lookups">
+                        @foreach (var e in _results.Items)
+                        {
+                            var render = _renders.GetValueOrDefault(e.Id);
+                            <tr class="audit-row" @onclick="() => OpenAsync(e)">
+                                <td><LocalTime Value="e.OccurredAt" Zone="@_zoneOverride" ForceZone="@(!string.IsNullOrEmpty(_zoneOverride))" /></td>
+                                <td><UserChip Name="@e.ActorName" AvatarUrl="@e.ActorAvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, e.ActorUserId)" /></td>
+                                <td>
+                                    @if (e.TargetUserId is { } tid)
+                                    {
+                                        var target = _lookups?.GetUser(tid);
+                                        if (target is not null)
+                                        {
+                                            <UserChip Name="@target.Name" AvatarUrl="@target.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, tid)" />
+                                        }
+                                        else
+                                        {
+                                            <span class="audit-tok-id">@tid</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="audit-muted">—</span>
+                                    }
+                                </td>
+                                <td><span class="audit-origin audit-origin-@(e.Origin.ToString().ToLowerInvariant())">@e.Origin</span></td>
+                                <td>
+                                    <span class="audit-cat audit-cat-@(e.Category.ToString().ToLowerInvariant())" title="@e.Area">@e.Category</span>
+                                    <code class="audit-action">@e.Action</code>
+                                    @if (!string.IsNullOrEmpty(e.CorrelationId))
+                                    {
+                                        <button type="button" class="audit-corr" title="Filter to this correlation"
+                                                @onclick="() => SetCorrelation(e.CorrelationId)" @onclick:stopPropagation>
+                                            <span class="material-symbols-outlined">link</span>@e.CorrelationId[..Math.Min(e.CorrelationId.Length, 8)]
+                                        </button>
+                                    }
+                                </td>
+                                <td><span class="audit-outcome audit-outcome-@(e.Outcome.ToString().ToLowerInvariant())">@e.Outcome</span></td>
+                                <td class="audit-details">
+                                    @if (render is not null)
+                                    {
+                                        <AuditLine Tokens="render.Summary" />
+                                    }
+                                    else
+                                    {
+                                        @e.Details
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </CascadingValue>
                     }
                 </tbody>
             </table>
+        </div>
 
-            <div class="pager">
-                @if (_page.Page > 1)
-                {
-                    <a class="btn btn-ghost" href="@PageUrl(_page.Page - 1)">← Prev</a>
-                }
-                <span>Page @_page.Page of @Math.Max(_page.TotalPages, 1) · @_page.Total entries</span>
-                @if (_page.Page < _page.TotalPages)
-                {
-                    <a class="btn btn-ghost" href="@PageUrl(_page.Page + 1)">Next →</a>
-                }
+        <div class="dg-footer">
+            <div class="dg-footer-left">
+                <div class="dg-pagesize">
+                    Rows
+                    <select class="dg-select" value="@_size" @onchange="OnSize">
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <span class="dg-tz"><LocalTime ShowZone="true" Zone="@_zoneOverride" ForceZone="@(!string.IsNullOrEmpty(_zoneOverride))" /></span>
             </div>
-        }
+            <div class="dg-pager">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+                <span>Page @_page of @TotalPages · @(_results?.Total ?? 0) entries</span>
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+            </div>
+        </div>
     </div>
+
+    <CascadingValue Value="_lookups">
+        <AuditDetailSheet Entry="_openEntry" Render="_openRender" Zone="@_zoneOverride" OnClose="CloseSheet" />
+    </CascadingValue>
 }
 
 @code {
-@using Muster.Infrastructure.Services.Platform
-    [SupplyParameterFromQuery] private string? Search { get; set; }
-    [SupplyParameterFromQuery] private string? Action { get; set; }
-    [SupplyParameterFromQuery] private string? From { get; set; }
-    [SupplyParameterFromQuery] private string? To { get; set; }
-    [SupplyParameterFromQuery] private string? Sort { get; set; }
-    [SupplyParameterFromQuery] private bool Desc { get; set; }
-    [SupplyParameterFromQuery] private int Page { get; set; }
+    private const int SearchDebounceMs = 350;
+    private static readonly IReadOnlyList<(string Id, string Display)> _zones = TimeZoneService.GetKnownZones();
 
-    private AuditPage? _page;
+    private string _preset = "";
+    private string? _from;
+    private string? _to;
+    private string? _action;
+    private readonly HashSet<AuditCategory> _categories = [];
+    private readonly HashSet<AuditOrigin> _origins = [];
+    private AuditOutcome? _outcome;
+    private string? _correlationFilter;
+    private static readonly IReadOnlyList<AuditCategory> _categoryOptions =
+        Enum.GetValues<AuditCategory>().Where(c => c != AuditCategory.Other).Append(AuditCategory.Other).ToList();
+    private static readonly IReadOnlyList<AuditOrigin> _originOptions =
+        Enum.GetValues<AuditOrigin>().Where(o => o != AuditOrigin.Unknown).Append(AuditOrigin.Unknown).ToList();
+    private string? _searchBox;
+    private string _sortKey = "date";
+    private bool _descending = true;
+    private int _page = 1;
+    private int _size = 25;
+    private string? _zoneOverride;
+    private bool _loading;
+
+    private CancellationTokenSource? _searchDebounce;
     private IReadOnlyList<string> _actions = [];
-    private readonly Dictionary<long, string> _details = [];
+    private AuditPage? _results;
+    private AuditKpis? _kpis;
+    private readonly Dictionary<long, AuditRender> _renders = [];
+    private AuditLookups? _lookups;
+    private AuditEntryView? _openEntry;
+    private AuditRender? _openRender;
+
+    private int TotalPages => Math.Max(_results?.TotalPages ?? 1, 1);
 
     protected override async Task LoadAsync()
     {
-        _actions = await AuditLog.GetActionsAsync(GuildId);
-        _page = await AuditLog.SearchAsync(GuildId, BuildQuery());
+        await using var scope = Scopes.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var audit = sp.GetRequiredService<AuditService>();
+        _actions = await audit.GetActionsAsync(GuildId);
+        _kpis = await audit.GetKpisAsync(GuildId);
+    }
 
-        _details.Clear();
-        foreach (var e in _page.Items)
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State == AccessState.Ready && _results is null)
         {
-            _details[e.Id] = await HumanizeAsync(e.Details);
+            await ReloadAsync();
         }
     }
 
-    private AuditQuery BuildQuery() => new(
-        Search: Search,
-        Action: Action,
-        From: DateOnly.TryParse(From, out var f) ? f : null,
-        To: DateOnly.TryParse(To, out var t) ? t : null,
-        Sort: string.IsNullOrEmpty(Sort) ? "date" : Sort,
-        Desc: string.IsNullOrEmpty(Sort) ? true : Desc,
-        Page: Page <= 0 ? 1 : Page,
-        PageSize: 25);
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var sp = scope.ServiceProvider;
+            var audit = sp.GetRequiredService<AuditService>();
+            var registry = sp.GetRequiredService<AuditFormatterRegistry>();
+            var lookups = sp.GetRequiredService<AuditLookups>();
 
-    private string BaseQuery(string sort, bool desc, int page)
+            _results = await audit.SearchAsync(GuildId, BuildQuery());
+
+            _renders.Clear();
+            foreach (var e in _results.Items)
+            {
+                _renders[e.Id] = registry.Render(e);
+            }
+
+            var targetIds = _results.Items.Where(e => e.TargetUserId is not null).Select(e => e.TargetUserId!.Value);
+            var topActorId = _kpis?.TopActor7dUserId is { } a ? new[] { a } : Array.Empty<ulong>();
+            await lookups.LoadAsync(_renders.Values, extraUserIds: targetIds.Concat(topActorId));
+            _lookups = lookups;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task OpenAsync(AuditEntryView entry)
+    {
+        _openEntry = entry;
+        _openRender = _renders.GetValueOrDefault(entry.Id);
+        return Task.CompletedTask;
+    }
+
+    private void CloseSheet()
+    {
+        _openEntry = null;
+        _openRender = null;
+    }
+
+    private AuditQuery BuildQuery() => new(
+        Search: string.IsNullOrWhiteSpace(_searchBox) ? null : _searchBox,
+        Action: string.IsNullOrWhiteSpace(_action) ? null : _action,
+        Categories: _categories.Count == 0 ? null : _categories.ToList(),
+        Origins: _origins.Count == 0 ? null : _origins.ToList(),
+        Outcome: _outcome,
+        CorrelationId: string.IsNullOrEmpty(_correlationFilter) ? null : _correlationFilter,
+        From: DateOnly.TryParse(_from, out var f) ? f : null,
+        To: DateOnly.TryParse(_to, out var t) ? t : null,
+        Sort: _sortKey,
+        Desc: _descending,
+        Page: Math.Max(_page, 1),
+        PageSize: Math.Clamp(_size, 25, 100));
+
+    private async Task OnPreset(ChangeEventArgs e)
+    {
+        _preset = (e.Value as string) ?? "";
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        (_from, _to) = _preset switch
+        {
+            "today" => (today.ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            "yesterday" => (today.AddDays(-1).ToString("yyyy-MM-dd"), today.AddDays(-1).ToString("yyyy-MM-dd")),
+            "24h" => (today.AddDays(-1).ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            "7d" => (today.AddDays(-7).ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            "30d" => (today.AddDays(-30).ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            _ => (null, null),
+        };
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnFrom(ChangeEventArgs e)
+    {
+        _from = e.Value as string;
+        _preset = "";
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnTo(ChangeEventArgs e)
+    {
+        _to = e.Value as string;
+        _preset = "";
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnAction(ChangeEventArgs e)
+    {
+        var v = (e.Value as string)?.Trim();
+        _action = string.IsNullOrEmpty(v) ? null : v;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ToggleCategory(AuditCategory c)
+    {
+        if (!_categories.Add(c)) _categories.Remove(c);
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ToggleOrigin(AuditOrigin o)
+    {
+        if (!_origins.Add(o)) _origins.Remove(o);
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ClearCategories() { _categories.Clear(); _page = 1; await ReloadAsync(); }
+    private async Task ClearOrigins() { _origins.Clear(); _page = 1; await ReloadAsync(); }
+
+    private async Task OnOutcome(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _outcome = string.IsNullOrEmpty(raw) || !Enum.TryParse<AuditOutcome>(raw, out var o) ? null : o;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task SetCorrelation(string? id)
+    {
+        _correlationFilter = id;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ClearCorrelation() { _correlationFilter = null; _page = 1; await ReloadAsync(); }
+
+    private async Task OnZone(ChangeEventArgs e)
+    {
+        var v = (e.Value as string)?.Trim();
+        _zoneOverride = string.IsNullOrEmpty(v) ? null : v;
+        // Zone override only changes display formatting, no need to re-query.
+        await Task.Yield();
+    }
+
+    private async Task DebouncedSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        var cts = _searchDebounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(SearchDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            _page = 1;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task SetSort(string column)
+    {
+        _descending = _sortKey == column ? !_descending : true;
+        _sortKey = column;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnSize(ChangeEventArgs e)
+    {
+        _size = int.TryParse(e.Value as string, out var v) ? v : 25;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task Prev()
+    {
+        if (_page > 1)
+        {
+            _page--;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task Next()
+    {
+        if (_page < TotalPages)
+        {
+            _page++;
+            await ReloadAsync();
+        }
+    }
+
+    private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    // Export keeps the URL-encoded filter so the CSV mirrors what's on screen.
+    private string ExportUrl()
     {
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(Search)) parts.Add($"search={Uri.EscapeDataString(Search)}");
-        if (!string.IsNullOrEmpty(Action)) parts.Add($"action={Uri.EscapeDataString(Action)}");
-        if (!string.IsNullOrEmpty(From)) parts.Add($"from={Uri.EscapeDataString(From)}");
-        if (!string.IsNullOrEmpty(To)) parts.Add($"to={Uri.EscapeDataString(To)}");
-        parts.Add($"sort={sort}");
-        parts.Add($"desc={desc.ToString().ToLowerInvariant()}");
-        parts.Add($"page={page}");
-        return string.Join("&", parts);
+        if (!string.IsNullOrWhiteSpace(_searchBox)) parts.Add($"search={Uri.EscapeDataString(_searchBox)}");
+        if (!string.IsNullOrWhiteSpace(_action)) parts.Add($"action={Uri.EscapeDataString(_action)}");
+        if (_categories.Count > 0) parts.Add($"category={Uri.EscapeDataString(string.Join(',', _categories))}");
+        if (_origins.Count > 0) parts.Add($"origin={Uri.EscapeDataString(string.Join(',', _origins))}");
+        if (_outcome is { } oc) parts.Add($"outcome={oc}");
+        if (!string.IsNullOrEmpty(_correlationFilter)) parts.Add($"correlation={Uri.EscapeDataString(_correlationFilter)}");
+        if (!string.IsNullOrEmpty(_from)) parts.Add($"from={Uri.EscapeDataString(_from)}");
+        if (!string.IsNullOrEmpty(_to)) parts.Add($"to={Uri.EscapeDataString(_to)}");
+        parts.Add($"sort={_sortKey}");
+        parts.Add($"desc={_descending.ToString().ToLowerInvariant()}");
+        return $"/guilds/{GuildId}/audit/export.csv" + (parts.Count > 0 ? "?" + string.Join("&", parts) : "");
     }
 
-    private string SortUrl(string column)
+    public void Dispose()
     {
-        var current = string.IsNullOrEmpty(Sort) ? "date" : Sort;
-        var desc = current == column ? !Desc : true; // toggle when re-clicking the active column
-        return $"/guilds/{GuildId}/audit?{BaseQuery(column, desc, 1)}";
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
     }
-
-    private string SortIndicator(string column)
-        => (string.IsNullOrEmpty(Sort) ? "date" : Sort) == column ? (Desc ? "▼" : "▲") : "";
-
-    private string PageUrl(int page)
-        => $"/guilds/{GuildId}/audit?{BaseQuery(string.IsNullOrEmpty(Sort) ? "date" : Sort, Desc, page)}";
-
-    private string ExportUrl()
-        => $"/guilds/{GuildId}/audit/export.csv?{BaseQuery(string.IsNullOrEmpty(Sort) ? "date" : Sort, Desc, 1)}";
 }

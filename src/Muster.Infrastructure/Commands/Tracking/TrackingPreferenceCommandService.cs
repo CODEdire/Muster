@@ -1,15 +1,23 @@
-using Muster.Persistence;
-using Muster.Persistence.Queries;
+using Muster.Domain;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Tracking;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 
 namespace Muster.Infrastructure.Commands.Tracking;
 
-/// <summary>Platform-independent logic for a member setting their own per-guild tracking/privacy preference.</summary>
-public class TrackingPreferenceCommandService(MusterDbContext db)
+/// <summary>Platform-independent logic for a member setting a per-guild tracking/privacy preference. Self always;
+/// only staff may change another member's preference (gated by <see cref="ITrackingAuthorizer"/> SetPrivacy).</summary>
+public class TrackingPreferenceCommandService(MusterDbContext db, ITrackingAuthorizer authorizer)
 {
-    public async Task<CommandResult> SetAsync(ulong guildId, ulong userId, TrackingChoice choice, CancellationToken ct = default)
+    public async Task<CommandResult> SetAsync(ulong guildId, ulong actorId, ulong userId, TrackingChoice choice, CancellationToken ct = default)
     {
+        if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), userId, TrackingPermission.SetPrivacy, ct))
+        {
+            return CommandResult.Error("You can only change your own tracking preference.");
+        }
+
         var member = await db.FindMemberAsync(guildId, userId, ct);
         if (member is null)
         {

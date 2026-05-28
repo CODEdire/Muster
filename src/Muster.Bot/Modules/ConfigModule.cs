@@ -33,10 +33,30 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleQuestManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.questManagerRole");
 
+    [SlashCommand("config-economy-role", "Toggle a role that can mint / adjust / move currency (POINTS + COIN).")]
+    public Task EconomyManagerRoleAsync(
+        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleEconomyManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.economyManagerRole");
+
+    [SlashCommand("config-event-role", "Toggle a role that can create and close event ops.")]
+    public Task EventOfficerRoleAsync(
+        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleEventOfficerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.eventOfficerRole");
+
+    [SlashCommand("config-tracking-role", "Toggle a role that can manage tracking (sessions, channels, multipliers).")]
+    public Task TrackingManagerRoleAsync(
+        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleTrackingManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.trackingManagerRole");
+
+    [SlashCommand("config-auditor-role", "Toggle a read-only role (audit log, ledger, participation — no mutations).")]
+    public Task AuditorRoleAsync(
+        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleAuditorRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.auditorRole");
+
     [SlashCommand("config-ledger-retention", "Set how many days of detailed ledger history to keep (0 = platform default).")]
     public Task LedgerRetentionAsync(
         [SlashCommandParameter(Name = "days", Description = "Days of detail to keep before compacting to checkpoints (0 = platform default)")] int days)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetLedgerRetentionAsync(guildId, days), RequiredRole.Admin, "config.ledgerRetention");
+        => RunAsync(async (sp, guildId) => await sp.GetRequiredService<ConfigCommandService>().SetLedgerRetentionAsync(guildId, days), RequiredRole.Admin, "config.ledgerRetention");
 
     [SlashCommand("config-background-tracking", "Set background tracking to opt-in (members must opt in) or opt-out (on by default).")]
     public Task BackgroundTrackingAsync(
