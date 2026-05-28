@@ -19,6 +19,11 @@ builder.AddServiceDefaults();
 builder.AddMusterInfrastructure();
 builder.AddMusterConnectorProtection(); // Data Protection for connector secrets (bot dispatches via connectors)
 
+// Default audit origin for this host = Bot. Discord command handlers + background bot services use this default;
+// long-running automation can override per-call (e.g. AuditOrigin.System for the quest-maintenance sweep).
+builder.Services.AddSingleton<Muster.Infrastructure.Services.Platform.IAuditOriginProvider>(
+    _ => new Muster.Infrastructure.Services.Platform.AuditOriginProvider(Muster.Domain.Enums.AuditOrigin.Bot));
+
 // The bot is the only host that listens on the quest-board and currency-events queues: it renders/updates the
 // Discord channel board in response to quest lifecycle events, and DMs currency receipts (grants/staff actions)
 // to recipients — both published from any host.
@@ -68,6 +73,9 @@ builder.Services.AddHostedService<Muster.Bot.CurrencyBalanceSyncScheduler>();
 
 // Daily: compacts ledger history beyond each guild's LedgerRetentionDays into carry-forward checkpoints.
 builder.Services.AddHostedService<Muster.Bot.LedgerPruneScheduler>();
+
+// Audit prune: drops audit rows beyond Audit:RetentionDays (default 90; 0 disables). Bot host runs it daily.
+builder.Services.AddHostedService<Muster.Bot.AuditPruneScheduler>();
 
 // Periodically flushes always-on background voice accrual for still-present members (idempotent, gateway-cache-driven).
 builder.Services.AddHostedService<Muster.Bot.BackgroundFlushScheduler>();

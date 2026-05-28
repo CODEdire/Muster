@@ -146,6 +146,65 @@ public static class CurrencyLedgerQueries
         return rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList();
     }
 
+    /// <summary>Paged + sortable variant of <see cref="MemberLedgerAsync"/> for the web wallet datagrid.
+    /// <paramref name="search"/> matches the reason field (case-insensitive via the SQL collation).
+    /// <paramref name="sortKey"/>: "amount" or anything else = newest first.
+    /// <paramref name="excludeCurrencyId"/> drops a currency at the SQL level — used by the wallet surface to keep
+    /// POINTS out without relying on every caller to remember to filter.
+    /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
+    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> MemberLedgerPagedAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && (currencyId == null || e.CurrencyId == currencyId));
+
+        if (excludeCurrencyId is { } x)
+        {
+            q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        var total = await q.CountAsync(ct);
+
+        q = (sortKey, descending) switch
+        {
+            ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
+            ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            (_, false) => q.OrderBy(e => e.Id),
+            _ => q.OrderByDescending(e => e.Id),
+        };
+
+        var rows = await q
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new { e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .ToListAsync(ct);
+
+        return (rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
+    }
+
     /// <summary>A user's most recent ledger entries across all currencies (newest first), projected for display.</summary>
     public static Task<List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)>> RecentHistoryAsync(
         this MusterDbContext db, ulong guildId, ulong userId, int count, CancellationToken ct = default)
@@ -165,6 +224,87 @@ public static class CurrencyLedgerQueries
             .ToListAsync(ct);
 
         return rows.Select(e => (e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList();
+    }
+
+    /// <summary>Paged + sortable variant of <see cref="GuildLedgerAsync"/> for the web Guild ledger datagrid.
+    /// <paramref name="excludeCurrencyId"/> drops a currency at SQL level (the wallet surface uses this for POINTS).
+    /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
+    public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> GuildLedgerPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid? currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && (currencyId == null || e.CurrencyId == currencyId));
+
+        if (excludeCurrencyId is { } x)
+        {
+            q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        var total = await q.CountAsync(ct);
+
+        q = (sortKey, descending) switch
+        {
+            ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
+            ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            (_, false) => q.OrderBy(e => e.Id),
+            _ => q.OrderByDescending(e => e.Id),
+        };
+
+        var rows = await q
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new { e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .ToListAsync(ct);
+
+        return (rows.Select(e => (e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
+    }
+
+    /// <summary>Paged top holders for a currency/season scope, sorted by cached wallet balance (highest first).
+    /// <paramref name="excludeUserId"/> drops the house/escrow account so it doesn't muddy the leaderboard.</summary>
+    public static async Task<(List<(ulong UserId, long Balance)> Rows, int Total)> TopWalletBalancesPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId,
+        ulong? excludeUserId, int skip, int take, CancellationToken ct = default)
+    {
+        var q = db.Wallets
+            .Where(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId && w.Balance != 0);
+        if (excludeUserId is { } ex)
+        {
+            q = q.Where(w => w.UserId != ex);
+        }
+
+        var total = await q.CountAsync(ct);
+        var rows = await q
+            .OrderByDescending(w => w.Balance)
+            .ThenBy(w => w.UserId)
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(w => new { w.UserId, w.Balance })
+            .ToListAsync(ct);
+
+        return (rows.Select(w => (w.UserId, w.Balance)).ToList(), total);
     }
 
     /// <summary>Supply analytics for a currency/season scope, summed from the ledger (the authority). Member-held

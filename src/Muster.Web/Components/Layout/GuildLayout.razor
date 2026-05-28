@@ -20,24 +20,27 @@
             <span class="server-name">@_guildName</span>
         </a>
 
-        <div class="nav-label">Manage</div>
-        <nav class="side-nav">
-            @foreach (var item in NavItems)
-            {
-                if (item.Href is { } href)
+        @foreach (var grp in NavSections)
+        {
+            <div class="nav-label">@grp.Label</div>
+            <nav class="side-nav">
+                @foreach (var item in grp.Items)
                 {
-                    <a href="@href" class="@(IsActive(item.Match) ? "active" : "")">
-                        <span class="nav-ico material-symbols-outlined">@item.Icon</span>@item.Label
-                    </a>
+                    if (item.Href is { } href)
+                    {
+                        <a href="@href" class="@(IsActive(item.Match) ? "active" : "")">
+                            <span class="nav-ico material-symbols-outlined">@item.Icon</span>@item.Label
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="nav-soon" title="Coming soon">
+                            <span class="nav-ico material-symbols-outlined">@item.Icon</span>@item.Label<span class="pill">soon</span>
+                        </span>
+                    }
                 }
-                else
-                {
-                    <span class="nav-soon" title="Coming soon">
-                        <span class="nav-ico material-symbols-outlined">@item.Icon</span>@item.Label<span class="pill">soon</span>
-                    </span>
-                }
-            }
-        </nav>
+            </nav>
+        }
 
         <div class="sidebar-foot">
             <div class="me-card">
@@ -73,8 +76,9 @@
     private string? _userAvatar;
 
     private sealed record NavItem(string Label, string Icon, string? Href, string Match);
+    private sealed record NavSection(string Label, IReadOnlyList<NavItem> Items);
 
-    private IReadOnlyList<NavItem> NavItems
+    private IReadOnlyList<NavSection> NavSections
     {
         get
         {
@@ -83,25 +87,49 @@
                 return [];
             }
 
-            // Member-facing items at the top level; admin tooling (awards, currencies, quest settings, seasons,
-            // role mapping, API clients, audit log) is consolidated under the single admin-only "Admin" hub.
-            var items = new List<NavItem>
+            // Three groups: your own surfaces, the shared/community surfaces (with two admin-only views), and the
+            // admin tooling/config. Admin-only items render gated as null Href in their natural section so the section
+            // collapses cleanly for non-admins.
+            var personal = new List<NavItem>
+            {
+                new("Me", "person", $"/guilds/{_guildId}/me", "/me"),
+                new("Points", "trophy", $"/guilds/{_guildId}/points", "/points"),
+                new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/wallet", "/wallet"),
+                new("Settings", "settings", $"/guilds/{_guildId}/settings", "/settings"),
+            };
+
+            var guild = new List<NavItem>
             {
                 new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
-                new("Me", "person", $"/guilds/{_guildId}/me", "/me"),
-                new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/wallet", "/wallet"),
                 new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
                 new("Sessions", "schedule", $"/guilds/{_guildId}/sessions", "/sessions"),
                 new("Musters", "groups", null, "/musters"),
-                new("Members", "group", _isAdmin ? $"/guilds/{_guildId}/members" : null, "/members"),
             };
-
             if (_isAdmin)
             {
-                items.Add(new("Admin", "shield_person", $"/guilds/{_guildId}/admin", "/admin"));
+                guild.Add(new("Guild points", "trophy", $"/guilds/{_guildId}/guild-points", "/guild-points"));
+                guild.Add(new("Guild ledger", "account_balance", $"/guilds/{_guildId}/guild-ledger", "/guild-ledger"));
             }
 
-            return items;
+            var management = new List<NavItem>();
+            if (_isAdmin)
+            {
+                management.Add(new("Members", "group", $"/guilds/{_guildId}/members", "/members"));
+                management.Add(new("Audit log", "receipt_long", $"/guilds/{_guildId}/audit", "/audit"));
+                management.Add(new("Admin", "shield_person", $"/guilds/{_guildId}/admin", "/admin"));
+            }
+
+            var sections = new List<NavSection>
+            {
+                new("Personal", personal),
+                new("Guild", guild),
+            };
+            if (management.Count > 0)
+            {
+                sections.Add(new("Management", management));
+            }
+
+            return sections;
         }
     }
 

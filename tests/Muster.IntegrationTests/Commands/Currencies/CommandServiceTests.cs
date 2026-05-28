@@ -32,9 +32,12 @@ public class CommandServiceTests
     public async Task TrackStop_InvalidId_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus()));
+        var sut = new TrackingCommandService(
+            new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus()),
+            new AlwaysAllowTrackingAuthorizer(),
+            db);
 
-        var result = await sut.StopAsync(1, "not-a-guid");
+        var result = await sut.StopAsync(1, actorId: 5, "not-a-guid");
 
         Assert.True(result.IsError);
     }
@@ -43,9 +46,12 @@ public class CommandServiceTests
     public async Task TrackStop_UnknownSession_ReturnsError()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus()));
+        var sut = new TrackingCommandService(
+            new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus()),
+            new AlwaysAllowTrackingAuthorizer(),
+            db);
 
-        var result = await sut.StopAsync(1, Guid.NewGuid().ToString());
+        var result = await sut.StopAsync(1, actorId: 5, Guid.NewGuid().ToString());
 
         Assert.True(result.IsError);
     }
@@ -54,13 +60,16 @@ public class CommandServiceTests
     public async Task TrackStart_ThenStop_Succeeds()
     {
         using var db = await SeededAsync();
-        var sut = new TrackingCommandService(new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus()));
+        var sut = new TrackingCommandService(
+            new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus()),
+            new AlwaysAllowTrackingAuthorizer(),
+            db);
 
         var start = await sut.StartAsync(1, actorId: 5, voiceChannelId: 42, name: "Test op", channelName: "Voice", requireUnmuted: true, requireUndeafened: true, requireNotAlone: false);
         Assert.False(start.IsError);
 
         var session = await db.TrackingSessions.SingleAsync();
-        var stop = await sut.StopAsync(1, session.Id.ToString());
+        var stop = await sut.StopAsync(1, actorId: 5, session.Id.ToString());
         Assert.False(stop.IsError);
     }
 

@@ -1,0 +1,36 @@
+@* Reusable balances card grid: Points first, then each non-points wallet currency. Shared by MemberDetail
+   (admin view) and Me (self view). *@
+@using Muster.Infrastructure.Services.Currencies
+
+<div class="stat-grid">
+    @if (ShowPoints)
+    {
+        <div class="card glass stat">
+            <span class="label">Points</span>
+            <span class="num">@Points.ToString("N0")</span>
+            <span class="subtitle">@(PointsSeasonal ? "current season" : "all time")</span>
+        </div>
+    }
+    @if (Wallets.Count == 0 && !ShowPoints)
+    {
+        <div class="card glass stat"><span class="label">Balance</span><span class="num">0</span><span class="subtitle">no balances</span></div>
+    }
+    else
+    {
+        @foreach (var w in Wallets)
+        {
+            <div class="card glass stat">
+                <span class="label">@w.CurrencyName@(w.IsSeasonal ? " (season)" : "")</span>
+                <span class="num">@w.Balance.ToString("N0")</span>
+                <span class="subtitle">@w.CurrencyCode</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public bool ShowPoints { get; set; } = true;
+    [Parameter] public long Points { get; set; }
+    [Parameter] public bool PointsSeasonal { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<WalletBalance> Wallets { get; set; } = [];
+}

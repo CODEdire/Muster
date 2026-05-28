@@ -108,6 +108,18 @@ public static class MembershipQueries
     public static Task<Dictionary<ulong, string>> UserDisplayNameMapAsync(this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)
         => db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.GlobalName ?? u.Username, ct);
 
+    /// <summary>Map of user id → (display name, raw avatar hash) for chip rendering. Hash is converted to a CDN URL
+    /// by the Web layer (which owns the Discord helper) so this query stays provider-agnostic.</summary>
+    public static async Task<Dictionary<ulong, (string Name, string? AvatarHash)>> UserDisplayMapAsync(
+        this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)
+    {
+        var rows = await db.Users
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username, u.GlobalName, u.AvatarHash })
+            .ToListAsync(ct);
+        return rows.ToDictionary(u => u.Id, u => (u.GlobalName ?? u.Username, u.AvatarHash));
+    }
+
     /// <summary>The subset of the given user ids that are bot/app accounts (for filtering human-facing lists).</summary>
     public static async Task<HashSet<ulong>> BotUserIdsAsync(this MusterDbContext db, List<ulong> userIds, CancellationToken ct = default)
         => (await db.Users.Where(u => userIds.Contains(u.Id) && u.IsBot).Select(u => u.Id).ToListAsync(ct)).ToHashSet();

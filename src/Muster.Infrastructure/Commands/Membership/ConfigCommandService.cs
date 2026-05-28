@@ -10,10 +10,18 @@ namespace Muster.Infrastructure.Commands.Membership;
 public enum RoleKind
 {
     Admin,
-    Officer,
+    Officer,         // legacy umbrella — kept for back-compat
     Participant,
     QuestManager,
+    EconomyManager,
+    EventOfficer,
+    TrackingManager,
+    Auditor,
 }
+
+/// <summary>The previous + new ledger retention day values — returned by <see cref="ConfigCommandService.SetLedgerRetentionAsync"/>
+/// so the UI can audit the change without re-reading the guild settings.</summary>
+public record LedgerRetentionChange(int OldDays, int NewDays);
 
 /// <summary>
 /// Logic for the /config commands that map roles to Discord roles (admin / officer / participant).
@@ -25,26 +33,27 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     /// <summary>Set how many days of detailed ledger history this guild keeps before the prune sweep compacts older
     /// rows into carry-forward checkpoints (0 = inherit the platform default / keep forever). Validated against the
     /// platform cap; the effective window is the smaller of this and the cap.</summary>
-    public async Task<CommandResult> SetLedgerRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
+    public async Task<CommandResult<LedgerRetentionChange>> SetLedgerRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
     {
         if (days < 0)
         {
-            return CommandResult.Error("Retention days can't be negative (0 = inherit the platform default).");
+            return CommandResult<LedgerRetentionChange>.Error("Retention days can't be negative (0 = inherit the platform default).");
         }
 
         var cap = retention.Value.MaxLedgerRetentionDays;
         if (LedgerRetention.ExceedsCap(days, cap))
         {
-            return CommandResult.Error($"The platform maximum ledger retention is {cap} days.");
+            return CommandResult<LedgerRetentionChange>.Error($"The platform maximum ledger retention is {cap} days.");
         }
 
         var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
-            return CommandResult.Error("This server isn't set up yet.");
+            return CommandResult<LedgerRetentionChange>.Error("This server isn't set up yet.");
         }
 
         var settings = guild.Settings;
+        var oldDays = settings.LedgerRetentionDays;
         settings.LedgerRetentionDays = days;
         guild.Settings = settings; // reassign so the owned JSON column is detected as changed
         await db.SaveChangesAsync(ct);
@@ -52,7 +61,9 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         var effective = LedgerRetention.Effective(days, cap);
         var window = effective == 0 ? "unlimited (full history kept)" : $"{effective} days";
         var chosen = days == 0 ? "platform default" : $"{days} days";
-        return CommandResult.Ok($"Ledger retention set to {chosen} — effective window: {window}.");
+        return CommandResult<LedgerRetentionChange>.Ok(
+            new LedgerRetentionChange(oldDays, days),
+            $"Ledger retention set to {chosen} — effective window: {window}.");
     }
 
     /// <summary>Set the guild's background-tracking consent default: opt-in (members must opt in) vs opt-out (on by default).</summary>
@@ -256,6 +267,18 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     public Task<CommandResult> ToggleQuestManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.QuestManager, ct);
 
+    public Task<CommandResult> ToggleEconomyManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.EconomyManager, ct);
+
+    public Task<CommandResult> ToggleEventOfficerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.EventOfficer, ct);
+
+    public Task<CommandResult> ToggleTrackingManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.TrackingManager, ct);
+
+    public Task<CommandResult> ToggleAuditorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.Auditor, ct);
+
     /// <summary>Configure the personal-quest approval workflow (intake gate + final sign-off policy).</summary>
     public async Task<CommandResult> SetQuestApprovalAsync(
         ulong guildId, bool intakeApproval, FinalApprovalMode finalMode, bool allowSelfParticipation, CancellationToken ct = default)
@@ -410,7 +433,12 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
 
         return CommandResult.Ok(
             $"**Role mapping**\nAdmin roles: {Format(guild.Settings.AdminRoleIds)}\n" +
-            $"Officer roles: {Format(guild.Settings.OfficerRoleIds)}\n" +
+            $"Officer roles (legacy umbrella): {Format(guild.Settings.OfficerRoleIds)}\n" +
+            $"Economy manager roles: {Format(guild.Settings.EconomyManagerRoleIds)}\n" +
+            $"Event officer roles: {Format(guild.Settings.EventOfficerRoleIds)}\n" +
+            $"Tracking manager roles: {Format(guild.Settings.TrackingManagerRoleIds)}\n" +
+            $"Quest manager roles: {Format(guild.Settings.QuestManagerRoleIds)}\n" +
+            $"Auditor roles (read-only): {Format(guild.Settings.AuditorRoleIds)}\n" +
             $"Participant roles: {participants}\nGuild owner always has admin access.");
     }
 
@@ -427,6 +455,10 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             RoleKind.Admin => guild.Settings.AdminRoleIds,
             RoleKind.Officer => guild.Settings.OfficerRoleIds,
             RoleKind.QuestManager => guild.Settings.QuestManagerRoleIds,
+            RoleKind.EconomyManager => guild.Settings.EconomyManagerRoleIds,
+            RoleKind.EventOfficer => guild.Settings.EventOfficerRoleIds,
+            RoleKind.TrackingManager => guild.Settings.TrackingManagerRoleIds,
+            RoleKind.Auditor => guild.Settings.AuditorRoleIds,
             _ => guild.Settings.ParticipantRoleIds,
         };
 
@@ -443,6 +475,10 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             case RoleKind.Admin: guild.Settings.AdminRoleIds = updated; break;
             case RoleKind.Officer: guild.Settings.OfficerRoleIds = updated; break;
             case RoleKind.QuestManager: guild.Settings.QuestManagerRoleIds = updated; break;
+            case RoleKind.EconomyManager: guild.Settings.EconomyManagerRoleIds = updated; break;
+            case RoleKind.EventOfficer: guild.Settings.EventOfficerRoleIds = updated; break;
+            case RoleKind.TrackingManager: guild.Settings.TrackingManagerRoleIds = updated; break;
+            case RoleKind.Auditor: guild.Settings.AuditorRoleIds = updated; break;
             default: guild.Settings.ParticipantRoleIds = updated; break;
         }
 

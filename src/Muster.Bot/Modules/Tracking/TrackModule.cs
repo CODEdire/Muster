@@ -26,7 +26,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         [SlashCommandParameter(Name = "choice", Description = "Default = follow server; In = opt in; BackgroundOut = no passive tracking; AllOut = none")]
         TrackingChoice choice)
         => RunAsync(
-            (sp, guildId) => sp.GetRequiredService<TrackingPreferenceCommandService>().SetAsync(guildId, Context.User.Id, choice),
+            (sp, guildId) => sp.GetRequiredService<TrackingPreferenceCommandService>().SetAsync(guildId, Context.User.Id, Context.User.Id, choice),
             RequiredRole.None);
 
     [SubSlashCommand("leaderboard", "Show the top members by voice participation time.")]
@@ -80,7 +80,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                     await sp.GetRequiredService<GuildReconcileCoordinator>().ReconcileNowAsync(guildId);
                     return result;
                 },
-                RequiredRole.Admin,
+                RequiredRole.TrackingManager,
                 auditAction: "track.session.start");
 
         [SubSlashCommand("stop", "Close an active tracking session and award attendance.")]
@@ -88,8 +88,8 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             [SlashCommandParameter(Name = "session", Description = "Pick an active session",
                 AutocompleteProviderType = typeof(ActiveSessionAutocompleteProvider))] string session)
             => RunAsync(
-                (sp, guildId) => sp.GetRequiredService<TrackingCommandService>().StopAsync(guildId, session),
-                RequiredRole.Admin,
+                (sp, guildId) => sp.GetRequiredService<TrackingCommandService>().StopAsync(guildId, Context.User.Id, session),
+                RequiredRole.TrackingManager,
                 auditAction: "track.session.stop");
 
         [SubSlashCommand("new", "Get a link to the web wizard for starting a session (channel pickers + options).")]
@@ -102,7 +102,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                         ? CommandResult.Error("No web URL is configured for this server — use `/track session start` instead.")
                         : CommandResult.Ok($"🌐 Start a session in the web wizard: {url}"));
                 },
-                RequiredRole.Admin);
+                RequiredRole.TrackingManager);
 
         [SubSlashCommand("optout", "Opt yourself out of an active session (this session only — your standing preference is unchanged).")]
         public Task OptOutAsync(
@@ -110,7 +110,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                 AutocompleteProviderType = typeof(ActiveSessionAutocompleteProvider))] string session)
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<TrackingCommandService>()
-                    .OptOutAsync(guildId, session, Context.User.Id, Context.User.Id, actorIsStaff: false),
+                    .OptOutAsync(guildId, session, Context.User.Id, Context.User.Id),
                 RequiredRole.None,
                 auditAction: "track.session.optout");
 
@@ -184,8 +184,8 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             [SlashCommandParameter(Name = "require-not-alone", Description = "Skip when alone in the channel (default true)")] bool requireNotAlone = true)
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>()
-                    .SetVoiceAsync(guildId, channel.Id, pointsPerMinute, dailyCap, requireUnmuted, requireUndeafened, requireNotAlone, channelName: (channel as IGuildChannel)?.Name),
-                RequiredRole.Admin,
+                    .SetVoiceAsync(guildId, Context.User.Id, channel.Id, pointsPerMinute, dailyCap, requireUnmuted, requireUndeafened, requireNotAlone, channelName: (channel as IGuildChannel)?.Name),
+                RequiredRole.TrackingManager,
                 auditAction: "track.background.voice");
 
         [SubSlashCommand("text", "Monitor a text channel for activity (optionally rewarding messages).")]
@@ -197,23 +197,23 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             [SlashCommandParameter(Name = "daily-cap", Description = "Max message points per member per day (0 = uncapped)")] int dailyCap = 0)
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>()
-                    .SetTextAsync(guildId, channel.Id, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap, channelName: (channel as IGuildChannel)?.Name),
-                RequiredRole.Admin,
+                    .SetTextAsync(guildId, Context.User.Id, channel.Id, pointsPerMessage, messagesPerPoint, cooldownSeconds, dailyCap, channelName: (channel as IGuildChannel)?.Name),
+                RequiredRole.TrackingManager,
                 auditAction: "track.background.text");
 
         [SubSlashCommand("remove", "Stop monitoring a channel.")]
         public Task RemoveAsync(
             [SlashCommandParameter(Name = "channel", Description = "Channel to stop monitoring")] Channel channel)
             => RunAsync(
-                (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>().RemoveAsync(guildId, channel.Id),
-                RequiredRole.Admin,
+                (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>().RemoveAsync(guildId, Context.User.Id, channel.Id),
+                RequiredRole.TrackingManager,
                 auditAction: "track.background.remove");
 
         [SubSlashCommand("list", "List the channels being monitored.")]
         public Task ListAsync()
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<TrackedChannelCommandService>().ListAsync(guildId),
-                RequiredRole.Admin);
+                RequiredRole.TrackingManager);
     }
 
     /// <summary>Reward multipliers — boost/dampen earnings by window, schedule, or role (admin). Complex windows
@@ -233,7 +233,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
 
                 var lines = rows.Select(m => $"- **{m.Name}** ×{m.Factor:0.##} — {m.Kind}, {(m.Enabled ? "on" : "off")}");
                 return CommandResult.Ok("**Reward multipliers**\n" + string.Join("\n", lines));
-            }, RequiredRole.Admin);
+            }, RequiredRole.TrackingManager);
 
         [SubSlashCommand("role", "Add an always-on multiplier for members holding a role.")]
         public Task RoleAsync(
@@ -242,9 +242,9 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             [SlashCommandParameter(Name = "name", Description = "A label for this rule")] string? name = null,
             [SlashCommandParameter(Name = "applies-to", Description = "Which rewards it affects (default all)")] MultiplierScope scope = MultiplierScope.All)
             => RunAsync(
-                (sp, guildId) => sp.GetRequiredService<RewardMultiplierCommandService>()
-                    .AddRoleAsync(guildId, name ?? $"{role.Name} role", (decimal)factor, scope, role.Id),
-                RequiredRole.Admin, auditAction: "track.multiplier.add");
+                async (sp, guildId) => await sp.GetRequiredService<RewardMultiplierCommandService>()
+                    .AddRoleAsync(guildId, Context.User.Id, name ?? $"{role.Name} role", (decimal)factor, scope, role.Id),
+                RequiredRole.TrackingManager, auditAction: "track.multiplier.add");
 
         [SubSlashCommand("recurring", "Add a weekly recurring multiplier (guild-local times; may wrap past midnight).")]
         public Task RecurringAsync(
@@ -260,19 +260,19 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             [SlashCommandParameter(Name = "sun", Description = "Active on Sundays")] bool sun = false,
             [SlashCommandParameter(Name = "name", Description = "A label for this rule")] string? name = null,
             [SlashCommandParameter(Name = "applies-to", Description = "Which rewards it affects (default all)")] MultiplierScope scope = MultiplierScope.All)
-            => RunAsync((sp, guildId) =>
+            => RunAsync(async (sp, guildId) =>
             {
                 if (!TimeOnly.TryParse(from, out var f) || !TimeOnly.TryParse(to, out var t))
                 {
-                    return Task.FromResult(CommandResult.Error("Enter times as HH:mm (e.g. 19:00)."));
+                    return CommandResult.Error("Enter times as HH:mm (e.g. 19:00).");
                 }
 
                 var days = (mon ? WeekDays.Monday : 0) | (tue ? WeekDays.Tuesday : 0) | (wed ? WeekDays.Wednesday : 0)
                     | (thu ? WeekDays.Thursday : 0) | (fri ? WeekDays.Friday : 0) | (sat ? WeekDays.Saturday : 0) | (sun ? WeekDays.Sunday : 0);
 
-                return sp.GetRequiredService<RewardMultiplierCommandService>()
-                    .AddRecurringAsync(guildId, name ?? "Recurring", (decimal)factor, scope, days, f, t);
-            }, RequiredRole.Admin, auditAction: "track.multiplier.add");
+                return await sp.GetRequiredService<RewardMultiplierCommandService>()
+                    .AddRecurringAsync(guildId, Context.User.Id, name ?? "Recurring", (decimal)factor, scope, days, f, t);
+            }, RequiredRole.TrackingManager, auditAction: "track.multiplier.add");
 
         [SubSlashCommand("window", "Add a one-off multiplier window (e.g. happy hour). Times are in your time zone.")]
         public Task WindowAsync(
@@ -297,8 +297,8 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                 }
 
                 return await sp.GetRequiredService<RewardMultiplierCommandService>()
-                    .AddOneOffAsync(guildId, name ?? "Window", (decimal)factor, scope, startUtc!.Value, endUtc!.Value);
-            }, RequiredRole.Admin, auditAction: "track.multiplier.add");
+                    .AddOneOffAsync(guildId, Context.User.Id, name ?? "Window", (decimal)factor, scope, startUtc!.Value, endUtc!.Value);
+            }, RequiredRole.TrackingManager, auditAction: "track.multiplier.add");
 
         [SubSlashCommand("enable", "Enable or disable a multiplier.")]
         public Task EnableAsync(
@@ -306,18 +306,18 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                 AutocompleteProviderType = typeof(MultiplierAutocompleteProvider))] string multiplier,
             [SlashCommandParameter(Name = "enabled", Description = "true to enable, false to disable")] bool enabled = true)
             => RunAsync((sp, guildId) => Guid.TryParse(multiplier, out var id)
-                ? sp.GetRequiredService<RewardMultiplierCommandService>().SetEnabledAsync(guildId, id, enabled)
+                ? sp.GetRequiredService<RewardMultiplierCommandService>().SetEnabledAsync(guildId, Context.User.Id, id, enabled)
                 : Task.FromResult(CommandResult.Error("Pick a multiplier from the list.")),
-                RequiredRole.Admin, auditAction: "track.multiplier.toggle");
+                RequiredRole.TrackingManager, auditAction: "track.multiplier.toggle");
 
         [SubSlashCommand("remove", "Remove a multiplier.")]
         public Task RemoveAsync(
             [SlashCommandParameter(Name = "multiplier", Description = "Pick a multiplier",
                 AutocompleteProviderType = typeof(MultiplierAutocompleteProvider))] string multiplier)
             => RunAsync((sp, guildId) => Guid.TryParse(multiplier, out var id)
-                ? sp.GetRequiredService<RewardMultiplierCommandService>().RemoveAsync(guildId, id)
+                ? sp.GetRequiredService<RewardMultiplierCommandService>().RemoveAsync(guildId, Context.User.Id, id)
                 : Task.FromResult(CommandResult.Error("Pick a multiplier from the list.")),
-                RequiredRole.Admin, auditAction: "track.multiplier.remove");
+                RequiredRole.TrackingManager, auditAction: "track.multiplier.remove");
     }
 
     /// <summary>Tracking reward settings (admin) — the scalar config that otherwise lives only on the web page.</summary>
@@ -328,7 +328,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
         public Task GuardsAsync(
             [SlashCommandParameter(Name = "apply", Description = "true = pause muted/alone time; false = count all presence")] bool apply)
             => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetApplyGuardsToSessionsAsync(guildId, apply),
-                RequiredRole.Admin, auditAction: "config.tracking");
+                RequiredRole.TrackingManager, auditAction: "config.tracking");
 
         [SubSlashCommand("limits", "Session safety limits (omit a value to leave it unchanged).")]
         public Task LimitsAsync(
@@ -355,7 +355,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                 }
 
                 return CommandResult.Ok(messages.Count == 0 ? "Provide at least one limit to change." : string.Join("\n", messages));
-            }, RequiredRole.Admin, auditAction: "config.tracking");
+            }, RequiredRole.TrackingManager, auditAction: "config.tracking");
 
         [SubSlashCommand("multiplier-policy", "How multipliers stack + a global cap, and the session presence bonuses.")]
         public Task PolicyAsync(
@@ -379,6 +379,6 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
                     startWindowMinutes ?? s.StartBonusWindowMinutes,
                     endWindowMinutes ?? s.EndBonusWindowMinutes,
                     scaleBonuses ?? s.MultiplyPresenceBonuses);
-            }, RequiredRole.Admin, auditAction: "config.tracking");
+            }, RequiredRole.TrackingManager, auditAction: "config.tracking");
     }
 }

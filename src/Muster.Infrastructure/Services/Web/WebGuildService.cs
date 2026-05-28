@@ -1,3 +1,4 @@
+using Muster.Domain.Enums;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Infrastructure.Services.Currencies;
@@ -9,10 +10,13 @@ public record UserGuildView(ulong GuildId, string Name, bool IsAdmin);
 /// <summary>The signed-in user's profile for the shell (display name + optional avatar URL).</summary>
 public record UserProfile(string Name, string? AvatarUrl);
 
-public record LeaderboardRow(int Rank, ulong UserId, string DisplayName, long Total);
+public record LeaderboardRow(int Rank, ulong UserId, string DisplayName, long Total, string? AvatarUrl = null);
 
-/// <summary>A guild-wide ledger movement for the admin overview feed, with the member named.</summary>
-public record MovementRow(ulong UserId, string DisplayName, string CurrencyCode, long Amount, string Source, DateTimeOffset OccurredAt, string Reason);
+/// <summary>A guild-wide ledger movement for the admin overview feed, with the member named + their CDN avatar URL.
+/// <see cref="Source"/> carries the typed source so the UI can pick an icon/label.</summary>
+public record MovementRow(
+    ulong UserId, string DisplayName, string? AvatarUrl, string CurrencyCode, long Amount,
+    CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason);
 
 /// <summary>The admin currency overview for one currency: supply analytics + top holders + a recent-movement feed.</summary>
 public record CurrencyOverview(CurrencySupply Supply, IReadOnlyList<LeaderboardRow> TopHolders, IReadOnlyList<MovementRow> Recent);
@@ -41,6 +45,10 @@ public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth,
         var user = await db.FindUserAsync(userId, ct);
         return user is null ? null : new UserProfile(user.GlobalName ?? user.Username, Discord.DiscordCdn.AvatarUrl(user.Id, user.AvatarHash));
     }
+
+    /// <summary>The guild's stored IANA time zone (or null when not set — UI defaults to UTC).</summary>
+    public Task<string?> GetGuildZoneIdAsync(ulong guildId, CancellationToken ct = default)
+        => db.GuildTimeZoneIdAsync(guildId, ct);
 
     public async Task<bool> CanViewGuildAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
@@ -99,7 +107,9 @@ public class WebGuildService(MusterDbContext db, GuildAuthorizationService auth,
             .Select((e, i) => new LeaderboardRow(i + 1, e.UserId, Name(e.UserId), e.Total))
             .ToList();
         var feedRows = movements
-            .Select(m => new MovementRow(m.UserId, Name(m.UserId), m.CurrencyCode, m.Amount, m.SourceType, m.OccurredAt, m.Reason))
+            .Select(m => new MovementRow(
+                m.UserId, Name(m.UserId), AvatarUrl: null, m.CurrencyCode, m.Amount,
+                Enum.Parse<CurrencyLedgerSource>(m.SourceType), m.OccurredAt, m.Reason))
             .ToList();
 
         return new CurrencyOverview(supply, topRows, feedRows);

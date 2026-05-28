@@ -54,6 +54,10 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<WebGuildService>();
         builder.Services.AddScoped<WebAdminService>();
         builder.Services.AddScoped<WebMemberService>();
+        // Wallet vs Points read surfaces — same storage, distinct callers. WalletReadService never returns POINTS;
+        // PointsReadService only ever returns POINTS. Pages/Discord/API never share a "currency reader" any more.
+        builder.Services.AddScoped<WalletReadService>();
+        builder.Services.AddScoped<PointsReadService>();
         builder.Services.AddScoped<ApiClientService>();
         builder.Services.AddScoped<ICurrencyService, CurrencyService>();
         builder.Services.AddScoped<ICurrencyAuthorizer, Services.Currencies.CurrencyAuthorizer>();
@@ -63,6 +67,13 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<Services.Currencies.ILedgerPruneService, LedgerPruneService>();
         builder.Services.AddScoped<Services.Currencies.ICurrencyAdminService, CurrencyAdminService>();
         builder.Services.AddScoped<AuditService>();
+        builder.Services.AddScoped<IAuditPruneService, AuditPruneService>();
+        // Audit retention window from "Audit:RetentionDays" (default 90; 0 = unlimited).
+        builder.Services.Configure<AuditRetentionOptions>(builder.Configuration.GetSection("Audit"));
+        // Fallback audit origin so AuditService never fails to resolve in a host that forgot to register one.
+        // Hosts (Web, Bot) replace this with their real origin via Services.AddSingleton<IAuditOriginProvider>.
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<IAuditOriginProvider>(
+            builder.Services, _ => new AuditOriginProvider(Muster.Domain.Enums.AuditOrigin.System));
         builder.Services.AddScoped<MentionHumanizer>();
         builder.Services.AddScoped<TimeZoneService>();
 
@@ -71,9 +82,11 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<TrackedChannelCommandService>();
         builder.Services.AddScoped<RewardMultiplierCommandService>();
         builder.Services.AddScoped<TrackingPreferenceCommandService>();
+        builder.Services.AddScoped<Services.Tracking.ITrackingAuthorizer, Services.Tracking.TrackingAuthorizer>();
         builder.Services.AddScoped<OpCommandService>();
         builder.Services.AddScoped<SeasonCommandService>();
         builder.Services.AddScoped<ConfigCommandService>();
+        builder.Services.AddScoped<MemberPreferencesCommandService>();
         builder.Services.AddScoped<Services.Quests.IQuestMaintenanceService, QuestMaintenanceService>();
         // Quest + currency events publish as Wolverine messages (QuestLifecycleNotified, CurrencyMovementRecorded);
         // a Discord/connector consumer subscribes later. A logging handler is the default seam (CurrencyService
@@ -92,10 +105,12 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<Connectors.CurrencyConnectorSyncService>();
 
         // Outbound currency webhooks: per-guild signed POST of every movement (CurrencyMovementRecorded fan-out).
-        // Typed HttpClient + resilience; the dispatcher signs/sends, the service does admin CRUD. Like connectors,
-        // the secret protector comes from AddMusterConnectorProtection (web + bot only).
-        builder.Services.AddHttpClient<Services.Currencies.CurrencyWebhookDispatcher>()
+        // Named HttpClient + resilience (the dispatcher resolves it via IHttpClientFactory so the dispatcher itself
+        // is a plain scoped registration — Wolverine codegen can constructor-inject it without service location).
+        // Like connectors, the secret protector comes from AddMusterConnectorProtection (web + bot only).
+        builder.Services.AddHttpClient(Services.Currencies.CurrencyWebhookDispatcher.HttpClientName)
             .AddStandardResilienceHandler();
+        builder.Services.AddScoped<Services.Currencies.CurrencyWebhookDispatcher>();
         builder.Services.AddScoped<Services.Currencies.ICurrencyWebhookService, Services.Currencies.CurrencyWebhookService>();
         // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
         // registered by the bot host alongside its IMusterPublisher implementation — not here.

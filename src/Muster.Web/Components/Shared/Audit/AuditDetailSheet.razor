@@ -1,0 +1,95 @@
+@* Responsive popup for one audit entry's full details. Centered modal on desktop, right-edge full-height flyout
+   on mobile (CSS-only switch via @@media). Backdrop click + ESC close. *@
+@implements IDisposable
+@using Microsoft.JSInterop
+@using Muster.Infrastructure.Services.Platform
+@inject IJSRuntime JS
+
+@if (Entry is not null && Render is not null)
+{
+    <div class="audit-backdrop" @onclick="CloseAsync"></div>
+    <div class="audit-sheet" role="dialog" aria-modal="true" aria-label="Audit entry details"
+         tabindex="-1" @ref="_root">
+        <header class="audit-sheet-head">
+            <div class="audit-sheet-title">
+                <code class="audit-action">@Entry.Action</code>
+                <span class="audit-sheet-when"><LocalTime Value="Entry.OccurredAt" Zone="@Zone" ForceZone="@(!string.IsNullOrEmpty(Zone))" /></span>
+            </div>
+            <div class="audit-sheet-actor"><UserChip Name="@Entry.ActorName" AvatarUrl="@Entry.ActorAvatarUrl" /></div>
+            <button type="button" class="icon-btn" aria-label="Close" @onclick="CloseAsync">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </header>
+
+        <div class="audit-sheet-body">
+            @foreach (var sec in Render.Sections)
+            {
+                <div class="audit-sheet-section">
+                    <h3>@sec.Heading</h3>
+                    @if (sec.Rows is { Count: > 0 } rows)
+                    {
+                        <dl class="audit-kv">
+                            @foreach (var row in rows)
+                            {
+                                <dt>@row.Label</dt>
+                                <dd><AuditLine Tokens="row.Value" /></dd>
+                            }
+                        </dl>
+                    }
+                    else
+                    {
+                        <div class="audit-section-body"><AuditLine Tokens="sec.Body" /></div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>The entry to show. Setting to null closes the sheet.</summary>
+    [Parameter] public AuditEntryView? Entry { get; set; }
+
+    /// <summary>Pre-rendered tokens for the entry. Pages compute these once per page render and pass the matching one.</summary>
+    [Parameter] public AuditRender? Render { get; set; }
+
+    /// <summary>The active "display time as" override (drives the timestamp in the header). Same flag semantics as
+    /// the audit grid — empty string = browser auto, anything else forces.</summary>
+    [Parameter] public string? Zone { get; set; }
+
+    /// <summary>Raised when the user dismisses the sheet (backdrop, ESC, or close button).</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference _root;
+    private bool _bound;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Entry is not null && Render is not null && !_bound)
+        {
+            // ESC dismiss: a tiny one-shot listener wired to the dialog element.
+            await JS.InvokeVoidAsync("musterDialogEscape.bind", _root, DotNetObjectReference.Create(this));
+            _bound = true;
+        }
+    }
+
+    [JSInvokable]
+    public Task OnEscape() => CloseAsync();
+
+    private async Task CloseAsync()
+    {
+        if (_bound)
+        {
+            try { await JS.InvokeVoidAsync("musterDialogEscape.unbind", _root); } catch { /* circuit gone */ }
+            _bound = false;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        // The unbind in CloseAsync covers the normal path; this is a defensive fallback for circuit teardown.
+        _bound = false;
+    }
+}

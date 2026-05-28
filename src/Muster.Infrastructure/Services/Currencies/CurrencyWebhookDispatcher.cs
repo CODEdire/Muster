@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Muster.Domain.Entities.Currencies;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Connectors;
@@ -19,8 +20,11 @@ public record WebhookDelivery(bool Ok, int? StatusCode, string? Error);
 /// can dedupe a redelivery. Best-effort — never throws; the caller applies the result to the webhook's health and
 /// auto-disables it after too many consecutive failures (mirroring the connector).
 /// </summary>
-public sealed class CurrencyWebhookDispatcher(HttpClient http, IConnectorSecretProtector secrets)
+public sealed class CurrencyWebhookDispatcher(IHttpClientFactory httpFactory, IConnectorSecretProtector secrets)
 {
+    /// <summary>Named <see cref="HttpClient"/> for outbound currency webhook delivery (resilience pipeline attached at registration).</summary>
+    public const string HttpClientName = "currency-webhooks";
+
     /// <summary>Auto-disable a webhook after this many consecutive failed deliveries.</summary>
     public const int DisableAfterFailures = 15;
 
@@ -42,6 +46,7 @@ public sealed class CurrencyWebhookDispatcher(HttpClient http, IConnectorSecretP
             req.Headers.TryAddWithoutValidation("X-Muster-Delivery", deliveryId);
             req.Headers.TryAddWithoutValidation("X-Muster-Event", "currency.movement");
 
+            var http = httpFactory.CreateClient(HttpClientName);
             using var resp = await http.SendAsync(req, ct);
             var code = (int)resp.StatusCode;
             var ok = code is >= 200 and < 300;

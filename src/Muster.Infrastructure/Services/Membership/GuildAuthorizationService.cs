@@ -58,6 +58,94 @@ public class GuildAuthorizationService(MusterDbContext db)
         return member.RoleIds.Any(r => guild.Settings.OfficerRoleIds.Contains(r));
     }
 
+    /// <summary>Economy staff — may mint / adjust / bulk-move any currency (POINTS + COIN) and view anyone's
+    /// wallet. Admin bypass; legacy <see cref="GuildSettings.OfficerRoleIds"/> also grants this (back-compat).</summary>
+    public async Task<bool> IsEconomyManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        if (await IsAdminAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
+        if (guild is null || member is null)
+        {
+            return false;
+        }
+
+        return member.RoleIds.Any(r =>
+            guild.Settings.EconomyManagerRoleIds.Contains(r) ||
+            guild.Settings.OfficerRoleIds.Contains(r));
+    }
+
+    /// <summary>Tracking staff — open/close sessions, configure monitored channels + reward multipliers,
+    /// force-opt-out members. Admin bypass; legacy <see cref="GuildSettings.OfficerRoleIds"/> also grants this
+    /// (back-compat).</summary>
+    public async Task<bool> IsTrackingManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        if (await IsAdminAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
+        if (guild is null || member is null)
+        {
+            return false;
+        }
+
+        return member.RoleIds.Any(r =>
+            guild.Settings.TrackingManagerRoleIds.Contains(r) ||
+            guild.Settings.OfficerRoleIds.Contains(r));
+    }
+
+    /// <summary>Event-ops staff — may create / close <c>/op</c> entries. Admin bypass; legacy
+    /// <see cref="GuildSettings.OfficerRoleIds"/> also grants this (back-compat).</summary>
+    public async Task<bool> IsEventOfficerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        if (await IsAdminAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
+        if (guild is null || member is null)
+        {
+            return false;
+        }
+
+        return member.RoleIds.Any(r =>
+            guild.Settings.EventOfficerRoleIds.Contains(r) ||
+            guild.Settings.OfficerRoleIds.Contains(r));
+    }
+
+    /// <summary>Read-only observer — audit log, ledger, participation. Implied by any mutating role
+    /// (admin / officer / economy manager / event officer / tracking manager / quest manager) so adding the role
+    /// is purely additive.</summary>
+    public async Task<bool> IsAuditorAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        if (await IsAdminAsync(guildId, userId, ct) ||
+            await IsEconomyManagerAsync(guildId, userId, ct) ||
+            await IsEventOfficerAsync(guildId, userId, ct) ||
+            await IsTrackingManagerAsync(guildId, userId, ct) ||
+            await IsQuestManagerAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
+        if (guild is null || member is null)
+        {
+            return false;
+        }
+
+        return member.RoleIds.Any(r => guild.Settings.AuditorRoleIds.Contains(r));
+    }
+
     /// <summary>Quest managers create guild quests and approve/arbitrate player bounties. Admins are implicitly managers.</summary>
     public async Task<bool> IsQuestManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {

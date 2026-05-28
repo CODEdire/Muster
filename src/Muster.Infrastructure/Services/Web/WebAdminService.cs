@@ -1,3 +1,6 @@
+using Muster.Domain.Entities;
+using Muster.Domain.Entities.Guilds;
+using Muster.Domain.Enums;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 
@@ -12,7 +15,11 @@ public record RoleMappingView(
     IReadOnlyList<ulong> AdminRoleIds,
     IReadOnlyList<ulong> OfficerRoleIds,
     IReadOnlyList<ulong> ParticipantRoleIds,
-    IReadOnlyList<ulong> QuestManagerRoleIds);
+    IReadOnlyList<ulong> QuestManagerRoleIds,
+    IReadOnlyList<ulong> EconomyManagerRoleIds,
+    IReadOnlyList<ulong> EventOfficerRoleIds,
+    IReadOnlyList<ulong> TrackingManagerRoleIds,
+    IReadOnlyList<ulong> AuditorRoleIds);
 
 /// <summary>Read models backing the web admin consoles (member pickers, approval queue, role mapping).</summary>
 public class WebAdminService(MusterDbContext db)
@@ -49,6 +56,45 @@ public class WebAdminService(MusterDbContext db)
         return options.OrderBy(o => o.DisplayName).ToList();
     }
 
+    /// <summary>Current ledger retention setting for the guild (0 = inherit platform default).</summary>
+    public async Task<int> GetLedgerRetentionDaysAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        return guild?.Settings.LedgerRetentionDays ?? 0;
+    }
+
+    /// <summary>Full guild settings snapshot for the config pages. Returns a new default when the guild isn't
+    /// provisioned yet so the form can still bind.</summary>
+    public async Task<GuildSettings> GetSettingsAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        return guild?.Settings ?? new GuildSettings();
+    }
+
+    /// <summary>All tracked voice/text channels on the guild, in their stored order.</summary>
+    public Task<List<GuildChannel>> GetTrackedChannelsAsync(ulong guildId, CancellationToken ct = default)
+        => db.ListTrackedChannelsAsync(guildId, ct);
+
+    /// <summary>True when the guild has at least one live voice channel set to a non-Off tracked mode.</summary>
+    public Task<bool> HasActiveBackgroundTrackingAsync(ulong guildId, CancellationToken ct = default)
+        => Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(
+            db.GuildChannels.Where(c => c.GuildId == guildId
+                && c.Kind == GuildChannelKind.Voice
+                && c.Mode != TrackedChannelMode.Off
+                && c.DeletedAt == null),
+            ct);
+
+    /// <summary>Synced channels of one kind (e.g. voice for session pickers, text for quest channels).</summary>
+    public Task<List<GuildChannel>> GetChannelsByKindAsync(ulong guildId, GuildChannelKind kind, CancellationToken ct = default)
+        => db.ListChannelsByKindAsync(guildId, kind, ct);
+
+    /// <summary>Simple (RoleId, Name) list for role pickers — no settings context.</summary>
+    public async Task<IReadOnlyList<RoleOption>> GetRolesAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var roles = await db.ListRolesAsync(guildId, ct);
+        return roles.OrderBy(r => r.Name).Select(r => new RoleOption(r.RoleId, r.Name)).ToList();
+    }
+
     public async Task<RoleMappingView> GetRoleMappingAsync(ulong guildId, CancellationToken ct = default)
     {
         var roles = (await db.ListRolesAsync(guildId, ct))
@@ -62,6 +108,10 @@ public class WebAdminService(MusterDbContext db)
             guild?.Settings.AdminRoleIds ?? [],
             guild?.Settings.OfficerRoleIds ?? [],
             guild?.Settings.ParticipantRoleIds ?? [],
-            guild?.Settings.QuestManagerRoleIds ?? []);
+            guild?.Settings.QuestManagerRoleIds ?? [],
+            guild?.Settings.EconomyManagerRoleIds ?? [],
+            guild?.Settings.EventOfficerRoleIds ?? [],
+            guild?.Settings.TrackingManagerRoleIds ?? [],
+            guild?.Settings.AuditorRoleIds ?? []);
     }
 }

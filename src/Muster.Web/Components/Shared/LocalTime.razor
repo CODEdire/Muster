@@ -33,8 +33,12 @@ else
     [Parameter] public bool ShowZone { get; set; }
 
     /// <summary>Server-resolved fallback zone (user preference → guild → UTC). The viewer's browser zone wins
-    /// over this when it can be detected.</summary>
+    /// over this when it can be detected — unless <see cref="ForceZone"/> is true.</summary>
     [Parameter] public string? Zone { get; set; }
+
+    /// <summary>When true, the passed <see cref="Zone"/> wins over the auto-detected browser zone. Lets pages
+    /// (e.g. the audit log) offer a manual "display times as" override without losing the browser-aware default.</summary>
+    [Parameter] public bool ForceZone { get; set; }
 
     /// <summary>Show a relative label ("2h ago") instead of an accurate timestamp.</summary>
     [Parameter] public bool Relative { get; set; }
@@ -46,7 +50,10 @@ else
     [Parameter] public string Empty { get; set; } = "—";
 
     // Prefer the viewer's actual browser zone; fall back to the passed (server-resolved) zone, then UTC.
-    private string? EffectiveZone => TimeZoneService.IsValidZone(Browser.Zone) ? Browser.Zone : Zone;
+    // ForceZone reverses that — the passed zone wins. Used by surfaces that offer a manual zone override (e.g. audit).
+    private string? EffectiveZone => ForceZone && TimeZoneService.IsValidZone(Zone)
+        ? Zone
+        : TimeZoneService.IsValidZone(Browser.Zone) ? Browser.Zone : Zone;
 
     // The zone label + where it came from (browser auto-detect vs the server-side preference/default).
     private string ZoneText()

@@ -144,7 +144,7 @@ else if (State == AccessState.Ready)
                         else
                         {
                             <div class="qc-owner">
-                                <UserChip Name="@Name(q.OwnerId)" AvatarUrl="@Avatar(q.OwnerId)" />
+                                <UserChip Name="@Name(q.OwnerId)" AvatarUrl="@Avatar(q.OwnerId)" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, q.OwnerId) : null)" />
                             </div>
                         }
                         @{
@@ -293,6 +293,7 @@ else if (State == AccessState.Ready)
     private IReadOnlyDictionary<ulong, string> _names = new Dictionary<ulong, string>();
     private IReadOnlyDictionary<ulong, string> _avatars = new Dictionary<ulong, string>();
     private bool _isManager;
+    private bool _isStaff;
     private string _zoneId = TimeZoneService.Utc;
     private GuildSettings _settings = new();
     private int _total;
@@ -352,6 +353,7 @@ else if (State == AccessState.Ready)
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
+        _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
     }
 

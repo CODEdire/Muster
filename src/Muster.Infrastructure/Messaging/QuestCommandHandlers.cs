@@ -135,41 +135,41 @@ public static class SubmitQuestHandler
 /// return the user-facing message directly in <see cref="Result.Status"/> (adapters show it verbatim).</summary>
 public static class PostQuestHandler
 {
-    public static async Task<Result> Handle(
+    public static async Task<Result<Guid>> Handle(
         PostQuest c, MusterDbContext db, GuildAuthorizationService auth, IQuestService quests, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(c.Name))
         {
-            return Result.Fail("Please provide a quest name.");
+            return Result<Guid>.Fail("Please provide a quest name.");
         }
 
         if (c.Reward <= 0)
         {
-            return Result.Fail("Reward must be greater than zero.");
+            return Result<Guid>.Fail("Reward must be greater than zero.");
         }
 
         if (c.Deadline is { } dl && c.StartsAt is { } st && dl <= st)
         {
-            return Result.Fail("The expiry must be after the start time.");
+            return Result<Guid>.Fail("The expiry must be after the start time.");
         }
 
         var settings = (await db.GetSettingsAsync(c.GuildId, ct)).Quests;
         if (settings.MaxOpenQuestsPerPoster > 0
             && await db.CountActiveQuestsByPosterAsync(c.GuildId, c.ActorId, ct) >= settings.MaxOpenQuestsPerPoster)
         {
-            return Result.Fail($"You already have {settings.MaxOpenQuestsPerPoster} active quest(s) — settle or cancel one before posting another.");
+            return Result<Guid>.Fail($"You already have {settings.MaxOpenQuestsPerPoster} active quest(s) — settle or cancel one before posting another.");
         }
 
         var code = (c.CurrencyCode ?? string.Empty).Trim().ToUpperInvariant();
         var currency = await db.FindCurrencyAsync(c.GuildId, code, ct);
         if (currency is null)
         {
-            return Result.Fail($"Unknown currency '{code}'.");
+            return Result<Guid>.Fail($"Unknown currency '{code}'.");
         }
 
         if (!currency.IsSpendable)
         {
-            return Result.Fail($"{code} can't be a quest reward — choose a spendable currency (e.g. COIN).");
+            return Result<Guid>.Fail($"{code} can't be a quest reward — choose a spendable currency (e.g. COIN).");
         }
 
         QuestDraft draft;
@@ -177,12 +177,12 @@ public static class PostQuestHandler
         {
             if (!await auth.IsQuestManagerAsync(c.GuildId, c.ActorId, ct))
             {
-                return Result.Fail("You need to be a quest manager to post a guild quest. Choose a personal quest to fund one from your own balance.");
+                return Result<Guid>.Fail("You need to be a quest manager to post a guild quest. Choose a personal quest to fund one from your own balance.");
             }
 
             if (c.Capacity < 1)
             {
-                return Result.Fail("Capacity must be at least 1.");
+                return Result<Guid>.Fail("Capacity must be at least 1.");
             }
 
             draft = new QuestDraft(c.GuildId, c.ActorId, QuestOrigin.Guild, c.Name, c.Description, currency.Id, c.Reward,
@@ -192,7 +192,7 @@ public static class PostQuestHandler
         {
             if (c.Reward < 1)
             {
-                return Result.Fail("A player quest needs a reward of at least 1 to escrow.");
+                return Result<Guid>.Fail("A player quest needs a reward of at least 1 to escrow.");
             }
 
             var requireFinal = settings.FinalApprovalMode switch
@@ -206,8 +206,10 @@ public static class PostQuestHandler
                 c.Deadline, c.StartsAt, RequireIntake: settings.PersonalQuestIntakeApproval, RequireFinalApproval: requireFinal);
         }
 
-        var (result, _) = await quests.PostQuestAsync(draft, ct);
-        return result == QuestResult.Ok ? Result.Success() : Result.Fail(result.ToString());
+        var (result, quest) = await quests.PostQuestAsync(draft, ct);
+        return result == QuestResult.Ok
+            ? Result<Guid>.Success(quest?.Id ?? Guid.Empty)
+            : Result<Guid>.Fail(result.ToString());
     }
 }
 

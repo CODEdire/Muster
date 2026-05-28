@@ -2,15 +2,13 @@
 @layout GuildLayout
 @inherits GuildAdminComponentBase
 @inject RewardMultiplierCommandService Mults
-@inject MusterDbContext Db
-@using Microsoft.EntityFrameworkCore
-@using Muster.Domain.Entities.Members
+@inject WebAdminService AdminRead
+@inject WebGuildService Guilds
 @using Muster.Domain.Entities.Tracking
 @using Muster.Domain.Enums
-@using Muster.Persistence
-@using Muster.Persistence.Queries
 @using Muster.Infrastructure.Commands
 @using Muster.Infrastructure.Commands.Tracking
+@using Muster.Infrastructure.Services.Web
 
 <PageTitle>Multipliers — Muster</PageTitle>
 
@@ -135,28 +133,36 @@ else if (State == AccessState.Ready)
 
     private readonly object _marker = new();
     private IReadOnlyList<RewardMultiplier> _multipliers = [];
-    private IReadOnlyList<GuildRole> _roles = [];
+    private IReadOnlyList<RoleOption> _roles = [];
     private string _zoneId = "UTC";
 
     protected override async Task LoadAsync()
     {
         _multipliers = await Mults.ListAsync(GuildId);
-        _roles = await Db.ListRolesAsync(GuildId);
-        _zoneId = await Db.GuildTimeZoneIdAsync(GuildId) ?? "UTC";
+        _roles = await AdminRead.GetRolesAsync(GuildId);
+        _zoneId = await Guilds.GetGuildZoneIdAsync(GuildId) ?? "UTC";
     }
 
     private async Task ToggleAsync(Guid id, bool enabled)
     {
-        var r = await Mults.SetEnabledAsync(GuildId, id, enabled);
-        if (!r.IsError) await AuditAsync("config.multiplier.toggle", r.Message);
+        var r = await Mults.SetEnabledAsync(GuildId, UserId, id, enabled);
+        if (!r.IsError) await Audit.RecordMultiplierToggleAsync(GuildId, UserId, id, enabled);
         Message = r.Message;
         await LoadAsync();
     }
 
     private async Task RemoveAsync(Guid id)
     {
-        var r = await Mults.RemoveAsync(GuildId, id);
-        if (!r.IsError) await AuditAsync("config.multiplier.remove", r.Message);
+        var removed = _multipliers.FirstOrDefault(m => m.Id == id);
+        var r = await Mults.RemoveAsync(GuildId, UserId, id);
+        if (!r.IsError)
+        {
+            await Audit.RecordMultiplierRemovedAsync(
+                GuildId, UserId, id,
+                removed?.Name ?? "",
+                removed?.Factor ?? 0,
+                removed?.Scope ?? MultiplierScope.None);
+        }
         Message = r.Message;
         await LoadAsync();
     }
@@ -168,7 +174,7 @@ else if (State == AccessState.Ready)
             | (Add.ScopeSessions ? MultiplierScope.Sessions : 0)
             | (Add.ScopeQuests ? MultiplierScope.Quests : 0);
 
-        CommandResult result;
+        CommandResult<Guid> result;
         switch (Add.Kind)
         {
             case "recurring":
@@ -179,11 +185,11 @@ else if (State == AccessState.Ready)
                 }
                 var days = (Add.Sun ? WeekDays.Sunday : 0) | (Add.Mon ? WeekDays.Monday : 0) | (Add.Tue ? WeekDays.Tuesday : 0)
                     | (Add.Wed ? WeekDays.Wednesday : 0) | (Add.Thu ? WeekDays.Thursday : 0) | (Add.Fri ? WeekDays.Friday : 0) | (Add.Sat ? WeekDays.Saturday : 0);
-                result = await Mults.AddRecurringAsync(GuildId, Add.Name, Add.Factor, scope, days, st, et, minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
+                result = await Mults.AddRecurringAsync(GuildId, UserId, Add.Name, Add.Factor, scope, days, st, et, minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
                 break;
 
             case "role":
-                result = await Mults.AddRoleAsync(GuildId, Add.Name, Add.Factor, scope, Add.RoleId);
+                result = await Mults.AddRoleAsync(GuildId, UserId, Add.Name, Add.Factor, scope, Add.RoleId);
                 break;
 
             default: // one-off
@@ -192,11 +198,19 @@ else if (State == AccessState.Ready)
                     Message = "Enter valid start/end date-times.";
                     return;
                 }
-                result = await Mults.AddOneOffAsync(GuildId, Add.Name, Add.Factor, scope, ToUtc(sLocal), ToUtc(eLocal), minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
+                result = await Mults.AddOneOffAsync(GuildId, UserId, Add.Name, Add.Factor, scope, ToUtc(sLocal), ToUtc(eLocal), minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
                 break;
         }
 
-        if (!result.IsError) await AuditAsync("config.multiplier.add", result.Message);
+        if (!result.IsError)
+        {
+            await Audit.RecordMultiplierAddedAsync(
+                GuildId, UserId,
+                result.Value,
+                Add.Name ?? "",
+                Add.Factor,
+                scope);
+        }
         Message = result.Message;
         if (!result.IsError) Add = new AddInput();
         await LoadAsync();

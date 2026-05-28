@@ -289,7 +289,7 @@ else if (State == AccessState.Ready)
         if (Input.Action == "syncall" && IsEdit)
         {
             await Bus.PublishAsync(new SyncCurrencyBalances(GuildId, EditId));
-            await AuditAsync("currency.syncAll", $"Started balance sync for {Input.Code}.");
+            await Audit.RecordCurrencySyncAllAsync(GuildId, UserId, Input.Code ?? "");
             Message = "Balance sync started for all members — this runs in the background and can take a while for large servers.";
             return;
         }
@@ -305,7 +305,7 @@ else if (State == AccessState.Ready)
             }
 
             currencyId = EditId;
-            await AuditAsync("currency.update", update.Message);
+            await Audit.RecordCurrencyUpdatedAsync(GuildId, UserId, Input.Code ?? "", Input.Name ?? "", oldName: null, Input.IsSeasonal, Input.IsSpendable, Input.Mode);
         }
         else
         {
@@ -316,7 +316,7 @@ else if (State == AccessState.Ready)
                 return;
             }
 
-            await AuditAsync("currency.create", create.Message);
+            await Audit.RecordCurrencyCreatedAsync(GuildId, UserId, Input.Code ?? "", Input.Name ?? "", Input.IsSeasonal, Input.IsSpendable, Input.Mode);
             var created = (await CurrencyAdmin.ListAsync(GuildId)).FirstOrDefault(c => c.Code.Equals((Input.Code ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
             if (created is null)
             {
@@ -337,7 +337,7 @@ else if (State == AccessState.Ready)
                 return;
             }
 
-            await AuditAsync("currency.connector", conn.Message);
+            await Audit.RecordCurrencyConnectorAsync(GuildId, UserId, Input.Code ?? "", Input.Mode);
         }
 
         Nav.NavigateTo($"/guilds/{GuildId}/currencies");

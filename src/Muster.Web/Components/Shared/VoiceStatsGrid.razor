@@ -1,0 +1,26 @@
+@* Reusable voice-stats card pair: season minutes (+ rank when ranked) and all-time minutes. *@
+@using Muster.Infrastructure.Services.Tracking
+
+<div class="stat-grid">
+    <div class="card glass stat">
+        <span class="label">Voice — season</span>
+        <span class="num">@Dur(Voice.SeasonMinutes)</span>
+        <span class="subtitle">@(Voice.SeasonRank > 0 ? $"rank #{Voice.SeasonRank}" : "unranked")</span>
+    </div>
+    <div class="card glass stat">
+        <span class="label">Voice — all time</span>
+        <span class="num">@Dur(Voice.AllTimeMinutes)</span>
+        <span class="subtitle">total tracked minutes</span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MemberVoiceStats Voice { get; set; } = new(0, 0, 0);
+
+    private static string Dur(int minutes)
+    {
+        var h = minutes / 60;
+        var m = minutes % 60;
+        return h > 0 ? $"{h}h {m}m" : $"{m}m";
+    }
+}

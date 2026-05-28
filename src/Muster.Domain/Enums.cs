@@ -307,6 +307,29 @@ public enum BulkBatchStatus
     Failed = 3,    // worker stopped on an unrecoverable error
 }
 
+/// <summary>Where an audit entry was triggered from — the entry point, not the subsystem touched. Lets the audit
+/// console group/filter by surface ("everything the API did", "what the Discord bot did") and gives security a
+/// quick answer to "did any human reach in via the UI?". <see cref="Unknown"/> is the legacy/imported fallback.</summary>
+public enum AuditOrigin
+{
+    Unknown = 0,
+    UI = 1,
+    Bot = 2,
+    Api = 3,
+    Connector = 4,
+    System = 5,
+}
+
+/// <summary>The outcome of the audited operation. Today most callers only record on success — <see cref="Denied"/>
+/// covers permission/authorization rejections and <see cref="Failed"/> covers unexpected errors. Lets security
+/// review surface blocked attempts without trawling logs.</summary>
+public enum AuditOutcome
+{
+    Success = 0,
+    Denied = 1,
+    Failed = 2,
+}
+
 /// <summary>How a currency's balance authority is split with external systems.</summary>
 public enum CurrencyMode
 {

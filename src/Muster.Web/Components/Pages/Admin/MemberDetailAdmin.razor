@@ -1,42 +1,874 @@
 @page "/guilds/{GuildIdRaw}/members/{UserIdRaw}"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
-@inject WebMemberService Members
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Tracking
+@using Muster.Infrastructure.Services.Platform
 @using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Shared.Audit
+@using static Muster.Web.Components.Shared.LedgerMeta
 
-<PageTitle>Member — Muster</PageTitle>
+<PageTitle>@(_summary?.DisplayName ?? "Member") — Muster</PageTitle>
 
 @if (State == AccessState.Forbidden)
 {
     <div class="panel glass empty">You need officer or admin access for this server.</div>
 }
-else if (State == AccessState.Ready && _detail is not null)
+else if (State == AccessState.Ready && _summary is null)
 {
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/members">← Members</a>
-        <h1>@_detail.DisplayName</h1>
-        <p class="subtitle">Wallet balances and recent ledger activity.</p>
+    <div class="panel glass empty">
+        <p>Unknown member.</p>
+        <a class="back-link" href="/guilds/@GuildId/members">← Back to Members</a>
     </div>
-
-    <MemberPanel Detail="_detail" />
 }
 else if (State == AccessState.Ready)
 {
-    <div class="panel glass empty">Unknown member.</div>
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/members">← Members</a>
+    </div>
+
+    @* Profile-card header: large avatar + name + status pills + meta line. Sits above the KPI strip + tabs.
+       No frame — the page-head + KPI cards + tabs supply the visual rhythm; a wrapper panel was too heavy. *@
+    <div class="member-header">
+        <div class="member-header-avatar">
+            @if (!string.IsNullOrEmpty(_summary!.AvatarUrl))
+            {
+                <img src="@_summary.AvatarUrl" alt="" />
+            }
+            else
+            {
+                <span class="avatar-initial">@(_summary.DisplayName.Length > 0 ? _summary.DisplayName[..1].ToUpperInvariant() : "?")</span>
+            }
+        </div>
+        <div class="member-header-body">
+            <h1 class="member-header-name">@_summary.DisplayName</h1>
+            <div class="member-header-pills">
+                <span class="track-pill track-@(_summary.Tracking.ToString().ToLowerInvariant())">@TrackLabel(_summary.Tracking)</span>
+                @if (_summary.DmOptOut)
+                {
+                    <span class="track-pill track-dmout">DM receipts off</span>
+                }
+                @if (_summary.IsBot)
+                {
+                    <span class="track-pill track-default">Bot</span>
+                }
+            </div>
+            <div class="member-header-meta">
+                <span>Joined <LocalTime Value="_summary.JoinedAt" Zone="@_zoneId" Pattern="yyyy-MM-dd" /></span>
+                @if (_summary.LastActiveAt is { } la)
+                {
+                    <span>· Last active <LocalTime Value="la" Zone="@_zoneId" /></span>
+                }
+                @if (_summary.RoleNames.Count > 0)
+                {
+                    <span>· @_summary.RoleNames.Count role@(_summary.RoleNames.Count == 1 ? "" : "s")</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* KPI strip: Points, Wallet count, Voice (season minutes), Last-active relative. *@
+    <div class="stat-grid">
+        <div class="card glass stat"><span class="label">Points</span><span class="num">@_points.ToString("N0")</span><span class="subtitle">@(_pointsSeasonal ? "current season" : "all time")</span></div>
+        <div class="card glass stat"><span class="label">Wallets</span><span class="num">@_wallets.Count</span><span class="subtitle">currencies held</span></div>
+        <div class="card glass stat"><span class="label">Voice — season</span><span class="num">@Dur(_voice.SeasonMinutes)</span><span class="subtitle">@(_voice.SeasonRank > 0 ? $"rank #{_voice.SeasonRank}" : "unranked")</span></div>
+        <div class="card glass stat"><span class="label">Voice — all time</span><span class="num">@Dur(_voice.AllTimeMinutes)</span><span class="subtitle">total tracked</span></div>
+    </div>
+
+    @* Page-level toolbar — actions that span the whole member, not one tab. *@
+    @if (_isAdmin)
+    {
+        <div class="member-toolbar">
+            <button type="button" class="btn btn-sm" @onclick="OpenAwardAsync">
+                <span class="material-symbols-outlined">redeem</span> Award / adjust
+            </button>
+        </div>
+    }
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <TabFrame ActiveId="@_tab" ActiveIdChanged="t => _tab = t">
+        <TabPane Id="overview" Label="Overview" Icon="dashboard">
+            <div class="member-detail-section">
+                @if (_wallets.Count > 0)
+                {
+                    <h2>Wallet balances</h2>
+                    <BalancesGrid Points="0" ShowPoints="false" Wallets="_wallets" />
+                }
+
+                @if (_summary.RoleNames.Count > 0)
+                {
+                    <h2>Roles</h2>
+                    <div class="member-roles">
+                        @foreach (var r in _summary.RoleNames)
+                        {
+                            <span class="role-chip">@r</span>
+                        }
+                    </div>
+                }
+
+                @if (_wallets.Count == 0 && _summary.RoleNames.Count == 0)
+                {
+                    <p class="subtitle">No wallets or roles to display. KPIs above summarize this member's standing.</p>
+                }
+            </div>
+        </TabPane>
+
+        <TabPane Id="activity" Label="Activity" Icon="timeline">
+            <div class="dg-scroll">
+                <table class="dg-table">
+                    <thead>
+                        <tr><th>Session</th><th>Channel</th><th>Status</th><th>Started</th><th>Ended</th><th class="num">Their time</th></tr>
+                    </thead>
+                    <tbody>
+                        @if (_sessions is null)
+                        {
+                            <tr class="dg-empty"><td colspan="6">Loading…</td></tr>
+                        }
+                        else if (_sessions.Count == 0)
+                        {
+                            <tr class="dg-empty"><td colspan="6">No sessions yet.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var s in _sessions)
+                            {
+                                <tr>
+                                    <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                                    <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
+                                    <td>@(s.EndedAt is null ? (s.PresentNow ? "🟢 Active" : "🟡 Paused") : "Ended")</td>
+                                    <td><LocalTime Value="s.StartedAt" Zone="@_zoneId" /></td>
+                                    <td>@if (s.EndedAt is { } e) { <LocalTime Value="e" Zone="@_zoneId" /> } else { <span class="subtitle">—</span> }</td>
+                                    <td class="num">@Dur(s.MyMinutes)</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="dg-footer">
+                <span class="dg-tz">last @SessionsLimit sessions · times in <LocalTime ShowZone="true" Zone="@_zoneId" /></span>
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/sessions">All sessions →</a>
+            </div>
+        </TabPane>
+
+        <TabPane Id="ledger" Label="Ledger" Icon="receipt_long">
+            <div class="dg-toolbar">
+                <div class="dg-filters">
+                    <select class="dg-select" value="@(_ledgerCode ?? "")" @onchange="OnLedgerCode">
+                        <option value="">All currencies</option>
+                        @foreach (var c in _currencies)
+                        {
+                            <option value="@c.Code">@c.Code — @c.Name</option>
+                        }
+                    </select>
+                    <select class="dg-select" value="@_ledgerPreset" @onchange="OnLedgerRange">
+                        @foreach (var (val, lbl) in RangePresets)
+                        {
+                            <option value="@val">@lbl</option>
+                        }
+                    </select>
+                    <select class="dg-select" value="@(_ledgerSource?.ToString() ?? "")" @onchange="OnLedgerSource">
+                        <option value="">Any source</option>
+                        @foreach (var s in AllSources)
+                        {
+                            <option value="@s">@SourceLabel(s)</option>
+                        }
+                    </select>
+                    <input type="search" class="dg-search" placeholder="Search reason…" @bind="_ledgerSearchBox" @bind:event="oninput" @bind:after="DebouncedLedgerSearchAsync" />
+                    @if (_loadingLedger)
+                    {
+                        <span class="dg-loading" aria-hidden="true"></span>
+                    }
+                </div>
+            </div>
+            <div class="dg-scroll">
+                <table class="dg-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" @onclick='() => SetLedgerSort("when")'>When @LedgerInd("when")</th>
+                            <th>Currency</th>
+                            <th class="num sortable" @onclick='() => SetLedgerSort("amount")'>Amount @LedgerInd("amount")</th>
+                            <th>Source</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_ledger is null || _ledger.Items.Count == 0)
+                        {
+                            <tr class="dg-empty"><td colspan="5">@(_ledger is null ? "Loading…" : "No activity matches these filters.")</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var h in _ledger.Items)
+                            {
+                                <tr>
+                                    <td><LocalTime Value="h.OccurredAt" Zone="@_zoneId" /></td>
+                                    <td>@h.Currency</td>
+                                    <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
+                                    <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
+                                    <td>@h.Reason</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="dg-footer">
+                <div class="dg-footer-left">
+                    <div class="dg-pagesize">
+                        Rows
+                        <select class="dg-select" value="@_ledgerSize" @onchange="OnLedgerSize">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="dg-pager">
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(_ledgerPage <= 1)" @onclick="LedgerPrev">← Prev</button>
+                    <span>Page @_ledgerPage of @LedgerTotalPages · @(_ledger?.Total ?? 0) total</span>
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(_ledgerPage >= LedgerTotalPages)" @onclick="LedgerNext">Next →</button>
+                </div>
+            </div>
+        </TabPane>
+
+        <TabPane Id="audit" Label="Audit" Icon="fact_check">
+            <div class="dg-toolbar">
+                <div class="dg-filters">
+                    <select class="dg-select" value="@_auditPreset" @onchange="OnAuditPreset">
+                        <option value="">Any time</option>
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="24h">Last 24h</option>
+                        <option value="7d">Last 7d</option>
+                        <option value="30d">Last 30d</option>
+                    </select>
+                    <input type="date" class="dg-select" value="@_auditFrom" @onchange="OnAuditFrom" title="From" />
+                    <input type="date" class="dg-select" value="@_auditTo" @onchange="OnAuditTo" title="To" />
+                    <select class="dg-select" value="@(_auditOutcome?.ToString() ?? "")" @onchange="OnAuditOutcome">
+                        <option value="">Any outcome</option>
+                        @foreach (var o in Enum.GetValues<AuditOutcome>())
+                        {
+                            <option value="@o">@o</option>
+                        }
+                    </select>
+                    <input type="search" class="dg-search" placeholder="Search action or details…" @bind="_auditSearchBox" @bind:event="oninput" @bind:after="DebouncedAuditSearchAsync" />
+                </div>
+            </div>
+            <div class="dg-pill-row">
+                <span class="subtitle">Category:</span>
+                @foreach (var c in _auditCategoryOptions)
+                {
+                    <button type="button" class="dg-pill audit-cat-@(c.ToString().ToLowerInvariant()) @(_auditCategories.Contains(c) ? "active" : "")"
+                            @onclick="() => ToggleAuditCategory(c)">@c</button>
+                }
+                <span class="subtitle">Origin:</span>
+                @foreach (var o in _auditOriginOptions)
+                {
+                    <button type="button" class="dg-pill audit-origin-@(o.ToString().ToLowerInvariant()) @(_auditOrigins.Contains(o) ? "active" : "")"
+                            @onclick="() => ToggleAuditOrigin(o)">@o</button>
+                }
+                @if (_auditCategories.Count > 0 || _auditOrigins.Count > 0)
+                {
+                    <button type="button" class="dg-pill" @onclick="ClearAuditPills">Clear</button>
+                }
+            </div>
+            <div class="dg-scroll">
+                <table class="dg-table audit-member-table">
+                    <thead>
+                        <tr>
+                            <th class="audit-when-col">When</th>
+                            <th>Action</th>
+                            <th>Target</th>
+                            <th>Category</th>
+                            <th>Origin</th>
+                            <th>Outcome</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_audit is null || _audit.Items.Count == 0)
+                        {
+                            <tr class="dg-empty"><td colspan="7">@(_audit is null ? "Loading…" : "No audit history for this member.")</td></tr>
+                        }
+                        else
+                        {
+                            <CascadingValue Value="_auditLookups">
+                            @foreach (var a in _audit.Items)
+                            {
+                                var render = _auditRenders.GetValueOrDefault(a.Id);
+                                <tr class="audit-row" @onclick="() => OpenAuditAsync(a)">
+                                    <td class="audit-when-col"><LocalTime Value="a.OccurredAt" Zone="@_zoneId" Pattern="MMM d, h:mm tt" /></td>
+                                    <td><code class="audit-action">@a.Action</code></td>
+                                    <td>
+                                        @if (a.TargetUserId is null)
+                                        {
+                                            <span class="audit-muted">—</span>
+                                        }
+                                        else if (a.TargetUserId == UserIdParsed)
+                                        {
+                                            <span class="audit-corr" title="This member">self</span>
+                                        }
+                                        else
+                                        {
+                                            var tid = a.TargetUserId.Value;
+                                            var target = _auditLookups?.GetUser(tid);
+                                            if (target is not null)
+                                            {
+                                                <UserChip Name="@target.Name" AvatarUrl="@target.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, tid)" />
+                                            }
+                                            else
+                                            {
+                                                <span class="audit-tok-id">@tid</span>
+                                            }
+                                        }
+                                    </td>
+                                    <td><span class="audit-cat audit-cat-@(a.Category.ToString().ToLowerInvariant())">@a.Category</span></td>
+                                    <td><span class="audit-origin audit-origin-@(a.Origin.ToString().ToLowerInvariant())">@a.Origin</span></td>
+                                    <td><span class="audit-outcome-@(a.Outcome.ToString().ToLowerInvariant())">@a.Outcome</span></td>
+                                    <td class="audit-summary">
+                                        @if (render is not null)
+                                        {
+                                            <AuditLine Tokens="render.Summary" />
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            </CascadingValue>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="dg-footer">
+                <div class="dg-footer-left">
+                    <div class="dg-pagesize">
+                        Rows
+                        <select class="dg-select" value="@_auditSize" @onchange="OnAuditSize">
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="dg-pager">
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(_auditPage <= 1)" @onclick="AuditPrev">← Prev</button>
+                    <span>Page @_auditPage of @AuditTotalPages · @(_audit?.Total ?? 0) total</span>
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(_auditPage >= AuditTotalPages)" @onclick="AuditNext">Next →</button>
+                </div>
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/audit">Full audit →</a>
+            </div>
+        </TabPane>
+
+    </TabFrame>
+
+    @* Audit-entry detail popup — same component as AuditConsole, fed by the per-page renders + lookups. *@
+    <CascadingValue Value="_auditLookups">
+        <AuditDetailSheet Entry="_openAuditEntry" Render="_openAuditRender" Zone="@_zoneId" OnClose="CloseAuditSheet" />
+    </CascadingValue>
+
+    @* Award/adjust dialog — same backdrop+sheet pattern as AuditDetailSheet (responsive, ESC-close via shared helper).
+       Renders only when open; submitting refreshes balances + ledger + audit. *@
+    @if (_awardOpen && _isAdmin)
+    {
+        <div class="audit-backdrop" @onclick="CloseAward"></div>
+        <div class="audit-sheet" role="dialog" aria-modal="true" aria-label="Award or adjust currency">
+            <header class="audit-sheet-head">
+                <div class="audit-sheet-title">
+                    <span class="material-symbols-outlined">redeem</span>
+                    <span>Award / adjust — <strong>@_summary.DisplayName</strong></span>
+                </div>
+                <button type="button" class="icon-btn" aria-label="Close" @onclick="CloseAward">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </header>
+            <div class="audit-sheet-body">
+                <p class="subtitle">Mint a currency for an off-platform contribution, or correct a balance. Positive = mint, negative = deduct.</p>
+                <EditForm class="form-grid" Model="Award" FormName="award" OnValidSubmit="AwardAsync">
+                    <label>Currency
+                        <InputSelect @bind-Value="Award.Currency">
+                            @foreach (var c in _currencies)
+                            {
+                                <option value="@c.Code">@c.Code — @c.Name</option>
+                            }
+                        </InputSelect>
+                    </label>
+                    <label>Amount (negative deducts) <InputNumber @bind-Value="Award.Amount" /></label>
+                    <label>Reason <InputText @bind-Value="Award.Reason" /></label>
+                    <div class="btn-row">
+                        <button type="submit" class="btn" disabled="@_awarding">Apply</button>
+                        <button type="button" class="btn btn-ghost" @onclick="CloseAward">Cancel</button>
+                    </div>
+                </EditForm>
+                <p class="subtitle">For bulk mints across many members, use <a href="/guilds/@GuildId/guild-ledger">Guild ledger</a>.</p>
+            </div>
+        </div>
+    }
 }
 
 @code {
     protected override bool OfficerSufficient => true;
 
     [Parameter] public string UserIdRaw { get; set; } = "";
+    private ulong UserIdParsed => ulong.TryParse(UserIdRaw, out var v) ? v : 0;
 
-    private MemberDetailView? _detail;
+    private const int SearchDebounceMs = 350;
+    private const int SessionsLimit = 25;
+    private const int LedgerPageSize = 25;
+    private const int AuditPageSize = 25;
+
+    private string _tab = "overview";
+    private string _zoneId = TimeZoneService.Utc;
+    private bool _isAdmin;
+
+    private MemberSummary? _summary;
+    private long _points;
+    private bool _pointsSeasonal;
+    private MemberVoiceStats _voice = new(0, 0, 0);
+    private IReadOnlyList<WalletBalance> _wallets = [];
+    private IReadOnlyList<CurrencyView> _currencies = [];
+    private IReadOnlyList<MemberSessionView>? _sessions;
+
+    // Ledger tab state
+    private bool _loadingLedger;
+    private string? _ledgerCode;
+    private string _ledgerPreset = "";
+    private CurrencyLedgerSource? _ledgerSource;
+    private string? _ledgerSearchBox;
+    private string _ledgerSortKey = "when";
+    private bool _ledgerDescending = true;
+    private int _ledgerPage = 1;
+    private int _ledgerSize = LedgerPageSize;
+    private CancellationTokenSource? _ledgerSearchDebounce;
+    private PagedResult<MemberLedgerRow>? _ledger;
+    private int LedgerTotalPages => _ledger?.TotalPages ?? 1;
+
+    // Audit tab state
+    private int _auditPage = 1;
+    private int _auditSize = AuditPageSize;
+    private string _auditPreset = "";
+    private string? _auditFrom;
+    private string? _auditTo;
+    private AuditOutcome? _auditOutcome;
+    private string? _auditSearchBox;
+    private CancellationTokenSource? _auditSearchDebounce;
+    private readonly HashSet<AuditCategory> _auditCategories = [];
+    private readonly HashSet<AuditOrigin> _auditOrigins = [];
+    private static readonly IReadOnlyList<AuditCategory> _auditCategoryOptions =
+        Enum.GetValues<AuditCategory>().Where(c => c != AuditCategory.Other).Append(AuditCategory.Other).ToList();
+    private static readonly IReadOnlyList<AuditOrigin> _auditOriginOptions =
+        Enum.GetValues<AuditOrigin>().Where(o => o != AuditOrigin.Unknown).Append(AuditOrigin.Unknown).ToList();
+    private AuditPage? _audit;
+    private readonly Dictionary<long, AuditRender> _auditRenders = [];
+    private AuditLookups? _auditLookups;
+    private AuditEntryView? _openAuditEntry;
+    private AuditRender? _openAuditRender;
+    private int AuditTotalPages => _audit?.TotalPages ?? 1;
+
+    // Award/adjust dialog state.
+    private bool _awarding;
+    private bool _awardOpen;
+    private AwardInput Award { get; set; } = new();
 
     protected override async Task LoadAsync()
     {
-        if (ulong.TryParse(UserIdRaw, out var userId))
+        if (UserIdParsed == 0)
         {
-            _detail = await Members.GetAsync(GuildId, userId);
+            return;
         }
+
+        await using var scope = Scopes.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+
+        _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
+
+        _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
+
+        var members = sp.GetRequiredService<WebMemberService>();
+        _summary = await members.GetSummaryAsync(GuildId, UserIdParsed);
+        if (_summary is null)
+        {
+            return;
+        }
+
+        var wallet = sp.GetRequiredService<WalletReadService>();
+        _wallets = await wallet.GetWalletsAsync(GuildId, UserIdParsed);
+
+        var currencyAdmin = sp.GetRequiredService<ICurrencyAdminService>();
+        _currencies = await currencyAdmin.ListAsync(GuildId);
+        Award.Currency ??= _currencies.FirstOrDefault(c => c.Code != "POINTS")?.Code ?? _currencies.FirstOrDefault()?.Code;
+
+        var points = sp.GetRequiredService<PointsReadService>();
+        var snap = await points.GetSnapshotAsync(GuildId, UserIdParsed);
+        _points = snap.Balance;
+        _pointsSeasonal = snap.Seasonal;
+        _voice = snap.Voice;
+
+        var participation = sp.GetRequiredService<ParticipationReadService>();
+        _sessions = await participation.MemberSessionHistoryAsync(GuildId, UserIdParsed, SessionsLimit);
+
+        await ReloadLedgerAsync(sp);
+        await ReloadAuditAsync(sp);
+    }
+
+    private async Task ReloadLedgerAsync(IServiceProvider? sp = null)
+    {
+        _loadingLedger = true;
+        try
+        {
+            if (sp is null)
+            {
+                await using var scope = Scopes.CreateAsyncScope();
+                await ReloadLedgerCoreAsync(scope.ServiceProvider);
+            }
+            else
+            {
+                await ReloadLedgerCoreAsync(sp);
+            }
+        }
+        finally
+        {
+            _loadingLedger = false;
+        }
+    }
+
+    private async Task ReloadLedgerCoreAsync(IServiceProvider sp)
+    {
+        var members = sp.GetRequiredService<WebMemberService>();
+        var (from, to) = ResolveRange(_ledgerPreset);
+        var sources = _ledgerSource is { } s ? new[] { s } : null;
+
+        _ledger = await members.GetHistoryPageAsync(
+            GuildId, UserIdParsed,
+            string.IsNullOrWhiteSpace(_ledgerCode) ? null : _ledgerCode,
+            _ledgerSearchBox, _ledgerSortKey, _ledgerDescending,
+            _ledgerPage, _ledgerSize, sources: sources, from: from, to: to);
+    }
+
+    private async Task ReloadAuditAsync(IServiceProvider? sp = null)
+    {
+        if (sp is null)
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            await ReloadAuditCoreAsync(scope.ServiceProvider);
+        }
+        else
+        {
+            await ReloadAuditCoreAsync(sp);
+        }
+    }
+
+    private async Task ReloadAuditCoreAsync(IServiceProvider sp)
+    {
+        var audit = sp.GetRequiredService<AuditService>();
+        var registry = sp.GetRequiredService<AuditFormatterRegistry>();
+        var lookups = sp.GetRequiredService<AuditLookups>();
+
+        var q = new AuditQuery(
+            Search: string.IsNullOrWhiteSpace(_auditSearchBox) ? null : _auditSearchBox,
+            Categories: _auditCategories.Count == 0 ? null : _auditCategories.ToList(),
+            Origins: _auditOrigins.Count == 0 ? null : _auditOrigins.ToList(),
+            Outcome: _auditOutcome,
+            MemberUserId: UserIdParsed,
+            From: DateOnly.TryParse(_auditFrom, out var f) ? f : null,
+            To: DateOnly.TryParse(_auditTo, out var t) ? t : null,
+            Page: _auditPage,
+            PageSize: _auditSize);
+        _audit = await audit.SearchAsync(GuildId, q);
+
+        _auditRenders.Clear();
+        foreach (var e in _audit.Items)
+        {
+            _auditRenders[e.Id] = registry.Render(e);
+        }
+
+        var targetIds = _audit.Items.Where(e => e.TargetUserId is not null).Select(e => e.TargetUserId!.Value);
+        await lookups.LoadAsync(_auditRenders.Values, extraUserIds: targetIds);
+        _auditLookups = lookups;
+    }
+
+    private Task OpenAuditAsync(AuditEntryView entry)
+    {
+        _openAuditEntry = entry;
+        _openAuditRender = _auditRenders.GetValueOrDefault(entry.Id);
+        return Task.CompletedTask;
+    }
+
+    private void CloseAuditSheet()
+    {
+        _openAuditEntry = null;
+        _openAuditRender = null;
+    }
+
+    // ---- Ledger handlers ----
+
+    private async Task OnLedgerCode(ChangeEventArgs e)
+    {
+        var v = (e.Value as string)?.Trim();
+        _ledgerCode = string.IsNullOrEmpty(v) ? null : v;
+        _ledgerPage = 1;
+        await ReloadLedgerAsync();
+    }
+
+    private async Task OnLedgerRange(ChangeEventArgs e)
+    {
+        _ledgerPreset = (e.Value as string) ?? "";
+        _ledgerPage = 1;
+        await ReloadLedgerAsync();
+    }
+
+    private async Task OnLedgerSource(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _ledgerSource = string.IsNullOrEmpty(raw) || !Enum.TryParse<CurrencyLedgerSource>(raw, out var v) ? null : v;
+        _ledgerPage = 1;
+        await ReloadLedgerAsync();
+    }
+
+    private async Task OnLedgerSize(ChangeEventArgs e)
+    {
+        _ledgerSize = int.TryParse(e.Value as string, out var v) ? v : 25;
+        _ledgerPage = 1;
+        await ReloadLedgerAsync();
+    }
+
+    private async Task DebouncedLedgerSearchAsync()
+    {
+        _ledgerSearchDebounce?.Cancel();
+        var cts = _ledgerSearchDebounce = new CancellationTokenSource();
+        try { await Task.Delay(SearchDebounceMs, cts.Token); }
+        catch (TaskCanceledException) { return; }
+
+        if (!cts.IsCancellationRequested)
+        {
+            _ledgerPage = 1;
+            await ReloadLedgerAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetLedgerSort(string column)
+    {
+        _ledgerDescending = _ledgerSortKey == column ? !_ledgerDescending : true;
+        _ledgerSortKey = column;
+        _ledgerPage = 1;
+        await ReloadLedgerAsync();
+    }
+
+    private async Task LedgerPrev()
+    {
+        if (_ledgerPage > 1)
+        {
+            _ledgerPage--;
+            await ReloadLedgerAsync();
+        }
+    }
+
+    private async Task LedgerNext()
+    {
+        if (_ledgerPage < LedgerTotalPages)
+        {
+            _ledgerPage++;
+            await ReloadLedgerAsync();
+        }
+    }
+
+    private string LedgerInd(string column) => _ledgerSortKey == column ? (_ledgerDescending ? "▼" : "▲") : "";
+
+    // ---- Audit handlers ----
+
+    private async Task AuditPrev()
+    {
+        if (_auditPage > 1)
+        {
+            _auditPage--;
+            await ReloadAuditAsync();
+        }
+    }
+
+    private async Task AuditNext()
+    {
+        if (_auditPage < AuditTotalPages)
+        {
+            _auditPage++;
+            await ReloadAuditAsync();
+        }
+    }
+
+    private async Task OnAuditPreset(ChangeEventArgs e)
+    {
+        _auditPreset = (e.Value as string) ?? "";
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        (_auditFrom, _auditTo) = _auditPreset switch
+        {
+            "today" => (today.ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            "yesterday" => (today.AddDays(-1).ToString("yyyy-MM-dd"), today.AddDays(-1).ToString("yyyy-MM-dd")),
+            "24h" => (today.AddDays(-1).ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            "7d" => (today.AddDays(-7).ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            "30d" => (today.AddDays(-30).ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd")),
+            _ => (null, null),
+        };
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task OnAuditFrom(ChangeEventArgs e)
+    {
+        _auditFrom = e.Value as string;
+        _auditPreset = "";
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task OnAuditTo(ChangeEventArgs e)
+    {
+        _auditTo = e.Value as string;
+        _auditPreset = "";
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task OnAuditOutcome(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _auditOutcome = string.IsNullOrEmpty(raw) || !Enum.TryParse<AuditOutcome>(raw, out var v) ? null : v;
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task OnAuditSize(ChangeEventArgs e)
+    {
+        _auditSize = int.TryParse(e.Value as string, out var v) ? v : 25;
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task DebouncedAuditSearchAsync()
+    {
+        _auditSearchDebounce?.Cancel();
+        var cts = _auditSearchDebounce = new CancellationTokenSource();
+        try { await Task.Delay(SearchDebounceMs, cts.Token); }
+        catch (TaskCanceledException) { return; }
+
+        if (!cts.IsCancellationRequested)
+        {
+            _auditPage = 1;
+            await ReloadAuditAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleAuditCategory(AuditCategory c)
+    {
+        if (!_auditCategories.Add(c)) _auditCategories.Remove(c);
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task ToggleAuditOrigin(AuditOrigin o)
+    {
+        if (!_auditOrigins.Add(o)) _auditOrigins.Remove(o);
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    private async Task ClearAuditPills()
+    {
+        _auditCategories.Clear();
+        _auditOrigins.Clear();
+        _auditPage = 1;
+        await ReloadAuditAsync();
+    }
+
+    // ---- Award/adjust ----
+
+    private Task OpenAwardAsync()
+    {
+        _awardOpen = true;
+        Award.Currency ??= _currencies.FirstOrDefault(c => c.Code != "POINTS")?.Code ?? _currencies.FirstOrDefault()?.Code;
+        return Task.CompletedTask;
+    }
+
+    private void CloseAward() => _awardOpen = false;
+
+    private async Task AwardAsync()
+    {
+        if (Award.Amount == 0)
+        {
+            Message = "Amount must be non-zero (negative deducts).";
+            return;
+        }
+
+        var code = string.IsNullOrWhiteSpace(Award.Currency) ? "POINTS" : Award.Currency!;
+        var reason = string.IsNullOrWhiteSpace(Award.Reason) ? "Adjustment" : Award.Reason!.Trim();
+
+        _awarding = true;
+        try
+        {
+            var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, UserId, code, UserIdParsed, Award.Amount, reason));
+            if (result.Ok)
+            {
+                var verb = Award.Amount > 0 ? "Awarded" : "Deducted";
+                Message = $"{verb} {Math.Abs(Award.Amount)} {code.ToUpperInvariant()} {(Award.Amount > 0 ? "to" : "from")} {_summary!.DisplayName} — {reason}";
+                Award = new AwardInput { Currency = code };
+                _awardOpen = false;
+
+                await LoadAsync(); // refresh balances + ledger + audit
+            }
+            else
+            {
+                Message = result.Status switch
+                {
+                    "CurrencyNotFound" => $"Unknown currency '{code}'.",
+                    "Forbidden" => "You're not allowed to do that.",
+                    var other => other,
+                };
+            }
+        }
+        finally
+        {
+            _awarding = false;
+        }
+    }
+
+    private static string TrackLabel(TrackingChoice t) => t switch
+    {
+        TrackingChoice.In => "Opted in",
+        TrackingChoice.BackgroundOut => "Background out",
+        TrackingChoice.AllOut => "All out",
+        _ => "Default",
+    };
+
+    private static string Dur(int minutes)
+    {
+        var h = minutes / 60;
+        var m = minutes % 60;
+        return h > 0 ? $"{h}h {m}m" : $"{m}m";
+    }
+
+    public void Dispose()
+    {
+        _ledgerSearchDebounce?.Cancel();
+        _ledgerSearchDebounce?.Dispose();
+        _auditSearchDebounce?.Cancel();
+        _auditSearchDebounce?.Dispose();
+    }
+
+    public class AwardInput
+    {
+        public string? Currency { get; set; }
+        public long Amount { get; set; }
+        public string? Reason { get; set; }
     }
 }

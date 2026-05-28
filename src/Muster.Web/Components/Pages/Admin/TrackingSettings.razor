@@ -4,15 +4,13 @@
 @inject ConfigCommandService Config
 @inject TrackedChannelCommandService Channels
 @inject Muster.Infrastructure.Services.Currencies.ICurrencyReadService Reader
-@inject MusterDbContext Db
-@using Microsoft.EntityFrameworkCore
+@inject WebAdminService AdminRead
 @using Muster.Domain.Entities
 @using Muster.Domain.Entities.Guilds
 @using Muster.Domain.Entities.Members
 @using Muster.Domain.Enums
-@using Muster.Persistence
-@using Muster.Persistence.Queries
 @using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
 @using Muster.Infrastructure.Commands.Membership
 @using Muster.Infrastructure.Commands.Tracking
 
@@ -199,14 +197,14 @@ else if (State == AccessState.Ready)
     protected override async Task LoadAsync()
     {
         _spendable = (await Reader.GetCurrenciesAsync(GuildId)).Where(c => c.Spendable).ToList();
-        _channels = await Db.ListTrackedChannelsAsync(GuildId);
-        _voice = await Db.ListChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
-        _text = await Db.ListChannelsByKindAsync(GuildId, GuildChannelKind.Text);
+        _channels = await AdminRead.GetTrackedChannelsAsync(GuildId);
+        _voice = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+        _text = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Text);
         _syncedById = _voice.Concat(_text).ToDictionary(c => c.ChannelId);
 
         if (string.IsNullOrEmpty(Settings.Submitted))
         {
-            var s = (await Db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == GuildId))?.Settings ?? new GuildSettings();
+            var s = await AdminRead.GetSettingsAsync(GuildId);
             Settings.BackgroundOptIn = s.BackgroundTrackingOptIn;
             Settings.ApplyGuardsToSessions = s.ApplyAfkGuardsToSessions;
             Settings.CoinCurrency = s.SessionCoinCurrencyCode;
@@ -234,7 +232,13 @@ else if (State == AccessState.Ready)
         var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
         await Config.SetMultiplierSettingsAsync(GuildId, Settings.Stacking, Settings.Cap, Settings.StartBonus, Settings.EndBonus, Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses);
 
-        await AuditAsync("config.tracking", $"background-opt-in={Settings.BackgroundOptIn}; session-guards={Settings.ApplyGuardsToSessions}; coin={Settings.CoinCurrency}/{Settings.MinutesPerCoin}; max-session-h={Settings.MaxSessionHours}; activity-retention={Settings.ActivityRetentionDays}; stacking={Settings.Stacking}; cap={Settings.Cap}; bonuses={Settings.StartBonus}/{Settings.EndBonus}");
+        await Audit.RecordTrackingSettingsAsync(GuildId, UserId, new TrackingSettingsPayload(
+            Settings.BackgroundOptIn, Settings.ApplyGuardsToSessions,
+            Settings.CoinCurrency, Settings.MinutesPerCoin, Settings.MaxSessionHours,
+            Settings.ActivityRetentionDays, Settings.MinTrackedSeconds,
+            Settings.Stacking, Settings.Cap,
+            Settings.StartBonus, Settings.EndBonus,
+            Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses));
         Message = coin.IsError ? coin.Message : "Tracking settings saved.";
         await LoadAsync();
     }
@@ -253,12 +257,14 @@ else if (State == AccessState.Ready)
         var name = synced?.Name;
 
         var result = isText
-            ? await Channels.SetTextAsync(GuildId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap, channelName: name)
-            : await Channels.SetVoiceAsync(GuildId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipDeafened, AddChannel.SkipAlone, channelName: name);
+            ? await Channels.SetTextAsync(GuildId, UserId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap, channelName: name)
+            : await Channels.SetVoiceAsync(GuildId, UserId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipDeafened, AddChannel.SkipAlone, channelName: name);
 
         if (!result.IsError)
         {
-            await AuditAsync("config.trackChannel", result.Message);
+            var mode = isText ? TrackedChannelMode.Reward : TrackedChannelMode.Reward;
+            var kind = isText ? GuildChannelKind.Text : GuildChannelKind.Voice;
+            await Audit.RecordTrackChannelAsync(GuildId, UserId, channelId, name, kind, mode);
         }
 
         Message = result.Message;
@@ -274,10 +280,12 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        var result = await Channels.RemoveAsync(GuildId, RemoveChannel.ChannelId);
+        var channelId = RemoveChannel.ChannelId;
+        _syncedById.TryGetValue(channelId, out var synced);
+        var result = await Channels.RemoveAsync(GuildId, UserId, channelId);
         if (!result.IsError)
         {
-            await AuditAsync("config.untrackChannel", result.Message);
+            await Audit.RecordUntrackChannelAsync(GuildId, UserId, channelId, synced?.Name);
         }
 
         Message = result.Message;

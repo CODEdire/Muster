@@ -1,22 +1,30 @@
-using Muster.Persistence;
-using Muster.Persistence.Queries;
+using Muster.Domain;
 using Muster.Domain.Entities;
 using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Tracking;
+using Muster.Persistence;
+using Muster.Persistence.Queries;
 
 namespace Muster.Infrastructure.Commands.Tracking;
 
 /// <summary>
 /// Platform-independent logic for the per-channel background-tracking config (which channels are
 /// monitored and how each is rewarded). Backs the <c>/track-*</c> config commands and, later, the web grid.
+/// All mutations route through <see cref="ITrackingAuthorizer"/> (ManageChannels = staff only).
 /// </summary>
-public class TrackedChannelCommandService(MusterDbContext db)
+public class TrackedChannelCommandService(MusterDbContext db, ITrackingAuthorizer authorizer)
 {
     /// <summary>Monitor a voice channel for always-on reward accrual (per-minute, with anti-AFK guards + daily cap).</summary>
     public async Task<CommandResult> SetVoiceAsync(
-        ulong guildId, ulong channelId, int pointsPerMinute, int dailyCapPoints,
+        ulong guildId, ulong actorId, ulong channelId, int pointsPerMinute, int dailyCapPoints,
         bool requireUnmuted, bool requireUndeafened, bool requireNotAlone, string? channelName = null, CancellationToken ct = default)
     {
+        if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), 0, TrackingPermission.ManageChannels, ct))
+        {
+            return CommandResult.Error("Forbidden");
+        }
+
         if (pointsPerMinute < 0 || dailyCapPoints < 0)
         {
             return CommandResult.Error("Points per minute and the daily cap can't be negative (0 = uncapped).");
@@ -38,9 +46,14 @@ public class TrackedChannelCommandService(MusterDbContext db)
     /// <summary>Monitor a text channel. With <paramref name="pointsPerMessage"/> &gt; 0 it rewards (gated by
     /// messages-per-point, a cooldown, and a daily cap); otherwise it's stats-only.</summary>
     public async Task<CommandResult> SetTextAsync(
-        ulong guildId, ulong channelId, int pointsPerMessage = 0, int messagesPerPoint = 1,
+        ulong guildId, ulong actorId, ulong channelId, int pointsPerMessage = 0, int messagesPerPoint = 1,
         int cooldownSeconds = 0, int dailyCapPoints = 0, string? channelName = null, CancellationToken ct = default)
     {
+        if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), 0, TrackingPermission.ManageChannels, ct))
+        {
+            return CommandResult.Error("Forbidden");
+        }
+
         if (pointsPerMessage < 0 || messagesPerPoint < 0 || cooldownSeconds < 0 || dailyCapPoints < 0)
         {
             return CommandResult.Error("Message-reward values can't be negative.");
@@ -68,8 +81,13 @@ public class TrackedChannelCommandService(MusterDbContext db)
 
     /// <summary>Stop monitoring a channel. A live channel keeps its roster row (Mode → Off); a channel whose
     /// Discord channel is already gone (soft-deleted) is removed outright so the stale config is cleaned up.</summary>
-    public async Task<CommandResult> RemoveAsync(ulong guildId, ulong channelId, CancellationToken ct = default)
+    public async Task<CommandResult> RemoveAsync(ulong guildId, ulong actorId, ulong channelId, CancellationToken ct = default)
     {
+        if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), 0, TrackingPermission.ManageChannels, ct))
+        {
+            return CommandResult.Error("Forbidden");
+        }
+
         var channel = await db.FindChannelAsync(guildId, channelId, ct);
         if (channel is null || channel.Mode == TrackedChannelMode.Off)
         {

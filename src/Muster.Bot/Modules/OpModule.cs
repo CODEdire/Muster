@@ -16,7 +16,7 @@ public class OpModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scop
         [SlashCommandParameter(Name = "reward", Description = "Points for attendees")] long reward)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<OpCommandService>().CreateAsync(guildId, Context.User.Id, name, description, reward),
-            RequiredRole.Officer,
+            RequiredRole.EventOfficer,
             auditAction: "op.create");
 
     [SlashCommand("op-list", "List open event ops.")]
@@ -33,6 +33,6 @@ public class OpModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scop
         [SlashCommandParameter(Name = "op", Description = "Op id")] string op)
         => RunAsync(
             (sp, guildId) => sp.GetRequiredService<OpCommandService>().CloseAsync(guildId, op),
-            RequiredRole.Officer,
+            RequiredRole.EventOfficer,
             auditAction: "op.close");
 }

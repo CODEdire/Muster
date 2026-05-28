@@ -21,9 +21,19 @@ public abstract class GuildAdminComponentBase : GuildPageComponentBase
             ? await Auth.IsOfficerAsync(guildId, userId)
             : await Auth.IsAdminAsync(guildId, userId);
 
-    /// <summary>Record an admin action to the audit trail (actor = the signed-in user).</summary>
+    /// <summary>Record an admin action to the audit trail (actor = the signed-in user). Prefer the
+    /// <see cref="AuditAction"/> overload — passing a string here goes through unrecognized to the catch-all
+    /// category in the audit page.</summary>
     protected Task AuditAsync(string action, string? details = null)
         => Audit.RecordAsync(GuildId, UserId, action, details);
+
+    /// <summary>Record an admin action with a registered <see cref="AuditAction"/> (category + source baked in).</summary>
+    protected Task AuditAsync(AuditAction action, string? details = null)
+        => Audit.RecordAsync(GuildId, UserId, action, details);
+
+    /// <summary>Record an admin action with a typed payload — serialized to JSON and stored in <c>Details</c>.</summary>
+    protected Task AuditAsync<T>(AuditAction action, T payload)
+        => Audit.RecordAsync(GuildId, UserId, action, payload);
 
     /// <summary>Render Discord mention tokens in command output as readable names for the web.</summary>
     protected Task<string> HumanizeAsync(string? text) => Mentions.HumanizeAsync(GuildId, text);

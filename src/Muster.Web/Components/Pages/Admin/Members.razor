@@ -1,14 +1,14 @@
 @page "/guilds/{GuildIdRaw}/members"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
-@inject ICurrencyReadService Reader
-@inject WebMemberService MemberSvc
-@inject ICurrencyBulkService Bulk
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
 @inject Wolverine.IMessageBus Bus
 @using Muster.Contracts
 @using Muster.Domain.Enums
-@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
+@using Muster.Infrastructure.Services.Platform
 
 <PageTitle>Members — Muster</PageTitle>
 
@@ -19,9 +19,8 @@
 else if (State == AccessState.Ready)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
         <h1>Members</h1>
-        <p class="subtitle">Browse every member's balance, drill into a wallet, or mint/adjust many at once.</p>
+        <p class="subtitle">Roster, balances, and engagement-at-a-glance. Click a member to drill in.</p>
     </div>
 
     @if (Message is not null)
@@ -29,251 +28,314 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    @if (_batch is not null)
+    @if (_kpis is not null)
     {
-        <div class="panel glass">
-            <div class="panel-head">
-                <h2>Bulk job</h2>
-                <span class="badge status-@_batch.Status.ToString().ToLowerInvariant()">@_batch.Status</span>
-            </div>
-            <p class="subtitle">
-                @_batch.Delta.ToString("+#,##0;-#,##0") @_batch.CurrencyCode to @_batch.TotalCount.ToString("N0") member(s)
-                — applied @_batch.AppliedCount.ToString("N0"), failed @_batch.FailedCount.ToString("N0").
-                @if (_batch.Error is not null) { <span class="neg">@_batch.Error</span> }
-            </p>
-            @if (_batch.Status is BulkBatchStatus.Pending or BulkBatchStatus.Running)
-            {
-                <EditForm Model="this" FormName="members" OnValidSubmit="HandleAsync">
-                    <input type="hidden" name="Action" value="refresh" />
-                    <input type="hidden" name="BatchIdRaw" value="@_batch.Id" />
-                    <div class="btn-row"><button type="submit" class="btn btn-sm btn-ghost">Refresh status</button></div>
-                </EditForm>
-            }
+        <div class="stat-grid">
+            <div class="card glass stat"><span class="label">Members</span><span class="num">@_kpis.Total.ToString("N0")</span><span class="subtitle">humans (bots hidden)</span></div>
+            <div class="card glass stat"><span class="label">Active · 7d</span><span class="num">@_kpis.Active7d.ToString("N0")</span><span class="subtitle">any ledger or voice activity</span></div>
+            <div class="card glass stat"><span class="label">Tracking opt-outs</span><span class="num">@_kpis.TrackingOptOuts.ToString("N0")</span><span class="subtitle">background or all-out</span></div>
+            <div class="card glass stat"><span class="label">New · 30d</span><span class="num">@_kpis.NewLast30d.ToString("N0")</span><span class="subtitle">joined recently</span></div>
         </div>
     }
 
-    @if (_currencies.Count == 0)
-    {
-        <div class="panel glass empty">No currencies are configured in this server yet.</div>
-    }
-    else
-    {
-        <EditForm Model="this" FormName="members" OnValidSubmit="HandleAsync">
-            <DataAnnotationsValidator />
-
-            <div class="panel glass">
-                <div class="form-grid">
-                    <label>Currency
-                        <InputSelect @bind-Value="Code">
-                            @foreach (var c in _currencies)
-                            {
-                                <option value="@c.Code">@c.Code — @c.Name</option>
-                            }
-                        </InputSelect>
-                    </label>
-                    <label>Search <InputText @bind-Value="Search" placeholder="name…" /></label>
-                    <div class="btn-row">
-                        <button type="submit" name="Action" value="filter">Apply</button>
-                        <button type="submit" name="Action" value="sync" class="btn btn-ghost" title="Pull the latest roster from Discord">Sync from Discord</button>
-                    </div>
-                </div>
-            </div>
-
-            @if (_showConfirm)
+    <div class="panel glass dg-frame dg-fill">
+    <div class="dg-toolbar">
+        <div class="dg-filters">
+            <input type="search" class="dg-search" placeholder="Search name…" @bind="_search" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+            <select class="dg-select" value="@_tracking" @onchange="OnTracking">
+                <option value="">Any tracking</option>
+                <option value="Default">Default</option>
+                <option value="In">Opted in</option>
+                <option value="BackgroundOut">Background out</option>
+                <option value="AllOut">All out</option>
+            </select>
+            <select class="dg-select" value="@_activity" @onchange="OnActivity">
+                <option value="">Any activity</option>
+                <option value="active7">Active last 7d</option>
+                <option value="stale30">Inactive 30d+</option>
+                <option value="never">Never active</option>
+            </select>
+            <label class="dg-check">
+                <input type="checkbox" checked="@_dmOut" @onchange="OnDmOut" /> DM opt-outs
+            </label>
+            @if (_loading)
             {
-                <div class="panel glass confirm">
-                    <h2>Confirm bulk @(Delta >= 0 ? "mint" : "adjustment")</h2>
-                    <p>Apply <strong>@Delta.ToString("+#,##0;-#,##0") @Code</strong> to
-                        <strong>@_confirmCount.ToString("N0") member(s)</strong> — reason: <em>@Reason</em>.</p>
-                    <p class="subtitle">Each member's balance changes and (for connected economies) is pushed to the backing system. This runs in the background.</p>
-                    <div class="btn-row">
-                        <button type="submit" name="Action" value="queue" class="btn">Confirm &amp; queue</button>
-                        <button type="submit" name="Action" value="cancel" class="btn btn-ghost">Cancel</button>
-                    </div>
-                </div>
+                <span class="dg-loading" aria-hidden="true"></span>
             }
+        </div>
+        <div class="dg-actions">
+            <button type="button" class="btn btn-ghost btn-sm" title="Pull the latest roster from Discord" @onclick="SyncAsync">
+                <span class="material-symbols-outlined">refresh</span> Sync from Discord
+            </button>
+        </div>
+    </div>
 
-            <div class="panel glass">
-                <h2>Bulk mint / adjust</h2>
-                <div class="form-grid">
-                    <label>Targets
-                        <InputSelect @bind-Value="Mode">
-                            <option value="selected">Selected members below</option>
-                            <option value="role">Everyone with a role</option>
-                        </InputSelect>
-                    </label>
-                    @if (Mode == "role")
-                    {
-                        <label>Role
-                            <InputSelect @bind-Value="RoleIdRaw">
-                                <option value="">— select —</option>
-                                @foreach (var r in _roles)
-                                {
-                                    <option value="@r.RoleId">@r.Name</option>
-                                }
-                            </InputSelect>
-                        </label>
-                    }
-                    <label>Amount (signed) <InputNumber @bind-Value="Delta" /></label>
-                    <label>Reason <InputText @bind-Value="Reason" /></label>
-                    <div class="btn-row"><button type="submit" name="Action" value="preview" class="btn">Preview…</button></div>
-                </div>
-            </div>
-
-            <div class="panel glass">
-                <div class="panel-head">
-                    <h2>@_total.ToString("N0") member(s)</h2>
-                    <span class="subtitle">balance in @Code</span>
-                </div>
-                @if (_rows.Count == 0)
+    <div class="dg-scroll">
+        <table class="dg-table">
+            <thead>
+                <tr>
+                    <th class="sortable" @onclick='() => SetSort("name")'>Member @Ind("name")</th>
+                    <th>Tracking</th>
+                    <th class="num sortable" @onclick='() => SetSort("roles")'>Roles @Ind("roles")</th>
+                    <th class="num sortable" @onclick='() => SetSort("points")'>Points @Ind("points")</th>
+                    <th class="num sortable" @onclick='() => SetSort("currencies")'>Wallets @Ind("currencies")</th>
+                    <th class="sortable" @onclick='() => SetSort("joined")'>Joined @Ind("joined")</th>
+                    <th class="sortable" @onclick='() => SetSort("active")'>Last active @Ind("active")</th>
+                    <th class="dg-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_rows is null)
                 {
-                    <p class="empty">No members match.</p>
+                    <tr class="dg-empty"><td colspan="8">Loading…</td></tr>
+                }
+                else if (PagedRows.Count == 0)
+                {
+                    <tr class="dg-empty"><td colspan="8">No members match these filters.</td></tr>
                 }
                 else
                 {
-                    <table class="leaderboard">
-                        <thead><tr><th></th><th>Member</th><th>Balance</th><th></th></tr></thead>
-                        <tbody>
-                            @foreach (var r in _rows)
-                            {
-                                <tr>
-                                    <td><input type="checkbox" name="SelectedIds" value="@r.UserId" checked="@SelectedIds.Contains(r.UserId)" /></td>
-                                    <td>@r.DisplayName</td>
-                                    <td>@r.Balance.ToString("N0")</td>
-                                    <td><a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/members/@r.UserId">View</a></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-
-                    <div class="btn-row pager">
-                        @if (Page > 0)
-                        {
-                            <button type="submit" name="Action" value="prev" class="btn btn-sm btn-ghost">← Prev</button>
-                        }
-                        <span class="subtitle">Page @(Page + 1) of @_totalPages</span>
-                        @if (Page + 1 < _totalPages)
-                        {
-                            <button type="submit" name="Action" value="next" class="btn btn-sm btn-ghost">Next →</button>
-                        }
-                    </div>
+                    @foreach (var r in PagedRows)
+                    {
+                        <tr>
+                            <td>
+                                <UserChip Name="@r.DisplayName" AvatarUrl="@r.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, r.UserId)" />
+                            </td>
+                            <td>
+                                <span class="track-pill track-@(r.Tracking.ToString().ToLowerInvariant())" title="@TrackTitle(r.Tracking)">@TrackLabel(r.Tracking)</span>
+                                @if (r.DmOptOut)
+                                {
+                                    <span class="track-pill track-dmout" title="Opted out of currency receipt DMs">DM off</span>
+                                }
+                            </td>
+                            <td class="num">@r.RoleCount</td>
+                            <td class="num">@r.Points.ToString("N0")</td>
+                            <td class="num">@r.CurrencyCount</td>
+                            <td><LocalTime Value="r.JoinedAt" Zone="@_zoneId" Pattern="yyyy-MM-dd" /></td>
+                            <td>
+                                @if (r.LastActiveAt is { } la)
+                                {
+                                    <LocalTime Value="la" Zone="@_zoneId" />
+                                }
+                                else
+                                {
+                                    <span class="subtitle">—</span>
+                                }
+                            </td>
+                            <td class="dg-actions-col">
+                                <a class="icon-btn" title="View member" aria-label="View member" href="/guilds/@GuildId/members/@r.UserId">
+                                    <span class="material-symbols-outlined">visibility</span>
+                                </a>
+                            </td>
+                        </tr>
+                    }
                 }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="dg-footer">
+        <div class="dg-footer-left">
+            <div class="dg-pagesize">
+                Rows
+                <select class="dg-select" value="@_pageSize" @onchange="OnSize">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
             </div>
-        </EditForm>
-    }
+            <span class="dg-tz">times in <LocalTime ShowZone="true" Zone="@_zoneId" /></span>
+        </div>
+        <div class="dg-pager">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+            <span>Page @_page of @TotalPages · @FilteredCount total</span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+        </div>
+    </div>
+    </div>
 }
 
 @code {
     protected override bool OfficerSufficient => true;
 
-    private const int PageSize = 25;
+    private const int SearchDebounceMs = 350;
 
-    [SupplyParameterFromForm(FormName = "members")] private string? Code { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private string? Search { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private int Page { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private string? Mode { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private string? RoleIdRaw { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private long Delta { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private string? Reason { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private List<ulong> SelectedIds { get; set; } = [];
-    [SupplyParameterFromForm(FormName = "members")] private string? Action { get; set; }
-    [SupplyParameterFromForm(FormName = "members")] private string? BatchIdRaw { get; set; }
+    private IReadOnlyList<MembersDirectoryRow>? _rows;
+    private MembersKpis? _kpis;
+    private bool _loading;
+    private string _zoneId = TimeZoneService.Utc;
 
-    private IReadOnlyList<CurrencyInfo> _currencies = [];
-    private IReadOnlyList<BulkRoleOption> _roles = [];
-    private IReadOnlyList<RosterRow> _rows = [];
-    private int _total;
-    private int _totalPages = 1;
-    private bool _showConfirm;
-    private int _confirmCount;
-    private CurrencyBulkBatch? _batch;
+    private string? _search;
+    private string _tracking = "";
+    private string _activity = "";
+    private bool _dmOut;
+    private string _sortKey = "active";
+    private bool _desc = true;
+    private int _page = 1;
+    private int _pageSize = 25;
+
+    private CancellationTokenSource? _searchDebounce;
+
+    private IReadOnlyList<MembersDirectoryRow> FilteredRows
+    {
+        get
+        {
+            if (_rows is null) return [];
+            IEnumerable<MembersDirectoryRow> q = _rows;
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(r => r.DisplayName.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (Enum.TryParse<TrackingChoice>(_tracking, out var tc))
+            {
+                q = q.Where(r => r.Tracking == tc);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            q = _activity switch
+            {
+                "active7" => q.Where(r => r.LastActiveAt is { } la && la >= now.AddDays(-7)),
+                "stale30" => q.Where(r => r.LastActiveAt is { } la && la < now.AddDays(-30)),
+                "never" => q.Where(r => r.LastActiveAt is null),
+                _ => q,
+            };
+
+            if (_dmOut)
+            {
+                q = q.Where(r => r.DmOptOut);
+            }
+
+            q = (_sortKey, _desc) switch
+            {
+                ("name", true) => q.OrderByDescending(r => r.DisplayName),
+                ("name", false) => q.OrderBy(r => r.DisplayName),
+                ("roles", true) => q.OrderByDescending(r => r.RoleCount).ThenBy(r => r.DisplayName),
+                ("roles", false) => q.OrderBy(r => r.RoleCount).ThenBy(r => r.DisplayName),
+                ("points", true) => q.OrderByDescending(r => r.Points).ThenBy(r => r.DisplayName),
+                ("points", false) => q.OrderBy(r => r.Points).ThenBy(r => r.DisplayName),
+                ("currencies", true) => q.OrderByDescending(r => r.CurrencyCount).ThenBy(r => r.DisplayName),
+                ("currencies", false) => q.OrderBy(r => r.CurrencyCount).ThenBy(r => r.DisplayName),
+                ("joined", true) => q.OrderByDescending(r => r.JoinedAt).ThenBy(r => r.DisplayName),
+                ("joined", false) => q.OrderBy(r => r.JoinedAt).ThenBy(r => r.DisplayName),
+                ("active", true) => q.OrderByDescending(r => r.LastActiveAt ?? DateTimeOffset.MinValue).ThenBy(r => r.DisplayName),
+                ("active", false) => q.OrderBy(r => r.LastActiveAt ?? DateTimeOffset.MaxValue).ThenBy(r => r.DisplayName),
+                _ => q.OrderByDescending(r => r.LastActiveAt ?? DateTimeOffset.MinValue),
+            };
+
+            return q.ToList();
+        }
+    }
+
+    private int FilteredCount => FilteredRows.Count;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredCount / (double)_pageSize));
+    private IReadOnlyList<MembersDirectoryRow> PagedRows
+        => FilteredRows.Skip((_page - 1) * _pageSize).Take(_pageSize).ToList();
 
     protected override async Task LoadAsync()
     {
-        _currencies = await Reader.GetCurrenciesAsync(GuildId);
-        if (_currencies.Count == 0)
+        await using var scope = Scopes.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+
+        _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
+        await ReloadAsync(sp);
+    }
+
+    private async Task ReloadAsync(IServiceProvider? sp = null)
+    {
+        _loading = true;
+        try
+        {
+            if (sp is null)
+            {
+                await using var scope = Scopes.CreateAsyncScope();
+                var (k, r) = await scope.ServiceProvider.GetRequiredService<WebMemberService>().LoadDirectoryAsync(GuildId);
+                _kpis = k;
+                _rows = r;
+            }
+            else
+            {
+                var (k, r) = await sp.GetRequiredService<WebMemberService>().LoadDirectoryAsync(GuildId);
+                _kpis = k;
+                _rows = r;
+            }
+
+            if (_page > TotalPages) _page = TotalPages;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task DebouncedSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        var cts = _searchDebounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(SearchDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
         {
             return;
         }
 
-        Mode ??= "selected";
-        if (string.IsNullOrWhiteSpace(Code) || _currencies.All(c => c.Code != Code))
+        if (!cts.IsCancellationRequested)
         {
-            Code = _currencies.FirstOrDefault(c => c.Code == "POINTS")?.Code ?? _currencies[0].Code;
-        }
-
-        _roles = await MemberSvc.GetRoleOptionsAsync(GuildId);
-        await LoadRosterAsync();
-
-        if (Guid.TryParse(BatchIdRaw, out var batchId))
-        {
-            _batch = await Bulk.GetAsync(GuildId, batchId);
+            _page = 1;
+            StateHasChanged();
         }
     }
 
-    private async Task LoadRosterAsync()
+    private void OnTracking(ChangeEventArgs e) { _tracking = (e.Value as string) ?? ""; _page = 1; }
+    private void OnActivity(ChangeEventArgs e) { _activity = (e.Value as string) ?? ""; _page = 1; }
+    private void OnDmOut(ChangeEventArgs e) { _dmOut = e.Value is true; _page = 1; }
+    private void OnSize(ChangeEventArgs e) { _pageSize = int.TryParse(e.Value as string, out var v) ? v : 25; _page = 1; }
+
+    private void SetSort(string column)
     {
-        if (Page < 0) Page = 0;
-        var page = await MemberSvc.GetRosterAsync(GuildId, Code!, Search, Page * PageSize, PageSize);
-        _rows = page.Rows;
-        _total = page.Total;
-        _totalPages = Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
-        if (Page >= _totalPages) Page = _totalPages - 1;
+        _desc = _sortKey == column ? !_desc : true;
+        _sortKey = column;
+        _page = 1;
     }
 
-    private async Task HandleAsync()
-    {
-        switch (Action)
-        {
-            case "next": Page++; break;
-            case "prev": Page--; break;
-            case "cancel": _showConfirm = false; break;
-            case "refresh": break; // batch reloaded in LoadAsync
-            case "sync": await SyncAsync(); break;
-            case "preview": await PreviewAsync(); break;
-            case "queue": await QueueAsync(); break;
-        }
+    private void Prev() { if (_page > 1) _page--; }
+    private void Next() { if (_page < TotalPages) _page++; }
 
-        await LoadAsync();
-    }
-
-    private async Task<List<ulong>> ResolveTargetsAsync()
-        => Mode == "role" && ulong.TryParse(RoleIdRaw, out var roleId)
-            ? (await MemberSvc.GetRoleTargetsAsync(GuildId, roleId)).ToList()
-            : SelectedIds;
+    private string Ind(string column) => _sortKey == column ? (_desc ? "▼" : "▲") : "";
 
     private async Task SyncAsync()
     {
         await Bus.PublishAsync(new SyncGuildMembers(GuildId));
-        await AuditAsync("members.syncRequested", "Requested a member sync from Discord");
+        await using var scope = Scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<AuditService>()
+            .RecordMemberSyncAsync(GuildId, UserId, "Requested a member sync from Discord");
         Message = "Requested a sync from Discord — refresh in a moment to see the latest roster.";
     }
 
-    private async Task PreviewAsync()
+    private static string TrackLabel(TrackingChoice t) => t switch
     {
-        if (Delta == 0) { Message = "Amount must be non-zero."; return; }
-        if (string.IsNullOrWhiteSpace(Reason)) { Message = "A reason is required."; return; }
+        TrackingChoice.In => "Opted in",
+        TrackingChoice.BackgroundOut => "Background out",
+        TrackingChoice.AllOut => "All out",
+        _ => "Default",
+    };
 
-        var targets = await ResolveTargetsAsync();
-        if (targets.Count == 0) { Message = Mode == "role" ? "That role has no members." : "Select at least one member."; return; }
-
-        _confirmCount = targets.Count;
-        _showConfirm = true;
-    }
-
-    private async Task QueueAsync()
+    private static string TrackTitle(TrackingChoice t) => t switch
     {
-        var targets = await ResolveTargetsAsync();
-        var result = await Bulk.QueueAsync(GuildId, UserId, Code!, Delta, Reason ?? "", targets);
-        Message = result.Message;
-        _showConfirm = false;
-        if (result.Ok)
-        {
-            BatchIdRaw = result.BatchId?.ToString();
-            await AuditAsync("currency.bulkQueue", $"{Delta:+#,##0;-#,##0} {Code} to {targets.Count} member(s)");
-            SelectedIds = [];
-            Delta = 0;
-            Reason = "";
-        }
+        TrackingChoice.In => "Explicitly opted into all tracking",
+        TrackingChoice.BackgroundOut => "Opted out of background tracking; Sessions still tracked",
+        TrackingChoice.AllOut => "Opted out of all tracking",
+        _ => "Follows guild policy",
+    };
+
+    public void Dispose()
+    {
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
     }
 }

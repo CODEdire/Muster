@@ -150,7 +150,7 @@ else if (State == AccessState.Ready)
 
         _newKey = created.ApiKey;
         Message = $"Created client '{created.Client.Name}'.";
-        await AuditAsync("apiclient.create", $"{created.Client.Name} [{string.Join(", ", scopes)}]" + (actsAs == 0 ? "" : $" acts-as {actsAs}"));
+        await Audit.RecordApiClientCreatedAsync(GuildId, UserId, created.Client.Id, created.Client.Name, scopes.ToList(), actsAs == 0 ? null : actsAs);
         Input = new CreateInput();
         await LoadAsync();
     }
@@ -159,9 +159,10 @@ else if (State == AccessState.Ready)
     {
         if (Guid.TryParse(RevokeInput.ClientId, out var id))
         {
+            var clientName = _clients?.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString();
             await Clients.RevokeAsync(GuildId, id);
             Message = "Client revoked.";
-            await AuditAsync("apiclient.revoke", id.ToString());
+            await Audit.RecordApiClientRevokedAsync(GuildId, UserId, id, clientName);
         }
 
         RevokeInput = new RevokeClientInput();
