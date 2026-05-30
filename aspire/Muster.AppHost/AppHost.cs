@@ -36,9 +36,10 @@ var appInsights = builder.AddMusterApplicationInsights();
 builder.AddMusterServiceBusEmulatorUi(messaging);
 
 // Discord credentials are AppHost parameters → user-secrets locally, Key Vault refs in publish.
-var discordToken = builder.AddParameter("discord-token", secret: true);
-var discordClientId = builder.AddParameter("discord-clientid", secret: true);
-var discordClientSecret = builder.AddParameter("discord-clientsecret", secret: true);
+// CamelCase param names because azd writes them to its .env file in dotenv format (hyphens illegal).
+var discordToken = builder.AddParameter("discordToken", secret: true);
+var discordClientId = builder.AddParameter("discordClientId", secret: true);
+var discordClientSecret = builder.AddParameter("discordClientSecret", secret: true);
 
 // Run-once schema migration. Local: plain project, bot/web gate on WaitForCompletion. Publish: emitted
 // as a Container App Job (manual trigger) — the deploy pipeline starts the job, waits for exit, then

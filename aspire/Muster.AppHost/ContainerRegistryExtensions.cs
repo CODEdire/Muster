@@ -3,43 +3,45 @@ using Aspire.Hosting.Azure.AppContainers;
 
 namespace Muster.AppHost;
 
-/// <summary>Resource ids + user-secret parameter names for the shared image registry + Container Apps
-/// Environment that hosts Muster in publish. Centralised so AppHost and any future consumer agree.</summary>
+/// <summary>Resource id for Muster's Container Apps Environment.</summary>
 internal static class ContainerRegistryConstants
 {
-    /// <summary>Aspire resource id for the Azure Container Registry binding.</summary>
-    public const string AcrResourceName = "acr";
-
     /// <summary>Aspire resource id for the Container Apps Environment that runs web + bot + migrations.</summary>
     public const string EnvironmentResourceName = "muster-env";
 
-    /// <summary>User-secret parameter — name of the existing Azure Container Registry resource.</summary>
-    public const string AcrNameParameter = "acr-name";
-
-    /// <summary>User-secret parameter — resource group the existing ACR lives in (shared across products).</summary>
-    public const string AcrResourceGroupParameter = "acr-resource-group";
+    // NOTE: AcrNameParameter / AcrResourceGroupParameter intentionally removed. ACR is no longer modeled
+    // as an Aspire resource (see type doc on ContainerRegistryExtensions) because Aspire 13.3.5 emits
+    // cross-RG role assignments inline (BCP139). azd is steered to the shared ACR via the standard
+    // AZURE_CONTAINER_REGISTRY_ENDPOINT + AZURE_CONTAINER_REGISTRY_NAME env vars instead.
 }
 
 /// <summary>
-/// AppHost composition for the shared image registry + Muster's Container Apps Environment.
+/// AppHost composition for Muster's Container Apps Environment.
 ///
-/// <para><b>Run mode</b>: not used. Aspire orchestrates projects + emulators locally without an ACR or
-/// CA Environment.</para>
+/// <para><b>Run mode</b>: not used. Aspire orchestrates projects + emulators locally without a CA
+/// Environment.</para>
 ///
-/// <para><b>Publish mode</b>: binds an <i>existing</i> ACR (typically a shared registry sitting in a
-/// shared "platform" resource group) via <c>AsExisting</c>, then creates a Muster-dedicated Container
-/// Apps Environment that pulls from it. Per <c>docs/deployment.md</c>, we use a dedicated env per
-/// environment (dev / staging / prod) — shared ACR for image storage is fine, shared runtime
-/// environment is not (different VNet/telemetry posture).</para>
+/// <para><b>Publish mode</b>: creates a Muster-dedicated Container Apps Environment per env
+/// (dev / staging / prod). Per <c>docs/deployment.md</c>, the CA Environment is per-env (different
+/// VNet/telemetry posture) but the ACR is shared infra.</para>
 ///
-/// <para>The ACR's managed identity grant for pulling is handled by Aspire automatically when the
-/// Container Apps Environment is bound to it — Aspire emits the <c>AcrPull</c> role assignment in the
-/// generated Bicep.</para>
+/// <para><b>Why ACR is NOT bound here</b>: Aspire 13.3.5's <c>WithAzureContainerRegistry(acr)</c>
+/// emits the <c>AcrPull</c> role assignment INLINE in the env module, which trips BCP139 when the
+/// ACR lives in a different resource group than the deployment (our "shared platform RG" pattern).
+/// The role assignment needs to be a sub-module scoped to the ACR's RG; the inline form requires
+/// same-scope resources. Pre-Aspire-13.4 the workaround is to skip the binding entirely + grant
+/// AcrPull on each Container App's user-assigned MI manually after deploy. See
+/// <c>docs/deployment.md</c> "ACR cross-RG workaround".</para>
+///
+/// <para>azd is told which registry to push to via <c>AZURE_CONTAINER_REGISTRY_ENDPOINT</c> +
+/// <c>AZURE_CONTAINER_REGISTRY_NAME</c> set on the azd env (see deploy runbook). Without those,
+/// azd would auto-provision a new ACR in the deployment RG — defeating the shared-ACR plan.</para>
 /// </summary>
 internal static class ContainerRegistryExtensions
 {
-    /// <summary>Adds the shared ACR (publish-mode only — returns null in run mode) and the Muster-dedicated
-    /// Container Apps Environment bound to it. Idempotent: safe to call from AppHost.cs unconditionally.</summary>
+    /// <summary>Adds the Muster-dedicated Container Apps Environment (publish-mode only — null in run
+    /// mode). ACR binding is handled out-of-band via azd env vars + post-deploy AcrPull grants; see
+    /// the type doc above.</summary>
     public static IResourceBuilder<AzureContainerAppEnvironmentResource>? AddMusterContainerAppEnvironment(
         this IDistributedApplicationBuilder builder)
     {
@@ -48,15 +50,6 @@ internal static class ContainerRegistryExtensions
             return null;
         }
 
-        var acrName = builder.AddParameter(ContainerRegistryConstants.AcrNameParameter);
-        var acrResourceGroup = builder.AddParameter(ContainerRegistryConstants.AcrResourceGroupParameter);
-
-        var acr = builder.AddAzureContainerRegistry(ContainerRegistryConstants.AcrResourceName)
-            .AsExisting(acrName, acrResourceGroup);
-
-        var environment = builder.AddAzureContainerAppEnvironment(ContainerRegistryConstants.EnvironmentResourceName)
-            .WithAzureContainerRegistry(acr);
-
-        return environment;
+        return builder.AddAzureContainerAppEnvironment(ContainerRegistryConstants.EnvironmentResourceName);
     }
 }

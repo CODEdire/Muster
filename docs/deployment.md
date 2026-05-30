@@ -45,8 +45,8 @@ User-secret parameters for the shared ACR (per AppHost environment):
 
 ```bash
 cd aspire/Muster.AppHost
-dotnet user-secrets set "Parameters:acr-name" "<shared-acr-name>"
-dotnet user-secrets set "Parameters:acr-resource-group" "<shared-platform-rg>"
+dotnet user-secrets set "Parameters:acrName" "<shared-acr-name>"
+dotnet user-secrets set "Parameters:acrResourceGroup" "<shared-platform-rg>"
 ```
 
 In Azure DevOps / GitHub Actions, set the same as pipeline variables (or use a single Key Vault per
@@ -102,8 +102,8 @@ existing. So the SQL user mapping is a manual step per environment, done once.
 
 ```powershell
 cd aspire/Muster.AppHost
-dotnet user-secrets set "Parameters:sql-server-name" "your-sql-server-resource-name"
-dotnet user-secrets set "Parameters:sql-resource-group" "your-sql-resource-group"
+dotnet user-secrets set "Parameters:sqlServerName" "your-sql-server-resource-name"
+dotnet user-secrets set "Parameters:sqlResourceGroup" "your-sql-resource-group"
 ```
 (In CI/CD, set these as pipeline variables or via Key Vault references.)
 

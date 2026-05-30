@@ -14,11 +14,12 @@ internal static class PersistenceConstants
     /// every consumer reads (<c>ConnectionStrings:musterdb</c>).</summary>
     public const string DatabaseResourceName = "musterdb";
 
-    /// <summary>User-secret parameter name carrying the existing Azure SQL Server's resource name in publish.</summary>
-    public const string SqlServerNameParameter = "sql-server-name";
+    /// <summary>User-secret parameter name carrying the existing Azure SQL Server's resource name in publish.
+    /// CamelCase because azd writes parameters to its .env file as KEY=value and dotenv parsers reject hyphens.</summary>
+    public const string SqlServerNameParameter = "sqlServerName";
 
     /// <summary>User-secret parameter name carrying the existing Azure SQL Server's resource group in publish.</summary>
-    public const string SqlResourceGroupParameter = "sql-resource-group";
+    public const string SqlResourceGroupParameter = "sqlResourceGroup";
 }
 
 /// <summary>

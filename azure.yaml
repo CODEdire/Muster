@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+# Aspire-driven deploy: azd reads the AppHost manifest for the full resource graph
+# (ACR/KV/AC/Storage/AppInsights/CA Env/CA/CA Job, AsExisting bindings, WithReference role grants).
+# The per-project Container App shapes live in BotHostingExtensions / WebHostingExtensions /
+# MigrationsExtensions — DO NOT add per-service entries here, they would short-circuit the AppHost.
+name: muster
+services:
+  app:
+    project: ./aspire/Muster.AppHost/Muster.AppHost.csproj
+    language: dotnet
+    host: containerapp

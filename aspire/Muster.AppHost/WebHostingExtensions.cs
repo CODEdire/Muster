@@ -1,4 +1,5 @@
 using Aspire.Hosting.Azure;
+using Azure.Core;
 using Azure.Provisioning.AppContainers;
 
 namespace Muster.AppHost;
@@ -66,6 +67,26 @@ internal static class WebHostingExtensions
             web.WithReference(appInsights);
         }
 
+        // Optional custom domain — read from azd env vars (set via `azd env set webCustomDomain ...`).
+        // Both must be set together: the hostname AND the resource id of an already-issued managed cert
+        // on the CA Environment. Bootstrap pattern: first deploy omits the binding, you add the hostname
+        // + cert via Portal, then copy the cert resource id into azd env vars so subsequent `azd up`
+        // runs preserve the binding (without this, every redeploy strips the manually-added domain).
+        //
+        // Read via Environment.GetEnvironmentVariable directly — azd injects its .env entries as process
+        // env vars when launching the AppHost, but builder.Configuration's resolution can miss them
+        // depending on prefix/casing rules. The env-var API is the path azd guarantees.
+        var customDomain = Environment.GetEnvironmentVariable("webCustomDomain");
+        var customDomainCertId = Environment.GetEnvironmentVariable("webCustomDomainCertId");
+        var hasCustomDomain = !string.IsNullOrWhiteSpace(customDomain)
+                              && !string.IsNullOrWhiteSpace(customDomainCertId);
+
+        // Diagnostic — visible in `azd up` console + Aspire dashboard so you can confirm the binding
+        // is being emitted (or NOT, and why). Strip once the wiring is proven stable.
+        Console.WriteLine($"[muster-web] custom domain: " +
+            (hasCustomDomain ? $"BINDING '{customDomain}' to cert '{customDomainCertId![..Math.Min(80, customDomainCertId.Length)]}…'"
+                             : $"SKIPPED (webCustomDomain='{customDomain}', webCustomDomainCertId set: {!string.IsNullOrEmpty(customDomainCertId)})"));
+
         if (builder.ExecutionContext.IsPublishMode)
         {
             web.PublishAsAzureContainerApp((_, app) =>
@@ -89,7 +110,12 @@ internal static class WebHostingExtensions
                 // ACA probes against the container's ingress target port — paths come from
                 // ServiceDefaults.MapDefaultEndpoints. Startup covers ASP.NET warmup, Liveness restarts
                 // on a deadlocked process, Readiness gates traffic on dependency health (DB + Wolverine).
-                var targetPort = app.Configuration.Ingress?.TargetPort?.Value ?? 8080;
+                //
+                // Port is hardcoded to 8080: .NET 8+ SDK container images expose 8080 by convention and
+                // Aspire wires Ingress.TargetPort to match. Reading Configuration.Ingress.TargetPort here
+                // returns 0 because the value isn't materialised until later in Aspire's pipeline, which
+                // tripped a ContainerAppProbeInvalidPort preflight error during `azd up`.
+                const int targetPort = 8080;
 
                 // Startup: gives ASP.NET ~150s to come up before Liveness starts evaluating. Generous —
                 // a cold container + EF first-query warmup + Wolverine handler graph compile can take
@@ -141,6 +167,19 @@ internal static class WebHostingExtensions
                     FailureThreshold = 3,
                     SuccessThreshold = 1,
                 });
+
+                // Custom domain binding — only when both azd env vars are set. Keeps the hostname +
+                // managed cert reference declared in the Aspire model so subsequent `azd up` runs
+                // preserve them instead of stripping the manually-added Portal binding.
+                if (hasCustomDomain)
+                {
+                    app.Configuration.Ingress.CustomDomains.Add(new ContainerAppCustomDomain
+                    {
+                        Name = customDomain!,
+                        CertificateId = new ResourceIdentifier(customDomainCertId!),
+                        BindingType = ContainerAppCustomDomainBindingType.SniEnabled,
+                    });
+                }
             });
         }
 
