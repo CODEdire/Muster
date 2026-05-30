@@ -1,4 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <UserSecretsId>268ae915-477c-427d-94ff-68721b69638d</UserSecretsId>
+    <!-- Required for `azd up` / `dotnet publish /t:PublishContainer` to build the migration job's
+         image — Microsoft.NET.Sdk.Worker doesn't enable the SDK container targets by default. -->
+    <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\aspire\Muster.ServiceDefaults\Muster.ServiceDefaults.csproj" />

@@ -34,6 +34,11 @@ public abstract class GuildPageComponentBase : ComponentBase
 
     [Inject] protected MemberSyncService MemberSync { get; set; } = default!;
 
+    // Lazy self-heal — kicks in when the bot's GuildCreate handler didn't get to provision this guild
+    // (bot was offline / crashed / not deployed yet). Only fires when the first auth check fails, so
+    // the happy path is unchanged. See GuildRecoveryService for the Discord REST flow.
+    [Inject] protected GuildRecoveryService Recovery { get; set; } = default!;
+
     [Inject] protected Muster.Infrastructure.Services.Platform.TimeZoneService TimeZones { get; set; } = default!;
 
     [Inject] protected NavigationManager Nav { get; set; } = default!;
@@ -91,8 +96,20 @@ public abstract class GuildPageComponentBase : ComponentBase
 
         if (!await IsAuthorizedAsync(guildId, UserId))
         {
-            Forbid();
-            return;
+            // First auth failure → try lazy provisioning from Discord REST. Only succeeds when the
+            // visiting user is a real Discord admin of the guild (Owner / Administrator perm /
+            // Manage Server perm) AND the bot is in the guild. If recovery materialises the rows we
+            // re-run the auth check; if it doesn't, the original Forbid stands.
+            if (await Recovery.TryRecoverAdminAccessAsync(guildId, UserId)
+                && await IsAuthorizedAsync(guildId, UserId))
+            {
+                // fall through into the rest of the init
+            }
+            else
+            {
+                Forbid();
+                return;
+            }
         }
 
         // New-user onboarding: a member with no time zone set is bounced to /onboarding (and back here after),

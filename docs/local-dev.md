@@ -23,9 +23,9 @@ AppHost project (never commit secrets):
 
 ```bash
 cd aspire/Muster.AppHost
-dotnet user-secrets set "Parameters:discord-token"        "<bot-token>"
-dotnet user-secrets set "Parameters:discord-clientid"     "<oauth-client-id>"
-dotnet user-secrets set "Parameters:discord-clientsecret" "<oauth-client-secret>"
+dotnet user-secrets set "Parameters:discordToken"         "<bot-token>"
+dotnet user-secrets set "Parameters:discordClientId"      "<oauth-client-id>"
+dotnet user-secrets set "Parameters:discordClientSecret"  "<oauth-client-secret>"
 ```
 
 These flow to the bot (`Discord__Token`) and web (`Discord__ClientId` /

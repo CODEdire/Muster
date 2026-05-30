@@ -39,6 +39,8 @@ public static class InfrastructureExtensions
         builder.AddSqlServerDbContext<MusterDbContext>(connectionName);
 
         builder.Services.AddScoped<GuildProvisioningService>();
+        builder.Services.AddHttpClient(); // GuildRecoveryService uses IHttpClientFactory for Discord REST
+        builder.Services.AddScoped<GuildRecoveryService>();
         builder.Services.AddScoped<ICurrencyReadService, CurrencyReadService>();
         builder.Services.AddScoped<IQuestService, QuestService>();
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
@@ -188,11 +190,12 @@ public static class InfrastructureExtensions
             // Azure path — Blob for storage, KV for at-rest wrap. DefaultAzureCredential picks up the
             // workload identity in Container Apps (managed identity) and dev cred locally if ever used.
             var credential = new DefaultAzureCredential();
-            var keyBlob = new BlobContainerClient(new Uri(dpContainerUri), credential)
-                .GetBlobClient("keys.xml");
+
+            var containerUri = ResolveBlobContainerUri(dpContainerUri, containerName ?? "dpkeys");
+            var keyBlob = new BlobContainerClient(containerUri, credential).GetBlobClient("keys.xml");
             dp.PersistKeysToAzureBlobStorage(keyBlob);
 
-            var keyIdentifier = new Uri($"{keyVaultUri.TrimEnd('/')}/keys/{wrapKeyName}");
+            var keyIdentifier = ResolveKeyIdentifier(keyVaultUri, wrapKeyName);
             dp.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
         }
         else
@@ -203,4 +206,71 @@ public static class InfrastructureExtensions
 
         return builder;
     }
+
+    // Aspire's AzureBlobStorageContainerResource publishes its connection in a key/value form like
+    // "Endpoint=https://{acct}.blob.core.windows.net;ContainerName={name}" (or a full storage
+    // connection string with AccountName=...;EndpointSuffix=...). Raw new Uri(...) chokes — parse
+    // both shapes plus the plain URI form into a usable BlobContainerClient URI.
+    private static Uri ResolveBlobContainerUri(string raw, string defaultContainer)
+    {
+        var trimmed = raw.Trim();
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var direct)
+            && (direct.Scheme == Uri.UriSchemeHttp || direct.Scheme == Uri.UriSchemeHttps))
+        {
+            return direct;
+        }
+
+        var parts = ParseConnectionString(trimmed);
+
+        if (parts.TryGetValue("Endpoint", out var endpoint)
+            && Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri))
+        {
+            var container = parts.GetValueOrDefault("ContainerName", defaultContainer);
+            return new Uri($"{endpointUri.GetLeftPart(UriPartial.Authority)}/{container}");
+        }
+
+        if (parts.TryGetValue("AccountName", out var account))
+        {
+            var suffix = parts.GetValueOrDefault("EndpointSuffix", "core.windows.net");
+            var container = parts.GetValueOrDefault("ContainerName", defaultContainer);
+            return new Uri($"https://{account}.blob.{suffix}/{container}");
+        }
+
+        throw new InvalidOperationException(
+            $"Could not resolve a blob container URI from ConnectionStrings:dpkeys. Saw: {Mask(trimmed)}");
+    }
+
+    // Aspire's AzureKeyVaultResource publishes the vault URI directly, but some integrations wrap it as
+    // VaultUri=https://...;... — handle both so the wrap-key URL stitches together either way.
+    private static Uri ResolveKeyIdentifier(string raw, string wrapKeyName)
+    {
+        var trimmed = raw.Trim();
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var direct)
+            && (direct.Scheme == Uri.UriSchemeHttp || direct.Scheme == Uri.UriSchemeHttps))
+        {
+            return new Uri($"{trimmed.TrimEnd('/')}/keys/{wrapKeyName}");
+        }
+
+        var parts = ParseConnectionString(trimmed);
+        var vaultUri = parts.GetValueOrDefault("VaultUri") ?? parts.GetValueOrDefault("Endpoint");
+        if (!string.IsNullOrWhiteSpace(vaultUri))
+        {
+            return new Uri($"{vaultUri.TrimEnd('/')}/keys/{wrapKeyName}");
+        }
+
+        throw new InvalidOperationException(
+            $"Could not resolve a Key Vault URI from ConnectionStrings:kv. Saw: {Mask(trimmed)}");
+    }
+
+    private static Dictionary<string, string> ParseConnectionString(string raw) =>
+        raw.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Split('=', 2))
+            .Where(p => p.Length == 2)
+            .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.OrdinalIgnoreCase);
+
+    // Trim long values + redact anything that looks like a secret (no AccountKey, SharedAccessSignature, etc.
+    // ever ends up in our exception text). Just enough info to debug a malformed config without leaking creds.
+    private static string Mask(string s) => s.Length > 80 ? s[..80] + "…" : s;
 }

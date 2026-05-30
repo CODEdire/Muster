@@ -46,8 +46,21 @@ public static class WolverineExtensions
         where TBuilder : IHostApplicationBuilder
     {
         var sqlConnectionString = builder.Configuration.GetConnectionString(connectionName);
-        var serviceBusConnectionString = builder.Configuration.GetConnectionString(messagingConnectionName);
+        var rawMessaging = builder.Configuration.GetConnectionString(messagingConnectionName);
         var serviceBusFqdn = builder.Configuration["Azure:ServiceBus:FullyQualifiedNamespace"];
+
+        // Aspire publishes the same ConnectionStrings:messaging key for BOTH the emulator (full SAS
+        // conn string with SharedAccessKey=...) and a live namespace (just the FQDN —
+        // token-credential auth). Distinguish by the SAS marker; the FQDN form has no SharedAccessKey
+        // and trips Wolverine's ServiceBusConnectionStringProperties.Parse when handed to the
+        // emulator-shaped UseAzureServiceBus(connStr) overload.
+        var hasSasMarker = !string.IsNullOrWhiteSpace(rawMessaging)
+            && rawMessaging.Contains("SharedAccessKey", StringComparison.OrdinalIgnoreCase);
+        var serviceBusConnectionString = hasSasMarker ? rawMessaging : null;
+        if (string.IsNullOrWhiteSpace(serviceBusFqdn) && !hasSasMarker)
+        {
+            serviceBusFqdn = rawMessaging; // FQDN published under ConnectionStrings:messaging
+        }
 
         // AddMusterMessaging lives in Infrastructure, so Wolverine would otherwise infer the application
         // assembly as Infrastructure and miss the host's Wolverine.HTTP endpoints (in Muster.Web). Point

@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <UserSecretsId>muster-bot</UserSecretsId>
+    <!-- Required for `azd up` / `dotnet publish /t:PublishContainer` to build the bot's image —
+         Microsoft.NET.Sdk.Worker doesn't enable the SDK container targets by default the way
+         Microsoft.NET.Sdk.Web does. -->
+    <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
   </PropertyGroup>
 
   <ItemGroup>

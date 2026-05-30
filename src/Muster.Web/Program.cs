@@ -27,7 +27,11 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("kv")))
 }
 if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("appconfig")))
 {
-    builder.Configuration.AddAzureAppConfiguration("appconfig");
+    // Aspire client integration — IHostApplicationBuilder extension, NOT IConfigurationManager.
+    // The Microsoft.Extensions.Configuration.AzureAppConfiguration extension with the same name on
+    // IConfigurationBuilder expects a literal "Endpoint=...;Id=...;Secret=..." connection string and
+    // throws "Invalid connection string format" when handed an Aspire connection NAME like "appconfig".
+    builder.AddAzureAppConfiguration("appconfig");
 }
 
 builder.AddMusterInfrastructure();

@@ -428,3 +428,5 @@ FodyWeavers.xsd
 *.msm
 *.msp
 .verify-build/
+.azure
+next-steps.md
