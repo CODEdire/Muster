@@ -1,0 +1,78 @@
+@page "/faq"
+@layout PublicLayout
+
+<PageTitle>FAQ — Muster</PageTitle>
+
+<div class="panel glass">
+    <h1>Frequently asked questions</h1>
+    <p class="subtitle">High-level answers. For specifics, see the <a href="/support">support page</a>.</p>
+
+    <section class="faq">
+        <details>
+            <summary>What is Muster?</summary>
+            <p>Muster is a Discord bot and web app that tracks participation in your community — voice
+               attendance, quests, reaction check-ins, and staff-issued awards — and surfaces it on a
+               leaderboard with multi-currency wallets.</p>
+        </details>
+
+        <details>
+            <summary>How do I add Muster to my Discord server?</summary>
+            <p>Public invites open at v1.0. In the meantime, follow the project on
+               <a href="/support">GitHub</a> for release news.</p>
+        </details>
+
+        <details>
+            <summary>What does Muster track?</summary>
+            <p>Voice channel attendance (with privacy controls), quest claims and completions, reaction
+               check-ins on muster posts, and any rewards staff issue manually. What's tracked is configurable
+               per-server by an administrator.</p>
+        </details>
+
+        <details>
+            <summary>Does Muster read message content?</summary>
+            <p>No. Muster receives message events but stores only metadata (sender id, channel, timestamp,
+               message id) — never the message body. See the <a href="/privacy">Privacy Policy</a> for the
+               full data inventory.</p>
+        </details>
+
+        <details>
+            <summary>What privacy controls do members have?</summary>
+            <p>Members can opt out of background tracking at any time with <code>/track privacy</code> or
+               from the in-app Settings page. Servers can default tracking to opt-in or opt-out.</p>
+        </details>
+
+        <details>
+            <summary>How do I delete my data?</summary>
+            <p>Contact the administrator of the server where the data was collected — they own the records
+               for their server and can remove individual members. Server-wide data is deleted when the bot
+               is removed from a server, subject to short retention for ledger and audit history.</p>
+        </details>
+
+        <details>
+            <summary>Is Muster free?</summary>
+            <p>Yes — Muster is free to use and the source is open. Pricing details will be published if any
+               paid tier is ever introduced.</p>
+        </details>
+
+        <details>
+            <summary>What roles can configure Muster?</summary>
+            <p>Server owners and members with the Discord <em>Administrator</em> or <em>Manage Server</em>
+               permission have full access. Beyond that, server admins can map Discord roles onto Muster's
+               specialised roles: <em>Quest Manager</em>, <em>Economy Manager</em>, <em>Event Officer</em>,
+               <em>Tracking Manager</em>, and <em>Auditor</em> — each with a narrow scope of actions.</p>
+        </details>
+
+        <details>
+            <summary>Can I integrate Muster with an external economy or loot system?</summary>
+            <p>Yes. Muster exposes a public API at <code>/api/v1</code> for read-only data and authorized
+               writes, plus per-guild outbound webhooks that deliver every wallet movement to a system you
+               configure. Documentation lands at v1.0.</p>
+        </details>
+
+        <details>
+            <summary>Where do I get help?</summary>
+            <p>See the <a href="/support">support page</a>. Bugs and feature requests go on GitHub; security
+               issues go through GitHub's private disclosure flow.</p>
+        </details>
+    </section>
+</div>

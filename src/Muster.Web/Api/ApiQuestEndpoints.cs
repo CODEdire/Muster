@@ -70,10 +70,20 @@ public static class ApiQuestEndpoints
 
     [WolverineGet("/api/v1/guilds/{guildId}/quests/{questId}")]
     [RequireApiScope(Read)]
-    public static async Task<IResult> Detail(ulong guildId, Guid questId, IQuestReadService reads)
+    public static async Task<IResult> Detail(
+        ulong guildId, Guid questId, HttpContext http, IQuestReadService reads, GuildAuthorizationService auth)
     {
         var quest = await reads.GetQuestDetailAsync(guildId, questId);
-        return quest is null ? Results.NotFound(new { error = "quest_not_found" }) : Results.Ok(quest);
+        if (quest is null)
+        {
+            return Results.NotFound(new { error = "quest_not_found" });
+        }
+
+        // Scrub private fields based on the key's bound actor. An unbound key sees the non-privileged view
+        // (no dispute reason, no review notes) — same as a random guild member would on Discord/web.
+        var actor = http.ApiActor();
+        var isManager = actor != 0 && await auth.IsQuestManagerAsync(guildId, actor);
+        return Results.Ok(QuestDetailViewScrub.ForViewer(quest, actor, isManager));
     }
 
     // ---- Writes (run as the bound actor) -----------------------------------
@@ -88,7 +98,7 @@ public static class ApiQuestEndpoints
         }
 
         _ = Enum.TryParse<QuestTier>(body.Tier, ignoreCase: true, out var tier);
-        return ToResult(await bus.InvokeAsync<Result>(new PostQuest(
+        return ToResult(await bus.InvokeAsync<Result<Guid>>(new PostQuest(
             guildId, http.ApiActor(), origin, body.Name, body.Currency, body.Reward, body.Description ?? "",
             null, null, tier, body.RequestFinalApproval, body.Capacity < 1 ? 1 : body.Capacity)));
     }

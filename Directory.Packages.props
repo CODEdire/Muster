@@ -7,6 +7,18 @@
   <ItemGroup Label="Aspire">
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.3.5" />
     <PackageVersion Include="Aspire.Hosting.Azure.Sql" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.AppContainers" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.KeyVault" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.AppConfiguration" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.ServiceBus" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.Storage" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.ApplicationInsights" Version="13.3.5" />
+    <!-- Aspire client integrations: pull secrets from KV + dynamic config from AC + DP key blob client. -->
+    <PackageVersion Include="Aspire.Azure.Security.KeyVault" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Microsoft.Extensions.Configuration.AzureAppConfiguration" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Azure.Storage.Blobs" Version="13.3.5" />
+    <!-- Third-party: emulator UI sidecar (peek/send/receive) by Andrew Poole. Run-mode-only. -->
+    <PackageVersion Include="AJP.Aspire.Hosting.AsbEmulatorUi" Version="1.0.24" />
     <PackageVersion Include="Aspire.Hosting.DevTunnels" Version="13.3.5" />
     <PackageVersion Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" Version="13.3.5" />
   </ItemGroup>
@@ -19,11 +31,17 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
+    <!-- Azure Monitor OTEL exporter — fed by APPLICATIONINSIGHTS_CONNECTION_STRING in publish. -->
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.4.0" />
   </ItemGroup>
 
   <ItemGroup Label="Data">
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.8" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.8" />
+    <!-- Azure-backed Data Protection: blob storage for the key ring + Key Vault key to wrap them at rest. -->
+    <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.0" />
+    <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.4.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
@@ -36,6 +54,7 @@
     <PackageVersion Include="WolverineFx.Http" Version="6.0.1" />
     <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.0.1" />
     <PackageVersion Include="WolverineFx.SqlServer" Version="6.0.1" />
+    <PackageVersion Include="WolverineFx.AzureServiceBus" Version="6.0.1" />
   </ItemGroup>
 
   <ItemGroup Label="Discord (NetCord)">

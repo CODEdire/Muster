@@ -157,7 +157,8 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    protected override bool OfficerSufficient => true;
+    // Officer (legacy umbrella) + EconomyManager — economy staff need to award/inspect members from here.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.Officer | GuildAccessTier.EconomyManager;
 
     private const int SearchDebounceMs = 350;
 

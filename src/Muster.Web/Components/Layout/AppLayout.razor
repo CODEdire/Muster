@@ -4,7 +4,10 @@
    --accent / --brand-* on .app-shell[data-guild] so member-facing pages adopt the guild palette. *@
 <div class="app-shell">
     <header class="topbar glass">
-        <a href="/" class="brand">Muster</a>
+        <a href="/" class="brand" aria-label="Muster home">
+            <img class="brand-lockup brand-lockup-light" src="img/brand/lockup/muster-lockup-horizontal.svg" alt="Muster" width="168" height="48" />
+            <img class="brand-lockup brand-lockup-dark" src="img/brand/lockup/muster-lockup-horizontal-dark.svg" alt="Muster" width="168" height="48" />
+        </a>
         <nav>
             <a href="/guilds">My servers</a>
             <ThemeToggle />

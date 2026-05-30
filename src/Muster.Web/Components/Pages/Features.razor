@@ -1,0 +1,89 @@
+@page "/features"
+@layout PublicLayout
+
+<PageTitle>Features — Muster</PageTitle>
+
+<section class="hero">
+    <h1>What Muster does</h1>
+    <p>Track participation, reward contribution, run a season — without spreadsheets.</p>
+</section>
+
+<div class="feature-grid">
+
+    <div class="card glass feature-card">
+        <h2>Voice attendance</h2>
+        <p>Two modes. <strong>Bounded sessions</strong> open and close on demand (or bind to a Discord
+           scheduled event) and award attendees on close. <strong>Background tracking</strong> rewards
+           ongoing voice time in monitored channels at a configurable rate, with anti-AFK guards (skip
+           muted, deafened, alone).</p>
+        <p class="subtitle">Members can opt out of background tracking; sessions remain opt-in by joining.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Quest board</h2>
+        <p>A two-type board. <strong>Guild quests</strong> are staff-posted duties — claim, submit, get
+           approved, get paid (minted). <strong>Player bounties</strong> are member-posted with reward
+           escrowed from the poster's wallet — confirm or dispute on submission. Difficulty tiers add bonus
+           points; deadlines + auto-resolve sweep handle staleness.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Reaction musters</h2>
+        <p>Post a one-tap check-in: members react with a chosen emoji, get rewarded once, capped at the
+           muster's capacity. Useful for raid roll-call, training attendance, or any "show up and tap" moment.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Multi-currency wallets</h2>
+        <p>Seasonal <strong>Points</strong> drive the leaderboard and reset each season. Persistent
+           spendable currencies (e.g. <strong>Coin</strong>) carry across seasons and integrate with external
+           loot economies via the public API and per-guild webhooks. Every movement lands on an append-only
+           ledger.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Seasons &amp; leaderboards</h2>
+        <p>Define a season window; close it to archive scores and start fresh. Multi-currency leaderboards
+           show season Points or top holders of any spendable currency.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Roles &amp; least-privilege staff</h2>
+        <p>Beyond Server Admin, Muster supports specialised roles — <em>Quest Manager</em>,
+           <em>Economy Manager</em>, <em>Event Officer</em>, <em>Tracking Manager</em>, <em>Auditor</em>.
+           Each maps to Discord roles you already have. Give the right staff just the access they need.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Audit log</h2>
+        <p>Every staff action, every economy movement, every config change is recorded with actor, target,
+           and timestamp. Searchable, filterable, exportable to CSV. Default retention 90 days.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Public API + connectors</h2>
+        <p>Authenticated REST API at <code>/api/v1</code> for read-only queries (leaderboards, wallets,
+           ledger, quests, participation) and authorized writes (mint, spend, transfer, quest
+           transitions). API keys are guild-scoped and actor-bound. Per-guild outbound webhooks fan every
+           wallet movement to your own system, HMAC-signed.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Web admin</h2>
+        <p>Browser-based admin for configuration, role mapping, currency setup, member detail, audit log,
+           and live session monitoring. Discord OAuth login; same role gates as the bot.</p>
+    </div>
+
+    <div class="card glass feature-card">
+        <h2>Multi-tenant</h2>
+        <p>One deployment serves many Discord servers. All data is guild-scoped. Permissions, roles,
+           settings, currencies are all per-server. Built on .NET Aspire + Azure Container Apps for
+           predictable horizontal scaling.</p>
+    </div>
+
+</div>
+
+<p class="subtitle home-explore">
+    Ready to try? <a href="/">Back to the home page</a> · <a href="/faq">read the FAQ</a> ·
+    <a href="/support">get support</a>.
+</p>

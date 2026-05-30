@@ -37,6 +37,42 @@ public record QuestDetailView(
     DateTimeOffset CreatedAt, DateTimeOffset? ScheduledStart, DateTimeOffset? Deadline,
     IReadOnlyList<QuestDetailParticipant> Participants);
 
+/// <summary>
+/// Viewer-aware filter for <see cref="QuestDetailView"/>. The underlying read returns the unscrubbed (staff/system)
+/// shape; this helper masks private fields so a random guild member can't read another worker's submission text or
+/// a manager's rejection reasoning when fetching the quest via slash command / web detail page / public API.
+/// </summary>
+/// <remarks>
+/// <para>Privileged viewers (manager + owner) see everything. The disputing party also sees their own dispute
+/// reason. Per-participant notes/review notes/reviewer identity follow the same rule on a per-row basis: the
+/// worker sees their own; quest staff see all; everyone else sees none.</para>
+/// <para>Internal callers (DM push, board renderers, reminders, audit middleware) should NOT scrub — they need
+/// the full view to render staff cards or deliver notifications to the actual subject.</para>
+/// </remarks>
+public static class QuestDetailViewScrub
+{
+    /// <summary>Return a copy of <paramref name="detail"/> with private fields nulled for an unprivileged viewer.</summary>
+    public static QuestDetailView ForViewer(QuestDetailView detail, ulong viewerUserId, bool isManager)
+    {
+        var isQuestStaff = isManager || viewerUserId == detail.OwnerId;
+        var seeDispute = isQuestStaff || (detail.DisputedBy is { } d && d == viewerUserId);
+
+        var participants = detail.Participants
+            .Select(p => (isQuestStaff || p.UserId == viewerUserId)
+                ? p
+                : p with { Note = null, ReviewNote = null, ReviewedBy = null, ReviewedByName = null })
+            .ToList();
+
+        return detail with
+        {
+            DisputedBy = seeDispute ? detail.DisputedBy : null,
+            DisputedByName = seeDispute ? detail.DisputedByName : null,
+            DisputeReason = seeDispute ? detail.DisputeReason : null,
+            Participants = participants,
+        };
+    }
+}
+
 /// <summary>A compact open-board line for the bot's text list.</summary>
 public record QuestListItem(string Name, QuestOrigin Origin, long RewardAmount, string Code, string State, DateTimeOffset? Deadline);
 

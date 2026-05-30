@@ -323,6 +323,9 @@ else if (State == AccessState.Ready)
 }
 
 @code {
+    // Read-only audit log — Auditor (which is implied by every mgmt role) + legacy Officer + Admin (implicit).
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.Auditor | GuildAccessTier.Officer;
+
     private const int SearchDebounceMs = 350;
     private static readonly IReadOnlyList<(string Id, string Display)> _zones = TimeZoneService.GetKnownZones();
 

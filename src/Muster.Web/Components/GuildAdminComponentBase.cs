@@ -1,11 +1,15 @@
 using Microsoft.AspNetCore.Components;
+using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Web.Components;
 
 /// <summary>
-/// Base for guild admin pages: requires admin (or officer when <see cref="OfficerSufficient"/> is true),
-/// and adds audit recording + mention humanizing helpers. Session/403 handling comes from the base.
+/// Base for guild admin pages: gates access via <see cref="RequiredAccess"/>, adds audit recording + mention
+/// humanizing helpers. Session / 403 handling comes from the base. Admin always passes via the lockout-proof
+/// bypass in <see cref="GuildAuthorizationService"/>. The <see cref="GuildAccessTier"/> flags + dispatch live in
+/// <see cref="GuildAccessAuthorizer"/> (Muster.Infrastructure) so the OR-over-roles logic is testable without a
+/// Blazor render context.
 /// </summary>
 public abstract class GuildAdminComponentBase : GuildPageComponentBase
 {
@@ -13,13 +17,12 @@ public abstract class GuildAdminComponentBase : GuildPageComponentBase
 
     [Inject] protected MentionHumanizer Mentions { get; set; } = default!;
 
-    /// <summary>When true, officer access is sufficient; otherwise admin is required.</summary>
-    protected virtual bool OfficerSufficient => false;
+    /// <summary>Which non-admin tiers may also access this page. Default = <see cref="GuildAccessTier.Admin"/>
+    /// (admin only). Override on pages that should accept a Phase 4 split role.</summary>
+    protected virtual GuildAccessTier RequiredAccess => GuildAccessTier.Admin;
 
-    protected override async Task<bool> IsAuthorizedAsync(ulong guildId, ulong userId)
-        => OfficerSufficient
-            ? await Auth.IsOfficerAsync(guildId, userId)
-            : await Auth.IsAdminAsync(guildId, userId);
+    protected override Task<bool> IsAuthorizedAsync(ulong guildId, ulong userId)
+        => GuildAccessAuthorizer.IsAuthorizedAsync(Auth, guildId, userId, RequiredAccess);
 
     /// <summary>Record an admin action to the audit trail (actor = the signed-in user). Prefer the
     /// <see cref="AuditAction"/> overload — passing a string here goes through unrecognized to the catch-all

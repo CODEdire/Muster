@@ -340,7 +340,9 @@ else if (State == AccessState.Ready)
             await using var scope = Scopes.CreateAsyncScope();
             var reads = scope.ServiceProvider.GetRequiredService<IQuestReadService>();
             _settings = await reads.GetSettingsAsync(GuildId);
-            _quest = await reads.GetQuestDetailAsync(GuildId, _questGuid);
+            var quest = await reads.GetQuestDetailAsync(GuildId, _questGuid);
+            // Scrub private fields for non-privileged viewers. Owner/manager/per-row-self keep visibility.
+            _quest = quest is null ? null : QuestDetailViewScrub.ForViewer(quest, UserId, _isManager);
         }
         finally
         {

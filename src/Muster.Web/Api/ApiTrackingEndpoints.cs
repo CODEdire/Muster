@@ -4,6 +4,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Commands.Tracking;
 using Muster.Infrastructure.Commands.Membership;
+using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Tracking;
 using Wolverine.Http;
 
@@ -57,20 +58,35 @@ public static class ApiTrackingEndpoints
         return detail is null ? Results.NotFound(new { error = "session_not_found" }) : Results.Ok(detail);
     }
 
-    /// <summary>A session's presence-event stream (join/resume/pause/leave), paged chronologically — the audit log.</summary>
+    /// <summary>A session's presence-event stream (join/resume/pause/leave), paged chronologically — the audit log. Staff-tier.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}/events")]
-    [RequireApiScope("read:tracking")]
-    public static async Task<IResult> SessionEvents(ulong guildId, Guid sessionId, ParticipationReadService participation, int page = 1, int pageSize = 100)
+    [RequireApiScope("read:tracking", requireActor: true)]
+    public static async Task<IResult> SessionEvents(
+        ulong guildId, Guid sessionId, HttpContext http, ParticipationReadService participation,
+        GuildAuthorizationService roles, int page = 1, int pageSize = 100)
     {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
         var events = await participation.SessionEventsAsync(guildId, sessionId, Page(page), Size(pageSize, 500));
         return events is null ? Results.NotFound(new { error = "session_not_found" }) : Results.Ok(events);
     }
 
-    /// <summary>A member's voice participation stats (season + all-time + rank).</summary>
+    /// <summary>A member's voice participation stats (season + all-time + rank). Self always; tracking staff may read anyone's.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/members/{userId}/tracking")]
-    [RequireApiScope("read:tracking")]
-    public static async Task<IResult> MemberStats(ulong guildId, ulong userId, ParticipationReadService participation)
-        => Results.Ok(await participation.MemberVoiceStatsAsync(guildId, userId));
+    [RequireApiScope("read:tracking", requireActor: true)]
+    public static async Task<IResult> MemberStats(
+        ulong guildId, ulong userId, HttpContext http, ParticipationReadService participation, ITrackingAuthorizer authz)
+    {
+        if (await ApiReadGuards.RequireSelfOrTrackingStaffAsync(http, guildId, userId, authz) is { } forbid)
+        {
+            return forbid;
+        }
+
+        return Results.Ok(await participation.MemberVoiceStatsAsync(guildId, userId));
+    }
 
     /// <summary>The guild's monitored (configured) channels.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/tracking/channels")]

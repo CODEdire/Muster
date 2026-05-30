@@ -106,7 +106,7 @@ else if (State == AccessState.Ready)
 
         var command = new PostQuest(GuildId, UserId, origin, f.Name ?? "", f.Currency ?? "POINTS", f.Amount,
             f.Details ?? "", startsAt, deadline, tier, Post.RequestFinalApproval, capacity);
-        var result = (await Bus.InvokeAsync<Result>(command)).ToCommandResult($"Quest **{f.Name}** posted.");
+        var result = (await Bus.InvokeAsync<Result<Guid>>(command)).ToCommandResult($"Quest **{f.Name}** posted.");
         Message = result.Message;
         if (!result.IsError)
         {

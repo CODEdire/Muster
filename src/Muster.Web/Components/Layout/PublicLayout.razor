@@ -2,16 +2,21 @@
 
 <div class="app-shell">
     <header class="topbar glass">
-        <a href="/" class="brand">Muster</a>
-        <nav>
-            <a href="/privacy">Privacy</a>
+        <a href="/" class="brand" aria-label="Muster home">
+            <img class="brand-lockup brand-lockup-light" src="img/brand/lockup/muster-lockup-horizontal.svg" alt="Muster" width="168" height="48" />
+            <img class="brand-lockup brand-lockup-dark" src="img/brand/lockup/muster-lockup-horizontal-dark.svg" alt="Muster" width="168" height="48" />
+        </a>
+        <nav class="topbar-nav">
+            <a href="/features">Features</a>
+            <a href="/faq">FAQ</a>
+            <a href="/support">Support</a>
             <ThemeToggle />
             <AuthorizeView>
                 <Authorized>
                     <a class="btn" href="/guilds">My servers</a>
                 </Authorized>
                 <NotAuthorized>
-                    <a class="btn" href="/account/login">Log in with Discord</a>
+                    <a class="btn" href="/account/login">Continue with Discord</a>
                 </NotAuthorized>
             </AuthorizeView>
         </nav>
@@ -22,8 +27,27 @@
     </div>
 
     <footer class="footer glass">
-        <span>© Muster</span>
-        <a href="/privacy">Privacy Policy</a>
-        <span class="user">Participation tracking for Discord communities.</span>
+        <div class="footer-cols">
+            <div class="footer-col">
+                <span class="footer-brand">© @DateTime.UtcNow.Year Muster</span>
+                <span class="footer-tagline">Participation tracking for Discord communities.</span>
+            </div>
+            <div class="footer-col">
+                <span class="footer-col-head">Product</span>
+                <a href="/features">Features</a>
+                <a href="/changelog">Changelog</a>
+                <a href="/brand">Brand &amp; press</a>
+            </div>
+            <div class="footer-col">
+                <span class="footer-col-head">Resources</span>
+                <a href="/faq">FAQ</a>
+                <a href="/support">Support</a>
+            </div>
+            <div class="footer-col">
+                <span class="footer-col-head">Legal</span>
+                <a href="/terms">Terms</a>
+                <a href="/privacy">Privacy</a>
+            </div>
+        </div>
     </footer>
 </div>

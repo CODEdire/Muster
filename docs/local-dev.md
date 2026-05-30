@@ -22,7 +22,7 @@ The AppHost reads Discord credentials as parameters. Set them via user-secrets o
 AppHost project (never commit secrets):
 
 ```bash
-cd src/Muster.AppHost
+cd aspire/Muster.AppHost
 dotnet user-secrets set "Parameters:discord-token"        "<bot-token>"
 dotnet user-secrets set "Parameters:discord-clientid"     "<oauth-client-id>"
 dotnet user-secrets set "Parameters:discord-clientsecret" "<oauth-client-secret>"
@@ -34,7 +34,7 @@ These flow to the bot (`Discord__Token`) and web (`Discord__ClientId` /
 ## Run everything (Aspire)
 
 ```bash
-dotnet run --project src/Muster.AppHost
+dotnet run --project aspire/Muster.AppHost
 ```
 
 This launches the **Aspire dashboard**, starts a SQL Server container, runs the migration
@@ -60,7 +60,7 @@ by the bot or web.
 
 | Run target | Command |
 | --- | --- |
-| Everything (orchestrated) | `dotnet run --project src/Muster.AppHost` |
+| Everything (orchestrated) | `dotnet run --project aspire/Muster.AppHost` |
 | Web only | `dotnet run --project src/Muster.Web` |
 | Bot only | `dotnet run --project src/Muster.Bot` |
 | Migrations only | `dotnet run --project src/Muster.MigrationService` |

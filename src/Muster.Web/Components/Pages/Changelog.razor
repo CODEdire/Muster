@@ -1,0 +1,63 @@
+@page "/changelog"
+@layout PublicLayout
+
+<PageTitle>Changelog — Muster</PageTitle>
+
+<div class="panel glass">
+    <h1>Changelog</h1>
+    <p class="subtitle">User-visible changes. Internal refactors and infrastructure work aren't listed here.</p>
+
+    <section class="changelog">
+
+        <article>
+            <header>
+                <h2>v0.5 <span class="subtitle">— Pre-release</span></h2>
+            </header>
+            <ul>
+                <li><strong>Role split.</strong> Quest Manager, Economy Manager, Event Officer, Tracking
+                    Manager, and Auditor join Admin and the legacy Officer umbrella. Map any Discord role to
+                    the staff tier that fits — least-privilege without giving away Admin.</li>
+                <li><strong>Audit log.</strong> Every staff action, every economy movement, every config
+                    change is captured and searchable from the web admin. Default retention 90 days.</li>
+                <li><strong>Public API hardening.</strong> Per-key rate limit, request body cap, span
+                    enrichment for incident triage, and tighter authorization (personal data is self-or-staff,
+                    audit-tier reads gate on Auditor).</li>
+                <li><strong>Live session view.</strong> Browser-based monitoring of active tracking sessions,
+                    with per-member opt-out and presence event audit.</li>
+                <li><strong>Quest detail privacy.</strong> Dispute reasons and per-row review notes are now
+                    only visible to the parties involved (worker, owner, manager) — not to every guild member.</li>
+            </ul>
+        </article>
+
+        <article>
+            <header>
+                <h2>v0.4 <span class="subtitle">— Quests + Economy</span></h2>
+            </header>
+            <ul>
+                <li><strong>Quest board.</strong> Guild quests and player bounties unified on one board.
+                    Difficulty tiers, deadlines, intake review, dispute arbitration, multi-slot capacity.</li>
+                <li><strong>Multi-currency wallets.</strong> Seasonal Points (leaderboard) and persistent
+                    spendable currencies (e.g. Coin) on one ledger.</li>
+                <li><strong>External economy hooks.</strong> Per-currency outbound connector + per-guild
+                    movement webhooks for integrating with loot or perk systems.</li>
+            </ul>
+        </article>
+
+        <article>
+            <header>
+                <h2>v0.3 <span class="subtitle">— Tracking foundation</span></h2>
+            </header>
+            <ul>
+                <li><strong>Bounded sessions + background tracking.</strong> Two complementary modes for
+                    rewarding voice attendance with anti-AFK guards.</li>
+                <li><strong>Reaction musters.</strong> One-tap check-ins with capacity caps.</li>
+                <li><strong>Seasons.</strong> Bounded scoring windows with archive on close.</li>
+            </ul>
+        </article>
+
+    </section>
+
+    <p class="subtitle">
+        Detailed release notes land on <a href="/support">GitHub</a>.
+    </p>
+</div>

@@ -92,6 +92,17 @@ public static class AuditActions
     {
         public static readonly AuditAction SessionStart = new("track.session.start", AuditCategory.Tracking, "Session");
         public static readonly AuditAction SessionStop = new("track.session.stop", AuditCategory.Tracking, "Session");
+
+        /// <summary>System actor (<c>actorUserId = 0</c>) — a Discord scheduled event entered Active and the
+        /// gateway handler auto-opened a tracking session. Lets admins trace "where did this session come from?"
+        /// without a human in the audit row.</summary>
+        public static readonly AuditAction ScheduledEventSessionOpen =
+            new("track.session.scheduledEventOpen", AuditCategory.Tracking, "Session");
+
+        /// <summary>System actor — scheduled event ended / cancelled and the gateway handler auto-closed the
+        /// matching tracking session.</summary>
+        public static readonly AuditAction ScheduledEventSessionClose =
+            new("track.session.scheduledEventClose", AuditCategory.Tracking, "Session");
     }
 
     public static class Quests

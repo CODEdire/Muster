@@ -42,47 +42,85 @@ Message contracts live in `Muster.Contracts/` (split by feature: `CurrencyMessag
 | `SyncGuildMembers` | web → bot | pull the guild roster from Discord and upsert it (web equivalent of `/syncmembers`) |
 | `QuestLifecycleNotified` | service → outbound | a quest changed state (Discord/connector fan-out) |
 
-## v1: no broker
+## Transport: Azure Service Bus
 
-In v1 each container runs its own Wolverine instance against the **shared SQL database**.
-There is no external broker; services integrate through the database and the durable
-outbox. This honors the "small footprint" goal.
+Cross-host messages travel over **Azure Service Bus**. The durable store (outbox/inbox) stays on SQL
+Server so a ledger write and the messages it cascades commit atomically; a background relay then
+forwards staged messages to the broker with retries.
 
-> **Note on SQL Server:** Wolverine's *database-as-queue* delivery is a PostgreSQL/Marten
-> capability. On SQL Server the durable store provides the outbox/inbox, but actual
-> **cross-process** delivery requires an external transport. We stay on EF Core / SQL Server
-> and defer that transport.
+The transport switches automatically by environment:
 
-## Later: Azure Service Bus toggle
+| Environment | Auth | Configuration source |
+| --- | --- | --- |
+| **Development** | emulator SAS (built into the container) | `ConnectionStrings:messaging` from the Aspire `messaging` resource (`RunAsEmulator`) |
+| **Staging / Production** | managed identity (`DefaultAzureCredential`) | `Azure:ServiceBus:FullyQualifiedNamespace` from `AsExisting(...)` binding to the live namespace |
 
-When bot ↔ web decoupling or scale-out is needed, enable the **Azure Service Bus** transport
-in the Wolverine configuration and add the resource to the AppHost. Because handlers consume
-the broker-agnostic contracts, no handler code changes — only wiring. Aspire has a
-first-class Service Bus integration for this.
+With neither set the bus runs purely in-memory (integration tests, local dev without a database).
+
+> **Provisioning + RBAC:** Wolverine owns all topology — application topics + subscriptions (from
+> conventional routing) and its own operational queues (per-node response, per-host retry, shared
+> DLQ). The AppHost (`MessagingExtensions`) only spins up the namespace and, in run mode, the
+> Microsoft Service Bus emulator container. Wolverine reaches the emulator's separate management
+> plane via the second connection string the AppHost wires through (`ConnectionStrings:messaging-management`,
+> built from the emulator's `emulatorhealth` endpoint on container port 5300). Against the live
+> namespace the same `AutoProvision()` call works through managed identity — no second connection
+> string needed. The runtime workload identity needs **Azure Service Bus Data Owner** on the
+> namespace so it can create topics/queues/subscriptions on first connect.
+
+## Topology & conventional routing
+
+The set of cross-host contracts lives in `src/Muster.Contracts/MessageRouting.cs` as a single list
+(`MessageRouting.CrossHostMessages`). It exists so the conventional-routing convention can be filtered
+to just the contracts that travel cross-host — without that filter Wolverine would also auto-route
+every local `IGuildCommand` and every discovered NetCord gateway event to a remote topic.
+
+Wolverine resolves topology at runtime via `UseTopicAndSubscriptionConventionalRouting(...)`:
+every message published flows to its topic; every handler discovered in the host assembly
+auto-subscribes. Bot/web pass only the host identifier — handler presence IS the listen contract,
+no per-flow opt-in flags.
+
+Naming convention:
+
+- **Topic** = `muster.` + kebab-case of the message type name (`PrefixIdentifiers("muster")` on the
+  transport + `MessageRouting.TopicName(type)` for the bare form).
+- **Subscription** = host's Wolverine `ServiceName` (`HostNames.Bot` = `"bot"`, `HostNames.Web` = `"web"`).
+  A topic with two listening hosts has two clearly named subs in the portal.
+
+| Contract | Topic | Subscriptions (driven by handler discovery) |
+| --- | --- | --- |
+| `QuestLifecycleNotified` | `muster.quest-lifecycle-notified` | `bot` (Discord channel board), `web` (push-updated quest views) |
+| `CurrencyMovementRecorded` | `muster.currency-movement-recorded` | `bot` (`CurrencyDmHandler` + `CurrencyWebhookHandler`) |
+| `SyncGuildMembers` | `muster.sync-guild-members` | `bot` (`GuildMemberSyncHandler`) |
+| `SessionAttendanceChanged` | `muster.session-attendance-changed` | `web` (`SessionUpdateNotifierHandler`) |
+
+Pruning checkpoints bypass `StageAsync`, so the currency-movement firehose excludes them.
+
+Adding a new cross-host message: write the contract record in `Muster.Contracts`, add its type to
+`MessageRouting.CrossHostMessages`, and write the handler in the listening host's assembly. Wolverine
+provisions the topic + subscription on next boot.
 
 ## Implementation
 
-- `WolverineExtensions.AddMusterMessaging(builder)` wires Wolverine into both hosts. When a SQL
-  connection is present it enables `PersistMessagesWithSqlServer` + `UseEntityFrameworkCoreTransactions`
-  (durable outbox/inbox); without one it runs in-memory for local dev.
-- Handlers live in `Muster.Infrastructure.Messaging` and are discovered via
-  `opts.Discovery.IncludeAssembly`. Currency mutations flow through `ICurrencyService`, which writes the
-  ledger and **publishes `CurrencyMovementRecorded`** for every staged movement;
-  `CurrencyMovementRecordedHandler` is the outbound subscription seam (logs in v1; forwards to connectors
-  post-v1). `IGuildCommand`s (`TransferCurrency`/`AdjustCurrency`, quest commands) are audited centrally by
-  `AuditMiddleware`.
-- **Bot-only durable SQL queues** (set up via `UseSqlServerPersistenceAndTransport`). Two effects need the bot's
-  gateway/REST client, so they're routed to the bot rather than handled in the publishing host:
-  - `QuestLifecycleNotified` → `QuestBoardQueue` (`"quest-board"`) — renders/updates the Discord channel board.
-  - `CurrencyMovementRecorded` → `CurrencyEventsQueue` (`"currency-events"`) — DM currency receipts to recipients.
-  - `SyncGuildMembers` → `MemberSyncQueue` (`"member-sync"`) — pull the guild roster from Discord (`GuildMemberSyncHandler`).
-  Every host *publishes* to these queues (so a change from web/API/the sweep still reaches the bot); only the bot
-  *listens* — `AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true, listenForMemberSync: true)`.
-  The currency-events consumers are `CurrencyDmHandler` (DM receipts) and `CurrencyWebhookHandler` (fan out to the
-  guild's outbound webhooks — HMAC-signed POST per matching subscription); pruning checkpoints bypass `StageAsync`,
-  so they never enter the firehose.
+- `WolverineExtensions.AddMusterMessaging(builder, hostName)` wires Wolverine into every host:
+  - Sets `opts.ServiceName = hostName` (drives the conventional subscription name).
+  - Always enables `UseEntityFrameworkCoreTransactions` so Wolverine inlines the `DbContext` into handler codegen.
+  - If `ConnectionStrings:musterdb` is set: `PersistMessagesWithSqlServer(connStr, "muster")` (durable outbox/inbox).
+  - Picks the transport — emulator connection string takes priority, then live namespace + `DefaultAzureCredential`,
+    else stays in-memory.
+  - If `ConnectionStrings:messaging-management` is set (emulator only — the AppHost wires it from the
+    `emulatorhealth` endpoint on container port 5300), assigns it to `transport.ManagementConnectionString`
+    so Wolverine's admin client can reach the emulator's management plane.
+  - Applies the transport prefix via `bus.PrefixIdentifiers("muster")`, calls `bus.AutoProvision()`, and
+    enables `UseTopicAndSubscriptionConventionalRouting` with `IncludeTypes` filtered to the cross-host
+    set and the naming callbacks bound to `MessageRouting.TopicName` + `hostName`.
+- Handlers live in `Muster.Infrastructure.Messaging` (cross-host effects) or the host assembly (host-specific
+  effects) and are discovered via `opts.Discovery.IncludeAssembly`. Currency mutations flow through
+  `ICurrencyService`, which writes the ledger and **publishes `CurrencyMovementRecorded`** for every staged
+  movement; `CurrencyMovementRecordedHandler` is the outbound subscription seam. `IGuildCommand`s
+  (`TransferCurrency`/`AdjustCurrency`, quest commands) are audited centrally by `AuditMiddleware`.
 - Because handlers are plain methods, they're unit-tested by calling them directly with an in-memory
-  database — no bus required.
+  database — no bus required. Integration tests that build a host call `AddMusterMessaging(hostName: "test")`
+  without either connection string and stay on the in-memory branch.
 
 ## Sagas & scheduled messages
 

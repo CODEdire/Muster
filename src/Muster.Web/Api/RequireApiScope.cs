@@ -62,19 +62,40 @@ public static class ApiKeyMiddleware
     public static async Task<IResult> LoadAsync(
         string scope, bool requireActor, ulong guildId, HttpContext http, ApiClientService clients)
     {
-        var (error, client) = await ApiAuth.ResolveAsync(http, clients, guildId, scope);
+        // Enrich the current request span with the auth context. These tags surface in Application Insights /
+        // Log Analytics as queryable dimensions so incident triage (rate-limit spikes, scope abuse, audit
+        // forensics) can group/filter by the resolved client + actor — not just the route. Tags set up-front so
+        // even the error paths below carry them.
+        var activity = System.Diagnostics.Activity.Current;
+        activity?.SetTag("muster.api.scope", scope);
+        activity?.SetTag("muster.api.guild_id", guildId.ToString());
+
+        var (error, client, reason) = await ApiAuth.ResolveAsync(http, clients, guildId, scope);
+
+        if (client is not null)
+        {
+            // Add client + actor tags even on rejection (e.g. guild_mismatch) so we can spot a key probing
+            // guilds it doesn't own.
+            activity?.SetTag("muster.api.client_id", client.Id.ToString());
+            activity?.SetTag("muster.api.client_name", client.Name);
+            activity?.SetTag("muster.api.actor_id", client.ActsAsUserId.ToString());
+        }
+
         if (error is not null)
         {
+            activity?.SetTag("muster.api.auth_result", reason);
             return error;
         }
 
         if (requireActor && client!.ActsAsUserId == 0)
         {
+            activity?.SetTag("muster.api.auth_result", "key_not_bound");
             return Results.Json(
                 new { error = "key_not_bound", detail = "This API key has no actor (ActsAsUserId) — it can't perform this action." },
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
+        activity?.SetTag("muster.api.auth_result", "ok");
         http.Items[ClientItemKey] = client;
         return WolverineContinue.Result();
     }

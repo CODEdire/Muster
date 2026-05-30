@@ -13,9 +13,17 @@ namespace Muster.Infrastructure.Messaging;
 /// </summary>
 public static class AuditMiddleware
 {
-    public static async Task After(Result result, Envelope envelope, AuditService audit, CancellationToken ct)
+    /// <summary>
+    /// First parameter is declared as <c>object</c> because some handlers return <c>Result&lt;T&gt;</c>
+    /// (e.g. <c>PostQuestHandler</c> returns <c>Result&lt;Guid&gt;</c>) instead of the plain <c>Result</c>
+    /// most return. JasperFx's codegen does exact-type matching for middleware parameters and won't bind a
+    /// <c>Result&lt;Guid&gt;</c> variable to a <c>Result</c> parameter — even though it's a base type — so
+    /// the parameter is <c>object</c> and we cast back to <c>Result</c> below. The downcast to
+    /// <c>Result&lt;Guid&gt;</c> on the PostQuest branch still works because the runtime type is correct.
+    /// </summary>
+    public static async Task After(object result, Envelope envelope, AuditService audit, CancellationToken ct)
     {
-        if (!result.Ok || envelope.Message is not IGuildCommand command)
+        if (result is not Result r || !r.Ok || envelope.Message is not IGuildCommand command)
         {
             return;
         }

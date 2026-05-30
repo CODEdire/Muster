@@ -1,5 +1,6 @@
 @page "/guilds/{GuildIdRaw}/tracking"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
 @inject ConfigCommandService Config
 @inject TrackedChannelCommandService Channels
@@ -39,39 +40,99 @@ else if (State == AccessState.Ready)
 
     <div class="panel glass">
         <h2>Rewards &amp; privacy</h2>
-        <EditForm class="form-grid" Model="Settings" FormName="tracking-settings" OnValidSubmit="SaveSettingsAsync">
-            <input type="hidden" name="Settings.Submitted" value="1" />
-            <label class="check"><InputCheckbox @bind-Value="Settings.BackgroundOptIn" /> Background tracking is opt-in (members must opt in via <code>/track-privacy</code>)</label>
-            <label class="check"><InputCheckbox @bind-Value="Settings.ApplyGuardsToSessions" /> New sessions pause reward time while muted or alone (default)</label>
-            <label>Session payout currency
-                <InputSelect @bind-Value="Settings.CoinCurrency">
-                    <option value="">— none (POINTS only) —</option>
-                    @foreach (var c in _spendable)
-                    {
-                        <option value="@c.Code">@c.Code — @c.Name</option>
-                    }
-                </InputSelect>
+
+        <fieldset class="field-group">
+            <legend>Privacy</legend>
+            <label class="check">
+                <input type="checkbox" @bind="Settings.BackgroundOptIn" />
+                Background tracking is opt-in (members must opt in via <code>/track-privacy</code>)
             </label>
-            <label>Minutes per coin <InputNumber @bind-Value="Settings.MinutesPerCoin" /> <span class="subtitle">0 = no coin on session close</span></label>
-            <label>Max session hours <InputNumber @bind-Value="Settings.MaxSessionHours" /> <span class="subtitle">auto-close a never-stopped session (0 = off)</span></label>
-            <label>Activity retention (days) <InputNumber @bind-Value="Settings.ActivityRetentionDays" /> <span class="subtitle">prune raw records; rollups kept (0 = forever)</span></label>
-            <label>Min session seconds <InputNumber @bind-Value="Settings.MinTrackedSeconds" /> <span class="subtitle">drop drive-by attendees under this (0 = keep all)</span></label>
-            <label>Multiplier stacking
-                <InputSelect @bind-Value="Settings.Stacking">
-                    <option value="@MultiplierStacking.HighestWins">Highest wins</option>
-                    <option value="@MultiplierStacking.Multiplicative">Multiplicative</option>
-                </InputSelect>
-                <span class="subtitle">how overlapping windows combine</span>
-            </label>
-            <label>Multiplier cap <InputNumber @bind-Value="Settings.Cap" /> <span class="subtitle">clamp the effective factor (0 = no cap)</span></label>
-            <label>Session start bonus <InputNumber @bind-Value="Settings.StartBonus" /> <span class="subtitle">flat POINTS for being there at the start (0 = off)</span></label>
-            <label>Session end bonus <InputNumber @bind-Value="Settings.EndBonus" /> <span class="subtitle">flat POINTS for staying to the end (0 = off)</span></label>
-            <label>Start window (min) <InputNumber @bind-Value="Settings.StartWindow" /> <span class="subtitle">joined within N min of start qualifies</span></label>
-            <label>End window (min) <InputNumber @bind-Value="Settings.EndWindow" /> <span class="subtitle">present within N min of end qualifies</span></label>
-            <label class="check"><InputCheckbox @bind-Value="Settings.MultiplyBonuses" /> Scale presence bonuses by the active multiplier</label>
-            <div class="btn-row"><button type="submit">Save</button></div>
-        </EditForm>
-        <p class="subtitle">Manage reward windows on the <a href="/guilds/@GuildId/multipliers">Multipliers</a> page.</p>
+        </fieldset>
+
+        <fieldset class="field-group">
+            <legend>Session payout</legend>
+            <div class="form-grid">
+                <label>Payout currency
+                    <select @bind="Settings.CoinCurrency">
+                        <option value="">— none (POINTS only) —</option>
+                        @foreach (var c in _spendable)
+                        {
+                            <option value="@c.Code">@c.Code — @c.Name</option>
+                        }
+                    </select>
+                </label>
+                <label>Minutes per coin
+                    <input type="number" @bind="Settings.MinutesPerCoin" />
+                    <span class="subtitle">0 = no coin on session close</span>
+                </label>
+                <label>Session start bonus
+                    <input type="number" @bind="Settings.StartBonus" />
+                    <span class="subtitle">flat POINTS for being there at start (0 = off)</span>
+                </label>
+                <label>Session end bonus
+                    <input type="number" @bind="Settings.EndBonus" />
+                    <span class="subtitle">flat POINTS for staying to end (0 = off)</span>
+                </label>
+                <label>Start window (min)
+                    <input type="number" @bind="Settings.StartWindow" />
+                    <span class="subtitle">joined within N min of start qualifies</span>
+                </label>
+                <label>End window (min)
+                    <input type="number" @bind="Settings.EndWindow" />
+                    <span class="subtitle">present within N min of end qualifies</span>
+                </label>
+                <label class="check">
+                    <input type="checkbox" @bind="Settings.MultiplyBonuses" />
+                    Scale presence bonuses by the active multiplier
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+            <legend>Session controls</legend>
+            <div class="form-grid">
+                <label class="check">
+                    <input type="checkbox" @bind="Settings.ApplyGuardsToSessions" />
+                    New sessions pause reward time while muted or alone
+                </label>
+                <label>Max session hours
+                    <input type="number" @bind="Settings.MaxSessionHours" />
+                    <span class="subtitle">auto-close a never-stopped session (0 = off)</span>
+                </label>
+                <label>Min session seconds
+                    <input type="number" @bind="Settings.MinTrackedSeconds" />
+                    <span class="subtitle">drop drive-by attendees under this (0 = keep all)</span>
+                </label>
+                <label>Activity retention (days)
+                    <input type="number" @bind="Settings.ActivityRetentionDays" />
+                    <span class="subtitle">prune raw records; rollups kept (0 = forever)</span>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+            <legend>Multipliers</legend>
+            <div class="form-grid">
+                <label>Stacking
+                    <select @bind="Settings.Stacking">
+                        <option value="@MultiplierStacking.HighestWins">Highest wins</option>
+                        <option value="@MultiplierStacking.Multiplicative">Multiplicative</option>
+                    </select>
+                    <span class="subtitle">how overlapping windows combine</span>
+                </label>
+                <label>Cap
+                    <input type="number" step="0.1" @bind="Settings.Cap" />
+                    <span class="subtitle">clamp the effective factor (0 = no cap)</span>
+                </label>
+            </div>
+            <p class="subtitle">Manage reward windows on the <a href="/guilds/@GuildId/multipliers">Multipliers</a> page.</p>
+        </fieldset>
+
+        <div class="btn-row">
+            <button type="button" @onclick="SaveSettingsAsync" disabled="@_settingsSaving">
+                @(_settingsSaving ? "Saving…" : "Save settings")
+            </button>
+        </div>
     </div>
 
     <div class="panel glass">
@@ -82,17 +143,51 @@ else if (State == AccessState.Ready)
         }
         else
         {
-            <table class="leaderboard">
-                <thead><tr><th>Kind</th><th>Channel</th><th>Mode</th><th>Rate</th><th>Guards</th></tr></thead>
+            <table class="leaderboard tracked-channels">
+                <thead>
+                    <tr>
+                        <th>Kind</th>
+                        <th>Channel</th>
+                        <th>Mode</th>
+                        <th>Rate</th>
+                        <th>Guards</th>
+                        <th></th>
+                    </tr>
+                </thead>
                 <tbody>
                     @foreach (var c in _channels)
                     {
-                        <tr>
+                        <tr class="@(c.DeletedAt is not null ? "deleted" : "")">
                             <td>@(c.Kind == GuildChannelKind.Voice ? "🔊 Voice" : "💬 Text")</td>
-                            <td>@ChannelLabel(c.ChannelId, c.Name)@(c.DeletedAt is not null ? " ⚠️ deleted" : "")</td>
+                            <td>
+                                @ChannelLabel(c.ChannelId, c.Name)
+                                @if (c.DeletedAt is not null) { <span class="warn-badge">deleted</span> }
+                            </td>
                             <td>@c.Mode</td>
-                            <td>@(c.Kind == GuildChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")@(c.DailyCapPoints > 0 ? $" (cap {c.DailyCapPoints}/day)" : "")</td>
-                            <td>@(c.Kind == GuildChannelKind.Voice ? string.Join(" ", new[] { c.Guards.Unmuted() ? "unmuted" : null, c.Guards.Undeafened() ? "undeafened" : null, c.Guards.NotAlone() ? "not-alone" : null }.Where(x => x != null)) : "—")</td>
+                            <td>
+                                @(c.Kind == GuildChannelKind.Voice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")
+                                @if (c.DailyCapPoints > 0) { <span class="subtitle">cap @c.DailyCapPoints/day</span> }
+                            </td>
+                            <td>
+                                @if (c.Kind == GuildChannelKind.Voice)
+                                {
+                                    <span class="guard-pills">
+                                        @if (c.Guards.Unmuted()) { <span class="pill">unmuted</span> }
+                                        @if (c.Guards.Undeafened()) { <span class="pill">undeafened</span> }
+                                        @if (c.Guards.NotAlone()) { <span class="pill">not-alone</span> }
+                                    </span>
+                                }
+                                else { <span class="subtitle">—</span> }
+                            </td>
+                            <td class="row-actions">
+                                <button type="button" class="btn btn-ghost btn-sm"
+                                        @onclick="() => EditChannel(c)">Edit</button>
+                                <button type="button" class="btn btn-danger btn-sm"
+                                        @onclick="() => RemoveChannelAsync(c.ChannelId)"
+                                        disabled="@(_busyChannelId == c.ChannelId)">
+                                    @(_busyChannelId == c.ChannelId ? "…" : "Remove")
+                                </button>
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -100,90 +195,180 @@ else if (State == AccessState.Ready)
         }
     </div>
 
-    <div class="panel glass">
-        <h2>Add / update a channel</h2>
-        <EditForm class="form-grid" Model="AddChannel" FormName="add-channel" OnValidSubmit="AddChannelAsync">
-            <input type="hidden" name="AddChannel.Submitted" value="1" />
-            @if (_voice.Count > 0 || _text.Count > 0)
-            {
-                <label>Channel
-                    <InputSelect @bind-Value="AddChannel.ChannelId">
-                        <option value="">— select —</option>
-                        @if (_voice.Count > 0)
-                        {
-                            <optgroup label="🔊 Voice">
-                                @foreach (var c in _voice)
-                                {
-                                    <option value="@c.ChannelId">@c.Name</option>
-                                }
-                            </optgroup>
-                        }
-                        @if (_text.Count > 0)
-                        {
-                            <optgroup label="💬 Text">
-                                @foreach (var c in _text)
-                                {
-                                    <option value="@c.ChannelId">#@c.Name</option>
-                                }
-                            </optgroup>
-                        }
-                    </InputSelect>
-                    <span class="subtitle">Kind is detected from the channel.</span>
+    <div class="panel glass" id="add-channel-panel">
+        <h2>@(_editingExistingChannel ? "Update channel" : "Add channel")</h2>
+
+        @if (_voice.Count > 0 || _text.Count > 0)
+        {
+            <label>Channel
+                <select @bind="AddChannel.ChannelId" @bind:after="OnChannelPicked">
+                    <option value="">— select —</option>
+                    @if (_voice.Count > 0)
+                    {
+                        <optgroup label="🔊 Voice">
+                            @foreach (var c in _voice)
+                            {
+                                <option value="@c.ChannelId">@c.Name</option>
+                            }
+                        </optgroup>
+                    }
+                    @if (_text.Count > 0)
+                    {
+                        <optgroup label="💬 Text">
+                            @foreach (var c in _text)
+                            {
+                                <option value="@c.ChannelId">#@c.Name</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+                <span class="subtitle">Kind is detected automatically.</span>
+            </label>
+        }
+        else
+        {
+            <div class="form-grid">
+                <label>Channel id
+                    <input type="text" @bind="AddChannel.ChannelId" />
+                    <span class="subtitle">no synced channels — enter an id</span>
                 </label>
-            }
-            else
-            {
-                <label>Channel id <InputText @bind-Value="AddChannel.ChannelId" /> <span class="subtitle">no synced channels — enter an id</span></label>
                 <label>Kind
-                    <InputSelect @bind-Value="AddChannel.Kind">
+                    <select @bind="AddChannel.Kind">
                         <option value="voice">Voice (reward by minute)</option>
                         <option value="text">Text (stats)</option>
-                    </InputSelect>
+                    </select>
                 </label>
-            }
-            <label>Points per minute <InputNumber @bind-Value="AddChannel.PointsPerMinute" /> <span class="subtitle">voice only</span></label>
-            <label>Daily cap <InputNumber @bind-Value="AddChannel.DailyCap" /> <span class="subtitle">0 = uncapped</span></label>
-            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipMuted" /> Skip muted <span class="subtitle">voice — can't speak (off = count phone-call presence)</span></label>
-            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipDeafened" /> Skip deafened <span class="subtitle">voice — checked out</span></label>
-            <label class="check"><InputCheckbox @bind-Value="AddChannel.SkipAlone" /> Skip when alone <span class="subtitle">voice</span></label>
-            <label>Points per message <InputNumber @bind-Value="AddChannel.PointsPerMessage" /> <span class="subtitle">text reward (0 = stats only)</span></label>
-            <label>Messages per point <InputNumber @bind-Value="AddChannel.MessagesPerPoint" /> <span class="subtitle">text</span></label>
-            <label>Message cooldown (s) <InputNumber @bind-Value="AddChannel.CooldownSeconds" /> <span class="subtitle">text anti-burst</span></label>
-            <div class="btn-row"><button type="submit">Save channel</button></div>
-        </EditForm>
-    </div>
+            </div>
+        }
 
-    @if (_channels.Count > 0)
-    {
-        <div class="panel glass">
-            <h2>Stop monitoring</h2>
-            <EditForm class="form-grid" Model="RemoveChannel" FormName="remove-channel" OnValidSubmit="RemoveChannelAsync">
-                <input type="hidden" name="RemoveChannel.Submitted" value="1" />
-                <label>Channel
-                    <InputSelect @bind-Value="RemoveChannel.ChannelId">
-                        <option value="0">— select —</option>
-                        @foreach (var c in _channels)
-                        {
-                            <option value="@c.ChannelId">@(c.Kind == GuildChannelKind.Voice ? "🔊" : "💬") @ChannelLabel(c.ChannelId, c.Name)</option>
-                        }
-                    </InputSelect>
-                </label>
-                <div class="btn-row"><button type="submit">Remove</button></div>
-            </EditForm>
+        @if (IsVoiceChannel)
+        {
+            <fieldset class="field-group">
+                <legend>🔊 Voice settings</legend>
+                <div class="form-grid">
+                    <label>Points per minute
+                        <input type="number" @bind="AddChannel.PointsPerMinute" />
+                    </label>
+                    <label>Daily cap
+                        <input type="number" @bind="AddChannel.DailyCap" />
+                        <span class="subtitle">0 = uncapped</span>
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" @bind="AddChannel.SkipMuted" />
+                        Skip muted <span class="subtitle">— can't speak (off = count phone-call presence)</span>
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" @bind="AddChannel.SkipDeafened" />
+                        Skip deafened <span class="subtitle">— checked out</span>
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" @bind="AddChannel.SkipAlone" />
+                        Skip when alone
+                    </label>
+                </div>
+            </fieldset>
+        }
+        else if (IsTextChannel)
+        {
+            <fieldset class="field-group">
+                <legend>💬 Text settings</legend>
+                <div class="form-grid">
+                    <label>Points per message
+                        <input type="number" @bind="AddChannel.PointsPerMessage" />
+                        <span class="subtitle">0 = stats only</span>
+                    </label>
+                    <label>Messages per point
+                        <input type="number" @bind="AddChannel.MessagesPerPoint" />
+                    </label>
+                    <label>Cooldown (s)
+                        <input type="number" @bind="AddChannel.CooldownSeconds" />
+                        <span class="subtitle">anti-burst</span>
+                    </label>
+                    <label>Daily cap
+                        <input type="number" @bind="AddChannel.DailyCap" />
+                        <span class="subtitle">0 = uncapped</span>
+                    </label>
+                </div>
+            </fieldset>
+        }
+
+        <div class="btn-row">
+            <button type="button" @onclick="AddChannelAsync" disabled="@_addSaving">
+                @(_addSaving ? "Saving…" : _editingExistingChannel ? "Update channel" : "Save channel")
+            </button>
+            @if (_editingExistingChannel)
+            {
+                <button type="button" class="btn btn-ghost" @onclick="ResetAddForm">Cancel</button>
+            }
         </div>
-    }
+    </div>
 }
 
+<style>
+    .field-group {
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 0.5rem;
+        padding: 0.85rem 1rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .field-group legend {
+        padding: 0 0.5rem;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+    }
+    .field-group > .form-grid { margin-top: 0.25rem; }
+    .field-group > label.check { margin-top: 0.25rem; display: block; }
+
+    .tracked-channels .row-actions { white-space: nowrap; text-align: right; }
+    .tracked-channels .row-actions .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; margin-left: 0.35rem; }
+    .tracked-channels tr.deleted { opacity: 0.55; }
+    .warn-badge {
+        display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.4rem;
+        font-size: 0.7rem; background: rgba(217,119,6,0.2); color: #d97706; border-radius: 0.25rem;
+    }
+    .guard-pills .pill {
+        display: inline-block; padding: 0.05rem 0.4rem; margin-right: 0.25rem;
+        font-size: 0.7rem; background: rgba(74,222,128,0.12); color: #4ade80; border-radius: 0.25rem;
+    }
+</style>
+
 @code {
-    [SupplyParameterFromForm(FormName = "tracking-settings")] private SettingsInput Settings { get; set; } = new();
-    [SupplyParameterFromForm(FormName = "add-channel")] private AddChannelInput AddChannel { get; set; } = new();
-    [SupplyParameterFromForm(FormName = "remove-channel")] private RemoveChannelInput RemoveChannel { get; set; } = new();
+    // TrackingManager + legacy Officer + Admin (implicit) — channel/session config.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private SettingsInput Settings { get; set; } = new();
+    private AddChannelInput AddChannel { get; set; } = new();
 
     private IReadOnlyList<CurrencyInfo> _spendable = [];
     private IReadOnlyList<GuildChannel> _channels = [];
     private IReadOnlyList<GuildChannel> _voice = [];
     private IReadOnlyList<GuildChannel> _text = [];
     private Dictionary<ulong, GuildChannel> _syncedById = new();
+
+    private bool _settingsSaving;
+    private bool _addSaving;
+    private ulong? _busyChannelId;
+    private bool _editingExistingChannel;
+
+    // Derived from the picked ChannelId — drives the voice/text fieldset visibility live. Falls back to the
+    // manual Kind picker when the guild has no synced channels yet (admin enters a raw id).
+    private bool IsVoiceChannel => ResolveKind() == GuildChannelKind.Voice;
+    private bool IsTextChannel => ResolveKind() == GuildChannelKind.Text;
+
+    private GuildChannelKind? ResolveKind()
+    {
+        if (ulong.TryParse(AddChannel.ChannelId, out var id) && _syncedById.TryGetValue(id, out var c))
+        {
+            return c.Kind;
+        }
+        if (_voice.Count == 0 && _text.Count == 0 && !string.IsNullOrEmpty(AddChannel.ChannelId))
+        {
+            return AddChannel.Kind == "text" ? GuildChannelKind.Text : GuildChannelKind.Voice;
+        }
+        return null;
+    }
 
     private string ChannelLabel(ulong channelId, string? storedName)
     {
@@ -202,45 +387,91 @@ else if (State == AccessState.Ready)
         _text = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Text);
         _syncedById = _voice.Concat(_text).ToDictionary(c => c.ChannelId);
 
-        if (string.IsNullOrEmpty(Settings.Submitted))
+        var s = await AdminRead.GetSettingsAsync(GuildId);
+        Settings = new SettingsInput
         {
-            var s = await AdminRead.GetSettingsAsync(GuildId);
-            Settings.BackgroundOptIn = s.BackgroundTrackingOptIn;
-            Settings.ApplyGuardsToSessions = s.ApplyAfkGuardsToSessions;
-            Settings.CoinCurrency = s.SessionCoinCurrencyCode;
-            Settings.MinutesPerCoin = s.MinutesPerCoin;
-            Settings.MaxSessionHours = s.MaxSessionHours;
-            Settings.ActivityRetentionDays = s.ActivityRetentionDays;
-            Settings.MinTrackedSeconds = s.MinTrackedSeconds;
-            Settings.Stacking = s.MultiplierStacking;
-            Settings.Cap = s.MultiplierCap;
-            Settings.StartBonus = s.SessionStartBonus;
-            Settings.EndBonus = s.SessionEndBonus;
-            Settings.StartWindow = s.StartBonusWindowMinutes;
-            Settings.EndWindow = s.EndBonusWindowMinutes;
-            Settings.MultiplyBonuses = s.MultiplyPresenceBonuses;
-        }
+            BackgroundOptIn = s.BackgroundTrackingOptIn,
+            ApplyGuardsToSessions = s.ApplyAfkGuardsToSessions,
+            CoinCurrency = s.SessionCoinCurrencyCode,
+            MinutesPerCoin = s.MinutesPerCoin,
+            MaxSessionHours = s.MaxSessionHours,
+            ActivityRetentionDays = s.ActivityRetentionDays,
+            MinTrackedSeconds = s.MinTrackedSeconds,
+            Stacking = s.MultiplierStacking,
+            Cap = s.MultiplierCap,
+            StartBonus = s.SessionStartBonus,
+            EndBonus = s.SessionEndBonus,
+            StartWindow = s.StartBonusWindowMinutes,
+            EndWindow = s.EndBonusWindowMinutes,
+            MultiplyBonuses = s.MultiplyPresenceBonuses,
+        };
     }
 
     private async Task SaveSettingsAsync()
     {
-        await Config.SetBackgroundOptInAsync(GuildId, Settings.BackgroundOptIn);
-        await Config.SetApplyGuardsToSessionsAsync(GuildId, Settings.ApplyGuardsToSessions);
-        await Config.SetMaxSessionHoursAsync(GuildId, Settings.MaxSessionHours);
-        await Config.SetActivityRetentionAsync(GuildId, Settings.ActivityRetentionDays);
-        await Config.SetMinTrackedSecondsAsync(GuildId, Settings.MinTrackedSeconds);
-        var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
-        await Config.SetMultiplierSettingsAsync(GuildId, Settings.Stacking, Settings.Cap, Settings.StartBonus, Settings.EndBonus, Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses);
+        _settingsSaving = true;
+        StateHasChanged();
+        try
+        {
+            await Config.SetBackgroundOptInAsync(GuildId, Settings.BackgroundOptIn);
+            await Config.SetApplyGuardsToSessionsAsync(GuildId, Settings.ApplyGuardsToSessions);
+            await Config.SetMaxSessionHoursAsync(GuildId, Settings.MaxSessionHours);
+            await Config.SetActivityRetentionAsync(GuildId, Settings.ActivityRetentionDays);
+            await Config.SetMinTrackedSecondsAsync(GuildId, Settings.MinTrackedSeconds);
+            var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
+            await Config.SetMultiplierSettingsAsync(GuildId, Settings.Stacking, Settings.Cap,
+                Settings.StartBonus, Settings.EndBonus, Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses);
 
-        await Audit.RecordTrackingSettingsAsync(GuildId, UserId, new TrackingSettingsPayload(
-            Settings.BackgroundOptIn, Settings.ApplyGuardsToSessions,
-            Settings.CoinCurrency, Settings.MinutesPerCoin, Settings.MaxSessionHours,
-            Settings.ActivityRetentionDays, Settings.MinTrackedSeconds,
-            Settings.Stacking, Settings.Cap,
-            Settings.StartBonus, Settings.EndBonus,
-            Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses));
-        Message = coin.IsError ? coin.Message : "Tracking settings saved.";
-        await LoadAsync();
+            await Audit.RecordTrackingSettingsAsync(GuildId, UserId, new TrackingSettingsPayload(
+                Settings.BackgroundOptIn, Settings.ApplyGuardsToSessions,
+                Settings.CoinCurrency, Settings.MinutesPerCoin, Settings.MaxSessionHours,
+                Settings.ActivityRetentionDays, Settings.MinTrackedSeconds,
+                Settings.Stacking, Settings.Cap,
+                Settings.StartBonus, Settings.EndBonus,
+                Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses));
+
+            Message = coin.IsError ? coin.Message : "Tracking settings saved.";
+        }
+        finally
+        {
+            _settingsSaving = false;
+            await LoadAsync();
+            StateHasChanged();
+        }
+    }
+
+    private void OnChannelPicked()
+    {
+        // After the channel select changes, the conditional voice/text fieldset switches automatically via IsVoiceChannel.
+        // No work needed — Blazor re-renders. Hook left as a marker for any future onSelect side-effects.
+        StateHasChanged();
+    }
+
+    private void EditChannel(GuildChannel c)
+    {
+        // Load the current row's values into the Add/Update form. User then tweaks + clicks Update.
+        AddChannel = new AddChannelInput
+        {
+            ChannelId = c.ChannelId.ToString(),
+            Kind = c.Kind == GuildChannelKind.Text ? "text" : "voice",
+            PointsPerMinute = c.PointsPerMinute,
+            DailyCap = c.DailyCapPoints,
+            SkipMuted = c.Guards.Unmuted(),
+            SkipDeafened = c.Guards.Undeafened(),
+            SkipAlone = c.Guards.NotAlone(),
+            PointsPerMessage = c.PointsPerMessage,
+            MessagesPerPoint = c.MessagesPerPoint,
+            CooldownSeconds = c.MessageCooldownSeconds,
+        };
+        _editingExistingChannel = true;
+        Message = $"Editing {ChannelLabel(c.ChannelId, c.Name)} — adjust values then click Update.";
+    }
+
+    private void ResetAddForm()
+    {
+        AddChannel = new AddChannelInput();
+        _editingExistingChannel = false;
+        Message = null;
     }
 
     private async Task AddChannelAsync()
@@ -251,51 +482,60 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        // Prefer the synced channel's actual kind/name; fall back to the manual Kind picker for unsynced ids.
-        _syncedById.TryGetValue(channelId, out var synced);
-        var isText = synced is not null ? synced.Kind == GuildChannelKind.Text : AddChannel.Kind == "text";
-        var name = synced?.Name;
-
-        var result = isText
-            ? await Channels.SetTextAsync(GuildId, UserId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap, channelName: name)
-            : await Channels.SetVoiceAsync(GuildId, UserId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipDeafened, AddChannel.SkipAlone, channelName: name);
-
-        if (!result.IsError)
+        _addSaving = true;
+        StateHasChanged();
+        try
         {
-            var mode = isText ? TrackedChannelMode.Reward : TrackedChannelMode.Reward;
-            var kind = isText ? GuildChannelKind.Text : GuildChannelKind.Voice;
-            await Audit.RecordTrackChannelAsync(GuildId, UserId, channelId, name, kind, mode);
-        }
+            // Prefer the synced channel's actual kind/name; fall back to the manual Kind picker for unsynced ids.
+            _syncedById.TryGetValue(channelId, out var synced);
+            var isText = synced is not null ? synced.Kind == GuildChannelKind.Text : AddChannel.Kind == "text";
+            var name = synced?.Name;
 
-        Message = result.Message;
-        AddChannel = new AddChannelInput();
-        await LoadAsync();
+            var result = isText
+                ? await Channels.SetTextAsync(GuildId, UserId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap, channelName: name)
+                : await Channels.SetVoiceAsync(GuildId, UserId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap, AddChannel.SkipMuted, AddChannel.SkipDeafened, AddChannel.SkipAlone, channelName: name);
+
+            if (!result.IsError)
+            {
+                var kind = isText ? GuildChannelKind.Text : GuildChannelKind.Voice;
+                await Audit.RecordTrackChannelAsync(GuildId, UserId, channelId, name, kind, TrackedChannelMode.Reward);
+            }
+
+            Message = result.Message;
+            ResetAddForm();
+            await LoadAsync();
+        }
+        finally
+        {
+            _addSaving = false;
+            StateHasChanged();
+        }
     }
 
-    private async Task RemoveChannelAsync()
+    private async Task RemoveChannelAsync(ulong channelId)
     {
-        if (RemoveChannel.ChannelId == 0)
+        _busyChannelId = channelId;
+        StateHasChanged();
+        try
         {
-            Message = "Choose a channel to remove.";
-            return;
+            _syncedById.TryGetValue(channelId, out var synced);
+            var result = await Channels.RemoveAsync(GuildId, UserId, channelId);
+            if (!result.IsError)
+            {
+                await Audit.RecordUntrackChannelAsync(GuildId, UserId, channelId, synced?.Name);
+            }
+            Message = result.Message;
+            await LoadAsync();
         }
-
-        var channelId = RemoveChannel.ChannelId;
-        _syncedById.TryGetValue(channelId, out var synced);
-        var result = await Channels.RemoveAsync(GuildId, UserId, channelId);
-        if (!result.IsError)
+        finally
         {
-            await Audit.RecordUntrackChannelAsync(GuildId, UserId, channelId, synced?.Name);
+            _busyChannelId = null;
+            StateHasChanged();
         }
-
-        Message = result.Message;
-        RemoveChannel = new RemoveChannelInput();
-        await LoadAsync();
     }
 
     public class SettingsInput
     {
-        public string? Submitted { get; set; }
         public bool BackgroundOptIn { get; set; }
         public bool ApplyGuardsToSessions { get; set; }
         public string? CoinCurrency { get; set; }
@@ -314,7 +554,6 @@ else if (State == AccessState.Ready)
 
     public class AddChannelInput
     {
-        public string? Submitted { get; set; }
         public string? ChannelId { get; set; }
         public string Kind { get; set; } = "voice";
         public int PointsPerMinute { get; set; } = 1;
@@ -325,11 +564,5 @@ else if (State == AccessState.Ready)
         public int PointsPerMessage { get; set; }
         public int MessagesPerPoint { get; set; } = 1;
         public int CooldownSeconds { get; set; }
-    }
-
-    public class RemoveChannelInput
-    {
-        public string? Submitted { get; set; }
-        public ulong ChannelId { get; set; }
     }
 }

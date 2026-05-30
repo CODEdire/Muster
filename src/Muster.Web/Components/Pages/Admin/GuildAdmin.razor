@@ -53,6 +53,6 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // Officer is enough to reach the admin hub; individual pages enforce their own level.
-    protected override bool OfficerSufficient => true;
+    // Any staff tier may reach the admin landing; per-page gates enforce the specific level.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.AnyStaff;
 }

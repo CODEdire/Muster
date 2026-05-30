@@ -229,8 +229,9 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // Officer is enough to inspect economy health; the surface is read-only.
-    protected override bool OfficerSufficient => true;
+    // Read-only ledger view — Officer (legacy umbrella) + EconomyManager + Auditor. Admin passes implicitly.
+    protected override GuildAccessTier RequiredAccess =>
+        GuildAccessTier.Officer | GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
 
     private const int PageSize = 25;
     private const int SearchDebounceMs = 350;

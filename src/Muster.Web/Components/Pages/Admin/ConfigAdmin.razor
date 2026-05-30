@@ -1,5 +1,6 @@
 @page "/guilds/{GuildIdRaw}/config"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
 @inject WebAdminService Admin
 @inject ConfigCommandService Config
@@ -22,7 +23,7 @@ else if (State == AccessState.Ready)
         <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
         <h1>Role mapping</h1>
         <p class="subtitle">The guild owner and members with Discord Administrator / Manage&nbsp;Server
-            always have admin access. Grant additional roles below.</p>
+            always have admin access. Grant additional roles below — changes save instantly.</p>
     </div>
 
     @if (Message is not null)
@@ -30,72 +31,96 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    <div class="stat-grid">
-        <div class="stat glass">
-            <div class="label">Admin roles</div>
-            <div class="num">@RoleNames(_mapping?.AdminRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Officer roles <span class="subtitle">(legacy umbrella)</span></div>
-            <div class="num">@RoleNames(_mapping?.OfficerRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Economy manager roles</div>
-            <div class="num">@RoleNames(_mapping?.EconomyManagerRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Event officer roles</div>
-            <div class="num">@RoleNames(_mapping?.EventOfficerRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Tracking manager roles</div>
-            <div class="num">@RoleNames(_mapping?.TrackingManagerRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Quest manager roles</div>
-            <div class="num">@RoleNames(_mapping?.QuestManagerRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Auditor roles <span class="subtitle">(read-only)</span></div>
-            <div class="num">@RoleNames(_mapping?.AuditorRoleIds)</div>
-        </div>
-        <div class="stat glass">
-            <div class="label">Participant roles</div>
-            <div class="num">@(_mapping is { ParticipantRoleIds.Count: 0 } ? "everyone" : RoleNames(_mapping?.ParticipantRoleIds))</div>
-        </div>
-    </div>
-
-    <p class="subtitle">Officer is the legacy umbrella — holders are treated as both economy managers and event
-        officers (back-compat). New servers should map the split roles directly. Auditor grants read-only access
-        to audit log, ledger, and participation reports — no mutating power. Participant roles control who can
-        earn rewards; with none set, everyone participates.</p>
-
-    <div class="panel glass">
-        <h2>Toggle a role</h2>
-        <EditForm class="form-grid" Model="Input" FormName="toggle-role" OnValidSubmit="SubmitAsync">
-            <label>Role
-                <InputSelect @bind-Value="Input.RoleId">
-                    <option value="0">— select —</option>
-                    @foreach (var r in _mapping?.AllRoles ?? [])
-                    {
-                        <option value="@r.RoleId">@r.Name</option>
-                    }
-                </InputSelect>
+    <div class="panel glass role-matrix-panel">
+        <div class="matrix-toolbar">
+            <label class="matrix-search">
+                <span class="material-symbols-outlined">search</span>
+                <input type="text" placeholder="Filter roles…" @bind="_filter" @bind:event="oninput" />
             </label>
-            <label>Mapping
-                <InputSelect @bind-Value="Input.Kind">
-                    <option value="admin">Admin</option>
-                    <option value="officer">Officer (legacy umbrella)</option>
-                    <option value="economy">Economy manager</option>
-                    <option value="event">Event officer</option>
-                    <option value="tracking">Tracking manager</option>
-                    <option value="questmanager">Quest manager</option>
-                    <option value="auditor">Auditor (read-only)</option>
-                    <option value="participant">Participant</option>
-                </InputSelect>
-            </label>
-            <div class="btn-row"><button type="submit">Toggle</button></div>
-        </EditForm>
+            <div class="matrix-counts">
+                @FilteredRoles.Count() of @_roles.Count roles
+            </div>
+        </div>
+
+        @if (_roles.Count == 0)
+        {
+            <p class="subtitle">No roles found for this guild yet — they sync from Discord automatically.</p>
+        }
+        else
+        {
+            <div class="matrix-scroll">
+                <table class="role-matrix">
+                    <thead>
+                        <tr>
+                            <th class="role-col">Discord role</th>
+                            @foreach (var col in Columns)
+                            {
+                                <th class="@(col.Group == "officer" ? "group-col legacy" : "group-col")"
+                                    title="@col.Hint">
+                                    @col.Label
+                                    @if (col.Group == "officer")
+                                    {
+                                        <span class="badge-legacy">legacy</span>
+                                    }
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var role in FilteredRoles)
+                        {
+                            <tr>
+                                <td class="role-col">
+                                    <span class="role-name">@role.Name</span>
+                                    @if (_busy.Contains(role.RoleId))
+                                    {
+                                        <span class="saving">saving…</span>
+                                    }
+                                </td>
+                                @foreach (var col in Columns)
+                                {
+                                    var on = IsGranted(col.Group, role.RoleId);
+                                    // @everyone (role id == guild id) can only be toggled into Participant —
+                                    // the synced GuildMember.RoleIds never includes @everyone (Discord treats it
+                                    // as universal), so allowing it for Admin/Officer/etc. would silently grant
+                                    // nothing while looking on. The IsAdminAsync hierarchy also makes "everyone
+                                    // = admin" never something a real admin actually wants. Lock it down here.
+                                    var isEveryone = role.RoleId == GuildId;
+                                    var locked = isEveryone && col.Group != "participant";
+                                    var busy = _busy.Contains(role.RoleId);
+                                    <td class="cell">
+                                        <label class="toggle @(on ? "on" : "off") @(locked ? "locked" : "")"
+                                               title="@(locked ? $"@everyone can only be used for Participant — pick a real Discord role to grant {col.Label}." : null)">
+                                            <input type="checkbox"
+                                                   checked="@on"
+                                                   disabled="@(busy || locked)"
+                                                   @onchange="() => ToggleAsync(col.Group, role.RoleId)"
+                                                   aria-label="@($"{role.Name} as {col.Label}")" />
+                                            <span class="toggle-pill">
+                                                @if (on) { <span class="check">✓</span> }
+                                                else if (locked) { <span class="lock">—</span> }
+                                            </span>
+                                        </label>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <p class="subtitle matrix-footnote">
+            <b>Participant</b> is the floor — every other mapped role (Admin, Officer, Quests, Economy,
+            Tracking, Events, Auditor) implicitly participates, so a quest manager who can arbitrate a
+            quest can also take one. The Participant column is for non-staff roles you still want to earn
+            rewards. With nothing set (or with <code>@@everyone</code> toggled), everyone participates.
+            <br/>
+            <b>Admin</b> implies every other permission — the guild owner and members with Discord
+            <i>Administrator</i> / <i>Manage&nbsp;Server</i> are always admins even without an explicit
+            mapping. <b>Officer</b> is a legacy umbrella (grants Economy + Event Officer).
+            <b>Auditor</b> is read-only — audit log, ledger, participation reports.
+        </p>
     </div>
 
     <div class="panel glass">
@@ -103,97 +128,191 @@ else if (State == AccessState.Ready)
         <p class="subtitle">How many days of detailed currency-ledger history to keep before older rows are folded
             into carry-forward checkpoints (balances are preserved; only line-item history is compacted). 0 = inherit
             the platform default / keep full history. A platform maximum may cap this.</p>
-        <EditForm class="form-grid" Model="Ledger" FormName="ledger-retention" OnValidSubmit="SaveLedgerAsync">
-            <input type="hidden" name="Ledger.Submitted" value="1" />
-            <label>Retention (days) <InputNumber @bind-Value="Ledger.Days" /> <span class="subtitle">0 = platform default</span></label>
-            <div class="btn-row"><button type="submit">Save retention</button></div>
-        </EditForm>
+        <div class="form-grid">
+            <label>Retention (days)
+                <input type="number" @bind="_ledgerDays" />
+                <span class="subtitle">0 = platform default</span>
+            </label>
+            <div class="btn-row">
+                <button type="button" @onclick="SaveLedgerAsync" disabled="@_ledgerSaving">
+                    @(_ledgerSaving ? "Saving…" : "Save retention")
+                </button>
+            </div>
+        </div>
     </div>
 }
 
-@code {
-    [SupplyParameterFromForm(FormName = "toggle-role")] private ToggleInput Input { get; set; } = new();
-    [SupplyParameterFromForm(FormName = "ledger-retention")] private LedgerInput Ledger { get; set; } = new();
+<style>
+    .role-matrix-panel { overflow: hidden; }
+    .matrix-toolbar {
+        display: flex; gap: 1rem; align-items: center; justify-content: space-between;
+        margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .matrix-search { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 220px; }
+    .matrix-search input { flex: 1; padding: 0.45rem 0.7rem; }
+    .matrix-counts { color: var(--text-muted); font-size: 0.85rem; }
+    .matrix-scroll { overflow-x: auto; }
+    .role-matrix { width: 100%; border-collapse: collapse; }
+    .role-matrix th, .role-matrix td { padding: 0.6rem 0.85rem; text-align: center; vertical-align: middle; }
+    .role-matrix th.role-col, .role-matrix td.role-col {
+        text-align: left; min-width: 220px; position: sticky; left: 0;
+        background: inherit; z-index: 1;
+    }
+    .role-matrix tbody tr { border-top: 1px solid rgba(255,255,255,0.06); }
+    .role-matrix tbody tr:hover { background: var(--surface); }
+    .role-matrix tbody tr:hover td.role-col { background: var(--surface); }
+    .role-matrix th.group-col {
+        min-width: 100px; padding: 0.75rem 0.85rem;
+        font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+        color: var(--text); text-transform: none; letter-spacing: 0;
+    }
+    .role-matrix th.group-col.legacy { color: var(--text-muted); font-style: italic; }
+    .badge-legacy {
+        display: inline-block; margin-left: 0.4rem; padding: 0.15rem 0.5rem;
+        font-size: 0.7rem; background: rgba(217,119,6,0.2); color: #d97706;
+        border-radius: 0.4rem; font-style: normal; font-weight: 500;
+        text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .role-matrix td.cell { padding: 0.4rem 0.5rem; }
 
-    private RoleMappingView? _mapping;
+    /* Custom toggle: wide pill, unmistakable on/off state. Native checkbox is hidden but kept for a11y. */
+    .toggle { display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; user-select: none; }
+    .toggle input[type=checkbox] { position: absolute; opacity: 0; pointer-events: none; }
+    .toggle-pill {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 64px; height: 30px; padding: 0 0.5rem;
+        border-radius: 999px; border: 1.5px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.04); color: var(--text-muted);
+        font-size: 0.85rem; font-weight: 600; line-height: 1;
+        transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.05s;
+    }
+    .toggle:hover .toggle-pill { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.07); }
+    .toggle:active .toggle-pill { transform: scale(0.97); }
+    .toggle.on .toggle-pill {
+        background: rgba(74,222,128,0.22); border-color: #4ade80; color: #4ade80;
+    }
+    .toggle.on:hover .toggle-pill { background: rgba(74,222,128,0.32); }
+    .toggle-pill .check { font-size: 1rem; line-height: 1; }
+    .toggle input:disabled ~ .toggle-pill { opacity: 0.45; cursor: not-allowed; }
+    .toggle input:focus-visible ~ .toggle-pill { outline: 2px solid #4ade80; outline-offset: 2px; }
+    .toggle.locked { cursor: not-allowed; }
+    .toggle.locked .toggle-pill {
+        background: transparent; border-style: dashed; border-color: rgba(255,255,255,0.12);
+        opacity: 0.5; color: var(--text-muted);
+    }
+    .toggle.locked:hover .toggle-pill { background: transparent; border-color: rgba(255,255,255,0.18); }
+    .toggle.locked .lock { font-size: 1rem; line-height: 1; }
+    .role-name { font-weight: 500; }
+    .saving { margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
+    .matrix-footnote { margin-top: 1rem; font-size: 0.85rem; }
+</style>
+
+@code {
+    private List<RoleOption> _roles = [];
+    private Dictionary<string, HashSet<ulong>> _grants = new();
+    private string _filter = string.Empty;
+    private HashSet<ulong> _busy = [];
+    private int _ledgerDays;
+    private bool _ledgerSaving;
+
+    // The 8 mapping groups, in display order. Officer flagged for legacy styling.
+    private static readonly (string Group, string Label, string Hint)[] Columns =
+    [
+        ("admin",         "Admin",       "Full administrative access."),
+        ("officer",       "Officer",     "Legacy umbrella — grants Economy + Event Officer."),
+        ("questmanager",  "Quests",      "Create / review / arbitrate quests."),
+        ("economy",       "Economy",     "Mint, adjust, bulk-move currency."),
+        ("tracking",      "Tracking",    "Open / close sessions, configure channels + multipliers."),
+        ("event",         "Events",      "Create / close event ops."),
+        ("auditor",       "Auditor",     "Read-only access to audit, ledger, participation."),
+        ("participant",   "Participant", "Who can earn rewards. Empty = everyone participates."),
+    ];
 
     protected override async Task LoadAsync()
     {
-        _mapping = await Admin.GetRoleMappingAsync(GuildId);
-
-        if (string.IsNullOrEmpty(Ledger.Submitted))
+        var m = await Admin.GetRoleMappingAsync(GuildId);
+        _roles = m.AllRoles.ToList();
+        _grants = new Dictionary<string, HashSet<ulong>>
         {
-            Ledger.Days = await Admin.GetLedgerRetentionDaysAsync(GuildId);
+            ["admin"]        = m.AdminRoleIds.ToHashSet(),
+            ["officer"]      = m.OfficerRoleIds.ToHashSet(),
+            ["questmanager"] = m.QuestManagerRoleIds.ToHashSet(),
+            ["economy"]      = m.EconomyManagerRoleIds.ToHashSet(),
+            ["tracking"]     = m.TrackingManagerRoleIds.ToHashSet(),
+            ["event"]        = m.EventOfficerRoleIds.ToHashSet(),
+            ["auditor"]      = m.AuditorRoleIds.ToHashSet(),
+            ["participant"]  = m.ParticipantRoleIds.ToHashSet(),
+        };
+        _ledgerDays = await Admin.GetLedgerRetentionDaysAsync(GuildId);
+    }
+
+    private IEnumerable<RoleOption> FilteredRoles =>
+        string.IsNullOrWhiteSpace(_filter)
+            ? _roles
+            : _roles.Where(r => r.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsGranted(string group, ulong roleId) =>
+        _grants.TryGetValue(group, out var set) && set.Contains(roleId);
+
+    private async Task ToggleAsync(string group, ulong roleId)
+    {
+        // Optimistic local flip — UI reacts instantly, we revert if the toggle command errors.
+        var wasGranted = IsGranted(group, roleId);
+        if (wasGranted) { _grants[group].Remove(roleId); }
+        else { _grants[group].Add(roleId); }
+        _busy.Add(roleId);
+        Message = null;
+        StateHasChanged();
+
+        var result = group switch
+        {
+            "admin" => await Config.ToggleAdminRoleAsync(GuildId, roleId),
+            "officer" => await Config.ToggleOfficerRoleAsync(GuildId, roleId),
+            "questmanager" => await Config.ToggleQuestManagerRoleAsync(GuildId, roleId),
+            "economy" => await Config.ToggleEconomyManagerRoleAsync(GuildId, roleId),
+            "tracking" => await Config.ToggleTrackingManagerRoleAsync(GuildId, roleId),
+            "event" => await Config.ToggleEventOfficerRoleAsync(GuildId, roleId),
+            "auditor" => await Config.ToggleAuditorRoleAsync(GuildId, roleId),
+            "participant" => await Config.ToggleParticipantRoleAsync(GuildId, roleId),
+            _ => CommandResult.Error("Unknown group."),
+        };
+
+        _busy.Remove(roleId);
+
+        if (result.IsError)
+        {
+            // Revert optimistic flip on save failure.
+            if (wasGranted) { _grants[group].Add(roleId); }
+            else { _grants[group].Remove(roleId); }
+            Message = await HumanizeAsync(result.Message);
         }
+        else
+        {
+            var roleName = _roles.FirstOrDefault(r => r.RoleId == roleId)?.Name ?? roleId.ToString();
+            await Audit.RecordRoleToggleAsync(GuildId, UserId, group, roleId, roleName, !wasGranted);
+        }
+
+        StateHasChanged();
     }
 
     private async Task SaveLedgerAsync()
     {
-        var result = await Config.SetLedgerRetentionAsync(GuildId, Ledger.Days);
-        if (!result.IsError && result.Value is { } change)
+        _ledgerSaving = true;
+        StateHasChanged();
+        try
         {
-            await Audit.RecordLedgerRetentionAsync(GuildId, UserId, change.OldDays, change.NewDays);
+            var result = await Config.SetLedgerRetentionAsync(GuildId, _ledgerDays);
+            if (!result.IsError && result.Value is { } change)
+            {
+                await Audit.RecordLedgerRetentionAsync(GuildId, UserId, change.OldDays, change.NewDays);
+            }
+            Message = result.Message;
         }
-
-        Message = result.Message;
-        await LoadAsync();
-    }
-
-    private async Task SubmitAsync()
-    {
-        if (Input.RoleId == 0)
+        finally
         {
-            Message = "Please choose a role.";
-            return;
+            _ledgerSaving = false;
+            StateHasChanged();
         }
-
-        var result = Input.Kind switch
-        {
-            "officer" => await Config.ToggleOfficerRoleAsync(GuildId, Input.RoleId),
-            "economy" => await Config.ToggleEconomyManagerRoleAsync(GuildId, Input.RoleId),
-            "event" => await Config.ToggleEventOfficerRoleAsync(GuildId, Input.RoleId),
-            "tracking" => await Config.ToggleTrackingManagerRoleAsync(GuildId, Input.RoleId),
-            "participant" => await Config.ToggleParticipantRoleAsync(GuildId, Input.RoleId),
-            "questmanager" => await Config.ToggleQuestManagerRoleAsync(GuildId, Input.RoleId),
-            "auditor" => await Config.ToggleAuditorRoleAsync(GuildId, Input.RoleId),
-            _ => await Config.ToggleAdminRoleAsync(GuildId, Input.RoleId),
-        };
-
-        if (!result.IsError)
-        {
-            // Reverse "added"/"removed" from the result message — best signal we have without changing the
-            // command service to return a structured outcome. Falls through to legacy details when neither matches.
-            var added = result.Message.Contains("added", StringComparison.OrdinalIgnoreCase);
-            var roleName = _mapping?.AllRoles.FirstOrDefault(r => r.RoleId == Input.RoleId)?.Name ?? Input.RoleId.ToString();
-            // Role toggles affect a Discord role, not a user — no targetUserId. Origin defaults to UI via the host.
-            await Audit.RecordRoleToggleAsync(GuildId, UserId, Input.Kind, Input.RoleId, roleName, added);
-        }
-
-        Message = await HumanizeAsync(result.Message);
-        Input = new ToggleInput();
-        await LoadAsync();
-    }
-
-    private string RoleNames(IReadOnlyList<ulong>? ids)
-    {
-        if (_mapping is null || ids is null || ids.Count == 0)
-        {
-            return "none";
-        }
-
-        var names = ids.Select(id => _mapping.AllRoles.FirstOrDefault(r => r.RoleId == id)?.Name ?? id.ToString());
-        return string.Join(", ", names);
-    }
-
-    public class ToggleInput
-    {
-        public ulong RoleId { get; set; }
-        public string Kind { get; set; } = "admin";
-    }
-
-    public class LedgerInput
-    {
-        public string? Submitted { get; set; }
-        public int Days { get; set; }
     }
 }

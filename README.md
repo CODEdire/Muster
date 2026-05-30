@@ -24,7 +24,7 @@ Blazor SSR · Azure Container Apps · deployed via `azd` + Azure DevOps.
 ```bash
 dotnet build Muster.slnx
 dotnet test  Muster.slnx
-dotnet run --project src/Muster.AppHost   # requires Docker + a Discord token
+dotnet run --project aspire/Muster.AppHost   # requires Docker + a Discord token
 ```
 
 See [docs/local-dev.md](docs/local-dev.md) for setup and secrets.

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <defs><clipPath id="fhex"><polygon points="32,4 56,18 56,46 32,60 8,46 8,18"></polygon></clipPath></defs>
+  <g clip-path="url(#fhex)">
+    <rect x="0" y="0" width="64" height="64" fill="#0b1f48"></rect>
+    <path d="M0 0 H64 V28 L32 14 L0 28 Z" fill="#2563eb"></path>
+    <path d="M0 64 H64 V36 L32 50 L0 36 Z" fill="#2563eb" fill-opacity="0.85"></path>
+    <path d="M 8 46 L 8 18 L 32 32 L 56 18 L 56 46" fill="none" stroke="#000410" stroke-opacity="0.92" stroke-width="13" stroke-linecap="square" stroke-linejoin="miter" stroke-miterlimit="4"></path>
+    <path d="M 8 46 L 8 18 L 32 32 L 56 18 L 56 46" fill="none" stroke="#cfe0f5" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter" stroke-miterlimit="4"></path>
+  </g>
+</svg>

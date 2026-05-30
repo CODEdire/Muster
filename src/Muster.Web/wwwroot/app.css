@@ -138,6 +138,19 @@ body::before {
     font-size: 1.2rem;
     letter-spacing: 0.02em;
     color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    line-height: 0;
+}
+.topbar .brand:hover { text-decoration: none; }
+.brand-lockup { height: 2.1rem; width: auto; display: block; }
+/* Light variant by default; dark variant shows only when data-theme="dark" or OS dark + no explicit light. */
+.brand-lockup-dark { display: none; }
+:root[data-theme="dark"] .brand-lockup-light { display: none; }
+:root[data-theme="dark"] .brand-lockup-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .brand-lockup-light { display: none; }
+    :root:not([data-theme="light"]) .brand-lockup-dark { display: block; }
 }
 .topbar nav {
     margin-left: auto;
@@ -170,6 +183,10 @@ body::before {
     font-size: 0.9rem;
 }
 .footer a { color: var(--text-muted); }
+.footer a:hover { color: var(--text); }
+.footer-brand { font-weight: 600; color: var(--text); }
+.footer-tagline { color: var(--text-muted); }
+.footer-links { margin-left: auto; display: flex; gap: 1rem; }
 
 /* ---- Hero (public) ------------------------------------------------------- */
 .hero { text-align: center; padding: 3rem 1.5rem; }
@@ -574,6 +591,8 @@ table.leaderboard th a { color: var(--text-muted); }
 }
 .sidebar .brand:hover { text-decoration: none; }
 .sidebar .brand-mark { color: var(--accent); }
+.sidebar .brand-mark-img { width: 2rem; height: 2rem; display: block; flex: 0 0 auto; }
+.sidebar .brand-wordmark { letter-spacing: -0.01em; }
 
 .nav-label {
     color: var(--text-muted);
