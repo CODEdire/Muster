@@ -8,12 +8,18 @@ namespace Muster.Contracts;
 
 /// <summary>CQRS command to mint a currency (by code) to a member. Returns <see cref="CurrencyChangeResult"/>.
 /// <paramref name="ExternalId"/> (optional) makes the mint idempotent: a connector that retries the same delivery
-/// won't double-credit (deduped via the ledger's (SourceType, SourceId) unique key).</summary>
-public record MintCurrency(ulong GuildId, string CurrencyCode, ulong UserId, long Amount, string Reason, string? ExternalId = null);
+/// won't double-credit (deduped via the ledger's (SourceType, SourceId) unique key).
+/// <paramref name="ActorId"/> is the admin actor responsible for this delivery — set from the API key's bound
+/// actor; <c>0</c> reserved for internal/system mints (which currently call <c>ICurrencyService</c> directly,
+/// not this command). The audit middleware records the actor on success.</summary>
+public record MintCurrency(
+    ulong GuildId, ulong ActorId, string CurrencyCode, ulong UserId, long Amount, string Reason, string? ExternalId = null) : IGuildCommand;
 
 /// <summary>CQRS command to spend a currency (by code) from a member. Overdraft-checked per currency mode.
-/// <paramref name="ExternalId"/> (optional) makes the spend idempotent for retried connector deliveries.</summary>
-public record SpendCurrency(ulong GuildId, string CurrencyCode, ulong UserId, long Amount, string Reason, string? ExternalId = null);
+/// <paramref name="ExternalId"/> (optional) makes the spend idempotent for retried connector deliveries.
+/// <paramref name="ActorId"/> is the admin actor responsible for this delivery (see <see cref="MintCurrency"/>).</summary>
+public record SpendCurrency(
+    ulong GuildId, ulong ActorId, string CurrencyCode, ulong UserId, long Amount, string Reason, string? ExternalId = null) : IGuildCommand;
 
 /// <summary>Result of a mint/spend command. <see cref="Status"/> is a stable string (Ok / CurrencyNotFound / InsufficientFunds).</summary>
 public record CurrencyChangeResult(bool Success, string Status, long Balance);

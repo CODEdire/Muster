@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 120" width="420" height="120">
+  <defs></defs>
+  <svg x="0" y="0" width="120" height="120" viewBox="0 0 64 64">  <defs>
+    <linearGradient id="lhlmetal" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"></stop>
+      <stop offset="28%" stop-color="#f0f6ff"></stop>
+      <stop offset="55%" stop-color="#b5d0ee"></stop>
+      <stop offset="78%" stop-color="#7c9dc8"></stop>
+      <stop offset="100%" stop-color="#4d75a8"></stop>
+    </linearGradient>
+    <linearGradient id="lhlhl" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"></stop>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.35"></stop>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"></stop>
+    </linearGradient>
+    <clipPath id="lhlhex"><polygon points="32,4 56,18 56,46 32,60 8,46 8,18"></polygon></clipPath>
+  </defs>
+  <g clip-path="url(#lhlhex)">
+    <rect x="0" y="0" width="64" height="64" fill="#0b1f48"></rect>
+    <path d="M0 0 H64 V28 L32 14 L0 28 Z" fill="#2563eb"></path>
+    <path d="M0 64 H64 V36 L32 50 L0 36 Z" fill="#2563eb" fill-opacity="0.85"></path>
+    <path d="M 8 46 L 8 18 L 32 32 L 56 18 L 56 46" fill="none" stroke="#000410" stroke-opacity="0.92" stroke-width="13" stroke-linecap="square" stroke-linejoin="miter" stroke-miterlimit="4"></path>
+    <path d="M 8 46 L 8 18 L 32 32 L 56 18 L 56 46" fill="none" stroke="url(#lhlmetal)" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter" stroke-miterlimit="4"></path>
+    <path d="M 8 46 L 8 18 L 32 32 L 56 18 L 56 46" fill="none" stroke="url(#lhlhl)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3.8)"></path>
+  </g></svg>
+  <text x="132" y="76" font-family="Geist, system-ui, sans-serif" font-weight="700" font-size="58" letter-spacing="-2.4" fill="#eaf3ff">Muster</text>
+</svg>

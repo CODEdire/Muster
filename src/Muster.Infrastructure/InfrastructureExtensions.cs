@@ -1,5 +1,10 @@
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Muster.Infrastructure.Messaging;
 using Muster.Persistence;
 using Microsoft.Extensions.Hosting;
 using Muster.Infrastructure.Commands;
@@ -119,18 +124,82 @@ public static class InfrastructureExtensions
     }
 
     /// <summary>
-    /// Registers Data Protection (key ring persisted to the DB, shared via a fixed application name) + the connector
-    /// secret protector. Call only from hosts that read/write connector secrets — <b>web and bot</b> — which start
-    /// after migrations (the key ring is read at startup, so the <c>DataProtectionKeys</c> table must already exist).
-    /// The migration host deliberately omits it.
+    /// Adds Muster's shared readiness health checks: EF DbContext can-connect + Wolverine runtime started.
+    /// Both tagged <c>ready</c> so they gate the <c>/health</c> endpoint, not <c>/alive</c> — see
+    /// <c>docs/observability.md</c> "Health checks" for the live/ready split + ACA probe semantics.
+    ///
+    /// <para>Call from web + bot Program.cs (NOT migrations — that host shouldn't expose readiness probes
+    /// at all, it's a one-shot job).</para>
+    /// </summary>
+    public static TBuilder AddMusterSharedHealthChecks<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
+    {
+        builder.Services.AddHealthChecks()
+            // EF Core CanConnectAsync against the live SQL connection. Cheap (one round-trip), no schema
+            // read — Aspire's auto-added SQL Server check probes the server, this one probes the database
+            // (catches "server reachable but our DB credential expired").
+            .AddDbContextCheck<MusterDbContext>(
+                name: "musterdb",
+                failureStatus: HealthStatus.Unhealthy,
+                tags: ["ready"])
+            // Wolverine runtime — Started flag flips true after every endpoint + listener + policy is in
+            // place. See WolverineRuntimeHealthCheck for why this is intentionally I/O-free.
+            .AddCheck<WolverineRuntimeHealthCheck>(
+                name: "wolverine",
+                failureStatus: HealthStatus.Unhealthy,
+                tags: ["ready"]);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers Data Protection + the connector secret protector. Call only from hosts that read/write
+    /// connector secrets — <b>web and bot</b> — which start after migrations. The migration host omits it.
+    ///
+    /// <para><b>Publish path</b> (Azure): key ring persisted to the Blob container behind the
+    /// <c>ConnectionStrings:blobs</c> URI (Aspire's <c>AddMusterDataProtectionStorage</c>) and each entry
+    /// wrapped at rest by the KV RSA key at <c>{ConnectionStrings:kv}/keys/{DataProtection:WrapKeyName}</c>.
+    /// Workload identity covers both via <c>DefaultAzureCredential</c> — no secrets in config.</para>
+    ///
+    /// <para><b>Run path</b> (local): the Azure URIs aren't published in run mode, so falls back to the
+    /// previous SQL-backed key ring. Keeps the inner loop offline-friendly.</para>
+    ///
+    /// <para>App name pinned to <c>Muster</c> so keys are shared across hosts (web ↔ bot must round-trip
+    /// the same connector secrets).</para>
     /// </summary>
     public static TBuilder AddMusterConnectorProtection<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
     {
         builder.Services.AddSingleton<Connectors.IConnectorSecretProtector, Connectors.ConnectorSecretProtector>();
-        builder.Services.AddDataProtection()
-            .PersistKeysToDbContext<MusterDbContext>()
-            .SetApplicationName("Muster");
+
+        var dp = builder.Services.AddDataProtection().SetApplicationName("Muster");
+
+        // Aspire publishes the DP-keys container URI under ConnectionStrings:dpkeys and the Key Vault URI
+        // under ConnectionStrings:kv. Container name + wrap key name come through env from AppHost.
+        var containerName = builder.Configuration["DataProtection:Container"];
+        var dpContainerUri = builder.Configuration.GetConnectionString(containerName ?? "dpkeys");
+        var keyVaultUri = builder.Configuration.GetConnectionString("kv");
+        var wrapKeyName = builder.Configuration["DataProtection:WrapKeyName"];
+
+        if (!string.IsNullOrWhiteSpace(dpContainerUri)
+            && !string.IsNullOrWhiteSpace(keyVaultUri)
+            && !string.IsNullOrWhiteSpace(wrapKeyName))
+        {
+            // Azure path — Blob for storage, KV for at-rest wrap. DefaultAzureCredential picks up the
+            // workload identity in Container Apps (managed identity) and dev cred locally if ever used.
+            var credential = new DefaultAzureCredential();
+            var keyBlob = new BlobContainerClient(new Uri(dpContainerUri), credential)
+                .GetBlobClient("keys.xml");
+            dp.PersistKeysToAzureBlobStorage(keyBlob);
+
+            var keyIdentifier = new Uri($"{keyVaultUri.TrimEnd('/')}/keys/{wrapKeyName}");
+            dp.ProtectKeysWithAzureKeyVault(keyIdentifier, credential);
+        }
+        else
+        {
+            // Local fallback — key ring persisted to SQL. Same shape as the pre-Azure-DP setup.
+            dp.PersistKeysToDbContext<MusterDbContext>();
+        }
 
         return builder;
     }

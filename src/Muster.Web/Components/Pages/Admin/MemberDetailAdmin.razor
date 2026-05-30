@@ -418,7 +418,8 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    protected override bool OfficerSufficient => true;
+    // Officer (legacy umbrella) + EconomyManager — page hosts award/adjust which is economy staff work.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.Officer | GuildAccessTier.EconomyManager;
 
     [Parameter] public string UserIdRaw { get; set; } = "";
     private ulong UserIdParsed => ulong.TryParse(UserIdRaw, out var v) ? v : 0;

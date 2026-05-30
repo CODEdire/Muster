@@ -1,5 +1,6 @@
 @page "/guilds/{GuildIdRaw}/multipliers"
 @layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
 @inject RewardMultiplierCommandService Mults
 @inject WebAdminService AdminRead
@@ -25,7 +26,8 @@ else if (State == AccessState.Ready)
     <div class="page-head">
         <a class="back-link" href="/guilds/@GuildId/tracking">← Tracking</a>
         <h1>Reward multipliers</h1>
-        <p class="subtitle">Boost (or dampen) participation rewards during set windows, schedules, or for roles. Stacking &amp; cap are set on the <a href="/guilds/@GuildId/tracking">Tracking</a> page.</p>
+        <p class="subtitle">Boost (or dampen) participation rewards during set windows, schedules, or for roles.
+            Stacking &amp; cap are on the <a href="/guilds/@GuildId/tracking">Tracking</a> page.</p>
     </div>
 
     @if (Message is not null)
@@ -41,26 +43,35 @@ else if (State == AccessState.Ready)
         }
         else
         {
-            <table class="leaderboard">
-                <thead><tr><th>Name</th><th>×</th><th>Kind</th><th>When</th><th>Applies to</th><th>Conditions</th><th>State</th><th></th></tr></thead>
+            <table class="leaderboard mult-table">
+                <thead>
+                    <tr>
+                        <th>Name</th><th>×</th><th>Kind</th><th>When</th>
+                        <th>Applies to</th><th>Conditions</th><th>State</th><th></th>
+                    </tr>
+                </thead>
                 <tbody>
                     @foreach (var m in _multipliers)
                     {
-                        <tr>
+                        <tr class="@(m.Enabled ? "" : "off")">
                             <td>@m.Name</td>
-                            <td>@m.Factor.ToString("0.##")</td>
+                            <td class="factor">×@m.Factor.ToString("0.##")</td>
                             <td>@m.Kind</td>
                             <td>@When(m)</td>
-                            <td>@ScopeLabel(m.Scope)</td>
+                            <td><span class="scope-pills">@ScopePills(m.Scope)</span></td>
                             <td>@Conditions(m)</td>
                             <td>@(m.Enabled ? "🟢 on" : "⚪ off")</td>
                             <td class="row-actions">
-                                <EditForm Model="_marker" FormName="@($"toggle-{m.Id}")" OnValidSubmit="() => ToggleAsync(m.Id, !m.Enabled)" Enhance>
-                                    <button type="submit" class="btn btn-sm btn-ghost">@(m.Enabled ? "Disable" : "Enable")</button>
-                                </EditForm>
-                                <EditForm Model="_marker" FormName="@($"remove-{m.Id}")" OnValidSubmit="() => RemoveAsync(m.Id)" Enhance>
-                                    <button type="submit" class="btn btn-sm btn-danger">Remove</button>
-                                </EditForm>
+                                <button type="button" class="btn btn-sm btn-ghost"
+                                        @onclick="() => ToggleAsync(m.Id, !m.Enabled)"
+                                        disabled="@(_busyId == m.Id)">
+                                    @(m.Enabled ? "Disable" : "Enable")
+                                </button>
+                                <button type="button" class="btn btn-sm btn-danger"
+                                        @onclick="() => RemoveAsync(m.Id)"
+                                        disabled="@(_busyId == m.Id)">
+                                    @(_busyId == m.Id ? "…" : "Remove")
+                                </button>
                             </td>
                         </tr>
                     }
@@ -71,100 +82,255 @@ else if (State == AccessState.Ready)
 
     <div class="panel glass">
         <h2>Add a multiplier</h2>
-        <EditForm class="form-grid" Model="Add" FormName="add-multiplier" OnValidSubmit="AddAsync" Enhance>
-            <input type="hidden" name="Add.Submitted" value="1" />
-            <label>Name <InputText @bind-Value="Add.Name" placeholder="e.g. Friday raid ×2" /></label>
-            <label>Factor <InputNumber @bind-Value="Add.Factor" step="0.1" /> <span class="subtitle">&gt;1 boosts, &lt;1 dampens</span></label>
-            <label>Kind
-                <InputSelect @bind-Value="Add.Kind">
-                    <option value="oneoff">One-off window</option>
-                    <option value="recurring">Recurring weekly</option>
-                    <option value="role">Role (always on)</option>
-                </InputSelect>
+
+        <div class="kind-picker">
+            <button type="button" class="kind-btn @(Add.Kind == "oneoff" ? "active" : "")"
+                    @onclick='() => Add.Kind = "oneoff"'>
+                <span class="material-symbols-outlined">event</span>
+                One-off window
+                <span class="kind-desc">a single start → end</span>
+            </button>
+            <button type="button" class="kind-btn @(Add.Kind == "recurring" ? "active" : "")"
+                    @onclick='() => Add.Kind = "recurring"'>
+                <span class="material-symbols-outlined">repeat</span>
+                Recurring weekly
+                <span class="kind-desc">days + time of day</span>
+            </button>
+            <button type="button" class="kind-btn @(Add.Kind == "role" ? "active" : "")"
+                    @onclick='() => Add.Kind = "role"'>
+                <span class="material-symbols-outlined">groups</span>
+                Role (always on)
+                <span class="kind-desc">applies while a member holds the role</span>
+            </button>
+        </div>
+
+        <div class="form-grid">
+            <label>Name
+                <input type="text" @bind="Add.Name" placeholder="e.g. Friday raid ×2" />
             </label>
-            <fieldset class="check-group">
-                <legend>Applies to</legend>
-                <label class="check"><InputCheckbox @bind-Value="Add.ScopeVoice" /> Background voice</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.ScopeMessages" /> Messages</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.ScopeSessions" /> Sessions</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.ScopeQuests" /> Quests</label>
+            <label>Factor
+                <input type="number" step="0.1" @bind="Add.Factor" />
+                <span class="subtitle">&gt;1 boosts, &lt;1 dampens</span>
+            </label>
+        </div>
+
+        <fieldset class="field-group">
+            <legend>Applies to</legend>
+            <div class="scope-buttons">
+                <button type="button" class="scope-btn @(Add.ScopeVoice ? "active" : "")"
+                        @onclick="() => Add.ScopeVoice = !Add.ScopeVoice">🎤 Background voice</button>
+                <button type="button" class="scope-btn @(Add.ScopeMessages ? "active" : "")"
+                        @onclick="() => Add.ScopeMessages = !Add.ScopeMessages">💬 Messages</button>
+                <button type="button" class="scope-btn @(Add.ScopeSessions ? "active" : "")"
+                        @onclick="() => Add.ScopeSessions = !Add.ScopeSessions">📅 Sessions</button>
+                <button type="button" class="scope-btn @(Add.ScopeQuests ? "active" : "")"
+                        @onclick="() => Add.ScopeQuests = !Add.ScopeQuests">⚔️ Quests</button>
+            </div>
+        </fieldset>
+
+        @if (Add.Kind == "oneoff")
+        {
+            <fieldset class="field-group">
+                <legend>One-off window <span class="subtitle">(guild time: @_zoneId)</span></legend>
+                <div class="form-grid">
+                    <label>Start
+                        <input type="datetime-local" @bind="Add.StartLocal" />
+                    </label>
+                    <label>End
+                        <input type="datetime-local" @bind="Add.EndLocal" />
+                    </label>
+                </div>
             </fieldset>
-
-            <fieldset class="check-group">
-                <legend>Conditions (one-off / recurring windows only; 0 = none)</legend>
-                <label>Min people in channel <InputNumber @bind-Value="Add.MinPeople" min="0" /></label>
-                <label>Min minutes channel active <InputNumber @bind-Value="Add.MinMinutes" min="0" /></label>
-                <span class="subtitle">Channel-wide: the rule only applies while the voice channel has at least this many people and has been continuously occupied this long (resets when it empties). Ignored for Messages/Quests.</span>
-            </fieldset>
-
-            <label>One-off: start <InputText type="datetime-local" @bind-Value="Add.StartLocal" /> <span class="subtitle">guild time (@_zoneId)</span></label>
-            <label>One-off: end <InputText type="datetime-local" @bind-Value="Add.EndLocal" /></label>
-
-            <fieldset class="check-group">
-                <legend>Recurring days (guild time)</legend>
-                <label class="check"><InputCheckbox @bind-Value="Add.Sun" /> Sun</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.Mon" /> Mon</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.Tue" /> Tue</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.Wed" /> Wed</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.Thu" /> Thu</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.Fri" /> Fri</label>
-                <label class="check"><InputCheckbox @bind-Value="Add.Sat" /> Sat</label>
-            </fieldset>
-            <label>Recurring: from <InputText type="time" @bind-Value="Add.StartTime" /></label>
-            <label>Recurring: to <InputText type="time" @bind-Value="Add.EndTime" /> <span class="subtitle">may wrap past midnight</span></label>
-
-            <label>Role
-                <InputSelect @bind-Value="Add.RoleId">
-                    <option value="0">— select —</option>
-                    @foreach (var r in _roles)
+        }
+        else if (Add.Kind == "recurring")
+        {
+            <fieldset class="field-group">
+                <legend>Recurring schedule <span class="subtitle">(guild time: @_zoneId)</span></legend>
+                <div class="day-picker">
+                    @foreach (var d in DayPills)
                     {
-                        <option value="@r.RoleId">@r.Name</option>
+                        <button type="button" class="day-pill @(d.GetVal() ? "active" : "")"
+                                @onclick="() => d.Toggle()">
+                            @d.Label
+                        </button>
                     }
-                </InputSelect>
-            </label>
+                </div>
+                <div class="form-grid">
+                    <label>From
+                        <input type="time" @bind="Add.StartTime" />
+                    </label>
+                    <label>To
+                        <input type="time" @bind="Add.EndTime" />
+                        <span class="subtitle">may wrap past midnight</span>
+                    </label>
+                </div>
+            </fieldset>
+        }
+        else if (Add.Kind == "role")
+        {
+            <fieldset class="field-group">
+                <legend>Role</legend>
+                <label>Discord role
+                    <select @bind="Add.RoleId">
+                        <option value="0">— select —</option>
+                        @foreach (var r in _roles)
+                        {
+                            <option value="@r.RoleId">@r.Name</option>
+                        }
+                    </select>
+                </label>
+            </fieldset>
+        }
 
-            <div class="btn-row"><button type="submit">Add multiplier</button></div>
-        </EditForm>
+        @if (Add.Kind != "role")
+        {
+            <fieldset class="field-group">
+                <legend>Conditions <span class="subtitle">(channel-wide; 0 = none)</span></legend>
+                <div class="form-grid">
+                    <label>Min people in channel
+                        <input type="number" min="0" @bind="Add.MinPeople" />
+                    </label>
+                    <label>Min minutes channel active
+                        <input type="number" min="0" @bind="Add.MinMinutes" />
+                    </label>
+                </div>
+                <p class="subtitle">Only applies while the voice channel has at least this many people AND has been
+                    continuously occupied this long. Ignored for Messages / Quests.</p>
+            </fieldset>
+        }
+
+        <div class="preview-box">
+            <span class="material-symbols-outlined">visibility</span>
+            <span><b>When this fires:</b> @PreviewWhen()</span>
+        </div>
+
+        <div class="btn-row">
+            <button type="button" @onclick="AddAsync" disabled="@_saving">
+                @(_saving ? "Saving…" : "Add multiplier")
+            </button>
+            <button type="button" class="btn btn-ghost" @onclick="ResetForm">Reset</button>
+        </div>
     </div>
 }
 
-@code {
-    [SupplyParameterFromForm(FormName = "add-multiplier")] private AddInput Add { get; set; } = new();
+<style>
+    .field-group { border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem;
+        padding: 0.85rem 1rem 1rem; margin-bottom: 1rem; }
+    .field-group legend { padding: 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
+        letter-spacing: 0.05em; color: var(--text-muted); }
 
-    private readonly object _marker = new();
+    .kind-picker { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        margin-bottom: 1.25rem; }
+    .kind-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem;
+        padding: 0.85rem 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 0.5rem; color: var(--text); cursor: pointer; transition: all 0.1s; text-align: left; }
+    .kind-btn:hover { background: rgba(255,255,255,0.06); }
+    .kind-btn.active { background: rgba(74,222,128,0.1); border-color: #4ade80; color: #4ade80; }
+    .kind-btn .material-symbols-outlined { font-size: 1.4rem; }
+    .kind-btn .kind-desc { font-size: 0.75rem; color: var(--text-muted); font-weight: normal; }
+    .kind-btn.active .kind-desc { color: rgba(74,222,128,0.7); }
+
+    .scope-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .scope-btn { padding: 0.4rem 0.85rem; background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; color: var(--text);
+        cursor: pointer; transition: all 0.1s; font-size: 0.85rem; }
+    .scope-btn:hover { background: rgba(255,255,255,0.06); }
+    .scope-btn.active { background: rgba(74,222,128,0.15); border-color: #4ade80; color: #4ade80; }
+
+    .day-picker { display: flex; gap: 0.4rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .day-pill { width: 3rem; padding: 0.45rem 0; background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem; color: var(--text);
+        cursor: pointer; text-align: center; font-size: 0.85rem; transition: all 0.1s; }
+    .day-pill:hover { background: rgba(255,255,255,0.06); }
+    .day-pill.active { background: rgba(96,165,250,0.15); border-color: #60a5fa; color: #60a5fa; font-weight: 600; }
+
+    .preview-box { display: flex; gap: 0.6rem; align-items: flex-start;
+        background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.3);
+        border-radius: 0.5rem; padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.9rem; }
+    .preview-box .material-symbols-outlined { color: #60a5fa; }
+
+    .scope-pills .pill { display: inline-block; padding: 0.05rem 0.4rem; margin-right: 0.25rem;
+        font-size: 0.7rem; background: rgba(74,222,128,0.12); color: #4ade80; border-radius: 0.25rem; }
+    .mult-table tr.off { opacity: 0.6; }
+    .mult-table .factor { font-weight: 600; }
+    .mult-table .row-actions { white-space: nowrap; text-align: right; }
+    .mult-table .row-actions .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; margin-left: 0.35rem; }
+</style>
+
+@code {
+    // TrackingManager + legacy Officer + Admin (implicit) — multipliers govern tracking rewards.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private AddInput Add { get; set; } = new();
+
     private IReadOnlyList<RewardMultiplier> _multipliers = [];
     private IReadOnlyList<RoleOption> _roles = [];
     private string _zoneId = "UTC";
+
+    private bool _saving;
+    private Guid? _busyId;
+
+    // Day pills wired to per-day bools on AddInput. Order matches Discord/ISO (Sun..Sat).
+    private List<DayPill> DayPills = new();
 
     protected override async Task LoadAsync()
     {
         _multipliers = await Mults.ListAsync(GuildId);
         _roles = await AdminRead.GetRolesAsync(GuildId);
         _zoneId = await Guilds.GetGuildZoneIdAsync(GuildId) ?? "UTC";
+
+        DayPills =
+        [
+            new("Sun", () => Add.Sun, v => Add.Sun = v),
+            new("Mon", () => Add.Mon, v => Add.Mon = v),
+            new("Tue", () => Add.Tue, v => Add.Tue = v),
+            new("Wed", () => Add.Wed, v => Add.Wed = v),
+            new("Thu", () => Add.Thu, v => Add.Thu = v),
+            new("Fri", () => Add.Fri, v => Add.Fri = v),
+            new("Sat", () => Add.Sat, v => Add.Sat = v),
+        ];
     }
 
     private async Task ToggleAsync(Guid id, bool enabled)
     {
-        var r = await Mults.SetEnabledAsync(GuildId, UserId, id, enabled);
-        if (!r.IsError) await Audit.RecordMultiplierToggleAsync(GuildId, UserId, id, enabled);
-        Message = r.Message;
-        await LoadAsync();
+        _busyId = id;
+        StateHasChanged();
+        try
+        {
+            var r = await Mults.SetEnabledAsync(GuildId, UserId, id, enabled);
+            if (!r.IsError) { await Audit.RecordMultiplierToggleAsync(GuildId, UserId, id, enabled); }
+            Message = r.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busyId = null;
+            StateHasChanged();
+        }
     }
 
     private async Task RemoveAsync(Guid id)
     {
-        var removed = _multipliers.FirstOrDefault(m => m.Id == id);
-        var r = await Mults.RemoveAsync(GuildId, UserId, id);
-        if (!r.IsError)
+        _busyId = id;
+        StateHasChanged();
+        try
         {
-            await Audit.RecordMultiplierRemovedAsync(
-                GuildId, UserId, id,
-                removed?.Name ?? "",
-                removed?.Factor ?? 0,
-                removed?.Scope ?? MultiplierScope.None);
+            var removed = _multipliers.FirstOrDefault(m => m.Id == id);
+            var r = await Mults.RemoveAsync(GuildId, UserId, id);
+            if (!r.IsError)
+            {
+                await Audit.RecordMultiplierRemovedAsync(
+                    GuildId, UserId, id, removed?.Name ?? "",
+                    removed?.Factor ?? 0, removed?.Scope ?? MultiplierScope.None);
+            }
+            Message = r.Message;
+            await LoadAsync();
         }
-        Message = r.Message;
-        await LoadAsync();
+        finally
+        {
+            _busyId = null;
+            StateHasChanged();
+        }
     }
 
     private async Task AddAsync()
@@ -174,46 +340,140 @@ else if (State == AccessState.Ready)
             | (Add.ScopeSessions ? MultiplierScope.Sessions : 0)
             | (Add.ScopeQuests ? MultiplierScope.Quests : 0);
 
-        CommandResult<Guid> result;
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            CommandResult<Guid> result;
+            switch (Add.Kind)
+            {
+                case "recurring":
+                    if (Add.StartTime is not { } st || Add.EndTime is not { } et)
+                    {
+                        Message = "Enter valid start/end times.";
+                        return;
+                    }
+                    var days = (Add.Sun ? WeekDays.Sunday : 0) | (Add.Mon ? WeekDays.Monday : 0) | (Add.Tue ? WeekDays.Tuesday : 0)
+                        | (Add.Wed ? WeekDays.Wednesday : 0) | (Add.Thu ? WeekDays.Thursday : 0) | (Add.Fri ? WeekDays.Friday : 0) | (Add.Sat ? WeekDays.Saturday : 0);
+                    if (days == 0)
+                    {
+                        Message = "Pick at least one day.";
+                        return;
+                    }
+                    result = await Mults.AddRecurringAsync(GuildId, UserId, Add.Name, Add.Factor, scope, days, st, et, minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
+                    break;
+
+                case "role":
+                    if (Add.RoleId == 0)
+                    {
+                        Message = "Pick a role.";
+                        return;
+                    }
+                    result = await Mults.AddRoleAsync(GuildId, UserId, Add.Name, Add.Factor, scope, Add.RoleId);
+                    break;
+
+                default: // one-off
+                    if (Add.StartLocal is not { } sLocal || Add.EndLocal is not { } eLocal)
+                    {
+                        Message = "Enter valid start/end date-times.";
+                        return;
+                    }
+                    result = await Mults.AddOneOffAsync(GuildId, UserId, Add.Name, Add.Factor, scope, ToUtc(sLocal), ToUtc(eLocal), minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
+                    break;
+            }
+
+            if (!result.IsError)
+            {
+                await Audit.RecordMultiplierAddedAsync(GuildId, UserId, result.Value, Add.Name ?? "", Add.Factor, scope);
+                ResetForm();
+            }
+            Message = result.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ResetForm()
+    {
+        Add = new AddInput();
+        // Rebuild day pills bound to the new Add instance.
+        DayPills =
+        [
+            new("Sun", () => Add.Sun, v => Add.Sun = v),
+            new("Mon", () => Add.Mon, v => Add.Mon = v),
+            new("Tue", () => Add.Tue, v => Add.Tue = v),
+            new("Wed", () => Add.Wed, v => Add.Wed = v),
+            new("Thu", () => Add.Thu, v => Add.Thu = v),
+            new("Fri", () => Add.Fri, v => Add.Fri = v),
+            new("Sat", () => Add.Sat, v => Add.Sat = v),
+        ];
+    }
+
+    // Plain-English summary of the current Add form — live-updates as the user types so they see the effective
+    // rule before clicking save.
+    private string PreviewWhen()
+    {
+        var scope = ScopeWordsForPreview();
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"×{Add.Factor:0.##} on {scope}");
+
         switch (Add.Kind)
         {
-            case "recurring":
-                if (!TimeOnly.TryParse(Add.StartTime, out var st) || !TimeOnly.TryParse(Add.EndTime, out var et))
+            case "oneoff":
+                if (Add.StartLocal is { } s && Add.EndLocal is { } e)
                 {
-                    Message = "Enter valid start/end times.";
-                    return;
+                    sb.Append($" from {s:yyyy-MM-dd HH:mm} to {e:yyyy-MM-dd HH:mm} ({_zoneId})");
                 }
-                var days = (Add.Sun ? WeekDays.Sunday : 0) | (Add.Mon ? WeekDays.Monday : 0) | (Add.Tue ? WeekDays.Tuesday : 0)
-                    | (Add.Wed ? WeekDays.Wednesday : 0) | (Add.Thu ? WeekDays.Thursday : 0) | (Add.Fri ? WeekDays.Friday : 0) | (Add.Sat ? WeekDays.Saturday : 0);
-                result = await Mults.AddRecurringAsync(GuildId, UserId, Add.Name, Add.Factor, scope, days, st, et, minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
+                else
+                {
+                    sb.Append(" — pick start & end above");
+                }
+                break;
+
+            case "recurring":
+                var days = string.Join("/", DayPills.Where(d => d.GetVal()).Select(d => d.Label));
+                if (string.IsNullOrEmpty(days)) { sb.Append(" — pick at least one day"); break; }
+                if (Add.StartTime is not { } st || Add.EndTime is not { } et)
+                {
+                    sb.Append($" every {days} — pick times");
+                }
+                else
+                {
+                    sb.Append($" every {days} {st:HH\\:mm}–{et:HH\\:mm} ({_zoneId})");
+                }
                 break;
 
             case "role":
-                result = await Mults.AddRoleAsync(GuildId, UserId, Add.Name, Add.Factor, scope, Add.RoleId);
-                break;
-
-            default: // one-off
-                if (!DateTime.TryParse(Add.StartLocal, out var sLocal) || !DateTime.TryParse(Add.EndLocal, out var eLocal))
-                {
-                    Message = "Enter valid start/end date-times.";
-                    return;
-                }
-                result = await Mults.AddOneOffAsync(GuildId, UserId, Add.Name, Add.Factor, scope, ToUtc(sLocal), ToUtc(eLocal), minPeople: Add.MinPeople, minMinutes: Add.MinMinutes);
+                if (Add.RoleId == 0) { sb.Append(" — pick a role"); break; }
+                var name = _roles.FirstOrDefault(r => r.RoleId == Add.RoleId)?.Name ?? Add.RoleId.ToString();
+                sb.Append($" while a member holds @{name}");
                 break;
         }
 
-        if (!result.IsError)
+        if (Add.Kind != "role" && (Add.MinPeople > 0 || Add.MinMinutes > 0))
         {
-            await Audit.RecordMultiplierAddedAsync(
-                GuildId, UserId,
-                result.Value,
-                Add.Name ?? "",
-                Add.Factor,
-                scope);
+            var conds = new List<string>();
+            if (Add.MinPeople > 0) conds.Add($"≥{Add.MinPeople} people in channel");
+            if (Add.MinMinutes > 0) conds.Add($"channel active ≥{Add.MinMinutes}m");
+            sb.Append($"; only when {string.Join(" + ", conds)}");
         }
-        Message = result.Message;
-        if (!result.IsError) Add = new AddInput();
-        await LoadAsync();
+
+        return sb.ToString();
+    }
+
+    private string ScopeWordsForPreview()
+    {
+        var parts = new List<string>();
+        if (Add.ScopeVoice) parts.Add("voice");
+        if (Add.ScopeMessages) parts.Add("messages");
+        if (Add.ScopeSessions) parts.Add("sessions");
+        if (Add.ScopeQuests) parts.Add("quests");
+        return parts.Count == 0 ? "nothing — pick at least one scope above" : string.Join(" + ", parts);
     }
 
     private DateTimeOffset ToUtc(DateTime local)
@@ -232,14 +492,16 @@ else if (State == AccessState.Ready)
         _ => "—",
     };
 
-    private static string ScopeLabel(MultiplierScope s)
-        => s == MultiplierScope.All ? "all" : string.Join(", ", new[]
-        {
-            s.HasFlag(MultiplierScope.BackgroundVoice) ? "voice" : null,
-            s.HasFlag(MultiplierScope.Messages) ? "messages" : null,
-            s.HasFlag(MultiplierScope.Sessions) ? "sessions" : null,
-            s.HasFlag(MultiplierScope.Quests) ? "quests" : null,
-        }.Where(x => x != null));
+    private static MarkupString ScopePills(MultiplierScope s)
+    {
+        if (s == MultiplierScope.All) { return new MarkupString("<span class='pill'>all</span>"); }
+        var parts = new List<string>();
+        if (s.HasFlag(MultiplierScope.BackgroundVoice)) parts.Add("voice");
+        if (s.HasFlag(MultiplierScope.Messages)) parts.Add("messages");
+        if (s.HasFlag(MultiplierScope.Sessions)) parts.Add("sessions");
+        if (s.HasFlag(MultiplierScope.Quests)) parts.Add("quests");
+        return new MarkupString(string.Join("", parts.Select(p => $"<span class='pill'>{p}</span>")));
+    }
 
     private static string Conditions(RewardMultiplier m)
     {
@@ -251,7 +513,6 @@ else if (State == AccessState.Ready)
 
     public class AddInput
     {
-        public string? Submitted { get; set; }
         public string? Name { get; set; }
         public decimal Factor { get; set; } = 2m;
         public string Kind { get; set; } = "oneoff";
@@ -261,8 +522,10 @@ else if (State == AccessState.Ready)
         public bool ScopeQuests { get; set; }
         public int MinPeople { get; set; }
         public int MinMinutes { get; set; }
-        public string? StartLocal { get; set; }
-        public string? EndLocal { get; set; }
+        // Typed bindings — Blazor's @bind on <input type="datetime-local"> wants DateTime?, time wants TimeOnly?.
+        // String round-trips would need EditForm's InputText; we're using plain <input> for the interactive UX.
+        public DateTime? StartLocal { get; set; }
+        public DateTime? EndLocal { get; set; }
         public bool Sun { get; set; }
         public bool Mon { get; set; }
         public bool Tue { get; set; }
@@ -270,8 +533,16 @@ else if (State == AccessState.Ready)
         public bool Thu { get; set; }
         public bool Fri { get; set; }
         public bool Sat { get; set; }
-        public string? StartTime { get; set; }
-        public string? EndTime { get; set; }
+        public TimeOnly? StartTime { get; set; }
+        public TimeOnly? EndTime { get; set; }
         public ulong RoleId { get; set; }
+    }
+
+    public class DayPill(string label, Func<bool> get, Action<bool> set)
+    {
+        public string Label { get; } = label;
+        public Func<bool> GetVal { get; } = get;
+        public Action<bool> SetVal { get; } = set;
+        public void Toggle() => SetVal(!GetVal());
     }
 }

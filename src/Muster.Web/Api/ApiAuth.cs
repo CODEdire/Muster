@@ -12,8 +12,10 @@ namespace Muster.Web.Api;
 /// </summary>
 public static class ApiAuth
 {
-    /// <summary>Authorize the key for a scope; returns either an error result or the validated client.</summary>
-    public static async Task<(IResult? Error, ApiClient? Client)> ResolveAsync(
+    /// <summary>Authorize the key for a scope. Returns the validated client, an HTTP error result, and a stable
+    /// rejection reason — the latter is used to enrich the request's telemetry span so dashboards can group
+    /// rejections by cause (<c>invalid_api_key</c> vs <c>guild_mismatch</c> vs <c>insufficient_scope</c>).</summary>
+    public static async Task<(IResult? Error, ApiClient? Client, string? Reason)> ResolveAsync(
         HttpContext http, ApiClientService clients, ulong guildId, string scope)
     {
         var key = http.Request.Headers["X-Api-Key"].FirstOrDefault();
@@ -21,19 +23,25 @@ public static class ApiAuth
 
         if (client is null)
         {
-            return (Results.Json(new { error = "invalid_api_key" }, statusCode: StatusCodes.Status401Unauthorized), null);
+            return (
+                Results.Json(new { error = "invalid_api_key" }, statusCode: StatusCodes.Status401Unauthorized),
+                null, "invalid_api_key");
         }
 
         if (client.GuildId != guildId)
         {
-            return (Results.Json(new { error = "guild_mismatch" }, statusCode: StatusCodes.Status403Forbidden), null);
+            return (
+                Results.Json(new { error = "guild_mismatch" }, statusCode: StatusCodes.Status403Forbidden),
+                client, "guild_mismatch");
         }
 
         if (!client.Scopes.Contains(scope))
         {
-            return (Results.Json(new { error = "insufficient_scope", required = scope }, statusCode: StatusCodes.Status403Forbidden), null);
+            return (
+                Results.Json(new { error = "insufficient_scope", required = scope }, statusCode: StatusCodes.Status403Forbidden),
+                client, "insufficient_scope");
         }
 
-        return (null, client);
+        return (null, client, null);
     }
 }

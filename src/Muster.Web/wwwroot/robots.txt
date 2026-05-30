@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /guilds/
+Disallow: /api/
+Disallow: /account/
+Disallow: /onboarding
+Disallow: /Error
+Disallow: /health
+Disallow: /alive
+
+Sitemap: https://musterbot.com/sitemap.xml

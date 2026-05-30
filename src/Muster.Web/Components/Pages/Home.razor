@@ -1,5 +1,6 @@
 @page "/"
 @layout PublicLayout
+@inject IConfiguration Config
 
 <PageTitle>Muster — participation tracking for Discord</PageTitle>
 
@@ -8,14 +9,31 @@
     <p>Muster tracks voice attendance, missions, musters, and awards across your Discord community —
        all on a clean multi-currency leaderboard.</p>
 
-    <AuthorizeView>
-        <Authorized>
-            <a class="btn" href="/guilds">Go to your servers →</a>
-        </Authorized>
-        <NotAuthorized>
-            <a class="btn" href="/account/login">Log in with Discord</a>
-        </NotAuthorized>
-    </AuthorizeView>
+    <div class="hero-ctas">
+        @* Add-to-server CTA — primary path for new server admins. Hidden behind a config flag until v1.0
+           launch (Public:InvitesEnabled). When false, render a disabled placeholder so the layout doesn't
+           collapse and search engines see the same visual structure. *@
+        @if (_invitesEnabled && !string.IsNullOrWhiteSpace(_inviteUrl))
+        {
+            <a class="btn btn-primary" href="@_inviteUrl">+ Add Muster to your server</a>
+        }
+        else
+        {
+            <button class="btn btn-primary" type="button" disabled aria-disabled="true"
+                    title="Public invites open at v1.0 — check back soon.">
+                + Add Muster to your server — coming at v1.0
+            </button>
+        }
+
+        <AuthorizeView>
+            <Authorized>
+                <a class="btn btn-ghost" href="/guilds">Go to your servers →</a>
+            </Authorized>
+            <NotAuthorized>
+                <a class="btn btn-ghost" href="/account/login">Continue with Discord</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
 </section>
 
 <div class="feature-grid">
@@ -32,3 +50,19 @@
         <p>Points reset each season; spendable currencies persist for loot and perks.</p>
     </div>
 </div>
+
+<p class="subtitle home-explore">
+    See <a href="/features">all features</a> · read the <a href="/faq">FAQ</a> · check the
+    <a href="/changelog">changelog</a>.
+</p>
+
+@code {
+    private bool _invitesEnabled;
+    private string? _inviteUrl;
+
+    protected override void OnInitialized()
+    {
+        _invitesEnabled = Config.GetValue<bool?>("Public:InvitesEnabled") ?? false;
+        _inviteUrl = Config["Public:InviteUrl"];
+    }
+}

@@ -1,0 +1,59 @@
+@page "/support"
+@layout PublicLayout
+@inject IConfiguration Config
+
+<PageTitle>Support — Muster</PageTitle>
+
+<div class="panel glass">
+    <h1>Support</h1>
+    <p class="subtitle">
+        Muster is in active development. The fastest way to get help — or to report a bug — is GitHub.
+    </p>
+
+    <div class="support-grid">
+        <div class="card glass">
+            <h3>Report a bug or request a feature</h3>
+            <p>Open an issue on GitHub. Please include your Discord server id (or anonymise it),
+               a description of what happened, and what you expected.</p>
+            <a class="btn btn-primary" href="@_supportUrl" target="_blank" rel="noopener noreferrer">
+                Open a GitHub issue →
+            </a>
+        </div>
+
+        <div class="card glass">
+            <h3>Read the source</h3>
+            <p>Muster is open source. Browse the code, read the docs, or send a pull request.</p>
+            <a class="btn btn-ghost" href="@_sourceUrl" target="_blank" rel="noopener noreferrer">
+                View on GitHub →
+            </a>
+        </div>
+
+        <div class="card glass">
+            <h3>Security disclosures</h3>
+            <p>Please don't report security issues in public issues. Use GitHub's private security
+               advisory flow on the repository, or reach the maintainers directly via the same.</p>
+            <a class="btn btn-ghost" href="@($"{_sourceUrl}/security/advisories")"
+               target="_blank" rel="noopener noreferrer">
+                Private disclosure →
+            </a>
+        </div>
+    </div>
+
+    <h2>Before you file an issue</h2>
+    <ul>
+        <li>Check the <a href="/faq">FAQ</a> for common questions.</li>
+        <li>Check the <a href="/changelog">changelog</a> — your issue may already be fixed in a recent release.</li>
+        <li>Try to reproduce the issue with default settings (clear role mappings, default privacy).</li>
+    </ul>
+</div>
+
+@code {
+    private string _supportUrl = "https://github.com/CODEdire/Muster/issues";
+    private string _sourceUrl = "https://github.com/CODEdire/Muster";
+
+    protected override void OnInitialized()
+    {
+        _supportUrl = Config["Public:SupportUrl"] ?? _supportUrl;
+        _sourceUrl = Config["Public:SourceUrl"] ?? _sourceUrl;
+    }
+}

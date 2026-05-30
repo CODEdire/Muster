@@ -17,6 +17,9 @@ public enum TrackingPermission
 
     /// <summary>Set a member's per-guild tracking/privacy preference. Self always; others = staff only.</summary>
     SetPrivacy,
+
+    /// <summary>Read a member's voice participation stats. Self always; others = staff only (TrackingManager or auditor tier).</summary>
+    ViewMemberStats,
 }
 
 /// <summary>
@@ -49,7 +52,8 @@ public sealed class TrackingAuthorizer(GuildAuthorizationService roles) : ITrack
             or TrackingPermission.ManageChannels
             or TrackingPermission.ManageMultipliers => isStaff,
 
-        TrackingPermission.SetPrivacy => subjectUserId == actor.UserId || isStaff,
+        TrackingPermission.SetPrivacy or TrackingPermission.ViewMemberStats
+            => subjectUserId == actor.UserId || isStaff,
 
         _ => false,
     };

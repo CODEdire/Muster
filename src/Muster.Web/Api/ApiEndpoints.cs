@@ -5,6 +5,7 @@ using Muster.Infrastructure;
 using Wolverine;
 using Wolverine.Http;
 using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Web.Api;
@@ -37,34 +38,81 @@ public static class ApiEndpoints
         return Results.Ok(board);
     }
 
+    /// <summary>Read a member's wallets. Self always; economy staff may read anyone's.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/members/{userId}/wallets")]
-    [RequireApiScope("read:wallets")]
-    public static async Task<IResult> Wallets(ulong guildId, ulong userId, ICurrencyReadService scores) =>
-        Results.Ok(await scores.GetWalletsAsync(guildId, userId));
+    [RequireApiScope("read:wallets", requireActor: true)]
+    public static async Task<IResult> Wallets(
+        ulong guildId, ulong userId, HttpContext http, ICurrencyReadService scores, ICurrencyAuthorizer authz)
+    {
+        if (await ApiReadGuards.RequireSelfOrEconomyStaffAsync(http, guildId, userId, authz) is { } forbid)
+        {
+            return forbid;
+        }
 
+        return Results.Ok(await scores.GetWalletsAsync(guildId, userId));
+    }
+
+    /// <summary>Guild-wide ledger feed — staff-tier (audit-log adjacent). Requires Auditor role or higher.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/ledger")]
-    [RequireApiScope("read:ledger")]
-    public static async Task<IResult> Ledger(ulong guildId, MusterDbContext db, int skip = 0, int take = 50) =>
-        Results.Ok(await db.PagedLedgerAsync(guildId, skip, take));
+    [RequireApiScope("read:ledger", requireActor: true)]
+    public static async Task<IResult> Ledger(
+        ulong guildId, HttpContext http, MusterDbContext db, GuildAuthorizationService roles, int skip = 0, int take = 50)
+    {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
 
-    /// <summary>One member's ledger history (newest first), optionally filtered to <c>?currency=CODE</c>, paged.</summary>
+        return Results.Ok(await db.PagedLedgerAsync(guildId, skip, take));
+    }
+
+    /// <summary>One member's ledger history (newest first), optionally filtered to <c>?currency=CODE</c>, paged.
+    /// Self always; economy staff may read anyone's.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/members/{userId}/ledger")]
-    [RequireApiScope("read:ledger")]
+    [RequireApiScope("read:ledger", requireActor: true)]
     public static async Task<IResult> MemberLedger(
-        ulong guildId, ulong userId, ICurrencyReadService scores, string? currency = null, int skip = 0, int take = 50) =>
-        Results.Ok(await scores.GetMemberHistoryAsync(guildId, userId, currency, skip, take));
+        ulong guildId, ulong userId, HttpContext http, ICurrencyReadService scores, ICurrencyAuthorizer authz,
+        string? currency = null, int skip = 0, int take = 50)
+    {
+        if (await ApiReadGuards.RequireSelfOrEconomyStaffAsync(http, guildId, userId, authz) is { } forbid)
+        {
+            return forbid;
+        }
 
+        return Results.Ok(await scores.GetMemberHistoryAsync(guildId, userId, currency, skip, take));
+    }
+
+    /// <summary>Machine-inbound mint (connector mirror). The bound actor must hold guild admin — these endpoints
+    /// can create currency out of thin air, so an actor-bound key alone isn't enough. Connector bots that need
+    /// this path must be bound to an actor with an admin role (or to the guild owner).</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/mint")]
-    [RequireApiScope("write:currency")]
-    public static async Task<IResult> Mint(ulong guildId, string code, CurrencyOpRequest body, IMessageBus bus) =>
-        ToResult(await bus.InvokeAsync<CurrencyChangeResult>(
-            new MintCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API mint", body.ExternalId)));
+    [RequireApiScope("write:currency", requireActor: true)]
+    public static async Task<IResult> Mint(
+        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, IMessageBus bus, GuildAuthorizationService roles)
+    {
+        if (await ApiReadGuards.RequireAdminAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
 
+        return ToResult(await bus.InvokeAsync<CurrencyChangeResult>(
+            new MintCurrency(guildId, http.ApiActor(), code, body.UserId, body.Amount, body.Reason ?? "API mint", body.ExternalId)));
+    }
+
+    /// <summary>Machine-inbound spend (connector mirror). Admin-gated — same rationale as mint.</summary>
     [WolverinePost("/api/v1/guilds/{guildId}/currencies/{code}/spend")]
-    [RequireApiScope("write:currency")]
-    public static async Task<IResult> Spend(ulong guildId, string code, CurrencyOpRequest body, IMessageBus bus) =>
-        ToResult(await bus.InvokeAsync<CurrencyChangeResult>(
-            new SpendCurrency(guildId, code, body.UserId, body.Amount, body.Reason ?? "API spend", body.ExternalId)));
+    [RequireApiScope("write:currency", requireActor: true)]
+    public static async Task<IResult> Spend(
+        ulong guildId, string code, CurrencyOpRequest body, HttpContext http, IMessageBus bus, GuildAuthorizationService roles)
+    {
+        if (await ApiReadGuards.RequireAdminAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
+        return ToResult(await bus.InvokeAsync<CurrencyChangeResult>(
+            new SpendCurrency(guildId, http.ApiActor(), code, body.UserId, body.Amount, body.Reason ?? "API spend", body.ExternalId)));
+    }
 
     /// <summary>Member-to-member transfer. Runs as the key's bound actor, so the authorizer enforces "members move
     /// only their own wallet, staff may move anyone's". Omit <c>fromUserId</c> to move from the actor's own wallet.</summary>
@@ -97,38 +145,67 @@ public static class ApiEndpoints
     public static async Task<IResult> Currencies(ulong guildId, MusterDbContext db) =>
         Results.Ok(await db.ListCurrencySummariesAsync(guildId));
 
+    /// <summary>One currency's balance for one member. Self always; economy staff may read anyone's.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/members/{userId}/currencies/{code}/balance")]
-    [RequireApiScope("read:wallets")]
-    public static async Task<IResult> Balance(ulong guildId, ulong userId, string code, ICurrencyService currency)
+    [RequireApiScope("read:wallets", requireActor: true)]
+    public static async Task<IResult> Balance(
+        ulong guildId, ulong userId, string code, HttpContext http, ICurrencyService currency, ICurrencyAuthorizer authz)
     {
+        if (await ApiReadGuards.RequireSelfOrEconomyStaffAsync(http, guildId, userId, authz) is { } forbid)
+        {
+            return forbid;
+        }
+
         var balance = await currency.GetBalanceAsync(guildId, code.Trim().ToUpperInvariant(), userId);
         return balance is null
             ? Results.NotFound(new { error = "currency_not_found" })
             : Results.Ok(new { balance });
     }
 
-    /// <summary>Supply analytics for one currency (minted/removed/circulating/escrow + holder count).</summary>
+    /// <summary>Supply analytics for one currency (minted/removed/circulating/escrow + holder count). Staff-tier.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/currencies/{code}/supply")]
-    [RequireApiScope("read:ledger")]
-    public static async Task<IResult> Supply(ulong guildId, string code, ICurrencyReadService scores)
+    [RequireApiScope("read:ledger", requireActor: true)]
+    public static async Task<IResult> Supply(
+        ulong guildId, string code, HttpContext http, ICurrencyReadService scores, GuildAuthorizationService roles)
     {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
         var supply = await scores.GetSupplyAsync(guildId, code);
         return supply is null ? Results.NotFound(new { error = "currency_not_found" }) : Results.Ok(supply);
     }
 
-    /// <summary>Guild-wide recent ledger movements (newest first) for one currency, paged — the overview feed.</summary>
+    /// <summary>Guild-wide recent ledger movements (newest first) for one currency, paged — the overview feed. Staff-tier.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/currencies/{code}/movements")]
-    [RequireApiScope("read:ledger")]
+    [RequireApiScope("read:ledger", requireActor: true)]
     public static async Task<IResult> Movements(
-        ulong guildId, string code, ICurrencyReadService scores, int skip = 0, int take = 50) =>
-        Results.Ok(await scores.GetGuildMovementsAsync(guildId, code, skip, take));
+        ulong guildId, string code, HttpContext http, ICurrencyReadService scores, GuildAuthorizationService roles,
+        int skip = 0, int take = 50)
+    {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
 
-    /// <summary>The guild's admin audit trail (who minted/adjusted/sent/configured), filterable + paged.</summary>
+        return Results.Ok(await scores.GetGuildMovementsAsync(guildId, code, skip, take));
+    }
+
+    /// <summary>The guild's admin audit trail (who minted/adjusted/sent/configured), filterable + paged. Staff-tier.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/audit")]
-    [RequireApiScope("read:audit")]
+    [RequireApiScope("read:audit", requireActor: true)]
     public static async Task<IResult> Audit(
-        ulong guildId, AuditService audit, string? action = null, string? search = null, int page = 1, int pageSize = 50) =>
-        Results.Ok(await audit.SearchAsync(guildId, new AuditQuery(Search: search, Action: action, Page: page, PageSize: pageSize)));
+        ulong guildId, HttpContext http, AuditService audit, GuildAuthorizationService roles,
+        string? action = null, string? search = null, int page = 1, int pageSize = 50)
+    {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
+        return Results.Ok(await audit.SearchAsync(guildId, new AuditQuery(Search: search, Action: action, Page: page, PageSize: pageSize)));
+    }
 
     private static IResult ToResult(CurrencyChangeResult result) => result.Status switch
     {

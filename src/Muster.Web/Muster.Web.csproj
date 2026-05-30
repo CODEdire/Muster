@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Muster.ServiceDefaults\Muster.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\aspire\Muster.ServiceDefaults\Muster.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Muster.Infrastructure\Muster.Infrastructure.csproj" />
   </ItemGroup>
 

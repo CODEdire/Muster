@@ -166,25 +166,59 @@ public class GuildAuthorizationService(MusterDbContext db)
     }
 
     /// <summary>
-    /// Whether the member may earn rewards / be tracked. If no participant roles are configured,
-    /// participation is open to everyone (default); otherwise the member must hold a configured role.
+    /// Whether the member may earn rewards / be tracked. Participant is the <i>floor</i> of the role
+    /// hierarchy — anyone with a mapped staff role (Admin / Officer / Quest Manager / Economy Manager /
+    /// Tracking Manager / Event Officer / Auditor) implicitly participates, so a quest manager who can
+    /// arbitrate a quest can also take one without needing a redundant Participant toggle.
+    ///
+    /// <para>If no explicit participant roles are configured, participation is open to everyone (default);
+    /// otherwise the member must hold one of the configured participant roles OR any mapped staff role.</para>
     /// </summary>
     public async Task<bool> IsParticipantAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
+        // Admin bypass — owners + Discord admins + mapped admins are always participants.
+        if (await IsAdminAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
         var guild = await db.FindGuildAsync(guildId, ct);
         if (guild is null)
         {
             return false;
         }
 
-        var allowed = guild.Settings.ParticipantRoleIds;
-        if (allowed.Count == 0)
+        var settings = guild.Settings;
+        var allowed = settings.ParticipantRoleIds;
+        if (allowed.Count == 0 || allowed.Contains(guildId))
         {
-            return true; // open by default
+            // Empty list = open by default. @everyone (Discord stores its role id as the guild id) being
+            // explicitly toggled also means everyone — synced GuildMember.RoleIds never includes @everyone
+            // since Discord treats it as universal, so without this we'd fail the role-overlap check for
+            // every member even though the admin clearly opted in via the role-mapping matrix.
+            return true;
         }
 
         var member = await db.FindMemberAsync(guildId, userId, ct);
-        return member is not null && member.RoleIds.Any(r => allowed.Contains(r));
+        if (member is null)
+        {
+            return false;
+        }
+
+        // Staff implies participant — any mapped role on Officer/Quest/Economy/Tracking/Event/Auditor
+        // counts. Saves the admin from having to toggle every staff role's Participant column too.
+        if (member.RoleIds.Any(r =>
+            settings.OfficerRoleIds.Contains(r) ||
+            settings.QuestManagerRoleIds.Contains(r) ||
+            settings.EconomyManagerRoleIds.Contains(r) ||
+            settings.TrackingManagerRoleIds.Contains(r) ||
+            settings.EventOfficerRoleIds.Contains(r) ||
+            settings.AuditorRoleIds.Contains(r)))
+        {
+            return true;
+        }
+
+        return member.RoleIds.Any(r => allowed.Contains(r));
     }
 
     private async Task<bool> HasAdminPermissionAsync(ulong guildId, List<ulong> memberRoleIds, CancellationToken ct)

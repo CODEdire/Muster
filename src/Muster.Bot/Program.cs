@@ -1,8 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Muster.Bot;
+using Muster.Contracts;
 using Muster.Infrastructure;
-using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Discord;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
@@ -11,23 +9,39 @@ using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Hosting.Services.ComponentInteractions;
 using NetCord.Services.ApplicationCommands;
 using NetCord.Services.ComponentInteractions;
-using Muster.Infrastructure.Commands.Musters;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
+
+// KV (secrets) + AppConfig (dynamic non-secret) as config sources — both publish-only. The Aspire client
+// integration reads the connection string Aspire publishes and adds the source so every existing
+// builder.Configuration[...] lookup transparently falls through. Gated on connection-string presence so
+// local dev (where AppHost's KV/AC extensions no-op) still works on user-secrets + appsettings.
+if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("kv")))
+{
+    builder.Configuration.AddAzureKeyVaultSecrets("kv");
+}
+if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("appconfig")))
+{
+    builder.Configuration.AddAzureAppConfiguration("appconfig");
+}
+
 builder.AddMusterInfrastructure();
 builder.AddMusterConnectorProtection(); // Data Protection for connector secrets (bot dispatches via connectors)
+// EF DbContext + Wolverine runtime readiness checks (tagged "ready"). Bot's gateway-session check is
+// registered separately by PlatformExtensions.AddPlatformFeature below.
+builder.AddMusterSharedHealthChecks();
 
 // Default audit origin for this host = Bot. Discord command handlers + background bot services use this default;
 // long-running automation can override per-call (e.g. AuditOrigin.System for the quest-maintenance sweep).
 builder.Services.AddSingleton<Muster.Infrastructure.Services.Platform.IAuditOriginProvider>(
     _ => new Muster.Infrastructure.Services.Platform.AuditOriginProvider(Muster.Domain.Enums.AuditOrigin.Bot));
 
-// The bot is the only host that listens on the quest-board and currency-events queues: it renders/updates the
-// Discord channel board in response to quest lifecycle events, and DMs currency receipts (grants/staff actions)
-// to recipients — both published from any host.
-builder.AddMusterMessaging(listenForQuestBoard: true, listenForCurrencyEvents: true, listenForMemberSync: true);
+// Wolverine's conventional routing wires this host as "bot": handlers discovered in the bot assembly +
+// Muster.Infrastructure auto-subscribe to the matching topics (quest-lifecycle for the Discord channel
+// board, currency-movement for DM receipts + webhooks, sync-guild-members for the roster pull).
+builder.AddMusterMessaging(HostNames.Bot);
 
 // NetCord gateway. The bot token is read from configuration key "Discord:Token"
 // (user-secrets locally, Key Vault in Azure).
@@ -54,57 +68,36 @@ builder.Services
     .AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>()
     .AddComponentInteractions<ModalInteraction, ModalInteractionContext>();
 
-// Gateway event handlers in this assembly (e.g. guild onboarding).
-builder.Services.AddGatewayHandlers(typeof(Program).Assembly);
-
-// Publishes the periodic quest reconciliation tick (activate scheduled / expire past-deadline).
-// The tick is handled on the cluster leader only (see WolverineExtensions), so this is safe to run
-// here even if the bot scales out.
-builder.Services.AddHostedService<Muster.Infrastructure.Messaging.QuestSweepScheduler>();
-
-// Prunes completed quest cards from the channel board after the guild's retention window (bot-only — needs REST).
-builder.Services.AddHostedService<Muster.Bot.QuestBoardCleanupScheduler>();
-
-// DMs "closes soon" deadline nudges to active workers / a taker-less bounty owner (bot-only — needs DM REST).
-builder.Services.AddHostedService<Muster.Bot.QuestReminderScheduler>();
-
-// Periodically reconciles External/Hybrid balances from their connectors (per-currency sync interval).
-builder.Services.AddHostedService<Muster.Bot.CurrencyBalanceSyncScheduler>();
-
-// Daily: compacts ledger history beyond each guild's LedgerRetentionDays into carry-forward checkpoints.
-builder.Services.AddHostedService<Muster.Bot.LedgerPruneScheduler>();
-
-// Audit prune: drops audit rows beyond Audit:RetentionDays (default 90; 0 disables). Bot host runs it daily.
-builder.Services.AddHostedService<Muster.Bot.AuditPruneScheduler>();
-
-// Periodically flushes always-on background voice accrual for still-present members (idempotent, gateway-cache-driven).
-builder.Services.AddHostedService<Muster.Bot.BackgroundFlushScheduler>();
-
-// Reconciles voice accrual at reward-multiplier window edges so each segment is credited at one exact regime.
-builder.Services.AddHostedService<Muster.Bot.MultiplierBoundaryScheduler>();
-
-// Daily: prunes raw activity records beyond each guild's retention window (rollups kept).
-builder.Services.AddHostedService<Muster.Bot.ActivityPruneScheduler>();
-
-// Per-guild voice reconcile coordinator: debounces event bursts + serializes reconciles per guild.
-builder.Services.AddSingleton<Muster.Bot.GuildReconcileCoordinator>();
-
-// NetCord-backed implementation of the muster publisher abstraction, plus the muster command
-// service that depends on it (a bot-only concern — the web doesn't post muster messages).
-builder.Services.AddScoped<IMusterPublisher, NetCordMusterPublisher>();
-builder.Services.AddScoped<MusterCommandService>();
-
-// Autocomplete providers for slash-command parameters (currency codes, quest ids).
-builder.Services.AddTransient<Muster.Bot.Autocomplete.CurrencyAutocompleteProvider>();
-builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestCurrencyAutocompleteProvider>();
-builder.Services.AddTransient<Muster.Bot.Autocomplete.QuestAutocompleteProvider>();
-builder.Services.AddTransient<Muster.Bot.Autocomplete.TimezoneAutocompleteProvider>();
-builder.Services.AddTransient<Muster.Bot.Autocomplete.ActiveSessionAutocompleteProvider>();
+// Per-feature DI composition. Each Add<Feature>Feature() lives in <Feature>/<Feature>Extensions.cs
+// alongside the feature's own code — DI registrations, gateway handlers, autocomplete providers —
+// so each slice is self-contained. Order is presentation-only; features don't depend on sequence.
+builder
+    .AddQuestingFeature()
+    .AddEconomyFeature()
+    .AddTrackingFeature()
+    //.AddMustersFeature()
+    .AddMembershipFeature()
+    .AddConfigFeature()
+    .AddSeasonsFeature()
+    //.AddOpsFeature()
+    .AddPlatformFeature()
+    ;
 
 var host = builder.Build();
 
-// Liveness command plus the participation command modules (award, leaderboard, wallet, track-*).
+// Liveness command — always-on, no feature owns it.
 host.AddSlashCommand("ping", "Check that Muster is responding.", () => "Pong!");
-host.AddModules(typeof(Program).Assembly);
+
+// Per-feature post-build module registration: slash command modules + component interaction modules.
+// Mirrors ASP.NET's app.UseXxx middleware chain. Platform has no modules so it doesn't appear here.
+host.UseQuestingModule()
+    .UseEconomyModule()
+    .UseTrackingModule()
+    //.UseMustersModule()
+    .UseMembershipModule()
+    .UseConfigModule()
+    .UseSeasonsModule()
+    //.UseOpsModule()
+    ;
 
 host.Run();

@@ -1,18 +1,22 @@
 <Solution>
+  <Folder Name="/aspire/">
+    <Project Path="aspire/Muster.AppHost/Muster.AppHost.csproj" />
+    <Project Path="aspire/Muster.ServiceDefaults/Muster.ServiceDefaults.csproj" />
+  </Folder>
   <Folder Name="/src/">
-    <Project Path="src/Muster.AppHost/Muster.AppHost.csproj" />
     <Project Path="src/Muster.Bot/Muster.Bot.csproj" />
     <Project Path="src/Muster.Contracts/Muster.Contracts.csproj" />
     <Project Path="src/Muster.Domain/Muster.Domain.csproj" />
     <Project Path="src/Muster.Infrastructure/Muster.Infrastructure.csproj" />
     <Project Path="src/Muster.Persistence/Muster.Persistence.csproj" />
     <Project Path="src/Muster.MigrationService/Muster.MigrationService.csproj" />
-    <Project Path="src/Muster.ServiceDefaults/Muster.ServiceDefaults.csproj" />
     <Project Path="src/Muster.Web/Muster.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Muster.IntegrationTests/Muster.IntegrationTests.csproj" />
+    <Project Path="tests/Muster.Bot.UnitTests/Muster.Bot.UnitTests.csproj" />
+    <Project Path="tests/Muster.Domain.UnitTests/Muster.Domain.UnitTests.csproj" />
+    <Project Path="tests/Muster.Infrastructure.UnitTests/Muster.Infrastructure.UnitTests.csproj" />
+    <Project Path="tests/Muster.Integration.UnitTests/Muster.Integration.UnitTests.csproj" />
     <Project Path="tests/Muster.Persistence.UnitTests/Muster.Persistence.UnitTests.csproj" />
-    <Project Path="tests/Muster.UnitTests/Muster.UnitTests.csproj" />
   </Folder>
 </Solution>

@@ -10,3 +10,6 @@ global using Muster.Domain.Entities.Events;
 global using Muster.Domain.Entities.Tracking;
 global using Muster.Domain.Entities.Musters;
 global using Muster.Domain.Entities.Currencies;
+
+// Bot features each self-export from their own <Feature>Usings.cs (lives in the feature folder).
+// Truly cross-cutting global usings stay here.

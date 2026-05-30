@@ -63,6 +63,9 @@ else if (State == AccessState.Ready)
 }
 
 @code {
+    // TrackingManager + legacy Officer + Admin (implicit) — opens a tracking session.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
     [SupplyParameterFromForm(FormName = "session-new")] private SessionInput Input { get; set; } = new();
 
     private IReadOnlyList<GuildChannel> _voice = [];
