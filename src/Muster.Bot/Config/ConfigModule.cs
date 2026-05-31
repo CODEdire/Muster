@@ -47,6 +47,11 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleTrackingManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.trackingManagerRole");
 
+    [SlashCommand("config-muster-creator-role", "Toggle a role that can post musters from a template (no custom rewards).")]
+    public Task MusterCreatorRoleAsync(
+        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
+        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleMusterCreatorRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.musterCreatorRole");
+
     [SlashCommand("config-auditor-role", "Toggle a read-only role (audit log, ledger, participation — no mutations).")]
     public Task AuditorRoleAsync(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)

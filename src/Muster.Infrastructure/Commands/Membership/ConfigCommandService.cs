@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Muster.Contracts;
 using Muster.Persistence;
@@ -306,11 +307,12 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         return CommandResult.Ok("Quest approval settings updated.");
     }
 
-    /// <summary>Configure all guild muster settings in one save: card channel (0 = post to the command's channel),
-    /// terminal-card retention hours, whether opening a session auto-creates + links a check-in muster, and the
-    /// optional allow-list of channels musters may post to (empty = any chat-capable channel).</summary>
+    /// <summary>Configure all guild muster settings in one save: card channel, terminal-card retention, auto-create
+    /// on session + its gate mode, the global reward defaults (points/coins/coin currency), and the optional
+    /// allow-list of channels musters may post to (empty = any chat-capable channel).</summary>
     public async Task<CommandResult> SetMusterSettingsAsync(
-        ulong guildId, ulong channelId, int retentionHours, bool autoCreate,
+        ulong guildId, ulong channelId, int retentionHours, bool autoCreate, SessionCoinGate autoCreateGate,
+        long defaultPoints, long defaultCoins, Guid? defaultCoinCurrencyId,
         IReadOnlyList<ulong>? allowedChannelIds = null, CancellationToken ct = default)
     {
         var guild = await db.FindGuildAsync(guildId, ct);
@@ -319,9 +321,16 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        if (retentionHours < 0)
+        if (retentionHours < 0 || defaultPoints < 0 || defaultCoins < 0)
         {
-            return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as terminal).");
+            return CommandResult.Error("Retention, points, and coins can't be negative.");
+        }
+
+        // A default coin reward needs a spendable currency that belongs to this guild.
+        if (defaultCoins > 0 && (defaultCoinCurrencyId is not { } cc
+            || !await db.Currencies.AnyAsync(c => c.Id == cc && c.GuildId == guildId && c.IsSpendable, ct)))
+        {
+            return CommandResult.Error("Pick a spendable currency for the default coin reward.");
         }
 
         var allowed = (allowedChannelIds ?? []).Where(c => c != 0).Distinct().ToList();
@@ -338,6 +347,10 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             s.BoardRetentionHours = retentionHours;
             s.AllowedChannelIds = allowed;
             s.AutoCreateOnSession = autoCreate;
+            s.AutoCreateGate = autoCreateGate;
+            s.DefaultPoints = defaultPoints;
+            s.DefaultCoins = defaultCoins;
+            s.DefaultCoinCurrencyId = defaultCoins > 0 ? defaultCoinCurrencyId : null;
         }, ct);
 
         return CommandResult.Ok("Muster settings updated.");

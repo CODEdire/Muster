@@ -1,0 +1,163 @@
+@page "/guilds/{GuildIdRaw}/muster-templates"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject MusterTemplateService Templates
+@inject ICurrencyAdminService CurrencyAdmin
+@using Muster.Domain.Entities.Musters
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Muster templates — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/muster-settings">← Muster settings</a>
+        <h1>Muster templates</h1>
+        <p class="subtitle">Named reward presets creators pick from. A Muster Creator can only post from a template; managers can also override.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <div class="dg-toolbar">
+            <button type="button" class="btn btn-sm" @onclick="NewTemplate">+ New template</button>
+        </div>
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Name</th><th class="num">Points</th><th>Coins</th><th class="num">Keep (h)</th><th>Enabled</th><th></th></tr></thead>
+                <tbody>
+                    @if (_list.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="6">No templates yet.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var t in _list)
+                        {
+                            <tr>
+                                <td>@(string.IsNullOrWhiteSpace(t.Emoji) ? "" : t.Emoji + " ")@t.Name</td>
+                                <td class="num">@t.Points</td>
+                                <td>@(t.Coins > 0 ? $"{t.Coins} {CoinCode(t.CoinCurrencyId)}" : "—")</td>
+                                <td class="num">@t.RetentionHours</td>
+                                <td>@(t.Enabled ? "✓" : "—")</td>
+                                <td class="dg-actions-col">
+                                    <button type="button" class="icon-btn" title="Edit" @onclick="() => Edit(t)"><span class="material-symbols-outlined">edit</span></button>
+                                    <button type="button" class="icon-btn danger" title="Delete" @onclick="() => Delete(t)"><span class="material-symbols-outlined">delete</span></button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (_edit is not null)
+    {
+        <div class="panel glass">
+            <h2>@(_edit.Id == Guid.Empty ? "New template" : "Edit template")</h2>
+            <div class="form-grid">
+                <label>Name <input @bind="_edit.Name" maxlength="100" /></label>
+                <label>Emoji <input @bind="_edit.Emoji" maxlength="8" placeholder="(optional)" /></label>
+                <label>Description <input @bind="_edit.Description" placeholder="(optional)" /></label>
+                <label>Points <input type="number" min="0" @bind="_edit.Points" /></label>
+                <label>Coins <input type="number" min="0" @bind="_edit.Coins" /></label>
+                <label>Coin currency
+                    <select @bind="_edit.CoinCurrencyId">
+                        <option value="">— none —</option>
+                        @foreach (var c in _coins)
+                        {
+                            <option value="@c.Id">@c.Code</option>
+                        }
+                    </select>
+                </label>
+                <label>Keep terminal cards for (hours) <input type="number" min="0" @bind="_edit.RetentionHours" /></label>
+                <label>Default capacity <input type="number" min="0" @bind="_edit.Capacity" placeholder="(uncapped)" /></label>
+                <label>Auto-expire after (hours) <input type="number" min="0" @bind="_edit.ExpiryHours" placeholder="(none)" /></label>
+                <label>Sort order <input type="number" @bind="_edit.SortOrder" /></label>
+                <label class="check"><input type="checkbox" @bind="_edit.Enabled" /> Enabled</label>
+            </div>
+            <div class="btn-row">
+                <button type="button" disabled="@_saving" @onclick="SaveAsync">Save</button>
+                <button type="button" class="btn btn-ghost" @onclick="() => _edit = null">Cancel</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private IReadOnlyList<MusterTemplate> _list = [];
+    private IReadOnlyList<CurrencyView> _coins = [];
+    private MusterTemplate? _edit;
+    private bool _saving;
+
+    protected override async Task LoadAsync()
+    {
+        _list = await Templates.ListAsync(GuildId);
+        _coins = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+    }
+
+    private string CoinCode(Guid? id) => _coins.FirstOrDefault(c => c.Id == id)?.Code ?? "coins";
+
+    private void NewTemplate() => _edit = new MusterTemplate { GuildId = GuildId, Enabled = true, RetentionHours = 48 };
+
+    // Edit a copy so Cancel doesn't mutate the list row.
+    private void Edit(MusterTemplate t) => _edit = new MusterTemplate
+    {
+        Id = t.Id, GuildId = t.GuildId, Name = t.Name, Description = t.Description, Emoji = t.Emoji,
+        Points = t.Points, Coins = t.Coins, CoinCurrencyId = t.CoinCurrencyId, RetentionHours = t.RetentionHours,
+        Capacity = t.Capacity, ExpiryHours = t.ExpiryHours, Enabled = t.Enabled, SortOrder = t.SortOrder,
+    };
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_edit!.Name))
+        {
+            Message = "Give the template a name.";
+            return;
+        }
+
+        if (_edit.Coins > 0 && _edit.CoinCurrencyId is null)
+        {
+            Message = "Pick a coin currency, or set coins to 0.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _edit.GuildId = GuildId;
+            if (_edit.Coins <= 0) { _edit.CoinCurrencyId = null; }
+            var saved = await Templates.SaveAsync(_edit);
+            await AuditAsync("muster.template", $"{(_edit.Id == Guid.Empty ? "create" : "update")}:{_edit.Name}");
+            Message = saved is null ? "Couldn't save that template." : $"Saved “{saved.Name}”.";
+            _edit = null;
+        }
+        finally
+        {
+            _saving = false;
+            await LoadAsync();
+        }
+    }
+
+    private async Task Delete(MusterTemplate t)
+    {
+        await Templates.DeleteAsync(GuildId, t.Id);
+        await AuditAsync("muster.template", $"delete:{t.Name}");
+        Message = $"Deleted “{t.Name}”.";
+        if (_edit?.Id == t.Id) { _edit = null; }
+        await LoadAsync();
+    }
+}
