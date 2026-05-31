@@ -11,7 +11,7 @@ public class MusterTemplateService(MusterDbContext db)
     public Task<List<MusterTemplate>> ListAsync(ulong guildId, bool includeDisabled = true, CancellationToken ct = default)
         => db.MusterTemplates
             .Where(t => t.GuildId == guildId && (includeDisabled || t.Enabled))
-            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .OrderBy(t => t.Name)
             .ToListAsync(ct);
 
     public Task<MusterTemplate?> GetAsync(ulong guildId, Guid id, CancellationToken ct = default)
@@ -37,7 +37,8 @@ public class MusterTemplateService(MusterDbContext db)
 
         row.Name = input.Name;
         row.Description = input.Description;
-        row.Emoji = input.Emoji;
+        row.Title = input.Title;
+        row.Prompt = input.Prompt;
         row.Points = input.Points;
         row.Coins = input.Coins;
         row.CoinCurrencyId = input.CoinCurrencyId;
@@ -45,7 +46,6 @@ public class MusterTemplateService(MusterDbContext db)
         row.Capacity = input.Capacity;
         row.ExpiryHours = input.ExpiryHours;
         row.Enabled = input.Enabled;
-        row.SortOrder = input.SortOrder;
         await db.SaveChangesAsync(ct);
         return row;
     }

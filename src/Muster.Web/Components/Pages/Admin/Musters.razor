@@ -39,8 +39,8 @@ else if (State == AccessState.Ready)
     <div class="panel glass">
         <h2>Post a muster</h2>
         <div class="form-grid">
-            <label>Prompt
-                <input class="input" @bind="_prompt" placeholder="What members are checking in for" maxlength="2000" />
+            <label>Prompt@(_templateHasPrompt ? " (optional — template provides one)" : "")
+                <input class="input" @bind="_prompt" placeholder="@(_templateHasPrompt ? "Leave blank to use the template's prompt" : "What members are checking in for")" maxlength="2000" />
             </label>
             <label>Title (optional)
                 <input class="input" @bind="_title" placeholder="Heading shown above the prompt" maxlength="100" />
@@ -53,7 +53,7 @@ else if (State == AccessState.Ready)
                     }
                     @foreach (var t in _templates)
                     {
-                        <option value="@t.Id">@(string.IsNullOrWhiteSpace(t.Emoji) ? "" : t.Emoji + " ")@t.Name</option>
+                        <option value="@t.Id">@t.Name</option>
                     }
                 </select>
                 @if (!_isManager && _templates.Count == 0)
@@ -202,11 +202,20 @@ else if (State == AccessState.Ready)
         _list = await Reads.ListAsync(GuildId, _includeClosed);
     }
 
+    // A selected template can supply the prompt, so the field is only required when posting without one.
+    private bool _templateHasPrompt =>
+        Guid.TryParse(_templateId, out var tg) && !string.IsNullOrWhiteSpace(_templates.FirstOrDefault(t => t.Id == tg)?.Prompt);
+
     private async Task PostAsync()
     {
-        if (_posting || string.IsNullOrWhiteSpace(_prompt))
+        if (_posting)
         {
-            Message = "Enter a prompt first.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_prompt) && !_templateHasPrompt)
+        {
+            Message = "Enter a prompt (or pick a template that has one).";
             return;
         }
 

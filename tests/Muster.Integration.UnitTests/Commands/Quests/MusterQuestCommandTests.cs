@@ -121,6 +121,47 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_Create_Template_FillsTitleAndPrompt_AndBothRewards()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db);
+
+        var coinId = Guid.NewGuid();
+        db.Currencies.Add(new Currency { Id = coinId, GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true });
+        var tplId = Guid.NewGuid();
+        db.MusterTemplates.Add(new MusterTemplate
+        {
+            Id = tplId, GuildId = 1, Name = "Strike", Enabled = true,
+            Title = "Strike Group", Prompt = "Check in for the strike",
+            Points = 5, Coins = 3, CoinCurrencyId = coinId,
+        });
+        await db.SaveChangesAsync();
+
+        // Author leaves title + prompt blank; the template supplies both, and points + coins both apply together.
+        var cmd = new CreateMuster(1, 7, 500, Title: null, Prompt: "", TemplateId: tplId,
+            Points: null, Coins: null, CoinCurrencyId: null, Capacity: null, ExpiresAt: null, SessionId: null);
+        Assert.True((await CreateMusterHandler.Handle(cmd, auth, db, musters, store, bus, default)).Ok);
+
+        var m = await db.ReactionMusters.OrderByDescending(x => x.CreatedAt).FirstAsync();
+        Assert.Equal("Strike Group", m.Title);
+        Assert.Equal("Check in for the strike", m.Prompt);
+        Assert.Equal(5, m.Points);
+        Assert.Equal(3, m.Coins);
+        Assert.Equal(coinId, m.CoinCurrencyId);
+    }
+
+    [Fact]
+    public async Task Muster_Create_NoPromptAndNoTemplatePrompt_IsRejected()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db);
+
+        var cmd = new CreateMuster(1, 7, 500, Title: null, Prompt: "  ", TemplateId: null,
+            Points: 1, Coins: null, CoinCurrencyId: null, Capacity: null, ExpiresAt: null, SessionId: null);
+        Assert.Equal("PromptRequired", (await CreateMusterHandler.Handle(cmd, auth, db, musters, store, bus, default)).Status);
+    }
+
+    [Fact]
     public async Task Muster_Create_HonorsChannelAllowList()
     {
         using var db = await SeededAsync(ownerId: 7);

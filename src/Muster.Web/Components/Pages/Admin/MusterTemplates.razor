@@ -52,7 +52,6 @@ else if (State == AccessState.Ready)
                         <th class="sortable num" @onclick='() => SetSort("capacity")'>Capacity @Ind("capacity")</th>
                         <th class="sortable num" @onclick='() => SetSort("expiry")'>Auto-close @Ind("expiry")</th>
                         <th class="sortable num" @onclick='() => SetSort("retention")'>Keep @Ind("retention")</th>
-                        <th class="sortable num" @onclick='() => SetSort("sort")'>Order @Ind("sort")</th>
                         <th class="sortable" @onclick='() => SetSort("enabled")'>Enabled @Ind("enabled")</th>
                         <th></th>
                     </tr>
@@ -60,11 +59,11 @@ else if (State == AccessState.Ready)
                 <tbody>
                     @if (_list is null)
                     {
-                        <tr class="dg-empty"><td colspan="9">Loading…</td></tr>
+                        <tr class="dg-empty"><td colspan="8">Loading…</td></tr>
                     }
                     else if (Filtered.Count == 0)
                     {
-                        <tr class="dg-empty"><td colspan="9">@(_list.Count == 0 ? "No templates yet — create one to get started." : "No templates match your filter.")</td></tr>
+                        <tr class="dg-empty"><td colspan="8">@(_list.Count == 0 ? "No templates yet — create one to get started." : "No templates match your filter.")</td></tr>
                     }
                     else
                     {
@@ -72,7 +71,7 @@ else if (State == AccessState.Ready)
                         {
                             <tr>
                                 <td>
-                                    <a href="/guilds/@GuildId/muster-templates/@t.Id/edit">@(string.IsNullOrWhiteSpace(t.Emoji) ? "" : t.Emoji + " ")@t.Name</a>
+                                    <a href="/guilds/@GuildId/muster-templates/@t.Id/edit">@t.Name</a>
                                     @if (!string.IsNullOrWhiteSpace(t.Description))
                                     {
                                         <div class="subtitle dg-sub">@t.Description</div>
@@ -83,7 +82,6 @@ else if (State == AccessState.Ready)
                                 <td class="num">@(t.Capacity is { } cap ? cap.ToString("N0") : "—")</td>
                                 <td class="num">@(t.ExpiryHours is { } ex ? $"{ex}h" : "—")</td>
                                 <td class="num">@(t.RetentionHours)h</td>
-                                <td class="num">@t.SortOrder</td>
                                 <td>@(t.Enabled ? "✓" : "—")</td>
                                 <td class="dg-actions-col">
                                     <a class="icon-btn" title="Edit" href="/guilds/@GuildId/muster-templates/@t.Id/edit"><span class="material-symbols-outlined">edit</span></a>
@@ -115,7 +113,7 @@ else if (State == AccessState.Ready)
 
     private string _search = "";
     private string _enabledFilter = "all";
-    private string _sortKey = "sort";
+    private string _sortKey = "name";
     private bool _descending;
 
     protected override async Task LoadAsync()
@@ -148,14 +146,13 @@ else if (State == AccessState.Ready)
 
             Func<MusterTemplate, IComparable> key = _sortKey switch
             {
-                "name" => t => t.Name ?? "",
                 "points" => t => t.Points,
                 "coins" => t => t.Coins,
                 "capacity" => t => t.Capacity ?? -1,
                 "expiry" => t => t.ExpiryHours ?? -1,
                 "retention" => t => t.RetentionHours,
                 "enabled" => t => t.Enabled ? 1 : 0,
-                _ => t => t.SortOrder,
+                _ => t => t.Name ?? "",
             };
 
             q = _descending ? q.OrderByDescending(key).ThenBy(t => t.Name) : q.OrderBy(key).ThenBy(t => t.Name);

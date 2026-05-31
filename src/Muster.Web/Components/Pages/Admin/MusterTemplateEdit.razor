@@ -43,15 +43,21 @@ else if (State == AccessState.Ready)
                 <div class="field">
                     <label>Name</label>
                     <input @bind="_t.Name" maxlength="100" placeholder="e.g. Tactical Strike Group" />
+                    <p class="hint">Shown in the template picker (admin/creator), not on the card.</p>
                 </div>
                 <div class="field">
-                    <label>Emoji</label>
-                    <input @bind="_t.Emoji" maxlength="8" placeholder="(optional)" />
-                    <p class="hint">Shown on the card for this template's musters.</p>
+                    <label>Default card title</label>
+                    <input @bind="_t.Title" maxlength="120" placeholder="(optional)" />
+                    <p class="hint">Heading on the muster card when the author doesn't set one.</p>
+                </div>
+                <div class="field span2">
+                    <label>Default card prompt</label>
+                    <textarea rows="2" @bind="_t.Prompt" maxlength="500" placeholder="(optional) what members are checking in for"></textarea>
+                    <p class="hint">Used as the card text when the author leaves the prompt blank — lets a creator post in one click.</p>
                 </div>
                 <div class="field span2">
                     <label>Description</label>
-                    <input @bind="_t.Description" maxlength="300" placeholder="(optional) what this template is for" />
+                    <input @bind="_t.Description" maxlength="300" placeholder="(optional) admin note — what this template is for" />
                 </div>
 
                 <div class="field">
@@ -89,11 +95,6 @@ else if (State == AccessState.Ready)
                     <label>Keep terminal cards for</label>
                     <div class="suffixed"><input type="number" min="0" @bind="_t.RetentionHours" /><span>hours</span></div>
                     <p class="hint">How long closed cards linger before cleanup.</p>
-                </div>
-                <div class="field">
-                    <label>Sort order</label>
-                    <input type="number" @bind="_t.SortOrder" />
-                    <p class="hint">Lower sorts first in the picker.</p>
                 </div>
 
                 <div class="field span2">

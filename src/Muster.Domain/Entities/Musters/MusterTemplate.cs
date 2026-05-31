@@ -11,10 +11,16 @@ public class MusterTemplate
     public ulong GuildId { get; set; }
 
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Admin-only note describing what the template is for (not shown on the card).</summary>
     public string? Description { get; set; }
 
-    /// <summary>Optional glyph shown on the card for this template's musters.</summary>
-    public string? Emoji { get; set; }
+    /// <summary>Optional default card heading — used when the author doesn't supply their own title.</summary>
+    public string? Title { get; set; }
+
+    /// <summary>Optional default card prompt — used when the author doesn't supply their own. Lets a template-locked
+    /// creator post in one step (no text to type).</summary>
+    public string? Prompt { get; set; }
 
     /// <summary>Participation POINTS this template grants (overrides the guild default).</summary>
     public long Points { get; set; }
@@ -36,7 +42,4 @@ public class MusterTemplate
 
     /// <summary>Retired templates stay for history but aren't offered when creating.</summary>
     public bool Enabled { get; set; } = true;
-
-    /// <summary>Display order in the template picker (ascending).</summary>
-    public int SortOrder { get; set; }
 }

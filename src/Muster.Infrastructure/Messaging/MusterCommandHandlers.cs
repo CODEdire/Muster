@@ -25,11 +25,6 @@ public static class CreateMusterHandler
         CreateMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters,
         GuildMusterSettingsService musterSettings, IMessageBus bus, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(command.Prompt))
-        {
-            return Result<Guid>.Fail("PromptRequired");
-        }
-
         // A Tracking Manager may create custom (and override a template); a template-only Muster Creator must pick a
         // template and can't override.
         var isManager = await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct);
@@ -57,7 +52,6 @@ public static class CreateMusterHandler
         // Resolve effective values: template (if any) is the base; a manager's non-null custom fields override; with
         // no template, a manager's values fall back to the guild defaults.
         long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires;
-        string? emoji = template?.Emoji;
 
         var now = DateTimeOffset.UtcNow;
         // Guild default max active time (0 = none). A template's own ExpiryHours wins; if a template doesn't set one,
@@ -114,16 +108,23 @@ public static class CreateMusterHandler
             return Result<Guid>.Fail("ChannelNotAllowed");
         }
 
-        var prompt = command.Prompt.Trim();
-        var title = string.IsNullOrWhiteSpace(command.Title) ? null : command.Title.Trim();
+        // Card text: the author's value, else the template's default. Prompt is required (one of them must be set);
+        // a template-locked creator can rely entirely on the template's prompt, so posting is one step.
+        var prompt = (string.IsNullOrWhiteSpace(command.Prompt) ? template?.Prompt : command.Prompt)?.Trim();
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return Result<Guid>.Fail("PromptRequired");
+        }
+
+        var title = (string.IsNullOrWhiteSpace(command.Title) ? template?.Title : command.Title)?.Trim();
+        title = string.IsNullOrWhiteSpace(title) ? null : title;
 
         var checkInCreator = command.CheckInCreator ?? defaults.CreatorAutoCheckIn;
 
         var muster = await musters.CreateAsync(
             command.GuildId, command.ChannelId, title, prompt, points, coins, coinCcy, retention,
             capacity, expires, command.ActorId,
-            emojis: string.IsNullOrWhiteSpace(emoji) ? null : [emoji], sessionId: command.SessionId,
-            checkInCreator: checkInCreator, ct: ct);
+            sessionId: command.SessionId, checkInCreator: checkInCreator, ct: ct);
 
         await bus.PublishAsync(new MusterChanged(command.GuildId, muster.Id, MusterChangeKind.Created));
         return Result<Guid>.Success(muster.Id);

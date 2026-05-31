@@ -29,7 +29,7 @@ public class MusterTemplateAutocompleteProvider(IServiceScopeFactory scopeFactor
 
         var templates = await db.MusterTemplates
             .Where(t => t.GuildId == guildId && t.Enabled && t.Name.Contains(input))
-            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .OrderBy(t => t.Name)
             .Take(25)
             .Select(t => new { t.Id, t.Name })
             .ToListAsync();

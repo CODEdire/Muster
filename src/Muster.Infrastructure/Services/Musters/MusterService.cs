@@ -33,7 +33,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         ulong guildId, ulong channelId, string? title, string prompt,
         long points, long coins, Guid? coinCurrencyId, int retentionHours,
         int? capacity, DateTimeOffset? expiresAt, ulong createdBy,
-        IEnumerable<string>? emojis = null, Guid? sessionId = null, bool checkInCreator = false, CancellationToken ct = default)
+        Guid? sessionId = null, bool checkInCreator = false, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
         var muster = new ReactionMuster
@@ -43,7 +43,6 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
             ChannelId = channelId,
             Title = title,
             Prompt = prompt,
-            Emojis = emojis?.ToList() ?? [],
             Points = points,
             Coins = coins,
             CoinCurrencyId = coins > 0 ? coinCurrencyId : null,

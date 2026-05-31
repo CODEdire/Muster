@@ -21,10 +21,6 @@ public class ReactionMuster
 
     public string Prompt { get; set; } = string.Empty;
 
-    /// <summary>Optional decorative emoji shown on the card. No longer load-bearing — check-in is the button,
-    /// not a reaction — but kept so a card can carry a themed glyph.</summary>
-    public List<string> Emojis { get; set; } = [];
-
     /// <summary>Optional hard cap: once this many members have checked in, the button is closed to new check-ins.
     /// Ignored for a muster linked to a session (a linked muster rewards everyone who attended, not the first N).</summary>
     public int? Capacity { get; set; }

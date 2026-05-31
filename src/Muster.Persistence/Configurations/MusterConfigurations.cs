@@ -12,6 +12,9 @@ public class MusterTemplateConfiguration : IEntityTypeConfiguration<MusterTempla
         e.HasKey(x => x.Id);
         e.HasIndex(x => new { x.GuildId, x.Enabled });
         e.Property(x => x.Name).HasMaxLength(100);
+        e.Property(x => x.Description).HasMaxLength(300);
+        e.Property(x => x.Title).HasMaxLength(120);
+        e.Property(x => x.Prompt).HasMaxLength(500);
     }
 }
 

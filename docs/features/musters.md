@@ -23,9 +23,11 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - Values resolve **template → custom → guild defaults**; both 0 = check-in tracking only.
 
 ## Templates
-- Named presets (e.g. "Tactical Strike Group") set Points, Coins + coin type, retention, optional capacity/expiry, and an emoji — so creators pick a type instead of dialing in rewards.
+- Named presets (e.g. "Tactical Strike Group") set Points, Coins + coin type, retention, and optional capacity/expiry — so creators pick a type instead of dialing in rewards.
+- A template can also carry a **default card title + prompt**, so a template-locked creator posts in one step (no text to type); the author's own title/prompt still override.
 - Picking a template overrides the guild defaults; a **Tracking Manager** may further tweak its values per-post, a **Muster Creator** gets it locked.
 - No template picked → the guild's global muster defaults apply.
+- Managed on a dedicated page: a searchable/sortable grid with separate add/edit pages.
 
 ## Tracking-session integration
 - Link a muster to one or more **tracking sessions** to gate the session's spendable **coin** (points are never gated).
