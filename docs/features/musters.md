@@ -31,7 +31,7 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - Link a muster to one or more **tracking sessions** to gate the session's spendable **coin** (points are never gated).
 - Gate modes: **None** (mint to all), **Any** (in any linked muster), **All** (in every linked muster).
 - A linked muster's own reward is paid at **session close**, only to members who checked in **and** attended.
-- Sessions can **auto-create** a check-in muster on open (guild default + per-session override), with a configurable default gate mode.
+- Sessions can **auto-create** a check-in muster on open (guild default + per-session override), with a configurable default gate mode and a choice of **where the card posts** — the default muster channel, or the **session's own channel** (used only when the allow-list permits it, else it falls back to the default).
 - Ending a session auto-closes its linked musters.
 
 ## Admin (web)

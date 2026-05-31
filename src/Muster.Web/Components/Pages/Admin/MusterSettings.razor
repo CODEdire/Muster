@@ -120,6 +120,14 @@ else if (State == AccessState.Ready)
                 </select>
                 <p class="hint">How the session's spendable coin is gated by check-in at close.</p>
             </div>
+            <div class="field span2">
+                <label>Post the muster in</label>
+                <select @bind="Input.AutoCreateChannel" @bind:after="ScheduleSave">
+                    <option value="@MusterAutoCreateChannel.DefaultChannel">The default muster channel</option>
+                    <option value="@MusterAutoCreateChannel.SessionChannel">The session's own channel</option>
+                </select>
+                <p class="hint">Where an auto-created card posts. The session's channel is used only when the allow-list permits it — otherwise it falls back to the default channel.</p>
+            </div>
         </div>
     </AccordionPane>
 
@@ -255,6 +263,7 @@ else if (State == AccessState.Ready)
             CreatorAutoCheckIn = ms.CreatorAutoCheckIn,
             AutoCreate = ms.AutoCreateOnSession,
             Gate = ms.AutoCreateGate,
+            AutoCreateChannel = ms.AutoCreateChannel,
         };
         _allowed.Clear();
         foreach (var id in ms.AllowedChannelIds)
@@ -322,12 +331,12 @@ else if (State == AccessState.Ready)
         var expiry = Input.ExpiryHours ?? 0;
         var result = await Config.SetMusterSettingsAsync(
             GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
-            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry);
+            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel);
 
         if (!result.IsError)
         {
             await AuditAsync("muster.config",
-                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
+                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} autochannel:{Input.AutoCreateChannel} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
         }
         _save = result.IsError ? SaveStatus.Error : SaveStatus.Saved;
         _saveMsg = result.IsError ? result.Message : null;
@@ -356,5 +365,6 @@ else if (State == AccessState.Ready)
         public bool CreatorAutoCheckIn { get; set; } = true;
         public bool AutoCreate { get; set; }
         public SessionCoinGate Gate { get; set; } = SessionCoinGate.Any;
+        public MusterAutoCreateChannel AutoCreateChannel { get; set; } = MusterAutoCreateChannel.DefaultChannel;
     }
 }

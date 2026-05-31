@@ -27,6 +27,17 @@ public enum SessionCoinGate
     All = 2,
 }
 
+/// <summary>Where an auto-created (on session open) muster posts its card.</summary>
+public enum MusterAutoCreateChannel
+{
+    /// <summary>The guild's configured default muster channel (or, if none, no card is posted).</summary>
+    DefaultChannel = 0,
+
+    /// <summary>The session's own (voice) channel — but only when the allow-list permits it; otherwise it falls
+    /// back to the default channel.</summary>
+    SessionChannel = 1,
+}
+
 /// <summary>Difficulty tier for a guild quest, driving the bonus POINTS reward via guild config. S is hardest.</summary>
 public enum QuestTier
 {

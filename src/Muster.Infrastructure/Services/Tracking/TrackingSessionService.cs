@@ -128,8 +128,17 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             var expiryHours = musterCfg?.DefaultExpiryHours ?? 0;
             DateTimeOffset? expiresAt = expiryHours > 0 ? DateTimeOffset.UtcNow.AddHours(expiryHours) : null;
 
+            // Channel target: default muster channel, or the session's own channel when configured AND the allow-list
+            // permits it (falls back to the default otherwise).
+            var channelId = musterCfg?.MusterChannelId ?? 0;
+            if (musterCfg?.AutoCreateChannel == MusterAutoCreateChannel.SessionChannel
+                && session.VoiceChannelId != 0 && musterCfg.ChannelAllowed(session.VoiceChannelId))
+            {
+                channelId = session.VoiceChannelId;
+            }
+
             var muster = await musters.CreateAsync(
-                guildId, musterCfg?.MusterChannelId ?? 0, title: null, prompt: $"Check in for {name}",
+                guildId, channelId, title: null, prompt: $"Check in for {name}",
                 points: musterCfg?.DefaultPoints ?? 0, coins: musterCfg?.DefaultCoins ?? 0, coinCurrencyId: musterCfg?.DefaultCoinCurrencyId,
                 retentionHours: musterCfg?.BoardRetentionHours ?? 48, capacity: null, expiresAt: expiresAt, createdBy: openedBy,
                 sessionId: session.Id, checkInCreator: musterCfg?.CreatorAutoCheckIn ?? true, ct: ct);

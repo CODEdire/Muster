@@ -314,6 +314,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         ulong guildId, ulong channelId, int retentionHours, bool autoCreate, SessionCoinGate autoCreateGate,
         long defaultPoints, long defaultCoins, Guid? defaultCoinCurrencyId,
         IReadOnlyList<ulong>? allowedChannelIds = null, bool creatorAutoCheckIn = true, int defaultExpiryHours = 0,
+        MusterAutoCreateChannel autoCreateChannel = MusterAutoCreateChannel.DefaultChannel,
         CancellationToken ct = default)
     {
         var guild = await db.FindGuildAsync(guildId, ct);
@@ -349,6 +350,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             s.AllowedChannelIds = allowed;
             s.AutoCreateOnSession = autoCreate;
             s.AutoCreateGate = autoCreateGate;
+            s.AutoCreateChannel = autoCreateChannel;
             s.CreatorAutoCheckIn = creatorAutoCheckIn;
             s.DefaultExpiryHours = defaultExpiryHours;
             s.DefaultPoints = defaultPoints;

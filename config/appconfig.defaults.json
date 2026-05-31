@@ -5,7 +5,8 @@
       "BoardRetentionHours": 48,
       "AutoCreateOnSession": false,
       "CreatorAutoCheckIn": true,
-      "DefaultExpiryHours": 0
+      "DefaultExpiryHours": 0,
+      "AutoCreateChannel": "DefaultChannel"
     }
   }
 }

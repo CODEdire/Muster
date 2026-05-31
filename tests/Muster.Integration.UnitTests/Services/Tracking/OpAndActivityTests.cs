@@ -1,12 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Events;
 using Muster.Infrastructure.Services.Tracking;
@@ -98,6 +101,36 @@ public class OpAndActivityTests
         Assert.True(await db.TrackingSessions.AnyAsync(s => s.ScheduledEventId == 9001 && s.Status == TrackingSessionStatus.Active));
         Assert.True(await db.TrackingSessions.AnyAsync(s => s.ScheduledEventId == 9002 && s.Status == TrackingSessionStatus.Closed));
         Assert.True(await db.TrackingSessions.AnyAsync(s => s.ScheduledEventId == null && s.Status == TrackingSessionStatus.Active)); // manual untouched
+    }
+
+    [Fact]
+    public async Task AutoCreateMuster_PostsToSessionChannel_OnlyWhenAllowed()
+    {
+        using var db = await SeededAsync();
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var auth = new GuildAuthorizationService(db);
+        var musters = new MusterService(db, awards, auth);
+        var store = new GuildMusterSettingsService(db, Microsoft.Extensions.Options.Options.Create(new GuildMusterSettings()));
+        var sut = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters, store);
+
+        // Auto-create on; post into the session's channel; default = 700; only 500 is allow-listed.
+        db.GuildMusterSettings.Add(new GuildMusterSettings
+        {
+            GuildId = 1, AutoCreateOnSession = true,
+            AutoCreateChannel = MusterAutoCreateChannel.SessionChannel,
+            MusterChannelId = 700, AllowedChannelIds = [500],
+        });
+        await db.SaveChangesAsync();
+
+        // Session in an allowed channel → muster posts there.
+        await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        var inAllowed = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(500ul, inAllowed.ChannelId);
+
+        // Session in a non-allowed channel → falls back to the default channel.
+        await sut.OpenManualAsync(1, voiceChannelId: 999, openedBy: 5);
+        var notAllowed = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(700ul, notAllowed.ChannelId);
     }
 
     [Fact]

@@ -38,6 +38,10 @@ public class GuildMusterSettings
     /// into the muster suffices). Default <see cref="SessionCoinGate.Any"/>.</summary>
     public SessionCoinGate AutoCreateGate { get; set; } = SessionCoinGate.Any;
 
+    /// <summary>Where an auto-created muster posts: the default muster channel, or the session's own channel (when
+    /// the allow-list permits it, else falls back to the default).</summary>
+    public MusterAutoCreateChannel AutoCreateChannel { get; set; } = MusterAutoCreateChannel.DefaultChannel;
+
     // --- Global reward defaults (a muster with no template uses these; templates override per-creation) ---
 
     /// <summary>Baseline participation POINTS granted (at close) for checking into any muster. 0 = none.</summary>
