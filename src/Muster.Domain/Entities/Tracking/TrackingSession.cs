@@ -1,3 +1,4 @@
+using Muster.Contracts;
 using Muster.Domain.Enums;
 
 namespace Muster.Domain.Entities.Tracking;
@@ -31,6 +32,11 @@ public class TrackingSession
     public TrackingSessionStatus Status { get; set; } = TrackingSessionStatus.Active;
 
     public ulong OpenedBy { get; set; }
+
+    /// <summary>How this session's spendable-coin mint is gated by its linked muster(s) at close (points are never
+    /// gated). <see cref="SessionCoinGate.None"/> (default) or no linked muster = mint coin to every eligible
+    /// attendee. See <see cref="Muster.Domain.Entities.Musters.MusterSessionLink"/>.</summary>
+    public SessionCoinGate CoinGate { get; set; } = SessionCoinGate.None;
 
     /// <summary>Anti-AFK guards that pause this session's reward accrual (see <see cref="AfkGuards"/>).</summary>
     public AfkGuards Guards { get; set; }

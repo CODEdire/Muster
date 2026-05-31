@@ -350,6 +350,56 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         return CommandResult.Ok($"{pubPart}; {modPart}; completed cards linger {q.BoardRetentionHours}h.");
     }
 
+    /// <summary>Set whether opening a tracking session auto-creates + links a check-in muster (gating the session
+    /// coin). A per-session override still applies at open time.</summary>
+    public async Task<CommandResult> SetAutoCreateMusterAsync(ulong guildId, bool enabled, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        var settings = guild.Settings;
+        settings.AutoCreateMusterOnSession = enabled;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(enabled
+            ? "New sessions will auto-post a check-in muster and gate their coin on it (mode Any)."
+            : "Sessions won't auto-create a muster (link one manually to gate a session's coin).");
+    }
+
+    /// <summary>Point the muster card board at a channel (0 clears it, so musters post to the channel they're
+    /// created from). <paramref name="retentionHours"/> null = leave the linger window unchanged.</summary>
+    public async Task<CommandResult> SetMusterChannelAsync(ulong guildId, ulong channelId, int? retentionHours = null, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (retentionHours is < 0)
+        {
+            return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as terminal).");
+        }
+
+        var settings = guild.Settings;
+        settings.Musters.MusterChannelId = channelId;
+        if (retentionHours is { } hours)
+        {
+            settings.Musters.BoardRetentionHours = hours;
+        }
+
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok(channelId == 0
+            ? "Musters will post to the channel they're created from."
+            : $"Muster cards will post to <#{channelId}> (terminal cards linger {settings.Musters.BoardRetentionHours}h).");
+    }
+
     /// <summary>Configure anti-staleness auto-resolve timeouts and per-player quest limits.</summary>
     public async Task<CommandResult> SetQuestAutomationAsync(
         ulong guildId,

@@ -1,0 +1,203 @@
+@page "/guilds/{GuildIdRaw}/musters"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IMusterReadService Reads
+@inject WebAdminService AdminRead
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Entities.Guilds
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+@using Muster.Infrastructure.Services.Web
+
+<PageTitle>Musters — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <h1>Musters</h1>
+        <p class="subtitle">Reaction-style check-ins: post a card, members tap Check-In, you track who's in.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Post a muster</h2>
+        <div class="form-grid">
+            <label>Prompt
+                <input class="input" @bind="_prompt" placeholder="What members are checking in for" maxlength="2000" />
+            </label>
+            <label>Title (optional)
+                <input class="input" @bind="_title" placeholder="Heading shown above the prompt" maxlength="100" />
+            </label>
+            <label>Reward (points; 0 = check-in only)
+                <input class="input" type="number" min="0" @bind="_reward" />
+            </label>
+            <label>Capacity (optional)
+                <input class="input" type="number" min="0" @bind="_capacity" />
+            </label>
+            <label>Auto-close after (hours; 0 = never)
+                <input class="input" type="number" min="0" @bind="_expiresHours" />
+            </label>
+            <label>Channel
+                <select class="dg-select" @bind="_channelId">
+                    <option value="0">Server default@(_defaultChannelId == 0 ? " — none set, no Discord card" : "")</option>
+                    @foreach (var c in _channels)
+                    {
+                        <option value="@c.ChannelId">#@c.Name</option>
+                    }
+                </select>
+            </label>
+        </div>
+        <div class="btn-row">
+            <button type="button" disabled="@_posting" @onclick="PostAsync">Post muster</button>
+        </div>
+        <p class="subtitle">Cards post to the configured muster channel (set with <code>/muster config channel</code>). With none set, the muster is tracked here but no Discord card is posted.</p>
+    </div>
+
+    <div class="dg-toolbar">
+        <label class="checkbox"><input type="checkbox" @bind="_includeClosed" @bind:after="LoadListAsync" /> Show closed</label>
+    </div>
+
+    <div class="dg-scroll">
+        <table class="dg-table">
+            <thead>
+                <tr><th>Muster</th><th>Status</th><th class="num">Checked in</th><th class="num">Reward</th><th>Linked</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_list is null || _list.Count == 0)
+                {
+                    <tr class="dg-empty"><td colspan="7">@(_list is null ? "Loading…" : "No musters yet.")</td></tr>
+                }
+                else
+                {
+                    @foreach (var m in _list)
+                    {
+                        <tr>
+                            <td><a href="@MusterLinks.MusterDetail(GuildId, m.Id)">@m.Display</a></td>
+                            <td>@StatusLabel(m.Status)</td>
+                            <td class="num">@m.CheckedIn@(m.Capacity is { } c ? $"/{c}" : "")</td>
+                            <td class="num">@(m.Reward > 0 ? $"{m.Reward} {m.CurrencyCode ?? "POINTS"}" : "—")</td>
+                            <td>@(m.LinkedSessions > 0 ? $"{m.LinkedSessions} session(s)" : "—")</td>
+                            <td><LocalTime Value="m.CreatedAt" /></td>
+                            <td class="dg-actions-col">
+                                <a class="icon-btn" title="View" href="@MusterLinks.MusterDetail(GuildId, m.Id)"><span class="material-symbols-outlined">visibility</span></a>
+                                @if (m.Status == MusterStatus.Open)
+                                {
+                                    <button type="button" class="icon-btn danger" title="Close" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">stop_circle</span></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private IReadOnlyList<MusterListItem>? _list;
+    private bool _includeClosed;
+    private bool _posting;
+    private bool _busy;
+
+    private string _prompt = "";
+    private string _title = "";
+    private int _reward;
+    private int _capacity;
+    private int _expiresHours;
+    private ulong _channelId;
+    private ulong _defaultChannelId;
+    private IReadOnlyList<GuildChannel> _channels = [];
+
+    protected override async Task LoadAsync()
+    {
+        _channels = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Text);
+        _defaultChannelId = (await AdminRead.GetSettingsAsync(GuildId)).Musters.MusterChannelId;
+        await LoadListAsync();
+    }
+
+    private async Task LoadListAsync()
+    {
+        _list = await Reads.ListAsync(GuildId, _includeClosed);
+    }
+
+    private async Task PostAsync()
+    {
+        if (_posting || string.IsNullOrWhiteSpace(_prompt))
+        {
+            Message = "Enter a prompt first.";
+            return;
+        }
+
+        _posting = true;
+        try
+        {
+            DateTimeOffset? expires = _expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(_expiresHours) : null;
+            // ChannelId 0 → the card renderer falls back to the guild's configured muster channel.
+            var command = new CreateMuster(GuildId, UserId, _channelId,
+                string.IsNullOrWhiteSpace(_title) ? null : _title.Trim(), _prompt.Trim(),
+                CurrencyId: null, _reward, _capacity > 0 ? _capacity : null, expires, SessionId: null);
+
+            var noCard = _channelId == 0 && _defaultChannelId == 0;
+            var result = await Bus.InvokeAsync<Result<Guid>>(command);
+            Message = result.Ok
+                ? noCard
+                    ? "Muster created — but no Discord card was posted (no channel selected and no server muster channel set). Pick a channel above, or set one with /muster config channel."
+                    : "Muster posted."
+                : MusterStatusText.Friendly(result.Status);
+            if (result.Ok)
+            {
+                _prompt = _title = "";
+                _reward = _capacity = _expiresHours = 0;
+                _channelId = 0;
+            }
+        }
+        finally
+        {
+            _posting = false;
+            await LoadListAsync();
+        }
+    }
+
+    private async Task CloseAsync(Guid musterId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Bus.InvokeAsync<Result>(new CloseMuster(GuildId, UserId, musterId));
+            Message = result.Ok ? "Muster closed." : MusterStatusText.Friendly(result.Status);
+        }
+        finally
+        {
+            _busy = false;
+            await LoadListAsync();
+        }
+    }
+
+    private static string StatusLabel(MusterStatus s) => s switch
+    {
+        MusterStatus.Open => "🟢 Open",
+        MusterStatus.Closed => "✅ Closed",
+        MusterStatus.Expired => "⌛ Expired",
+        MusterStatus.Cancelled => "🚫 Cancelled",
+        _ => s.ToString(),
+    };
+}

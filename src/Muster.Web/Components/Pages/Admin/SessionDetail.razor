@@ -403,10 +403,9 @@ else if (State == AccessState.Ready && _detail is not null)
 
         _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
         _sessionFactor = await sp.GetRequiredService<RewardMultiplierService>().ActiveFactorAsync(GuildId, MultiplierScope.Sessions);
-        // Staff buttons (stop/close, force opt-out, etc.) — admin + tracking manager + legacy officer.
-        _isStaff = await auth.IsAdminAsync(GuildId, UserId)
-            || await auth.IsTrackingManagerAsync(GuildId, UserId)
-            || await auth.IsOfficerAsync(GuildId, UserId);
+        // Staff buttons (stop/close, force opt-out, etc.). IsTrackingManagerAsync already covers Admin + the legacy
+        // Officer/EventOfficer umbrellas.
+        _isStaff = await auth.IsTrackingManagerAsync(GuildId, UserId);
         _detail = await sp.GetRequiredService<ParticipationReadService>().SessionDetailAsync(GuildId, id);
         _lastLoaded = DateTimeOffset.UtcNow;
         BuildTimeline();

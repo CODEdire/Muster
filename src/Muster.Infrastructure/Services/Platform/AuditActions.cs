@@ -105,6 +105,21 @@ public static class AuditActions
             new("track.session.scheduledEventClose", AuditCategory.Tracking, "Session");
     }
 
+    public static class Muster
+    {
+        // Muster (reaction check-in) lifecycle. Filed under the Tracking category — musters are managed by the
+        // Tracking Manager role and gate session coin — with a "Muster" source so they group on the audit page.
+        public static readonly AuditAction Create = new("muster.create", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction CheckIn = new("muster.checkin", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction AddParticipant = new("muster.participant.add", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction RemoveParticipant = new("muster.participant.remove", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction Close = new("muster.close", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction Link = new("muster.session.link", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction Unlink = new("muster.session.unlink", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction SetGate = new("muster.session.gate", AuditCategory.Tracking, "Muster");
+        public static readonly AuditAction CardRemove = new("muster.card.remove", AuditCategory.Tracking, "Muster");
+    }
+
     public static class Quests
     {
         // Lifecycle actions — every IGuildCommand the audit middleware sees flows into one of these.

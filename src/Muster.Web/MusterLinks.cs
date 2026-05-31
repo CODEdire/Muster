@@ -16,4 +16,10 @@ public static class MusterLinks
 
     /// <summary>One session's detail page.</summary>
     public static string SessionDetail(ulong guildId, Guid sessionId) => $"/guilds/{guildId}/sessions/{sessionId}";
+
+    /// <summary>The Musters page.</summary>
+    public static string Musters(ulong guildId) => $"/guilds/{guildId}/musters";
+
+    /// <summary>One muster's detail page.</summary>
+    public static string MusterDetail(ulong guildId, Guid musterId) => $"/guilds/{guildId}/musters/{musterId}";
 }

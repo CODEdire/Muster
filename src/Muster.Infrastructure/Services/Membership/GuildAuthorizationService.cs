@@ -79,9 +79,10 @@ public class GuildAuthorizationService(MusterDbContext db)
             guild.Settings.OfficerRoleIds.Contains(r));
     }
 
-    /// <summary>Tracking staff — open/close sessions, configure monitored channels + reward multipliers,
-    /// force-opt-out members. Admin bypass; legacy <see cref="GuildSettings.OfficerRoleIds"/> also grants this
-    /// (back-compat).</summary>
+    /// <summary>Tracking staff — open/close sessions + ops, configure monitored channels + reward multipliers,
+    /// run musters, force-opt-out members. Admin bypass; the legacy <see cref="GuildSettings.OfficerRoleIds"/> and
+    /// <see cref="GuildSettings.EventOfficerRoleIds"/> umbrellas also grant it. (Event Officer was merged into
+    /// Tracking Manager — its role list is kept as a back-compat alias so existing mappings keep working.)</summary>
     public async Task<bool> IsTrackingManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
         if (await IsAdminAsync(guildId, userId, ct))
@@ -98,29 +99,15 @@ public class GuildAuthorizationService(MusterDbContext db)
 
         return member.RoleIds.Any(r =>
             guild.Settings.TrackingManagerRoleIds.Contains(r) ||
-            guild.Settings.OfficerRoleIds.Contains(r));
-    }
-
-    /// <summary>Event-ops staff — may create / close <c>/op</c> entries. Admin bypass; legacy
-    /// <see cref="GuildSettings.OfficerRoleIds"/> also grants this (back-compat).</summary>
-    public async Task<bool> IsEventOfficerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
-    {
-        if (await IsAdminAsync(guildId, userId, ct))
-        {
-            return true;
-        }
-
-        var guild = await db.FindGuildAsync(guildId, ct);
-        var member = await db.FindMemberAsync(guildId, userId, ct);
-        if (guild is null || member is null)
-        {
-            return false;
-        }
-
-        return member.RoleIds.Any(r =>
             guild.Settings.EventOfficerRoleIds.Contains(r) ||
             guild.Settings.OfficerRoleIds.Contains(r));
     }
+
+    /// <summary>Event-ops staff. <b>Merged into Tracking Manager</b> — this is now an alias so the <c>/op</c> family
+    /// and any EventOfficer-gated surface accept the same holders as tracking. Kept as a method for call-site
+    /// stability.</summary>
+    public Task<bool> IsEventOfficerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+        => IsTrackingManagerAsync(guildId, userId, ct);
 
     /// <summary>Read-only observer — audit log, ledger, participation. Implied by any mutating role
     /// (admin / officer / economy manager / event officer / tracking manager / quest manager) so adding the role

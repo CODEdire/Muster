@@ -1,0 +1,250 @@
+@page "/guilds/{GuildIdRaw}/musters/{MusterId:guid}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IMusterReadService Reads
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Muster — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="@MusterLinks.Musters(GuildId)">← Musters</a>
+        <h1>@(_m is null ? "Muster" : (string.IsNullOrWhiteSpace(_m.Title) ? _m.Prompt : _m.Title))</h1>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_m is null)
+    {
+        <div class="panel glass empty">Muster not found.</div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <p>@_m.Prompt</p>
+            <dl class="kv">
+                <div><dt>Status</dt><dd>@_m.Status</dd></div>
+                <div><dt>Checked in</dt><dd>@_m.Participants.Count@(_m.Capacity is { } c ? $" / {c}" : "")</dd></div>
+                <div><dt>Reward</dt><dd>@(_m.Reward > 0 ? $"{_m.Reward} {_m.CurrencyCode ?? "POINTS"}" : "Check-in only")</dd></div>
+                <div><dt>Created</dt><dd><LocalTime Value="_m.CreatedAt" /> by @Name(_m.CreatedBy)</dd></div>
+                @if (_m.ExpiresAt is { } ex)
+                {
+                    <div><dt>Closes</dt><dd><LocalTime Value="ex" /></dd></div>
+                }
+            </dl>
+            <div class="btn-row">
+                @if (_m.Status == MusterStatus.Open)
+                {
+                    <button type="button" class="btn btn-danger" disabled="@_busy" @onclick="CloseAsync">Close muster</button>
+                }
+                <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="RemoveCardAsync">Remove Discord card</button>
+            </div>
+        </div>
+
+        <div class="panel glass">
+            <h2>Participants (@_m.Participants.Count)</h2>
+            <div class="dg-scroll">
+                <table class="dg-table">
+                    <thead><tr><th>Member</th><th>Via</th><th>Checked in</th><th></th></tr></thead>
+                    <tbody>
+                        @if (_m.Participants.Count == 0)
+                        {
+                            <tr class="dg-empty"><td colspan="4">No check-ins yet.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var p in _m.Participants)
+                            {
+                                <tr>
+                                    <td>@Name(p.UserId)</td>
+                                    <td>@(p.Source == MusterParticipantSource.Admin ? "Added by staff" : "Button")</td>
+                                    <td><LocalTime Value="p.CheckedInAt" /></td>
+                                    <td class="dg-actions-col">
+                                        <button type="button" class="icon-btn danger" title="Remove" disabled="@_busy" @onclick="() => RemoveAsync(p.UserId)"><span class="material-symbols-outlined">person_remove</span></button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-inline">
+                <input class="input" @bind="_addUserId" placeholder="Discord user id to add" />
+                <button type="button" disabled="@_busy" @onclick="AddAsync">Add participant</button>
+            </div>
+        </div>
+
+        <div class="panel glass">
+            <h2>Linked sessions</h2>
+            @if (_m.Sessions.Count == 0)
+            {
+                <p class="subtitle">Not linked to any session. Link one to gate its spendable-coin mint on check-in — points are never gated, and a session with no linked muster mints coins to everyone.</p>
+            }
+            else
+            {
+                <ul class="list">
+                    @foreach (var s in _m.Sessions)
+                    {
+                        <li>
+                            <a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a> <span class="subtitle">(@s.Status)</span>
+                            <label class="subtitle">Coin gate:
+                                <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
+                                    <option value="@SessionCoinGate.None">None — mint to all</option>
+                                    <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
+                                    <option value="@SessionCoinGate.All">All — in every linked muster</option>
+                                </select>
+                            </label>
+                            <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)">Unlink</button>
+                        </li>
+                    }
+                </ul>
+            }
+            <div class="form-inline">
+                <select class="dg-select" @bind="_linkSessionId">
+                    <option value="">Select a session…</option>
+                    @foreach (var s in _sessions)
+                    {
+                        <option value="@s.SessionId">@s.Name (@s.Status)</option>
+                    }
+                </select>
+                <button type="button" disabled="@_busy" @onclick="LinkAsync">Link session</button>
+            </div>
+            <p class="subtitle">Linking defaults the session's coin gate to <strong>Any</strong>. Add more musters (e.g. mission rounds) and switch to <strong>All</strong> to require every one — under <strong>All</strong>, every linked muster is required, so one that nobody checked into blocks the coin (use <strong>Any</strong>, or don't link it, if that's not intended). A session with no muster linked at all mints to everyone.</p>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid MusterId { get; set; }
+
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private MusterDetailView? _m;
+    private IReadOnlyList<MusterLinkedSession> _sessions = [];
+    private readonly Dictionary<ulong, string> _names = [];
+    private bool _busy;
+    private string _addUserId = "";
+    private string? _linkSessionId;
+
+    protected override async Task LoadAsync()
+    {
+        _m = await Reads.GetDetailAsync(GuildId, MusterId);
+        if (_m is null)
+        {
+            return;
+        }
+
+        _sessions = await Reads.ListLinkableSessionsAsync(GuildId);
+
+        _names.Clear();
+        foreach (var id in _m.Participants.Select(p => p.UserId).Append(_m.CreatedBy).Distinct())
+        {
+            _names[id] = await HumanizeAsync($"<@{id}>");
+        }
+    }
+
+    private string Name(ulong userId) => _names.TryGetValue(userId, out var n) ? n : $"<@{userId}>";
+
+    private async Task CloseAsync() => await RunAsync(new CloseMuster(GuildId, UserId, MusterId), "Muster closed.");
+
+    private async Task RemoveCardAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            // Page is access-gated (RequiredAccess); audit the action here, then ask the bot host (which owns the
+            // gateway client) to delete the card. The muster data is untouched.
+            await AuditAsync("muster.card.remove", $"muster:{MusterId}");
+            await Bus.PublishAsync(new RemoveMusterCard(GuildId, MusterId));
+            Message = "Removing the Discord card…";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RemoveAsync(ulong userId) => await RunAsync(new RemoveMusterParticipant(GuildId, UserId, MusterId, userId), "Participant removed.");
+
+    private async Task AddAsync()
+    {
+        if (!ulong.TryParse(_addUserId?.Trim(), out var userId))
+        {
+            Message = "Enter a numeric Discord user id.";
+            return;
+        }
+
+        await RunAsync(new AddMusterParticipant(GuildId, UserId, MusterId, userId), "Participant added.");
+        _addUserId = "";
+    }
+
+    private async Task LinkAsync()
+    {
+        if (!Guid.TryParse(_linkSessionId, out var sessionId))
+        {
+            Message = "Pick a session to link.";
+            return;
+        }
+
+        // Default the session's coin gate to Any on link (the common "must check in" case); changeable below.
+        var linked = await Bus.InvokeAsync<Result>(new LinkMusterToSession(GuildId, UserId, MusterId, sessionId));
+        if (linked.Ok)
+        {
+            await Bus.InvokeAsync<Result>(new SetSessionCoinGate(GuildId, UserId, sessionId, SessionCoinGate.Any));
+        }
+
+        Message = linked.Ok ? "Session linked." : MusterStatusText.Friendly(linked.Status);
+        _linkSessionId = null;
+        await LoadAsync();
+    }
+
+    private async Task OnGateChangeAsync(Guid sessionId, ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<SessionCoinGate>(e.Value as string, out var gate))
+        {
+            return;
+        }
+
+        await RunAsync(new SetSessionCoinGate(GuildId, UserId, sessionId, gate), "Coin gate updated.");
+    }
+
+    private async Task UnlinkAsync(Guid sessionId) => await RunAsync(new UnlinkMusterFromSession(GuildId, UserId, MusterId, sessionId), "Session unlinked.");
+
+    private async Task RunAsync(IGuildCommand command, string okMessage)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Bus.InvokeAsync<Result>(command);
+            Message = result.Ok ? okMessage : MusterStatusText.Friendly(result.Status);
+        }
+        finally
+        {
+            _busy = false;
+            await LoadAsync();
+        }
+    }
+}

@@ -14,6 +14,7 @@ public class GuildConfiguration : IEntityTypeConfiguration<Guild>
         {
             s.ToJson();
             s.OwnsOne(x => x.Quests); // nested within the same settings JSON document
+            s.OwnsOne(x => x.Musters); // nested within the same settings JSON document
         });
     }
 }

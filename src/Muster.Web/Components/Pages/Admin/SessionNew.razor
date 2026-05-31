@@ -56,6 +56,7 @@ else if (State == AccessState.Ready)
                 <label class="check"><InputCheckbox @bind-Value="Input.SkipMuted" /> Pause while muted <span class="subtitle">can't speak (off counts phone-call presence)</span></label>
                 <label class="check"><InputCheckbox @bind-Value="Input.SkipDeafened" /> Pause while deafened <span class="subtitle">checked out (default)</span></label>
                 <label class="check"><InputCheckbox @bind-Value="Input.SkipAlone" /> Pause while alone <span class="subtitle">fewer than two members present</span></label>
+                <label class="check"><InputCheckbox @bind-Value="Input.CreateMuster" /> Post a check-in muster <span class="subtitle">gates this session's coin on check-in (defaults to the server setting)</span></label>
                 <div class="btn-row"><button type="submit">Start session</button></div>
             </EditForm>
         </div>
@@ -71,7 +72,15 @@ else if (State == AccessState.Ready)
     private IReadOnlyList<GuildChannel> _voice = [];
 
     protected override async Task LoadAsync()
-        => _voice = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+    {
+        _voice = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+
+        // Default the check-in-muster checkbox to the guild setting (only before the form is first submitted).
+        if (Input.Submitted is null)
+        {
+            Input.CreateMuster = (await AdminRead.GetSettingsAsync(GuildId)).AutoCreateMusterOnSession;
+        }
+    }
 
     private async Task StartAsync()
     {
@@ -86,7 +95,8 @@ else if (State == AccessState.Ready)
 
         var result = await Tracking.StartAsync(
             GuildId, UserId, Input.ChannelId, name, channelName,
-            requireUnmuted: Input.SkipMuted, requireUndeafened: Input.SkipDeafened, requireNotAlone: Input.SkipAlone);
+            requireUnmuted: Input.SkipMuted, requireUndeafened: Input.SkipDeafened, requireNotAlone: Input.SkipAlone,
+            createMuster: Input.CreateMuster);
 
         if (!result.IsError)
         {
@@ -110,5 +120,6 @@ else if (State == AccessState.Ready)
         public bool SkipMuted { get; set; }
         public bool SkipDeafened { get; set; } = true;
         public bool SkipAlone { get; set; }
+        public bool CreateMuster { get; set; }
     }
 }

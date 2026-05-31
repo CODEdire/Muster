@@ -69,10 +69,10 @@ public class ParticipantGateTests
         var awards = new CurrencyService(db, new RecordingMessageBus());
         await new MemberSyncService(db).UpsertAsync(1, 20, "guest", null, null, roleIds: [123]);
 
-        // Muster reaction by a guest -> not eligible, no reward.
+        // Muster check-in by a guest -> not eligible, no reward.
         var musters = new MusterService(db, awards, auth);
-        await musters.CreateAsync(1, 100, 999, "Roll call", ["✅"], points.Id, 10, capacity: null, expiresAt: null);
-        Assert.Equal(ReactionOutcome.NotEligible, await musters.RecordReactionAsync(999, 20, "✅"));
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 10, capacity: null, expiresAt: null, createdBy: 1);
+        Assert.Equal(ReactionOutcome.NotEligible, await musters.CheckInAsync(muster.Id, 20, MusterParticipantSource.Button));
         Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync());
 
         // Quest claim by a guest -> rejected.

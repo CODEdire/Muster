@@ -67,13 +67,15 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             [SlashCommandParameter(Name = "name", Description = "A name for this session (e.g. 'Friday raid')")] string name,
             [SlashCommandParameter(Name = "skip-muted", Description = "Pause while muted, i.e. can't speak (default false — a muted member may still be present)")] bool skipMuted = false,
             [SlashCommandParameter(Name = "skip-deafened", Description = "Pause while deafened, i.e. checked out (default true)")] bool skipDeafened = true,
-            [SlashCommandParameter(Name = "skip-alone", Description = "Pause while alone in the channel (default false)")] bool skipAlone = false)
+            [SlashCommandParameter(Name = "skip-alone", Description = "Pause while alone in the channel (default false)")] bool skipAlone = false,
+            [SlashCommandParameter(Name = "check-in-muster", Description = "Post a check-in muster + gate the coin on it (omit = server default)")] bool? createMuster = null)
             => RunAsync(
                 async (sp, guildId) =>
                 {
                     var result = await sp.GetRequiredService<TrackingCommandService>()
                         .StartAsync(guildId, Context.User.Id, channel.Id, name, (channel as IGuildChannel)?.Name,
-                            requireUnmuted: skipMuted, requireUndeafened: skipDeafened, requireNotAlone: skipAlone);
+                            requireUnmuted: skipMuted, requireUndeafened: skipDeafened, requireNotAlone: skipAlone,
+                            createMuster: createMuster);
 
                     // Members already in the channel produce no voice event — scan the current roster now.
                     await sp.GetRequiredService<GuildReconcileCoordinator>().ReconcileNowAsync(guildId);

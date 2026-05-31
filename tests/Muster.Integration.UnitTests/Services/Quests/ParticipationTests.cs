@@ -63,21 +63,218 @@ public class ParticipationTests
     }
 
     [Fact]
-    public async Task Muster_Reaction_RewardsOnce_AndRespectsCapacity()
+    public async Task Muster_CheckIn_RespectsCapacity_AndPaysRosterOnClose()
     {
         var (db, points) = await SeededAsync();
         var awards = new CurrencyService(db, new RecordingMessageBus());
         var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
 
-        var muster = await musters.CreateAsync(1, 100, 999, "Roll call", ["✅"], points.Id, 10, capacity: 1, expiresAt: null);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 10, capacity: 1, expiresAt: null, createdBy: 5);
 
-        Assert.Equal(ReactionOutcome.Recorded, await musters.RecordReactionAsync(999, 10, "✅"));
-        Assert.Equal(ReactionOutcome.AlreadyParticipated, await musters.RecordReactionAsync(999, 10, "✅"));
-        Assert.Equal(ReactionOutcome.Full, await musters.RecordReactionAsync(999, 20, "✅")); // capacity = 1
+        Assert.Equal(ReactionOutcome.Recorded, await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button));
+        Assert.Equal(ReactionOutcome.AlreadyParticipated, await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button));
+        Assert.Equal(ReactionOutcome.Full, await musters.CheckInAsync(muster.Id, 20, MusterParticipantSource.Button)); // capacity = 1
 
+        // Reward is paid at close, not on check-in.
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster));
+
+        Assert.True(await musters.CloseAsync(muster.Id));
         Assert.Equal(1, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster));
         Assert.Equal(10, (await db.Wallets.SingleAsync(w => w.UserId == 10)).Balance);
-        _ = muster;
+
+        // Re-closing is idempotent — no second payout.
+        Assert.False(await musters.CloseAsync(muster.Id));
+        Assert.Equal(1, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster));
+    }
+
+    private static async Task<Currency> AddSessionCoinAsync(MusterDbContext db, int minutesPerCoin = 1)
+    {
+        var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
+        db.Currencies.Add(coin);
+        var guild = await db.Guilds.FirstAsync();
+        guild.Settings.SessionCoinCurrencyCode = "COIN";
+        guild.Settings.MinutesPerCoin = minutesPerCoin;
+        guild.Settings = guild.Settings;
+        await db.SaveChangesAsync();
+        return coin;
+    }
+
+    private static Task<int> CoinLedgerCountAsync(MusterDbContext db, Guid coinId, ulong userId)
+        => db.CurrencyLedgerEntries.CountAsync(e => e.CurrencyId == coinId && e.UserId == userId);
+
+    [Fact]
+    public async Task LinkedMuster_GatesSessionCoin_ToCheckedInAttendeesOnly()
+    {
+        var (db, points) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+        var coin = await AddSessionCoinAsync(db);
+
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
+
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        // A muster linked to the session, gating coin on check-in. Only user 10 checks in.
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        Assert.Equal(ReactionOutcome.Recorded, await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button));
+        session.CoinGate = SessionCoinGate.Any;
+        await db.SaveChangesAsync();
+
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-30);
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10, 20), t0); // both in voice
+        await sessions.CloseAsync(session.Id, at: t0.AddMinutes(30), pointsPerMinute: 1);
+
+        // Both earned POINTS for voice time; only the checked-in member (10) earned the gated COIN.
+        Assert.True((await db.Wallets.SingleAsync(w => w.UserId == 10 && w.CurrencyId == points.Id)).Balance > 0);
+        Assert.True((await db.Wallets.SingleAsync(w => w.UserId == 20 && w.CurrencyId == points.Id)).Balance > 0);
+        Assert.Equal(1, await CoinLedgerCountAsync(db, coin.Id, 10));
+        Assert.Equal(0, await CoinLedgerCountAsync(db, coin.Id, 20)); // not checked in → no coin
+    }
+
+    [Fact]
+    public async Task AllGate_RequiresEveryAssignedMuster()
+    {
+        var (db, points) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+        var coin = await AddSessionCoinAsync(db);
+
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
+
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        // Two linked musters under an All gate. User 20 checks into both; user 10 only into round 1.
+        var round1 = await musters.CreateAsync(1, 100, null, "Round 1", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        var round2 = await musters.CreateAsync(1, 100, null, "Round 2", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        await musters.CheckInAsync(round1.Id, 10, MusterParticipantSource.Button);
+        await musters.CheckInAsync(round1.Id, 20, MusterParticipantSource.Button);
+        await musters.CheckInAsync(round2.Id, 20, MusterParticipantSource.Button);
+        session.CoinGate = SessionCoinGate.All;
+        await db.SaveChangesAsync();
+
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-30);
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10, 20), t0); // both attend
+        await sessions.CloseAsync(session.Id, at: t0.AddMinutes(30), pointsPerMinute: 1);
+
+        // All gate: only the member in EVERY linked muster (20) earns the coin; 10 missed round 2.
+        Assert.Equal(1, await CoinLedgerCountAsync(db, coin.Id, 20));
+        Assert.Equal(0, await CoinLedgerCountAsync(db, coin.Id, 10));
+    }
+
+    [Fact]
+    public async Task NoLinkedMuster_MintsCoinToAllEligibleAttendees()
+    {
+        var (db, _) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+        var coin = await AddSessionCoinAsync(db);
+
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
+
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5); // CoinGate defaults to None
+
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-30);
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10, 20), t0);
+        await sessions.CloseAsync(session.Id, at: t0.AddMinutes(30), pointsPerMinute: 1);
+
+        // No muster gate → everyone who attended earns the coin.
+        Assert.Equal(1, await CoinLedgerCountAsync(db, coin.Id, 10));
+        Assert.Equal(1, await CoinLedgerCountAsync(db, coin.Id, 20));
+    }
+
+    [Fact]
+    public async Task Muster_CancelledClose_PaysNothing()
+    {
+        var (db, points) = await SeededAsync();
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
+
+        var muster = await musters.CreateAsync(1, 100, null, "Void", points.Id, 10, capacity: null, expiresAt: null, createdBy: 5);
+        await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button);
+
+        Assert.True(await musters.CloseAsync(muster.Id, MusterStatus.Cancelled));
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster));
+    }
+
+    [Fact]
+    public async Task LinkedMuster_BonusDeferredToClose_PaidOnlyToCheckedInAttendees()
+    {
+        var (db, points) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
+
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        var muster = await musters.CreateAsync(1, 100, null, "Bonus round", points.Id, 50, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+
+        // 10 checks in and attends; 30 checks in but never shows up; 20 attends but never checks in.
+        await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button);
+        await musters.CheckInAsync(muster.Id, 30, MusterParticipantSource.Button);
+
+        // Linked → the bonus is NOT paid at check-in.
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster));
+
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-30);
+        await sessions.ReconcileSessionsAsync(1, Occupant(500, 10, 20), t0);
+        await sessions.CloseAsync(session.Id, at: t0.AddMinutes(30), pointsPerMinute: 1);
+
+        // Bonus paid at close only to 10 (checked in AND attended). 30 (no show) and 20 (no check-in) get none.
+        Assert.Equal(1, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster && e.UserId == 10));
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster && e.UserId == 30));
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync(e => e.SourceType == CurrencyLedgerSource.Muster && e.UserId == 20));
+
+        // 10's POINTS = 30 voice min × 1 + 50 muster bonus = 80.
+        Assert.Equal(80, (await db.Wallets.SingleAsync(w => w.UserId == 10 && w.CurrencyId == points.Id)).Balance);
+    }
+
+    [Fact]
+    public async Task AutoCreateMuster_OnSessionOpen_LinksMusterAndGatesCoin()
+    {
+        var (db, _) = await SeededAsync();
+        var guild = await db.Guilds.FirstAsync();
+        guild.Settings.AutoCreateMusterOnSession = true;
+        guild.Settings = guild.Settings;
+        await db.SaveChangesAsync();
+
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var auth = new GuildAuthorizationService(db);
+        var musters = new MusterService(db, awards, auth);
+        var sessions = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters);
+
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+
+        var muster = await db.ReactionMusters.SingleAsync();
+        Assert.Equal(1, await db.MusterSessionLinks.CountAsync(l => l.SessionId == session.Id && l.MusterId == muster.Id));
+        Assert.Equal(SessionCoinGate.Any, (await db.TrackingSessions.SingleAsync(s => s.Id == session.Id)).CoinGate);
+
+        // Per-session override beats the guild default.
+        var noMuster = await sessions.OpenManualAsync(1, voiceChannelId: 600, openedBy: 5, createMuster: false);
+        Assert.Equal(0, await db.MusterSessionLinks.CountAsync(l => l.SessionId == noMuster.Id));
+        Assert.Equal(SessionCoinGate.None, (await db.TrackingSessions.SingleAsync(s => s.Id == noMuster.Id)).CoinGate);
+    }
+
+    [Fact]
+    public async Task SessionClose_AutoClosesLinkedMuster()
+    {
+        var (db, points) = await SeededAsync();
+        await DisableSessionGuardsAsync(db);
+
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
+        var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
+
+        var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+
+        await sessions.CloseAsync(session.Id, at: DateTimeOffset.UtcNow);
+
+        var closed = await db.ReactionMusters.SingleAsync(m => m.Id == muster.Id);
+        Assert.Equal(MusterStatus.Closed, closed.Status);
+        Assert.NotNull(closed.ClosedAt);
     }
 
     [Fact]

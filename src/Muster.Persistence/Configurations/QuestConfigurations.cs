@@ -26,20 +26,3 @@ public class QuestParticipantConfiguration : IEntityTypeConfiguration<QuestParti
     }
 }
 
-public class ReactionMusterConfiguration : IEntityTypeConfiguration<ReactionMuster>
-{
-    public void Configure(EntityTypeBuilder<ReactionMuster> e)
-    {
-        e.HasKey(x => x.Id);
-        e.HasMany(x => x.Participants).WithOne(x => x.Muster!).HasForeignKey(x => x.MusterId);
-    }
-}
-
-public class ReactionParticipantConfiguration : IEntityTypeConfiguration<ReactionParticipant>
-{
-    public void Configure(EntityTypeBuilder<ReactionParticipant> e)
-    {
-        e.HasKey(x => x.Id);
-        e.HasIndex(x => new { x.MusterId, x.UserId }).IsUnique();
-    }
-}

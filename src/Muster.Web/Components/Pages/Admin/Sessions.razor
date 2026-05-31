@@ -390,9 +390,8 @@ else if (State == AccessState.Ready)
         // Staff = admin OR any management role that has a stake in sessions. Tracking manager runs them;
         // legacy Officer kept for back-compat. The file lives under Admin/ for routing/nav cohesion only —
         // base class is GuildMemberComponentBase since the read-side roster is open to any member.
-        _isStaff = await auth.IsAdminAsync(GuildId, UserId)
-            || await auth.IsTrackingManagerAsync(GuildId, UserId)
-            || await auth.IsOfficerAsync(GuildId, UserId);
+        // IsTrackingManagerAsync already covers Admin + the legacy Officer/EventOfficer umbrellas.
+        _isStaff = await auth.IsTrackingManagerAsync(GuildId, UserId);
         _hasBackground = _isStaff && await adminRead.HasActiveBackgroundTrackingAsync(GuildId);
         _present = await participation.IsMemberPresentInLiveSessionAsync(GuildId, UserId);
     }
@@ -661,7 +660,16 @@ else if (State == AccessState.Ready)
             var info = result.Value!;
             await sp.GetRequiredService<AuditService>().RecordSessionStoppedAsync(
                 GuildId, UserId, info.Id, info.Name, info.VoiceChannelId, info.VoiceChannelName);
+
             Message = "Session ended and attendance awarded.";
+
+            // If the session was gated by a muster, report how the coin landed (earned vs skipped for no check-in).
+            var gate = await sp.GetRequiredService<Muster.Infrastructure.Services.Musters.IMusterReadService>()
+                .SessionGateSummaryAsync(GuildId, sessionId);
+            if (gate is { HasGate: true })
+            {
+                Message += $" Coin: {gate.CoinEligible}/{gate.Attendees} attendee(s) earned it, {gate.Skipped} skipped (not checked in).";
+            }
         }
         finally
         {

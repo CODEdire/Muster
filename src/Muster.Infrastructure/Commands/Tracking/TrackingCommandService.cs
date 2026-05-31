@@ -15,7 +15,8 @@ public class TrackingCommandService(TrackingSessionService sessions, ITrackingAu
 {
     public async Task<CommandResult<Guid>> StartAsync(
         ulong guildId, ulong actorId, ulong voiceChannelId, string name, string? channelName,
-        bool requireUnmuted, bool requireUndeafened, bool requireNotAlone, CancellationToken ct = default)
+        bool requireUnmuted, bool requireUndeafened, bool requireNotAlone,
+        bool? createMuster = null, CancellationToken ct = default)
     {
         if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), 0, TrackingPermission.ManageSessions, ct))
         {
@@ -24,7 +25,8 @@ public class TrackingCommandService(TrackingSessionService sessions, ITrackingAu
 
         var cleanName = string.IsNullOrWhiteSpace(name) ? "Manual session" : name.Trim();
         var session = await sessions.OpenManualAsync(
-            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireUndeafened, requireNotAlone, ct);
+            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireUndeafened, requireNotAlone,
+            createMuster: createMuster, ct: ct);
 
         var skips = new List<string>();
         if (requireUnmuted) skips.Add("muted");

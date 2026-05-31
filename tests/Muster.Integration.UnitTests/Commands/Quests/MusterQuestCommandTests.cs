@@ -6,14 +6,13 @@ using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
-using Muster.Infrastructure.Discord;
+using Muster.Infrastructure.Messaging;
 using Xunit;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
-using Muster.Infrastructure.Commands.Musters;
 using Muster.Infrastructure.Commands.Quests;
 
 namespace Muster.IntegrationTests;
@@ -32,53 +31,52 @@ public class MusterQuestCommandTests
         return db;
     }
 
-    /// <summary>A fake publisher records the post instead of calling Discord, returning a fixed message id.</summary>
-    private sealed class FakePublisher : IMusterPublisher
+    private static (MusterService musters, GuildAuthorizationService auth, RecordingMessageBus bus) NewMusters(MusterDbContext db)
     {
-        public ulong PublishedChannel { get; private set; }
-        public string? PublishedEmoji { get; private set; }
-        public int Calls { get; private set; }
-
-        public Task<ulong> PublishAsync(ulong channelId, string prompt, string emoji, CancellationToken ct = default)
-        {
-            Calls++;
-            PublishedChannel = channelId;
-            PublishedEmoji = emoji;
-            return Task.FromResult(777ul);
-        }
+        var auth = new GuildAuthorizationService(db);
+        return (new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), auth), auth, new RecordingMessageBus());
     }
 
     [Fact]
-    public async Task Muster_Create_PostsAndStoresWithReturnedMessageId()
+    public async Task Muster_Create_StoresMuster_ViaFunnel()
     {
-        using var db = await SeededAsync();
-        var publisher = new FakePublisher();
-        var sut = new MusterCommandService(new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)), publisher);
+        using var db = await SeededAsync(ownerId: 7); // owner = admin → passes the TrackingManager gate
+        var (musters, auth, bus) = NewMusters(db);
 
-        var result = await sut.CreateAsync(1, channelId: 500, prompt: "Roll call", emoji: "✅", reward: 10, capacity: null);
+        var result = await CreateMusterHandler.Handle(
+            new CreateMuster(1, ActorId: 7, ChannelId: 500, Title: null, Prompt: "Roll call",
+                CurrencyId: null, Reward: 10, Capacity: null, ExpiresAt: null, SessionId: null),
+            auth, db, musters, bus, default);
 
-        Assert.False(result.IsError);
-        Assert.Equal(1, publisher.Calls);
-        Assert.Equal(500ul, publisher.PublishedChannel);
+        Assert.True(result.Ok);
 
         var muster = await db.ReactionMusters.SingleAsync();
-        Assert.Equal(777ul, muster.MessageId);
+        Assert.Equal(result.Value, muster.Id);
+        Assert.Equal(500ul, muster.ChannelId);
         Assert.Equal(10, muster.RewardAmount);
-        Assert.Contains("✅", muster.Emojis);
+        Assert.Equal(7ul, muster.CreatedBy);
     }
 
     [Fact]
-    public async Task Muster_Create_RejectsBadInput_WithoutPublishing()
+    public async Task Muster_Create_RejectsBadInput_AndNonManagers()
     {
-        using var db = await SeededAsync();
-        var publisher = new FakePublisher();
-        var sut = new MusterCommandService(new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db)), publisher);
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, bus) = NewMusters(db);
 
-        Assert.True((await sut.CreateAsync(1, 500, "", "✅", 10, null)).IsError);
-        Assert.True((await sut.CreateAsync(1, 500, "p", "✅", -1, null)).IsError);
-        Assert.True((await sut.CreateAsync(1, 500, "p", "✅", 10, 0)).IsError);
+        CreateMuster Cmd(ulong actor, string prompt, long reward, int? capacity) =>
+            new(1, actor, 500, null, prompt, null, reward, capacity, null, null);
 
-        Assert.Equal(0, publisher.Calls);
+        Assert.Equal("PromptRequired", (await CreateMusterHandler.Handle(Cmd(7, "", 10, null), auth, db, musters, bus, default)).Status);
+        Assert.Equal("RewardNegative", (await CreateMusterHandler.Handle(Cmd(7, "p", -1, null), auth, db, musters, bus, default)).Status);
+        Assert.Equal("BadCapacity", (await CreateMusterHandler.Handle(Cmd(7, "p", 10, 0), auth, db, musters, bus, default)).Status);
+
+        // A non-manager with otherwise-valid input is refused at the gate.
+        Assert.Equal("Forbidden", (await CreateMusterHandler.Handle(Cmd(999, "p", 10, null), auth, db, musters, bus, default)).Status);
+
+        // A reward currency that doesn't belong to the guild is rejected.
+        var cross = new CreateMuster(1, 7, 500, null, "p", CurrencyId: Guid.NewGuid(), Reward: 10, Capacity: null, ExpiresAt: null, SessionId: null);
+        Assert.Equal("CurrencyNotFound", (await CreateMusterHandler.Handle(cross, auth, db, musters, bus, default)).Status);
+
         Assert.Equal(0, await db.ReactionMusters.CountAsync());
     }
 

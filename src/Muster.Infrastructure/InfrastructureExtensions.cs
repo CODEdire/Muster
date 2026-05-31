@@ -18,7 +18,6 @@ using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
 using Muster.Infrastructure.Commands.Membership;
-using Muster.Infrastructure.Commands.Musters;
 using Muster.Infrastructure.Commands.Quests;
 using Muster.Infrastructure.Commands.Events;
 using Muster.Infrastructure.Commands.Seasons;
@@ -46,6 +45,7 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
         builder.Services.AddScoped<IQuestReadService, QuestReadService>();
         builder.Services.AddScoped<MusterService>();
+        builder.Services.AddScoped<Services.Musters.IMusterReadService, Services.Musters.MusterReadService>();
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<BackgroundTrackingService>();
@@ -119,8 +119,6 @@ public static class InfrastructureExtensions
             .AddStandardResilienceHandler();
         builder.Services.AddScoped<Services.Currencies.CurrencyWebhookDispatcher>();
         builder.Services.AddScoped<Services.Currencies.ICurrencyWebhookService, Services.Currencies.CurrencyWebhookService>();
-        // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
-        // registered by the bot host alongside its IMusterPublisher implementation — not here.
 
         return builder;
     }

@@ -169,6 +169,40 @@ public static class AuditMiddleware
                     targetUserId: q.TargetUserId, ct: ct);
                 return;
 
+            // ---- Muster (reaction check-in) ------------------------------
+
+            case CreateMuster c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.Create, c.Title ?? c.Prompt, ct: ct);
+                return;
+
+            case CheckInMuster c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.CheckIn, $"muster:{c.MusterId}", targetUserId: c.ActorId, ct: ct);
+                return;
+
+            case AddMusterParticipant c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.AddParticipant, $"muster:{c.MusterId}", targetUserId: c.UserId, ct: ct);
+                return;
+
+            case RemoveMusterParticipant c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.RemoveParticipant, $"muster:{c.MusterId}", targetUserId: c.UserId, ct: ct);
+                return;
+
+            case CloseMuster c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.Close, $"muster:{c.MusterId}", ct: ct);
+                return;
+
+            case LinkMusterToSession c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.Link, $"muster:{c.MusterId} session:{c.SessionId}", ct: ct);
+                return;
+
+            case UnlinkMusterFromSession c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.Unlink, $"muster:{c.MusterId} session:{c.SessionId}", ct: ct);
+                return;
+
+            case SetSessionCoinGate c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.SetGate, $"session:{c.SessionId} gate:{c.Gate}", ct: ct);
+                return;
+
             default:
                 // Unknown command — still record it so nothing escapes the audit. ToString() of a record gives
                 // readable {Field = value} output, which the default formatter renders as muted text.
