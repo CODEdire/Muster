@@ -29,7 +29,8 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "title", Description = "Optional heading shown above the prompt")] string title = "",
         [SlashCommandParameter(Name = "points", Description = "Participation points (managers only; overrides the template/default)")] long? points = null,
         [SlashCommandParameter(Name = "capacity", Description = "Max check-ins (optional; ignored when linked to a session)")] long capacity = 0,
-        [SlashCommandParameter(Name = "expires-hours", Description = "Auto-close after this many hours (optional)")] long expiresHours = 0,
+        [SlashCommandParameter(Name = "expires-hours", Description = "Auto-close after this many hours (optional; 0 = guild default)")] long expiresHours = 0,
+        [SlashCommandParameter(Name = "check-me-in", Description = "Check yourself in on create (default: guild setting)")] bool? checkMeIn = null,
         [SlashCommandParameter(Name = "channel", Description = "Channel to post to (default: configured muster channel, else here)",
             AutocompleteProviderType = typeof(MusterChannelAutocompleteProvider))] string? channel = null)
         => RunAsync(async (sp, guildId) =>
@@ -44,7 +45,8 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
             var command = new CreateMuster(guildId, Context.User.Id, channelId,
                 string.IsNullOrWhiteSpace(title) ? null : title.Trim(), prompt,
                 TemplateId: templateId, Points: points, Coins: null, CoinCurrencyId: null,
-                Capacity: capacity > 0 ? (int)capacity : null, ExpiresAt: expires, SessionId: null);
+                Capacity: capacity > 0 ? (int)capacity : null, ExpiresAt: expires, SessionId: null,
+                CheckInCreator: checkMeIn);
 
             var result = await sp.GetRequiredService<IMessageBus>().InvokeAsync<Result<Guid>>(command);
             return MusterResultText.ToCommandResult(result, $"Muster posted in <#{channelId}>.");

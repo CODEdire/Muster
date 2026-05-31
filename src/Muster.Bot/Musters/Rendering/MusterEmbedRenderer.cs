@@ -68,6 +68,7 @@ public static class MusterEmbedRenderer
     private static string StatusLabel(MusterStatus s) => s switch
     {
         MusterStatus.Open => "🟢 Open",
+        MusterStatus.Locked => "🔒 Locked — closes with session",
         MusterStatus.Closed => "✅ Closed",
         MusterStatus.Expired => "⌛ Expired",
         MusterStatus.Cancelled => "🚫 Cancelled",
@@ -77,6 +78,7 @@ public static class MusterEmbedRenderer
     private static Color StatusColor(MusterStatus s) => s switch
     {
         MusterStatus.Open => new Color(0x22C55E),    // green
+        MusterStatus.Locked => new Color(0xF59E0B),  // amber
         MusterStatus.Closed => new Color(0x3B82F6),  // blue
         MusterStatus.Expired => new Color(0x94A3B8), // slate
         _ => new Color(0x4B5563),                    // charcoal

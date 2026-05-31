@@ -82,18 +82,21 @@ else if (State == AccessState.Ready)
             <label>Capacity (optional)
                 <input class="input" type="number" min="0" @bind="_capacity" />
             </label>
-            <label>Auto-close after (hours; 0 = never)
+            <label>Auto-close after (hours; 0 = guild default)
                 <input class="input" type="number" min="0" @bind="_expiresHours" />
+            </label>
+            <label class="check">
+                <input type="checkbox" @bind="_checkMeIn" /> Check me in
             </label>
             <label>Channel
                 <select class="dg-select" @bind="_channelId">
                     <option value="0">Server default@(_defaultChannelId == 0 ? " — none set, no Discord card" : "")</option>
-                    @foreach (var g in _channels.GroupBy(c => c.Kind))
+                    @foreach (var grp in _channels.GroupBy(c => c.Kind))
                     {
-                        <optgroup label="@g.Key">
-                            @foreach (var c in g)
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
                             {
-                                <option value="@c.Id">#@c.Name</option>
+                                <option value="@c.Id">@(c.Kind == "Voice" ? "🔊 " : "#")@c.Name</option>
                             }
                         </optgroup>
                     }
@@ -162,6 +165,7 @@ else if (State == AccessState.Ready)
     private string _templateId = "";
     private int _capacity;
     private int _expiresHours;
+    private bool _checkMeIn = true;
     private ulong _channelId;
     private ulong _defaultChannelId;
     private bool _isManager;
@@ -175,6 +179,7 @@ else if (State == AccessState.Ready)
 
         var ms = await MusterStore.GetAsync(GuildId);
         _defaultChannelId = ms.MusterChannelId;
+        _checkMeIn = ms.CreatorAutoCheckIn;
 
         // Offer chat channels; when an allow-list is set, only those.
         var chat = await Channels.ChatAsync(GuildId);
@@ -219,7 +224,8 @@ else if (State == AccessState.Ready)
                 Points: custom ? _points : null,
                 Coins: custom ? _coins : null,
                 CoinCurrencyId: custom && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
-                Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: null);
+                Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: null,
+                CheckInCreator: _checkMeIn);
 
             var noCard = _channelId == 0 && _defaultChannelId == 0;
             var result = await Bus.InvokeAsync<Result<Guid>>(command);
@@ -274,6 +280,7 @@ else if (State == AccessState.Ready)
     private static string StatusLabel(MusterStatus s) => s switch
     {
         MusterStatus.Open => "🟢 Open",
+        MusterStatus.Locked => "🔒 Locked",
         MusterStatus.Closed => "✅ Closed",
         MusterStatus.Expired => "⌛ Expired",
         MusterStatus.Cancelled => "🚫 Cancelled",

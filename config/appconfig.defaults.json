@@ -3,7 +3,9 @@
   "GuildDefaults": {
     "Musters": {
       "BoardRetentionHours": 48,
-      "AutoCreateOnSession": false
+      "AutoCreateOnSession": false,
+      "CreatorAutoCheckIn": true,
+      "DefaultExpiryHours": 0
     }
   }
 }

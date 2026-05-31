@@ -5,9 +5,14 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 ## Posting & check-in
 - Post a muster from Discord (`/muster post`) or the web admin.
 - Members check in with a **Check-In button** (buttons only — no reactions); each click is acknowledged privately.
-- Optional **title**, **prompt**, **reward**, **capacity** (hard cap), and **auto-expire after N hours**.
+- Optional **title**, **prompt**, **reward**, **capacity** (hard cap), and **auto-close after N hours**.
+- The **creator can be auto-checked-in** on create (guild default toggle, overridable per post) — handy for a host who's attending too.
 - One check-in per member; ineligible members and a full/closed/expired muster are rejected with a reason.
 - Card auto-updates in place (status, count, roster) and goes terminal when closed/expired.
+
+## Max active time
+- A muster can **auto-close after a max active time** so it doesn't go stale: set per-template, per-post, or as a **guild default** (`DefaultExpiryHours`, 0 = none); a template's own expiry wins, then the guild default.
+- A **standalone** muster past its window **expires and pays out**. A **linked** muster instead **soft-closes (Locked)** — it stops taking check-ins (button disabled) but isn't terminal; it's paid + closed when its session ends.
 
 ## Channels
 - Posts to the guild's configured **default channel**, an **explicit per-post channel**, or the channel the command ran in.
@@ -32,7 +37,7 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 ## Admin (web)
 - Musters list (active/past, status, count, linked sessions); author new musters.
 - Muster detail: roster, **add/remove participants**, close, link/unlink sessions + set the coin-gate mode, remove the Discord card.
-- Settings page: default channel, card retention, auto-create-on-session, allowed channels.
+- Settings page: default channel, card retention, max active time, reward defaults, creator auto-check-in, auto-create-on-session + gate, allowed channels.
 
 ## Lifecycle & housekeeping
 - Multiple musters per session (e.g. event check-in + per-round musters).

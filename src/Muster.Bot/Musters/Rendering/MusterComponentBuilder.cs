@@ -23,6 +23,13 @@ public static class MusterComponentBuilder
     /// (disabled + relabelled "Full" once a standalone muster hits its cap).</summary>
     public static IReadOnlyList<IMessageComponentProperties> Build(ReactionMuster muster)
     {
+        // Locked = soft-closed: keep a disabled button so the card reads as "was open, now waiting on its session".
+        if (muster.Status == MusterStatus.Locked)
+        {
+            return [new ActionRowProperties([
+                new ButtonProperties(CheckInId(muster.GuildId, muster.Id), "🔒 Closed", ButtonStyle.Secondary) { Disabled = true }])];
+        }
+
         if (muster.Status != MusterStatus.Open)
         {
             return [];

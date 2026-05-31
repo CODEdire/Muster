@@ -44,32 +44,45 @@ else if (State == AccessState.Ready)
     <Accordion SingleOpen="true">
     <AccordionPane Title="Muster defaults" Icon="tune" Open="true" Summary="@DefaultsSummary">
         <p class="subtitle">Applied to a muster when no template overrides them.</p>
-        <div class="form-grid">
-            <label>Card channel
+        <div class="mform">
+            <div class="field span2">
+                <label>Card channel</label>
                 <select @bind="Input.ChannelId" @bind:after="ScheduleSave">
                     <option value="0">— none (post where the command runs) —</option>
-                    @foreach (var g in _chat.GroupBy(c => c.Kind))
+                    @foreach (var grp in _chat.GroupBy(c => c.Kind))
                     {
-                        <optgroup label="@g.Key">
-                            @foreach (var c in g)
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
                             {
-                                <option value="@c.Id">#@c.Name</option>
+                                <option value="@c.Id">@ChannelGlyph(c.Kind)@c.Name</option>
                             }
                         </optgroup>
                     }
                 </select>
-            </label>
-            <label>Keep terminal cards for (hours)
-                <input type="number" min="0" @bind="Input.RetentionHours" @bind:after="ScheduleSave" />
-            </label>
-            <label>Default points
+                <p class="hint">Where cards post by default. Authors may override per muster.</p>
+            </div>
+            <div class="field">
+                <label>Keep terminal cards for</label>
+                <div class="suffixed"><input type="number" min="0" @bind="Input.RetentionHours" @bind:after="ScheduleSave" /><span>hours</span></div>
+                <p class="hint">How long closed cards linger before cleanup.</p>
+            </div>
+            <div class="field">
+                <label>Auto-close after</label>
+                <div class="suffixed"><input type="number" min="0" placeholder="No expiry" @bind="Input.ExpiryHours" @bind:after="ScheduleSave" /><span>hours</span></div>
+                <p class="hint">Max active time before a muster auto-closes (linked ones lock until the session ends).</p>
+            </div>
+            <div class="field">
+                <label>Default points</label>
                 <input type="number" min="0" placeholder="Not assigned" @bind="Input.Points" @bind:after="ScheduleSave" />
-                <span class="subtitle">participation points per check-in</span>
-            </label>
-            <label>Default coins
+                <p class="hint">Participation points per check-in.</p>
+            </div>
+            <div class="field">
+                <label>Default coins</label>
                 <input type="number" min="0" placeholder="Not assigned" @bind="Input.Coins" @bind:after="ScheduleSave" />
-            </label>
-            <label>Coin currency
+                <p class="hint">Spendable coins per check-in.</p>
+            </div>
+            <div class="field span2">
+                <label>Coin currency</label>
                 <select @bind="Input.CoinCurrencyId" @bind:after="ScheduleSave">
                     <option value="">— none —</option>
                     @foreach (var c in _coins)
@@ -77,25 +90,36 @@ else if (State == AccessState.Ready)
                         <option value="@c.Id">@c.Code — @c.Name</option>
                     }
                 </select>
-                <span class="subtitle">spendable currency for the coin reward</span>
-            </label>
+                <p class="hint">Spendable currency the coin reward is minted in.</p>
+            </div>
+            <div class="field span2">
+                <label class="toggle">
+                    <input type="checkbox" @bind="Input.CreatorAutoCheckIn" @bind:after="ScheduleSave" />
+                    <span>Check the creator in automatically</span>
+                </label>
+                <p class="hint">Handy when the host is attending too. Authors can override per muster.</p>
+            </div>
         </div>
     </AccordionPane>
 
     <AccordionPane Title="Auto-create on session" Icon="bolt" Summary="@AutoCreateSummary">
         <p class="subtitle">Opening a tracking session posts + links a check-in muster and gates the session coin. Each session open can override.</p>
-        <div class="form-grid">
-            <label class="check">
-                <input type="checkbox" @bind="Input.AutoCreate" @bind:after="ScheduleSave" />
-                Auto-create a check-in muster when a session opens
-            </label>
-            <label>Default coin gate
+        <div class="mform">
+            <div class="field span2">
+                <label class="toggle">
+                    <input type="checkbox" @bind="Input.AutoCreate" @bind:after="ScheduleSave" />
+                    <span>Auto-create a check-in muster when a session opens</span>
+                </label>
+            </div>
+            <div class="field span2">
+                <label>Default coin gate</label>
                 <select @bind="Input.Gate" @bind:after="ScheduleSave">
                     <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
                     <option value="@SessionCoinGate.All">All — in every linked muster</option>
                     <option value="@SessionCoinGate.None">None — mint to all attendees</option>
                 </select>
-            </label>
+                <p class="hint">How the session's spendable coin is gated by check-in at close.</p>
+            </div>
         </div>
     </AccordionPane>
 
@@ -109,12 +133,12 @@ else if (State == AccessState.Ready)
             <div class="dual-col">
                 <span class="dual-label">Available</span>
                 <select multiple size="10" @bind="_availSel">
-                    @foreach (var g in _chat.Where(c => !_allowed.Contains(c.Id)).GroupBy(c => c.Kind))
+                    @foreach (var grp in _chat.Where(c => !_allowed.Contains(c.Id)).GroupBy(c => c.Kind))
                     {
-                        <optgroup label="@g.Key">
-                            @foreach (var c in g)
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
                             {
-                                <option value="@c.Id">#@c.Name</option>
+                                <option value="@c.Id">@ChannelGlyph(c.Kind)@c.Name</option>
                             }
                         </optgroup>
                     }
@@ -131,12 +155,12 @@ else if (State == AccessState.Ready)
             <div class="dual-col">
                 <span class="dual-label">Allowed</span>
                 <select multiple size="10" @bind="_allowedSel">
-                    @foreach (var g in _chat.Where(c => _allowed.Contains(c.Id)).GroupBy(c => c.Kind))
+                    @foreach (var grp in _chat.Where(c => _allowed.Contains(c.Id)).GroupBy(c => c.Kind))
                     {
-                        <optgroup label="@g.Key">
-                            @foreach (var c in g)
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
                             {
-                                <option value="@c.Id">#@c.Name</option>
+                                <option value="@c.Id">@ChannelGlyph(c.Kind)@c.Name</option>
                             }
                         </optgroup>
                     }
@@ -149,6 +173,22 @@ else if (State == AccessState.Ready)
 
 <style>
     .warn-text { color: #d97706; }
+
+    /* Clean two-column field grid for settings panes. These panes have no form wrapper, so labels would
+       otherwise render inline — stack them explicitly. */
+    .mform { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1.5rem; max-width: 680px; }
+    .mform .field { display: flex; flex-direction: column; gap: 0.35rem; margin: 0; }
+    .mform .field.span2 { grid-column: 1 / -1; }
+    .mform .field > label { color: var(--text); font-size: 0.9rem; font-weight: 600; margin: 0; }
+    .mform .field .hint { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
+    .mform input, .mform select { width: 100%; }
+    .mform .suffixed { display: flex; align-items: center; gap: 0.5rem; }
+    .mform .suffixed input { width: 7rem; }
+    .mform .suffixed span { color: var(--text-muted); font-size: 0.85rem; }
+    .mform label.toggle { flex-direction: row; align-items: center; gap: 0.6rem; cursor: pointer; font-weight: 600; color: var(--text); }
+    .mform label.toggle input { width: auto; }
+    @@media (max-width: 640px) { .mform { grid-template-columns: 1fr; } }
+
     .dual { display: flex; gap: 1rem; align-items: stretch; }
     .dual-col { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
     .dual-col select { width: 100%; }
@@ -209,6 +249,8 @@ else if (State == AccessState.Ready)
             Points = ms.DefaultPoints == 0 ? null : ms.DefaultPoints,
             Coins = ms.DefaultCoins == 0 ? null : ms.DefaultCoins,
             CoinCurrencyId = ms.DefaultCoinCurrencyId,
+            ExpiryHours = ms.DefaultExpiryHours == 0 ? null : ms.DefaultExpiryHours,
+            CreatorAutoCheckIn = ms.CreatorAutoCheckIn,
             AutoCreate = ms.AutoCreateOnSession,
             Gate = ms.AutoCreateGate,
         };
@@ -259,14 +301,15 @@ else if (State == AccessState.Ready)
         var allowed = _allowed.ToList();
         var points = Input.Points ?? 0;
         var coins = Input.Coins ?? 0;
+        var expiry = Input.ExpiryHours ?? 0;
         var result = await Config.SetMusterSettingsAsync(
             GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
-            points, coins, Input.CoinCurrencyId, allowed);
+            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry);
 
         if (!result.IsError)
         {
             await AuditAsync("muster.config",
-                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} allowed:[{string.Join(",", allowed)}]");
+                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
         }
         _save = result.IsError ? SaveStatus.Error : SaveStatus.Saved;
         _saveMsg = result.IsError ? result.Message : null;
@@ -278,14 +321,19 @@ else if (State == AccessState.Ready)
         _debounce?.Dispose();
     }
 
+    // Voice channels carry chat too; show the speaker glyph, text channels the hash.
+    private static string ChannelGlyph(string kind) => kind == "Voice" ? "🔊 " : "#";
+
     public class SettingsInput
     {
         public ulong ChannelId { get; set; }
         public int RetentionHours { get; set; } = 48;
-        // null/0 both mean "not assigned" — placeholder shows.
+        // null/0 both mean "not assigned"/"no expiry" — placeholder shows.
         public long? Points { get; set; }
         public long? Coins { get; set; }
         public Guid? CoinCurrencyId { get; set; }
+        public int? ExpiryHours { get; set; }
+        public bool CreatorAutoCheckIn { get; set; } = true;
         public bool AutoCreate { get; set; }
         public SessionCoinGate Gate { get; set; } = SessionCoinGate.Any;
     }

@@ -25,6 +25,15 @@ public class GuildMusterSettings
     /// override it.</summary>
     public bool AutoCreateOnSession { get; set; }
 
+    /// <summary>When true, the creator is automatically checked into a muster they create (handy for linked sessions
+    /// where the host is also attending). Turn off when staff usually create musters for others.</summary>
+    public bool CreatorAutoCheckIn { get; set; } = true;
+
+    /// <summary>Default max active time (hours) before a muster auto-closes, so stale musters don't linger. 0 = no
+    /// expiry. A template's own expiry overrides this; a standalone muster expires (and pays), a linked one
+    /// soft-closes (Locked) and pays at session close. Templates/per-create values override.</summary>
+    public int DefaultExpiryHours { get; set; }
+
     /// <summary>Gate mode applied to a session's coin when a muster is auto-created for it on open (Any = checking
     /// into the muster suffices). Default <see cref="SessionCoinGate.Any"/>.</summary>
     public SessionCoinGate AutoCreateGate { get; set; } = SessionCoinGate.Any;

@@ -124,10 +124,15 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var musterCfg = musterSettings is null ? null : await musterSettings.GetAsync(guildId, ct);
         if ((createMuster ?? musterCfg?.AutoCreateOnSession ?? false) && musters is not null)
         {
+            // Apply the guild's default max active time so an auto-created muster soft-closes if the session runs long.
+            var expiryHours = musterCfg?.DefaultExpiryHours ?? 0;
+            DateTimeOffset? expiresAt = expiryHours > 0 ? DateTimeOffset.UtcNow.AddHours(expiryHours) : null;
+
             var muster = await musters.CreateAsync(
                 guildId, musterCfg?.MusterChannelId ?? 0, title: null, prompt: $"Check in for {name}",
                 points: musterCfg?.DefaultPoints ?? 0, coins: musterCfg?.DefaultCoins ?? 0, coinCurrencyId: musterCfg?.DefaultCoinCurrencyId,
-                retentionHours: musterCfg?.BoardRetentionHours ?? 48, capacity: null, expiresAt: null, createdBy: openedBy, sessionId: session.Id, ct: ct);
+                retentionHours: musterCfg?.BoardRetentionHours ?? 48, capacity: null, expiresAt: expiresAt, createdBy: openedBy,
+                sessionId: session.Id, checkInCreator: musterCfg?.CreatorAutoCheckIn ?? true, ct: ct);
 
             session.CoinGate = musterCfg?.AutoCreateGate ?? SessionCoinGate.Any;
             await db.SaveChangesAsync(ct);
@@ -537,7 +542,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         // once all of them are closed (this session is already marked Closed above), so a multi-session muster
         // survives until its last session ends.
         var closedIds = new List<Guid>();
-        foreach (var m in linkedMusters.Where(m => m.Status == MusterStatus.Open))
+        foreach (var m in linkedMusters.Where(m => m.Status is MusterStatus.Open or MusterStatus.Locked))
         {
             var stillActive = await db.MusterSessionLinks
                 .Where(l => l.MusterId == m.Id)
@@ -545,11 +550,12 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 .AnyAsync(st => st == TrackingSessionStatus.Active, ct);
             if (stillActive)
             {
-                continue; // another linked session is still running — keep the muster open
+                continue; // another linked session is still running — keep the muster open (or locked)
             }
 
+            // Open or soft-closed (Locked, hit its max active time) — either way it closes now that all its sessions ended.
             var entity = await db.ReactionMusters.FirstOrDefaultAsync(x => x.Id == m.Id, ct);
-            if (entity is { Status: MusterStatus.Open })
+            if (entity is { Status: MusterStatus.Open or MusterStatus.Locked })
             {
                 entity.Status = MusterStatus.Closed;
                 entity.ClosedAt = now;

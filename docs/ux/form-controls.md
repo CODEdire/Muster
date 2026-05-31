@@ -11,7 +11,8 @@ Any picker over guild channels (card channel, allow-list, post target):
   / `<optgroup label="Voice">`. Text group comes first, voice second; entries inside a group sort by name.
 - Source from `GuildChannelOptions` — `ChannelOption(Id, Name, Kind)` already arrives Text-then-Voice,
   alphabetical within each, so `GroupBy(c => c.Kind)` preserves the right order.
-- Prefix names with `#`.
+- **Prefix by kind**: text channels with `#`, voice channels with the speaker glyph `🔊 ` (native `<option>` can't
+  carry a Material icon, so use the unicode glyph). `kind == "Voice" ? "🔊 " : "#"`.
 
 ```razor
 @foreach (var g in _chat.GroupBy(c => c.Kind))

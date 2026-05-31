@@ -10,6 +10,7 @@ namespace Muster.Contracts;
 /// <paramref name="CoinCurrencyId"/> are a Tracking Manager's custom values (and may override a template). A
 /// template-only Muster Creator must supply a <paramref name="TemplateId"/> and can't override. Null reward fields
 /// fall back to the template, then the guild defaults. <paramref name="SessionId"/> links to a session in one step.
+/// <paramref name="CheckInCreator"/> null = use the guild default (auto-check-in the creator); true/false overrides it.
 /// Returns the new muster id.</summary>
 public record CreateMuster(
     ulong GuildId,
@@ -23,7 +24,8 @@ public record CreateMuster(
     Guid? CoinCurrencyId,
     int? Capacity,
     DateTimeOffset? ExpiresAt,
-    Guid? SessionId) : IGuildCommand;
+    Guid? SessionId,
+    bool? CheckInCreator = null) : IGuildCommand;
 
 /// <summary>Record a member's check-in. <see cref="IGuildCommand.ActorId"/> is the member checking in (the button
 /// clicker), so no manager gate — eligibility (participant role + open/!full/!expired) is enforced in the handler.</summary>

@@ -46,7 +46,7 @@ else if (State == AccessState.Ready)
                 }
             </dl>
             <div class="btn-row">
-                @if (_m.Status == MusterStatus.Open)
+                @if (_m.Status is MusterStatus.Open or MusterStatus.Locked)
                 {
                     <button type="button" class="btn btn-danger" disabled="@_busy" @onclick="CloseAsync">Close muster</button>
                 }

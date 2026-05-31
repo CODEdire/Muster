@@ -59,6 +59,11 @@ public static class CreateMusterHandler
         long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires;
         string? emoji = template?.Emoji;
 
+        var now = DateTimeOffset.UtcNow;
+        // Guild default max active time (0 = none). A template's own ExpiryHours wins; if a template doesn't set one,
+        // it falls back to this guild default so even templated musters don't linger.
+        DateTimeOffset? GuildExpiry() => defaults.DefaultExpiryHours > 0 ? now.AddHours(defaults.DefaultExpiryHours) : null;
+
         if (template is not null)
         {
             points = template.Points;
@@ -66,7 +71,7 @@ public static class CreateMusterHandler
             coinCcy = template.CoinCurrencyId;
             retention = template.RetentionHours;
             capacity = template.Capacity;
-            expires = template.ExpiryHours is { } eh ? DateTimeOffset.UtcNow.AddHours(eh) : null;
+            expires = template.ExpiryHours is { } eh ? now.AddHours(eh) : GuildExpiry();
 
             if (isManager) // overrides
             {
@@ -83,7 +88,7 @@ public static class CreateMusterHandler
             coinCcy = command.CoinCurrencyId ?? defaults.DefaultCoinCurrencyId;
             retention = defaults.BoardRetentionHours;
             capacity = command.Capacity;
-            expires = command.ExpiresAt;
+            expires = command.ExpiresAt ?? GuildExpiry();
         }
 
         if (points < 0 || coins < 0)
@@ -112,10 +117,13 @@ public static class CreateMusterHandler
         var prompt = command.Prompt.Trim();
         var title = string.IsNullOrWhiteSpace(command.Title) ? null : command.Title.Trim();
 
+        var checkInCreator = command.CheckInCreator ?? defaults.CreatorAutoCheckIn;
+
         var muster = await musters.CreateAsync(
             command.GuildId, command.ChannelId, title, prompt, points, coins, coinCcy, retention,
             capacity, expires, command.ActorId,
-            emojis: string.IsNullOrWhiteSpace(emoji) ? null : [emoji], sessionId: command.SessionId, ct: ct);
+            emojis: string.IsNullOrWhiteSpace(emoji) ? null : [emoji], sessionId: command.SessionId,
+            checkInCreator: checkInCreator, ct: ct);
 
         await bus.PublishAsync(new MusterChanged(command.GuildId, muster.Id, MusterChangeKind.Created));
         return Result<Guid>.Success(muster.Id);

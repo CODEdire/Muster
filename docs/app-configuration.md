@@ -46,6 +46,8 @@ admin sets them in the web/bot, live in the guild's own table and are unaffected
 |-----|------|---------|----------------------------------|-------|
 | `GuildDefaults:Musters:BoardRetentionHours` | int | `48` | ✅ | Hours a terminal muster card lingers before cleanup deletes it. 0 = delete immediately. |
 | `GuildDefaults:Musters:AutoCreateOnSession` | bool | `false` | ✅ | Whether opening a tracking session auto-creates + links a check-in muster (gate `Any`). |
+| `GuildDefaults:Musters:CreatorAutoCheckIn` | bool | `true` | ✅ | Whether a muster's creator is auto-checked-in on create (overridable per post). |
+| `GuildDefaults:Musters:DefaultExpiryHours` | int | `0` | ✅ | Default max active time before a muster auto-closes; 0 = no expiry. Templates/per-post override. |
 | `GuildDefaults:Musters:MusterChannelId` | ulong | `0` | ⚠️ rarely | Default card channel. Channel ids are **per-guild** — a platform-wide value almost never makes sense. Leave unset. |
 | `GuildDefaults:Musters:AllowedChannelIds` | ulong[] | `[]` | ⚠️ rarely | Allowed posting channels. Per-guild; not normally a platform default. |
 

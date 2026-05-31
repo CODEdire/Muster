@@ -33,8 +33,9 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         ulong guildId, ulong channelId, string? title, string prompt,
         long points, long coins, Guid? coinCurrencyId, int retentionHours,
         int? capacity, DateTimeOffset? expiresAt, ulong createdBy,
-        IEnumerable<string>? emojis = null, Guid? sessionId = null, CancellationToken ct = default)
+        IEnumerable<string>? emojis = null, Guid? sessionId = null, bool checkInCreator = false, CancellationToken ct = default)
     {
+        var now = DateTimeOffset.UtcNow;
         var muster = new ReactionMuster
         {
             Id = Guid.NewGuid(),
@@ -51,12 +52,26 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
             ExpiresAt = expiresAt,
             Status = MusterStatus.Open,
             CreatedBy = createdBy,
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = now,
         };
 
         if (sessionId is { } sid)
         {
             muster.SessionLinks.Add(new MusterSessionLink { MusterId = muster.Id, SessionId = sid });
+        }
+
+        // Auto-check-in the creator (opt-in). They're added directly here (no eligibility/capacity gate — it's the
+        // host opting themselves in at creation), recorded as an Admin-source row.
+        if (checkInCreator)
+        {
+            muster.Participants.Add(new ReactionParticipant
+            {
+                Id = Guid.NewGuid(),
+                MusterId = muster.Id,
+                UserId = createdBy,
+                Source = MusterParticipantSource.Admin,
+                CheckedInAt = now,
+            });
         }
 
         db.ReactionMusters.Add(muster);
@@ -78,11 +93,20 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
 
         var isAdmin = source == MusterParticipantSource.Admin;
 
-        // Lazy expiry: a still-Open muster past its window flips to Expired (and pays out, for a non-linked muster).
+        // Lazy expiry: a still-Open muster past its window transitions now. A linked muster soft-closes (Locked, pays
+        // at session close); a standalone one expires and pays out immediately.
         if (muster.Status == MusterStatus.Open && muster.ExpiresAt is { } expiry && expiry <= DateTimeOffset.UtcNow)
         {
-            await CloseAsync(muster.Id, MusterStatus.Expired, ct);
-            muster.Status = MusterStatus.Expired;
+            if (muster.SessionLinks.Count > 0)
+            {
+                await LockAsync(muster.Id, ct);
+                muster.Status = MusterStatus.Locked;
+            }
+            else
+            {
+                await CloseAsync(muster.Id, MusterStatus.Expired, ct);
+                muster.Status = MusterStatus.Expired;
+            }
         }
 
         if (muster.Status != MusterStatus.Open && !isAdmin)
@@ -172,7 +196,8 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
     public async Task<bool> CloseAsync(Guid musterId, MusterStatus status = MusterStatus.Closed, CancellationToken ct = default)
     {
         var muster = await db.FindMusterAsync(musterId, ct);
-        if (muster is null || muster.Status != MusterStatus.Open)
+        // Open or Locked (soft-closed) musters can go terminal; an already-terminal one is a no-op.
+        if (muster is null || muster.Status is not (MusterStatus.Open or MusterStatus.Locked))
         {
             return false;
         }
@@ -213,6 +238,22 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
                 CurrencyLedgerSource.Muster, $"muster:{muster.Id}:user:{userId}:coins",
                 $"Muster: {muster.Prompt}", ct);
         }
+    }
+
+    /// <summary>Soft-close a muster: stop accepting check-ins without paying or going terminal. Used when a <b>linked</b>
+    /// muster hits its max active time — it stays around (Locked) and is paid + closed at session close. Idempotent;
+    /// only an Open muster locks.</summary>
+    public async Task<bool> LockAsync(Guid musterId, CancellationToken ct = default)
+    {
+        var muster = await db.FindMusterAsync(musterId, ct);
+        if (muster is null || muster.Status != MusterStatus.Open)
+        {
+            return false;
+        }
+
+        muster.Status = MusterStatus.Locked;
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>Link a muster to a tracking session (idempotent). Returns false if the link already existed.</summary>

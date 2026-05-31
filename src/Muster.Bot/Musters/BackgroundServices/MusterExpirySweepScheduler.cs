@@ -51,8 +51,10 @@ public class MusterExpirySweepScheduler(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
 
-        var due = await db.ListDueExpiredMustersAsync(DateTimeOffset.UtcNow, ct);
-        if (due.Count == 0)
+        var now = DateTimeOffset.UtcNow;
+        var due = await db.ListDueExpiredMustersAsync(now, ct);
+        var lockDue = await db.ListDueLockMustersAsync(now, ct);
+        if (due.Count == 0 && lockDue.Count == 0)
         {
             return;
         }
@@ -60,6 +62,7 @@ public class MusterExpirySweepScheduler(
         var musters = scope.ServiceProvider.GetRequiredService<MusterService>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
+        // Standalone musters expire + pay out now.
         foreach (var m in due)
         {
             if (await musters.CloseAsync(m.Id, MusterStatus.Expired, ct))
@@ -68,6 +71,15 @@ public class MusterExpirySweepScheduler(
             }
         }
 
-        logger.LogInformation("Muster expiry sweep expired {Count} muster(s).", due.Count);
+        // Linked musters soft-close (Locked): the card stays (button disabled); the session close pays + closes them.
+        foreach (var m in lockDue)
+        {
+            if (await musters.LockAsync(m.Id, ct))
+            {
+                await bus.PublishAsync(new MusterChanged(m.GuildId, m.Id, MusterChangeKind.Closed));
+            }
+        }
+
+        logger.LogInformation("Muster expiry sweep: expired {Expired}, locked {Locked} muster(s).", due.Count, lockDue.Count);
     }
 }

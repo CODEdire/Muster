@@ -75,13 +75,23 @@ public static class MusterQueries
             .Select(m => new MusterDueExpiry(m.Id, m.GuildId))
             .ToListAsync(ct);
 
+    /// <summary>Open, <b>linked</b> musters past their <c>ExpiresAt</c> — the sweep soft-closes (Locks) these so they
+    /// stop taking check-ins; they're paid + closed when their session ends. (Standalone ones go through
+    /// <see cref="ListDueExpiredMustersAsync"/> instead.)</summary>
+    public static Task<List<MusterDueExpiry>> ListDueLockMustersAsync(this MusterDbContext db, DateTimeOffset now, CancellationToken ct = default)
+        => db.ReactionMusters
+            .Where(m => m.Status == MusterStatus.Open && m.ExpiresAt != null && m.ExpiresAt <= now && m.SessionLinks.Any())
+            .Select(m => new MusterDueExpiry(m.Id, m.GuildId))
+            .ToListAsync(ct);
+
     /// <summary>Posted muster cards whose muster is terminal — the bot prunes the stale ones (older than the guild's
     /// retention) so closed musters don't linger in the channel. The muster + roster + ledger stay in the DB.</summary>
     public static Task<List<MusterBoardCard>> ListTerminalMusterBoardCardsAsync(this MusterDbContext db, CancellationToken ct = default)
         => db.PostedMessages
             .Where(p => p.EntityType == "muster")
             .Join(db.ReactionMusters, p => p.EntityId, m => m.Id, (p, m) => new { p, m })
-            .Where(x => x.m.Status != MusterStatus.Open)
+            // Locked is soft-closed, not terminal — its card stays until the session closes it. Only truly terminal cards prune.
+            .Where(x => x.m.Status != MusterStatus.Open && x.m.Status != MusterStatus.Locked)
             .Select(x => new MusterBoardCard(x.p.Id, x.p.GuildId, x.p.ChannelId, x.p.MessageId, x.m.ClosedAt ?? x.m.CreatedAt, x.m.RetentionHours))
             .ToListAsync(ct);
 }

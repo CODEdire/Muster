@@ -138,6 +138,58 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_Create_AutoChecksInCreator_WhenSet()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db); // default settings → CreatorAutoCheckIn = true
+
+        CreateMuster Cmd(bool? checkIn) =>
+            new(1, 7, 500, null, "Roll call", TemplateId: null, Points: 0, Coins: null, CoinCurrencyId: null,
+                Capacity: null, ExpiresAt: null, SessionId: null, CheckInCreator: checkIn);
+
+        // Default (null) → guild default (true): creator on the roster.
+        Assert.True((await CreateMusterHandler.Handle(Cmd(null), auth, db, musters, store, bus, default)).Ok);
+        var auto = await db.ReactionMusters.Include(m => m.Participants).OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Contains(auto.Participants, p => p.UserId == 7);
+
+        // Explicit false → empty roster (creating for others).
+        Assert.True((await CreateMusterHandler.Handle(Cmd(false), auth, db, musters, store, bus, default)).Ok);
+        var manual = await db.ReactionMusters.Include(m => m.Participants).OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Empty(manual.Participants);
+    }
+
+    [Fact]
+    public async Task Muster_LinkedPastExpiry_SoftCloses_NoPay_AndStaysNonTerminal()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, _, _, _) = NewMusters(db);
+
+        var sessionId = Guid.NewGuid();
+        db.TrackingSessions.Add(new TrackingSession { Id = sessionId, GuildId = 1, Name = "S", Status = TrackingSessionStatus.Active });
+        await db.SaveChangesAsync();
+
+        // A linked muster already past its window, with a points reward.
+        var muster = await musters.CreateAsync(1, 0, null, "Check in", points: 10, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: DateTimeOffset.UtcNow.AddHours(-1), createdBy: 7,
+            sessionId: sessionId);
+
+        // A check-in attempt trips the lazy transition: linked → Locked (soft-closed), not Expired/Closed.
+        var outcome = await musters.CheckInAsync(muster.Id, 50, MusterParticipantSource.Button);
+        Assert.Equal(ReactionOutcome.Closed, outcome);
+
+        var reloaded = await db.ReactionMusters.Include(m => m.Participants).SingleAsync(m => m.Id == muster.Id);
+        Assert.Equal(MusterStatus.Locked, reloaded.Status);
+        Assert.Null(reloaded.ClosedAt);              // not terminal yet
+        Assert.Empty(reloaded.Participants);          // the blocked check-in didn't land
+
+        // Linked muster pays at session close, not on lock — nobody was paid here.
+        Assert.False(await db.Wallets.AnyAsync(w => w.UserId == 7 && w.Balance != 0));
+
+        // A Locked muster can still go terminal (manager close / session close).
+        Assert.True(await musters.CloseAsync(muster.Id, MusterStatus.Closed));
+    }
+
+    [Fact]
     public async Task Quest_PostClaimSubmitApprove_AwardsMember()
     {
         using var db = await SeededAsync();
