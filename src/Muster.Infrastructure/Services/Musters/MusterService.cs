@@ -30,7 +30,8 @@ public enum ReactionOutcome
 public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth)
 {
     public async Task<ReactionMuster> CreateAsync(
-        ulong guildId, ulong channelId, string? title, string prompt, Guid currencyId, long rewardAmount,
+        ulong guildId, ulong channelId, string? title, string prompt,
+        long points, long coins, Guid? coinCurrencyId, int retentionHours,
         int? capacity, DateTimeOffset? expiresAt, ulong createdBy,
         IEnumerable<string>? emojis = null, Guid? sessionId = null, CancellationToken ct = default)
     {
@@ -42,8 +43,10 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
             Title = title,
             Prompt = prompt,
             Emojis = emojis?.ToList() ?? [],
-            CurrencyId = currencyId,
-            RewardAmount = rewardAmount,
+            Points = points,
+            Coins = coins,
+            CoinCurrencyId = coins > 0 ? coinCurrencyId : null,
+            RetentionHours = retentionHours,
             Capacity = capacity,
             ExpiresAt = expiresAt,
             Status = MusterStatus.Open,
@@ -59,18 +62,6 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         db.ReactionMusters.Add(muster);
         await db.SaveChangesAsync(ct);
         return muster;
-    }
-
-    /// <summary>Create a muster that rewards the guild's POINTS currency.</summary>
-    public async Task<ReactionMuster> CreatePointsAsync(
-        ulong guildId, ulong channelId, string? title, string prompt, long rewardPoints,
-        int? capacity, DateTimeOffset? expiresAt, ulong createdBy,
-        IEnumerable<string>? emojis = null, Guid? sessionId = null, CancellationToken ct = default)
-    {
-        var points = await db.FindPointsAsync(guildId, ct)
-            ?? throw new InvalidOperationException($"POINTS currency not provisioned for guild {guildId}.");
-
-        return await CreateAsync(guildId, channelId, title, prompt, points.Id, rewardPoints, capacity, expiresAt, createdBy, emojis, sessionId, ct);
     }
 
     /// <summary>Record a member's check-in (no reward — that's paid at close). Idempotent per (muster, user).
@@ -190,20 +181,38 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         muster.ClosedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        // Pay a non-linked muster's reward to everyone on its roster, once, at close. (Linked musters are paid by the
-        // session close; cancelled musters pay nothing.) Idempotent per (muster, user) source key.
-        if (status != MusterStatus.Cancelled && muster.RewardAmount > 0 && muster.SessionLinks.Count == 0)
+        // Pay a non-linked muster's reward (points + coins) to everyone on its roster, once, at close. (Linked musters
+        // are paid by the session close; cancelled musters pay nothing.) Idempotent per (muster, user, leg).
+        if (status != MusterStatus.Cancelled && muster.SessionLinks.Count == 0)
         {
             foreach (var p in muster.Participants)
             {
-                await awards.AwardAsync(
-                    muster.GuildId, p.UserId, muster.CurrencyId, muster.RewardAmount,
-                    CurrencyLedgerSource.Muster, $"muster:{muster.Id}:user:{p.UserId}",
-                    $"Muster: {muster.Prompt}", ct);
+                await PayAsync(muster, p.UserId, ct);
             }
         }
 
         return true;
+    }
+
+    /// <summary>Award a muster's points + coins to one member, idempotent per leg. Shared by muster-close (non-linked)
+    /// and session-close (linked, gated on attendance by the caller).</summary>
+    public async Task PayAsync(ReactionMuster muster, ulong userId, CancellationToken ct = default)
+    {
+        if (muster.Points > 0)
+        {
+            await awards.AwardPointsAsync(
+                muster.GuildId, userId, muster.Points,
+                CurrencyLedgerSource.Muster, $"muster:{muster.Id}:user:{userId}:points",
+                $"Muster: {muster.Prompt}", ct);
+        }
+
+        if (muster.Coins > 0 && muster.CoinCurrencyId is { } coinCcy)
+        {
+            await awards.AwardAsync(
+                muster.GuildId, userId, coinCcy, muster.Coins,
+                CurrencyLedgerSource.Muster, $"muster:{muster.Id}:user:{userId}:coins",
+                $"Muster: {muster.Prompt}", ct);
+        }
     }
 
     /// <summary>Link a muster to a tracking session (idempotent). Returns false if the link already existed.</summary>

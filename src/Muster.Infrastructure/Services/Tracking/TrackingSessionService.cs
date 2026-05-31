@@ -124,9 +124,10 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         var musterCfg = musterSettings is null ? null : await musterSettings.GetAsync(guildId, ct);
         if ((createMuster ?? musterCfg?.AutoCreateOnSession ?? false) && musters is not null)
         {
-            var muster = await musters.CreatePointsAsync(
+            var muster = await musters.CreateAsync(
                 guildId, musterCfg?.MusterChannelId ?? 0, title: null, prompt: $"Check in for {name}",
-                rewardPoints: 0, capacity: null, expiresAt: null, createdBy: openedBy, sessionId: session.Id, ct: ct);
+                points: musterCfg?.DefaultPoints ?? 0, coins: musterCfg?.DefaultCoins ?? 0, coinCurrencyId: musterCfg?.DefaultCoinCurrencyId,
+                retentionHours: musterCfg?.BoardRetentionHours ?? 48, capacity: null, expiresAt: null, createdBy: openedBy, sessionId: session.Id, ct: ct);
 
             session.CoinGate = musterCfg?.AutoCreateGate ?? SessionCoinGate.Any;
             await db.SaveChangesAsync(ct);
@@ -509,11 +510,24 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             // to several sessions pays its bonus once (the first attended close).
             foreach (var m in linkedMusters)
             {
-                if (m.Status != MusterStatus.Cancelled && m.Reward > 0 && m.Roster.Contains(attendance.UserId))
+                if (m.Status == MusterStatus.Cancelled || !m.Roster.Contains(attendance.UserId))
+                {
+                    continue;
+                }
+
+                if (m.Points > 0)
+                {
+                    await awards.AwardPointsAsync(
+                        session.GuildId, attendance.UserId, m.Points,
+                        CurrencyLedgerSource.Muster, $"muster:{m.Id}:user:{attendance.UserId}:points",
+                        $"Muster check-in: {m.Prompt}", ct);
+                }
+
+                if (m.Coins > 0 && m.CoinCurrencyId is { } coinCcy)
                 {
                     await awards.AwardAsync(
-                        session.GuildId, attendance.UserId, m.CurrencyId, m.Reward,
-                        CurrencyLedgerSource.Muster, $"muster:{m.Id}:user:{attendance.UserId}",
+                        session.GuildId, attendance.UserId, coinCcy, m.Coins,
+                        CurrencyLedgerSource.Muster, $"muster:{m.Id}:user:{attendance.UserId}:coins",
                         $"Muster check-in: {m.Prompt}", ct);
                 }
             }

@@ -71,7 +71,7 @@ public class ParticipantGateTests
 
         // Muster check-in by a guest -> not eligible, no reward.
         var musters = new MusterService(db, awards, auth);
-        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 10, capacity: null, expiresAt: null, createdBy: 1);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", 10, 0, null, 48, capacity: null, expiresAt: null, createdBy: 1);
         Assert.Equal(ReactionOutcome.NotEligible, await musters.CheckInAsync(muster.Id, 20, MusterParticipantSource.Button));
         Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync());
 

@@ -71,7 +71,7 @@ public class ParticipationTests
         var awards = new CurrencyService(db, new RecordingMessageBus());
         var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
 
-        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 10, capacity: 1, expiresAt: null, createdBy: 5);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", 10, 0, null, 48, capacity: 1, expiresAt: null, createdBy: 5);
 
         Assert.Equal(ReactionOutcome.Recorded, await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button));
         Assert.Equal(ReactionOutcome.AlreadyParticipated, await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button));
@@ -118,7 +118,7 @@ public class ParticipationTests
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         // A muster linked to the session, gating coin on check-in. Only user 10 checks in.
-        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", 0, 0, null, 48, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
         Assert.Equal(ReactionOutcome.Recorded, await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button));
         session.CoinGate = SessionCoinGate.Any;
         await db.SaveChangesAsync();
@@ -148,8 +148,8 @@ public class ParticipationTests
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
         // Two linked musters under an All gate. User 20 checks into both; user 10 only into round 1.
-        var round1 = await musters.CreateAsync(1, 100, null, "Round 1", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
-        var round2 = await musters.CreateAsync(1, 100, null, "Round 2", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        var round1 = await musters.CreateAsync(1, 100, null, "Round 1", 0, 0, null, 48, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        var round2 = await musters.CreateAsync(1, 100, null, "Round 2", 0, 0, null, 48, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
         await musters.CheckInAsync(round1.Id, 10, MusterParticipantSource.Button);
         await musters.CheckInAsync(round1.Id, 20, MusterParticipantSource.Button);
         await musters.CheckInAsync(round2.Id, 20, MusterParticipantSource.Button);
@@ -193,7 +193,7 @@ public class ParticipationTests
         var awards = new CurrencyService(db, new RecordingMessageBus());
         var musters = new MusterService(db, awards, new GuildAuthorizationService(db));
 
-        var muster = await musters.CreateAsync(1, 100, null, "Void", points.Id, 10, capacity: null, expiresAt: null, createdBy: 5);
+        var muster = await musters.CreateAsync(1, 100, null, "Void", 10, 0, null, 48, capacity: null, expiresAt: null, createdBy: 5);
         await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button);
 
         Assert.True(await musters.CloseAsync(muster.Id, MusterStatus.Cancelled));
@@ -211,7 +211,7 @@ public class ParticipationTests
         var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
 
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
-        var muster = await musters.CreateAsync(1, 100, null, "Bonus round", points.Id, 50, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        var muster = await musters.CreateAsync(1, 100, null, "Bonus round", 50, 0, null, 48, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
 
         // 10 checks in and attends; 30 checks in but never shows up; 20 attends but never checks in.
         await musters.CheckInAsync(muster.Id, 10, MusterParticipantSource.Button);
@@ -269,7 +269,7 @@ public class ParticipationTests
         var sessions = new TrackingSessionService(db, awards, new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
 
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
-        var muster = await musters.CreateAsync(1, 100, null, "Roll call", points.Id, 0, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", 0, 0, null, 48, capacity: null, expiresAt: null, createdBy: 5, sessionId: session.Id);
 
         await sessions.CloseAsync(session.Id, at: DateTimeOffset.UtcNow);
 

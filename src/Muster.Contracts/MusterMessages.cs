@@ -5,17 +5,22 @@ namespace Muster.Contracts;
 // middleware), exactly like the quest commands. Check-in is a button click dispatched as CheckInMuster with the
 // clicker as ActorId; lifecycle actions (create/close/link/edit roster) are staff commands.
 
-/// <summary>Create a muster and post its card. <paramref name="CurrencyId"/> null = the guild's POINTS currency.
-/// <paramref name="SessionId"/> links the new muster to a tracking session (coin gating) in one step. Returns the
-/// new muster id.</summary>
+/// <summary>Create a muster and post its card. Rewards resolve as <b>template → custom → guild defaults</b>:
+/// <paramref name="TemplateId"/> picks a preset; <paramref name="Points"/>/<paramref name="Coins"/>/
+/// <paramref name="CoinCurrencyId"/> are a Tracking Manager's custom values (and may override a template). A
+/// template-only Muster Creator must supply a <paramref name="TemplateId"/> and can't override. Null reward fields
+/// fall back to the template, then the guild defaults. <paramref name="SessionId"/> links to a session in one step.
+/// Returns the new muster id.</summary>
 public record CreateMuster(
     ulong GuildId,
     ulong ActorId,
     ulong ChannelId,
     string? Title,
     string Prompt,
-    Guid? CurrencyId,
-    long Reward,
+    Guid? TemplateId,
+    long? Points,
+    long? Coins,
+    Guid? CoinCurrencyId,
     int? Capacity,
     DateTimeOffset? ExpiresAt,
     Guid? SessionId) : IGuildCommand;

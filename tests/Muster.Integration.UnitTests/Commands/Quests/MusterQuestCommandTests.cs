@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Muster.Persistence;
 using Muster.Domain.Entities;
 using Muster.Domain.Entities.Guilds;
+using Muster.Domain.Entities.Musters;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
@@ -48,7 +49,7 @@ public class MusterQuestCommandTests
 
         var result = await CreateMusterHandler.Handle(
             new CreateMuster(1, ActorId: 7, ChannelId: 500, Title: null, Prompt: "Roll call",
-                CurrencyId: null, Reward: 10, Capacity: null, ExpiresAt: null, SessionId: null),
+                TemplateId: null, Points: 10, Coins: null, CoinCurrencyId: null, Capacity: null, ExpiresAt: null, SessionId: null),
             auth, db, musters, store, bus, default);
 
         Assert.True(result.Ok);
@@ -56,7 +57,7 @@ public class MusterQuestCommandTests
         var muster = await db.ReactionMusters.SingleAsync();
         Assert.Equal(result.Value, muster.Id);
         Assert.Equal(500ul, muster.ChannelId);
-        Assert.Equal(10, muster.RewardAmount);
+        Assert.Equal(10, muster.Points);
         Assert.Equal(7ul, muster.CreatedBy);
     }
 
@@ -66,8 +67,8 @@ public class MusterQuestCommandTests
         using var db = await SeededAsync(ownerId: 7);
         var (musters, auth, store, bus) = NewMusters(db);
 
-        CreateMuster Cmd(ulong actor, string prompt, long reward, int? capacity) =>
-            new(1, actor, 500, null, prompt, null, reward, capacity, null, null);
+        CreateMuster Cmd(ulong actor, string prompt, long points, int? capacity) =>
+            new(1, actor, 500, null, prompt, TemplateId: null, Points: points, Coins: null, CoinCurrencyId: null, Capacity: capacity, ExpiresAt: null, SessionId: null);
 
         Assert.Equal("PromptRequired", (await CreateMusterHandler.Handle(Cmd(7, "", 10, null), auth, db, musters, store, bus, default)).Status);
         Assert.Equal("RewardNegative", (await CreateMusterHandler.Handle(Cmd(7, "p", -1, null), auth, db, musters, store, bus, default)).Status);
@@ -76,11 +77,47 @@ public class MusterQuestCommandTests
         // A non-manager with otherwise-valid input is refused at the gate.
         Assert.Equal("Forbidden", (await CreateMusterHandler.Handle(Cmd(999, "p", 10, null), auth, db, musters, store, bus, default)).Status);
 
-        // A reward currency that doesn't belong to the guild is rejected.
-        var cross = new CreateMuster(1, 7, 500, null, "p", CurrencyId: Guid.NewGuid(), Reward: 10, Capacity: null, ExpiresAt: null, SessionId: null);
-        Assert.Equal("CurrencyNotFound", (await CreateMusterHandler.Handle(cross, auth, db, musters, store, bus, default)).Status);
+        // Coins with a currency that doesn't belong to the guild are rejected.
+        var cross = new CreateMuster(1, 7, 500, null, "p", TemplateId: null, Points: 0, Coins: 5, CoinCurrencyId: Guid.NewGuid(), Capacity: null, ExpiresAt: null, SessionId: null);
+        Assert.Equal("CoinCurrencyInvalid", (await CreateMusterHandler.Handle(cross, auth, db, musters, store, bus, default)).Status);
 
         Assert.Equal(0, await db.ReactionMusters.CountAsync());
+    }
+
+    [Fact]
+    public async Task Muster_Create_Templates_CreatorGating_AndManagerOverride()
+    {
+        using var db = await SeededAsync(ownerId: 7); // 7 = owner/manager
+        var (musters, auth, store, bus) = NewMusters(db);
+
+        var coinId = Guid.NewGuid();
+        db.Currencies.Add(new Currency { Id = coinId, GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true });
+        var tplId = Guid.NewGuid();
+        db.MusterTemplates.Add(new MusterTemplate { Id = tplId, GuildId = 1, Name = "Strike", Points = 5, Coins = 3, CoinCurrencyId = coinId, RetentionHours = 24, Enabled = true });
+        var guild = await db.Guilds.SingleAsync();
+        guild.Settings.MusterCreatorRoleIds = [500];
+        await db.SaveChangesAsync();
+        await new MemberSyncService(db).UpsertAsync(1, 50, "creator", null, null, roleIds: [500]); // template-only creator
+
+        CreateMuster Cmd(ulong actor, Guid? template, long? points) =>
+            new(1, actor, 500, null, "go", template, points, null, null, null, null, null);
+
+        // Creator must use a template.
+        Assert.Equal("TemplateRequired", (await CreateMusterHandler.Handle(Cmd(50, null, null), auth, db, musters, store, bus, default)).Status);
+
+        // Creator with a template → template values applied; no override allowed.
+        Assert.True((await CreateMusterHandler.Handle(Cmd(50, tplId, 999), auth, db, musters, store, bus, default)).Ok);
+        var byCreator = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(5, byCreator.Points);   // creator's points override is ignored
+        Assert.Equal(3, byCreator.Coins);
+        Assert.Equal(coinId, byCreator.CoinCurrencyId);
+        Assert.Equal(24, byCreator.RetentionHours);
+
+        // Manager with the same template may override points; coins stay from the template.
+        Assert.True((await CreateMusterHandler.Handle(Cmd(7, tplId, 20), auth, db, musters, store, bus, default)).Ok);
+        var byManager = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(20, byManager.Points);
+        Assert.Equal(3, byManager.Coins);
     }
 
     [Fact]
@@ -92,7 +129,7 @@ public class MusterQuestCommandTests
         db.GuildMusterSettings.Add(new GuildMusterSettings { GuildId = 1, AllowedChannelIds = [999] });
         await db.SaveChangesAsync();
 
-        CreateMuster At(ulong channelId) => new(1, 7, channelId, null, "Roll call", null, 0, null, null, null);
+        CreateMuster At(ulong channelId) => new(1, 7, channelId, null, "Roll call", TemplateId: null, Points: 0, Coins: null, CoinCurrencyId: null, Capacity: null, ExpiresAt: null, SessionId: null);
 
         // Disallowed explicit channel is rejected; an allowed one and the "fall back to default" (0) pass.
         Assert.Equal("ChannelNotAllowed", (await CreateMusterHandler.Handle(At(500), auth, db, musters, store, bus, default)).Status);

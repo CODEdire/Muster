@@ -4,12 +4,13 @@ using Muster.Domain.Enums;
 
 namespace Muster.Persistence.Queries;
 
-/// <summary>A muster linked to a session, with everything session-close needs: its check-in roster, its own bonus
-/// reward, and its current status (for auto-close).</summary>
-public record SessionLinkedMuster(Guid Id, Guid CurrencyId, long Reward, string Prompt, MusterStatus Status, HashSet<ulong> Roster);
+/// <summary>A muster linked to a session, with everything session-close needs: its check-in roster, its bonus
+/// reward (points + coins), and its current status (for auto-close).</summary>
+public record SessionLinkedMuster(Guid Id, long Points, long Coins, Guid? CoinCurrencyId, string Prompt, MusterStatus Status, HashSet<ulong> Roster);
 
-/// <summary>A posted muster card whose muster has gone terminal (Closed/Expired/Cancelled) — a cleanup candidate.</summary>
-public record MusterBoardCard(Guid PostedMessageId, ulong GuildId, ulong ChannelId, ulong MessageId, DateTimeOffset TerminalAt);
+/// <summary>A posted muster card whose muster has gone terminal (Closed/Expired/Cancelled) — a cleanup candidate.
+/// <see cref="RetentionHours"/> is the muster's own snapshot, so cleanup doesn't re-read guild settings.</summary>
+public record MusterBoardCard(Guid PostedMessageId, ulong GuildId, ulong ChannelId, ulong MessageId, DateTimeOffset TerminalAt, int RetentionHours);
 
 /// <summary>An open, non-linked muster past its expiry window — due to be auto-expired (and paid out).</summary>
 public record MusterDueExpiry(Guid Id, ulong GuildId);
@@ -52,8 +53,9 @@ public static class MusterQueries
             .Select(l => new
             {
                 l.Muster!.Id,
-                l.Muster.CurrencyId,
-                l.Muster.RewardAmount,
+                l.Muster.Points,
+                l.Muster.Coins,
+                l.Muster.CoinCurrencyId,
                 l.Muster.Prompt,
                 l.Muster.Status,
                 Users = l.Muster.Participants.Select(p => p.UserId).ToList(),
@@ -61,7 +63,7 @@ public static class MusterQueries
             .ToListAsync(ct);
 
         return rows
-            .Select(r => new SessionLinkedMuster(r.Id, r.CurrencyId, r.RewardAmount, r.Prompt, r.Status, new HashSet<ulong>(r.Users)))
+            .Select(r => new SessionLinkedMuster(r.Id, r.Points, r.Coins, r.CoinCurrencyId, r.Prompt, r.Status, new HashSet<ulong>(r.Users)))
             .ToList();
     }
 
@@ -80,6 +82,6 @@ public static class MusterQueries
             .Where(p => p.EntityType == "muster")
             .Join(db.ReactionMusters, p => p.EntityId, m => m.Id, (p, m) => new { p, m })
             .Where(x => x.m.Status != MusterStatus.Open)
-            .Select(x => new MusterBoardCard(x.p.Id, x.p.GuildId, x.p.ChannelId, x.p.MessageId, x.m.ClosedAt ?? x.m.CreatedAt))
+            .Select(x => new MusterBoardCard(x.p.Id, x.p.GuildId, x.p.ChannelId, x.p.MessageId, x.m.ClosedAt ?? x.m.CreatedAt, x.m.RetentionHours))
             .ToListAsync(ct);
 }

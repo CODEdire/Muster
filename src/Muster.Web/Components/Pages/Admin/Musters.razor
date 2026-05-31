@@ -41,8 +41,8 @@ else if (State == AccessState.Ready)
             <label>Title (optional)
                 <input class="input" @bind="_title" placeholder="Heading shown above the prompt" maxlength="100" />
             </label>
-            <label>Reward (points; 0 = check-in only)
-                <input class="input" type="number" min="0" @bind="_reward" />
+            <label>Points (participation; 0 = check-in only)
+                <input class="input" type="number" min="0" @bind="_points" />
             </label>
             <label>Capacity (optional)
                 <input class="input" type="number" min="0" @bind="_capacity" />
@@ -88,7 +88,7 @@ else if (State == AccessState.Ready)
                             <td><a href="@MusterLinks.MusterDetail(GuildId, m.Id)">@m.Display</a></td>
                             <td>@StatusLabel(m.Status)</td>
                             <td class="num">@m.CheckedIn@(m.Capacity is { } c ? $"/{c}" : "")</td>
-                            <td class="num">@(m.Reward > 0 ? $"{m.Reward} {m.CurrencyCode ?? "POINTS"}" : "—")</td>
+                            <td class="num">@RewardLabel(m.Points, m.Coins, m.CoinCode)</td>
                             <td>@(m.LinkedSessions > 0 ? $"{m.LinkedSessions} session(s)" : "—")</td>
                             <td><LocalTime Value="m.CreatedAt" /></td>
                             <td class="dg-actions-col">
@@ -116,7 +116,7 @@ else if (State == AccessState.Ready)
 
     private string _prompt = "";
     private string _title = "";
-    private int _reward;
+    private int _points;
     private int _capacity;
     private int _expiresHours;
     private ulong _channelId;
@@ -155,7 +155,8 @@ else if (State == AccessState.Ready)
             // ChannelId 0 → the card renderer falls back to the guild's configured muster channel.
             var command = new CreateMuster(GuildId, UserId, _channelId,
                 string.IsNullOrWhiteSpace(_title) ? null : _title.Trim(), _prompt.Trim(),
-                CurrencyId: null, _reward, _capacity > 0 ? _capacity : null, expires, SessionId: null);
+                TemplateId: null, Points: _points, Coins: null, CoinCurrencyId: null,
+                Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: null);
 
             var noCard = _channelId == 0 && _defaultChannelId == 0;
             var result = await Bus.InvokeAsync<Result<Guid>>(command);
@@ -167,7 +168,7 @@ else if (State == AccessState.Ready)
             if (result.Ok)
             {
                 _prompt = _title = "";
-                _reward = _capacity = _expiresHours = 0;
+                _points = _capacity = _expiresHours = 0;
                 _channelId = 0;
             }
         }
@@ -196,6 +197,14 @@ else if (State == AccessState.Ready)
             _busy = false;
             await LoadListAsync();
         }
+    }
+
+    private static string RewardLabel(long points, long coins, string? coinCode)
+    {
+        var parts = new List<string>();
+        if (points > 0) { parts.Add($"{points} pts"); }
+        if (coins > 0) { parts.Add($"{coins} {coinCode ?? "coins"}"); }
+        return parts.Count == 0 ? "—" : string.Join(" + ", parts);
     }
 
     private static string StatusLabel(MusterStatus s) => s switch

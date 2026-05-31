@@ -53,7 +53,6 @@ public class MusterBoardCleanupScheduler(
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
-        var musterSettings = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Musters.GuildMusterSettingsService>();
 
         var cards = await db.ListTerminalMusterBoardCardsAsync(ct);
         if (cards.Count == 0)
@@ -62,18 +61,12 @@ public class MusterBoardCleanupScheduler(
         }
 
         var now = DateTimeOffset.UtcNow;
-        var retentionByGuild = new Dictionary<ulong, int>();
         var removed = 0;
 
         foreach (var card in cards)
         {
-            if (!retentionByGuild.TryGetValue(card.GuildId, out var hours))
-            {
-                hours = (await musterSettings.GetAsync(card.GuildId, ct)).BoardRetentionHours;
-                retentionByGuild[card.GuildId] = hours;
-            }
-
-            if (!IsExpired(card.TerminalAt, hours, now))
+            // Retention is the muster's own snapshot (template/default at creation).
+            if (!IsExpired(card.TerminalAt, card.RetentionHours, now))
             {
                 continue;
             }

@@ -50,7 +50,7 @@ public class CascadeTests
     {
         using var sqlite = new SqliteDb();
         var db = sqlite.Context;
-        var muster = new ReactionMuster { Id = Guid.NewGuid(), GuildId = 1, ChannelId = 7, CurrencyId = Guid.NewGuid(), RewardAmount = 5 };
+        var muster = new ReactionMuster { Id = Guid.NewGuid(), GuildId = 1, ChannelId = 7, Points = 5 };
         db.ReactionMusters.Add(muster);
         db.ReactionParticipants.Add(new ReactionParticipant { MusterId = muster.Id, UserId = 10, CheckedInAt = DateTimeOffset.UtcNow });
         await db.SaveChangesAsync();

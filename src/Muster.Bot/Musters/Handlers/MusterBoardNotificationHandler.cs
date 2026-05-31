@@ -47,10 +47,10 @@ public static class MusterBoardNotificationHandler
             return;
         }
 
-        var currencyCode = muster.RewardAmount > 0
-            ? await db.Currencies.Where(c => c.Id == muster.CurrencyId).Select(c => c.Code).FirstOrDefaultAsync(ct)
+        var coinCode = muster.Coins > 0 && muster.CoinCurrencyId is { } coinCcy
+            ? await db.Currencies.Where(c => c.Id == coinCcy).Select(c => c.Code).FirstOrDefaultAsync(ct)
             : null;
-        var embed = MusterEmbedRenderer.Render(muster, currencyCode, config["Web:BaseUrl"]);
+        var embed = MusterEmbedRenderer.Render(muster, coinCode, config["Web:BaseUrl"]);
         var components = MusterComponentBuilder.Build(muster);
 
         // Same channel → edit the existing card in place.

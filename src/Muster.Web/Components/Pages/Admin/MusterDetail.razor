@@ -38,7 +38,7 @@ else if (State == AccessState.Ready)
             <dl class="kv">
                 <div><dt>Status</dt><dd>@_m.Status</dd></div>
                 <div><dt>Checked in</dt><dd>@_m.Participants.Count@(_m.Capacity is { } c ? $" / {c}" : "")</dd></div>
-                <div><dt>Reward</dt><dd>@(_m.Reward > 0 ? $"{_m.Reward} {_m.CurrencyCode ?? "POINTS"}" : "Check-in only")</dd></div>
+                <div><dt>Reward</dt><dd>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</dd></div>
                 <div><dt>Created</dt><dd><LocalTime Value="_m.CreatedAt" /> by @Name(_m.CreatedBy)</dd></div>
                 @if (_m.ExpiresAt is { } ex)
                 {
@@ -157,6 +157,14 @@ else if (State == AccessState.Ready)
     }
 
     private string Name(ulong userId) => _names.TryGetValue(userId, out var n) ? n : $"<@{userId}>";
+
+    private static string RewardLabel(long points, long coins, string? coinCode)
+    {
+        var parts = new List<string>();
+        if (points > 0) { parts.Add($"{points} pts"); }
+        if (coins > 0) { parts.Add($"{coins} {coinCode ?? "coins"}"); }
+        return parts.Count == 0 ? "Check-in only" : string.Join(" + ", parts);
+    }
 
     private async Task CloseAsync() => await RunAsync(new CloseMuster(GuildId, UserId, MusterId), "Muster closed.");
 

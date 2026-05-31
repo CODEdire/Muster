@@ -24,8 +24,10 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
     [SubSlashCommand("post", "Post a check-in muster.")]
     public Task PostAsync(
         [SlashCommandParameter(Name = "prompt", Description = "What members are checking in for")] string prompt,
+        [SlashCommandParameter(Name = "template", Description = "Reward template (required if you can't set custom rewards)",
+            AutocompleteProviderType = typeof(MusterTemplateAutocompleteProvider))] string? template = null,
         [SlashCommandParameter(Name = "title", Description = "Optional heading shown above the prompt")] string title = "",
-        [SlashCommandParameter(Name = "reward", Description = "Points per check-in (0 = check-in only)")] long reward = 0,
+        [SlashCommandParameter(Name = "points", Description = "Participation points (managers only; overrides the template/default)")] long? points = null,
         [SlashCommandParameter(Name = "capacity", Description = "Max check-ins (optional; ignored when linked to a session)")] long capacity = 0,
         [SlashCommandParameter(Name = "expires-hours", Description = "Auto-close after this many hours (optional)")] long expiresHours = 0,
         [SlashCommandParameter(Name = "channel", Description = "Channel to post to (default: configured muster channel, else here)",
@@ -37,10 +39,12 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
             var configured = (await sp.GetRequiredService<GuildMusterSettingsService>().GetAsync(guildId)).MusterChannelId;
             var channelId = chosen ?? (configured != 0 ? configured : Context.Channel.Id);
             DateTimeOffset? expires = expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(expiresHours) : null;
+            Guid? templateId = Guid.TryParse(template, out var tg) ? tg : null;
 
             var command = new CreateMuster(guildId, Context.User.Id, channelId,
                 string.IsNullOrWhiteSpace(title) ? null : title.Trim(), prompt,
-                CurrencyId: null, reward, capacity > 0 ? (int)capacity : null, expires, SessionId: null);
+                TemplateId: templateId, Points: points, Coins: null, CoinCurrencyId: null,
+                Capacity: capacity > 0 ? (int)capacity : null, ExpiresAt: expires, SessionId: null);
 
             var result = await sp.GetRequiredService<IMessageBus>().InvokeAsync<Result<Guid>>(command);
             return MusterResultText.ToCommandResult(result, $"Muster posted in <#{channelId}>.");
@@ -80,7 +84,10 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
 
             var heading = string.IsNullOrWhiteSpace(m.Title) ? m.Prompt : m.Title;
             var count = m.Capacity is { } cap ? $"{m.Participants.Count}/{cap}" : m.Participants.Count.ToString();
-            var reward = m.Reward > 0 ? $"\nReward: {m.Reward} {m.CurrencyCode ?? "POINTS"}" : "";
+            var rewardParts = new List<string>();
+            if (m.Points > 0) { rewardParts.Add($"{m.Points} pts"); }
+            if (m.Coins > 0) { rewardParts.Add($"{m.Coins} {m.CoinCode ?? "coins"}"); }
+            var reward = rewardParts.Count > 0 ? $"\nReward: {string.Join(" + ", rewardParts)}" : "";
             var roster = m.Participants.Count == 0
                 ? "_no check-ins_"
                 : string.Join(" ", m.Participants.Take(50).Select(p => $"<@{p.UserId}>"))

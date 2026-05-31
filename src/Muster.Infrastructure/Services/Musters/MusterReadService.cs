@@ -9,12 +9,12 @@ namespace Muster.Infrastructure.Services.Musters;
 /// <summary>A muster row for the web admin list.</summary>
 public record MusterListItem(
     Guid Id, string Display, MusterStatus Status, int CheckedIn, int? Capacity,
-    long Reward, string? CurrencyCode, DateTimeOffset CreatedAt, ulong CreatedBy, int LinkedSessions);
+    long Points, long Coins, string? CoinCode, DateTimeOffset CreatedAt, ulong CreatedBy, int LinkedSessions);
 
 /// <summary>One muster's detail for the web admin page.</summary>
 public record MusterDetailView(
     Guid Id, ulong GuildId, string? Title, string Prompt, MusterStatus Status,
-    long Reward, string? CurrencyCode, int? Capacity, DateTimeOffset? ExpiresAt,
+    long Points, long Coins, string? CoinCode, int? Capacity, DateTimeOffset? ExpiresAt,
     DateTimeOffset CreatedAt, ulong CreatedBy, DateTimeOffset? ClosedAt, ulong ChannelId,
     IReadOnlyList<MusterParticipantView> Participants, IReadOnlyList<MusterLinkedSession> Sessions);
 
@@ -52,8 +52,9 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
                 m.Status,
                 m.Participants.Count,
                 m.Capacity,
-                m.RewardAmount,
-                db.Currencies.Where(c => c.Id == m.CurrencyId).Select(c => c.Code).FirstOrDefault(),
+                m.Points,
+                m.Coins,
+                db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
                 m.CreatedAt,
                 m.CreatedBy,
                 m.SessionLinks.Count))
@@ -65,9 +66,9 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
             .Where(m => m.Id == musterId && m.GuildId == guildId)
             .Select(m => new
             {
-                m.Id, m.GuildId, m.Title, m.Prompt, m.Status, m.RewardAmount, m.CurrencyId,
+                m.Id, m.GuildId, m.Title, m.Prompt, m.Status, m.Points, m.Coins, m.CoinCurrencyId,
                 m.Capacity, m.ExpiresAt, m.CreatedAt, m.CreatedBy, m.ClosedAt, m.ChannelId,
-                Code = db.Currencies.Where(c => c.Id == m.CurrencyId).Select(c => c.Code).FirstOrDefault(),
+                Code = db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
                 Participants = m.Participants
                     .OrderBy(p => p.CheckedInAt)
                     .Select(p => new MusterParticipantView(p.UserId, p.Source, p.CheckedInAt))
@@ -84,7 +85,7 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
         }
 
         return new MusterDetailView(
-            muster.Id, muster.GuildId, muster.Title, muster.Prompt, muster.Status, muster.RewardAmount, muster.Code,
+            muster.Id, muster.GuildId, muster.Title, muster.Prompt, muster.Status, muster.Points, muster.Coins, muster.Code,
             muster.Capacity, muster.ExpiresAt, muster.CreatedAt, muster.CreatedBy, muster.ClosedAt, muster.ChannelId,
             muster.Participants, muster.Sessions);
     }

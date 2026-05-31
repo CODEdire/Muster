@@ -19,6 +19,7 @@ public static class MustersExtensions
         builder.Services.AddTransient<MusterAutocompleteProvider>();
         builder.Services.AddTransient<RecentMusterAutocompleteProvider>();
         builder.Services.AddTransient<MusterChannelAutocompleteProvider>();
+        builder.Services.AddTransient<MusterTemplateAutocompleteProvider>();
 
         // Auto-expires open, non-linked musters past their window (pays out + flips the card terminal).
         builder.Services.AddHostedService<MusterExpirySweepScheduler>();

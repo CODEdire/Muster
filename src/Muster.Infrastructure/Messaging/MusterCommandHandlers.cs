@@ -30,31 +30,81 @@ public static class CreateMusterHandler
             return Result<Guid>.Fail("PromptRequired");
         }
 
-        if (command.Reward < 0)
-        {
-            return Result<Guid>.Fail("RewardNegative");
-        }
-
-        if (command.Capacity is <= 0)
-        {
-            return Result<Guid>.Fail("BadCapacity");
-        }
-
-        if (!await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct))
+        // A Tracking Manager may create custom (and override a template); a template-only Muster Creator must pick a
+        // template and can't override.
+        var isManager = await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct);
+        if (!isManager && !await auth.IsMusterCreatorAsync(command.GuildId, command.ActorId, ct))
         {
             return Result<Guid>.Fail("Forbidden");
         }
 
-        // A specified reward currency must belong to this guild (defense for any non-UI producer; the UI passes null).
-        if (command.CurrencyId is { } cid && !await db.Currencies.AnyAsync(c => c.Id == cid && c.GuildId == command.GuildId, ct))
+        Muster.Domain.Entities.Musters.MusterTemplate? template = null;
+        if (command.TemplateId is { } tid)
         {
-            return Result<Guid>.Fail("CurrencyNotFound");
+            template = await db.MusterTemplates.FirstOrDefaultAsync(t => t.Id == tid && t.GuildId == command.GuildId && t.Enabled, ct);
+            if (template is null)
+            {
+                return Result<Guid>.Fail("TemplateNotFound");
+            }
+        }
+        else if (!isManager)
+        {
+            return Result<Guid>.Fail("TemplateRequired"); // creators can't free-hand rewards
         }
 
-        // Honor the guild's muster channel allow-list (empty = any channel). channelId 0 resolves to the configured
-        // default at render time, which is itself validated when set — so only an explicit channel is checked here.
-        var ms = await musterSettings.GetAsync(command.GuildId, ct);
-        if (!ms.ChannelAllowed(command.ChannelId))
+        var defaults = await musterSettings.GetAsync(command.GuildId, ct);
+
+        // Resolve effective values: template (if any) is the base; a manager's non-null custom fields override; with
+        // no template, a manager's values fall back to the guild defaults.
+        long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires;
+        string? emoji = template?.Emoji;
+
+        if (template is not null)
+        {
+            points = template.Points;
+            coins = template.Coins;
+            coinCcy = template.CoinCurrencyId;
+            retention = template.RetentionHours;
+            capacity = template.Capacity;
+            expires = template.ExpiryHours is { } eh ? DateTimeOffset.UtcNow.AddHours(eh) : null;
+
+            if (isManager) // overrides
+            {
+                if (command.Points is { } p) points = p;
+                if (command.Coins is { } c) { coins = c; coinCcy = command.CoinCurrencyId ?? coinCcy; }
+                if (command.Capacity is { } cap) capacity = cap;
+                if (command.ExpiresAt is { } ex) expires = ex;
+            }
+        }
+        else
+        {
+            points = command.Points ?? defaults.DefaultPoints;
+            coins = command.Coins ?? defaults.DefaultCoins;
+            coinCcy = command.CoinCurrencyId ?? defaults.DefaultCoinCurrencyId;
+            retention = defaults.BoardRetentionHours;
+            capacity = command.Capacity;
+            expires = command.ExpiresAt;
+        }
+
+        if (points < 0 || coins < 0)
+        {
+            return Result<Guid>.Fail("RewardNegative");
+        }
+
+        if (capacity is <= 0)
+        {
+            return Result<Guid>.Fail("BadCapacity");
+        }
+
+        // Coins require a spendable currency that belongs to this guild.
+        if (coins > 0 && (coinCcy is not { } cc || !await db.Currencies.AnyAsync(c => c.Id == cc && c.GuildId == command.GuildId && c.IsSpendable, ct)))
+        {
+            return Result<Guid>.Fail("CoinCurrencyInvalid");
+        }
+
+        // Honor the guild's muster channel allow-list (empty = any). channelId 0 resolves to the configured default
+        // at render time, which is itself validated when set — so only an explicit channel is checked here.
+        if (!defaults.ChannelAllowed(command.ChannelId))
         {
             return Result<Guid>.Fail("ChannelNotAllowed");
         }
@@ -62,11 +112,10 @@ public static class CreateMusterHandler
         var prompt = command.Prompt.Trim();
         var title = string.IsNullOrWhiteSpace(command.Title) ? null : command.Title.Trim();
 
-        var muster = command.CurrencyId is { } currencyId
-            ? await musters.CreateAsync(command.GuildId, command.ChannelId, title, prompt, currencyId, command.Reward,
-                command.Capacity, command.ExpiresAt, command.ActorId, sessionId: command.SessionId, ct: ct)
-            : await musters.CreatePointsAsync(command.GuildId, command.ChannelId, title, prompt, command.Reward,
-                command.Capacity, command.ExpiresAt, command.ActorId, sessionId: command.SessionId, ct: ct);
+        var muster = await musters.CreateAsync(
+            command.GuildId, command.ChannelId, title, prompt, points, coins, coinCcy, retention,
+            capacity, expires, command.ActorId,
+            emojis: string.IsNullOrWhiteSpace(emoji) ? null : [emoji], sessionId: command.SessionId, ct: ct);
 
         await bus.PublishAsync(new MusterChanged(command.GuildId, muster.Id, MusterChangeKind.Created));
         return Result<Guid>.Success(muster.Id);

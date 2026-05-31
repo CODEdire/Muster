@@ -12,7 +12,7 @@ namespace Muster.Bot.Musters.Rendering;
 /// </summary>
 public static class MusterEmbedRenderer
 {
-    public static EmbedProperties Render(ReactionMuster muster, string? currencyCode, string? webBaseUrl = null)
+    public static EmbedProperties Render(ReactionMuster muster, string? coinCode, string? webBaseUrl = null)
     {
         var checkedIn = muster.Participants.Count;
         var countValue = muster.Capacity is { } cap && muster.SessionLinks.Count == 0
@@ -25,9 +25,20 @@ public static class MusterEmbedRenderer
             new() { Name = "Checked in", Value = countValue, Inline = true },
         };
 
-        if (muster.RewardAmount > 0)
+        var reward = new List<string>();
+        if (muster.Points > 0)
         {
-            fields.Add(new() { Name = "Reward", Value = $"🪙 {muster.RewardAmount} {currencyCode ?? "POINTS"}", Inline = true });
+            reward.Add($"✨ {muster.Points} pts");
+        }
+
+        if (muster.Coins > 0)
+        {
+            reward.Add($"🪙 {muster.Coins} {coinCode ?? "coins"}");
+        }
+
+        if (reward.Count > 0)
+        {
+            fields.Add(new() { Name = "Reward", Value = string.Join(" · ", reward), Inline = true });
         }
 
         if (muster.Status == MusterStatus.Open && muster.ExpiresAt is { } expiry)

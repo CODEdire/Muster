@@ -29,8 +29,18 @@ public class ReactionMuster
     /// Ignored for a muster linked to a session (a linked muster rewards everyone who attended, not the first N).</summary>
     public int? Capacity { get; set; }
 
-    public Guid CurrencyId { get; set; }
-    public long RewardAmount { get; set; }
+    /// <summary>Participation POINTS granted (at close) to each member who checked in. 0 = none.</summary>
+    public long Points { get; set; }
+
+    /// <summary>Spendable coins granted (at close) to each member who checked in. 0 = none.</summary>
+    public long Coins { get; set; }
+
+    /// <summary>Currency the <see cref="Coins"/> are minted in (a spendable currency). Null when Coins = 0.</summary>
+    public Guid? CoinCurrencyId { get; set; }
+
+    /// <summary>How long this muster's terminal card lingers before cleanup deletes it — snapshot of the template /
+    /// guild default at creation, so cleanup doesn't depend on settings that may have changed since.</summary>
+    public int RetentionHours { get; set; } = 48;
 
     public DateTimeOffset? ExpiresAt { get; set; }
 
