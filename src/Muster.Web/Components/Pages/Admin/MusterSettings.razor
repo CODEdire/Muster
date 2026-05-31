@@ -93,7 +93,7 @@ else if (State == AccessState.Ready)
                 <p class="hint">Spendable currency the coin reward is minted in.</p>
             </div>
             <div class="field span2">
-                <label class="toggle">
+                <label class="checkbox">
                     <input type="checkbox" @bind="Input.CreatorAutoCheckIn" @bind:after="ScheduleSave" />
                     <span>Check the creator in automatically</span>
                 </label>
@@ -106,7 +106,7 @@ else if (State == AccessState.Ready)
         <p class="subtitle">Opening a tracking session posts + links a check-in muster and gates the session coin. Each session open can override.</p>
         <div class="mform">
             <div class="field span2">
-                <label class="toggle">
+                <label class="checkbox">
                     <input type="checkbox" @bind="Input.AutoCreate" @bind:after="ScheduleSave" />
                     <span>Auto-create a check-in muster when a session opens</span>
                 </label>
@@ -181,12 +181,12 @@ else if (State == AccessState.Ready)
     .mform .field.span2 { grid-column: 1 / -1; }
     .mform .field > label { color: var(--text); font-size: 0.9rem; font-weight: 600; margin: 0; }
     .mform .field .hint { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
-    .mform input, .mform select { width: 100%; }
+    /* Full width for value inputs/selects, but NOT the checkbox switch (it has a fixed track width). */
+    .mform input:not([type="checkbox"]), .mform select { width: 100%; }
     .mform .suffixed { display: flex; align-items: center; gap: 0.5rem; }
     .mform .suffixed input { width: 7rem; }
     .mform .suffixed span { color: var(--text-muted); font-size: 0.85rem; }
-    .mform label.toggle { flex-direction: row; align-items: center; gap: 0.6rem; cursor: pointer; font-weight: 600; color: var(--text); }
-    .mform label.toggle input { width: auto; }
+    .mform label.checkbox { font-weight: 600; color: var(--text); cursor: pointer; }
     @@media (max-width: 640px) { .mform { grid-template-columns: 1fr; } }
 
     .dual { display: flex; gap: 1rem; align-items: stretch; }
