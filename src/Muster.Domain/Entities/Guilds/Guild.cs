@@ -88,11 +88,6 @@ public class GuildSettings
     /// never stopped — a forgotten manual op, a deleted channel, etc.). 0 = never auto-close.</summary>
     public int MaxSessionHours { get; set; } = 24;
 
-    /// <summary>When true, opening a tracking session automatically posts a check-in muster, links it, and gates the
-    /// session's coin on it (mode <c>Any</c>) — so the session coin requires an active check-in. Each session's open
-    /// may override this. Default false. See <see cref="Muster.Domain.Entities.Musters.ReactionMuster"/>.</summary>
-    public bool AutoCreateMusterOnSession { get; set; }
-
     /// <summary>How many days of raw <c>ActivityRecord</c> rows to keep before the prune sweep deletes them
     /// (daily rollups are kept, so stats survive). 0 (default) = keep raw rows forever.</summary>
     public int ActivityRetentionDays { get; set; }
@@ -136,33 +131,7 @@ public class GuildSettings
     /// <summary>Quest-board configuration: approval workflow, auto-resolve timeouts, limits, and tier rewards.</summary>
     public QuestSettings Quests { get; set; } = new();
 
-    /// <summary>Muster (reaction check-in) configuration: where cards post and how long terminal cards linger.</summary>
-    public MusterSettings Musters { get; set; } = new();
-}
-
-/// <summary>The muster (check-in) slice of a guild's configuration.</summary>
-public class MusterSettings
-{
-    /// <summary>Channel the bot posts muster cards to by default — one live card per muster, edited in place as
-    /// members check in. An author may override per-muster; 0 (default) means a muster posts to the channel it was
-    /// created from.</summary>
-    public ulong MusterChannelId { get; set; }
-
-    /// <summary>How long a closed/expired muster's card lingers in the channel before the cleanup sweep deletes the
-    /// Discord message (the muster + roster + ledger stay in the DB; web keeps full history). 0 = delete as soon as
-    /// terminal.</summary>
-    public int BoardRetentionHours { get; set; } = 48;
-
-    /// <summary>Channels a muster may be posted to. <b>Empty (default) = any chat-capable channel</b> (text or voice
-    /// text). Set to restrict muster posting to a curated list; pickers/autocomplete then offer only these and the
-    /// post funnel rejects anything else.</summary>
-    public List<ulong> AllowedChannelIds { get; set; } = [];
-
-    /// <summary>Whether a muster may be posted to <paramref name="channelId"/>: always when no allow-list is set,
-    /// otherwise only if the channel is on it. (channelId 0 = "fall back to the default channel" and is allowed here;
-    /// the default channel itself is validated when it's configured.)</summary>
-    public bool ChannelAllowed(ulong channelId)
-        => channelId == 0 || AllowedChannelIds.Count == 0 || AllowedChannelIds.Contains(channelId);
+    // Muster settings moved to their own table (GuildMusterSettings) — see GuildMusterSettingsService.
 }
 
 /// <summary>The quest-board slice of a guild's configuration.</summary>

@@ -1,8 +1,21 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Entities.Musters;
 
 namespace Muster.Persistence.Configurations;
+
+public class GuildMusterSettingsConfiguration : IEntityTypeConfiguration<GuildMusterSettings>
+{
+    public void Configure(EntityTypeBuilder<GuildMusterSettings> e)
+    {
+        // 1:1 with Guild, keyed + FK on GuildId (delete the guild → delete its muster settings).
+        e.HasKey(x => x.GuildId);
+        e.Property(x => x.GuildId).ValueGeneratedNever();
+        e.HasOne<Guild>().WithOne().HasForeignKey<GuildMusterSettings>(x => x.GuildId).OnDelete(DeleteBehavior.Cascade);
+        // AllowedChannelIds is a primitive collection — EF maps it to a JSON column (a small, whole-read list).
+    }
+}
 
 public class ReactionMusterConfiguration : IEntityTypeConfiguration<ReactionMuster>
 {

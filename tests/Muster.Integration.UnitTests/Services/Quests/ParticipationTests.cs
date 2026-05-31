@@ -1,8 +1,10 @@
 using Muster.Contracts;
 using Muster.IntegrationTests.TestSupport;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Muster.Persistence;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Xunit;
@@ -235,15 +237,14 @@ public class ParticipationTests
     public async Task AutoCreateMuster_OnSessionOpen_LinksMusterAndGatesCoin()
     {
         var (db, _) = await SeededAsync();
-        var guild = await db.Guilds.FirstAsync();
-        guild.Settings.AutoCreateMusterOnSession = true;
-        guild.Settings = guild.Settings;
+        db.GuildMusterSettings.Add(new GuildMusterSettings { GuildId = 1, AutoCreateOnSession = true });
         await db.SaveChangesAsync();
 
         var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
         var musters = new MusterService(db, awards, auth);
-        var sessions = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters);
+        var store = new GuildMusterSettingsService(db, Options.Create(new GuildMusterSettings()));
+        var sessions = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters, store);
 
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 

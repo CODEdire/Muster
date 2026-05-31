@@ -1,8 +1,10 @@
 using Muster.Contracts;
 using Muster.IntegrationTests.TestSupport;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Muster.Persistence;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
@@ -31,22 +33,23 @@ public class MusterQuestCommandTests
         return db;
     }
 
-    private static (MusterService musters, GuildAuthorizationService auth, RecordingMessageBus bus) NewMusters(MusterDbContext db)
+    private static (MusterService musters, GuildAuthorizationService auth, GuildMusterSettingsService store, RecordingMessageBus bus) NewMusters(MusterDbContext db)
     {
         var auth = new GuildAuthorizationService(db);
-        return (new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), auth), auth, new RecordingMessageBus());
+        var store = new GuildMusterSettingsService(db, Options.Create(new GuildMusterSettings()));
+        return (new MusterService(db, new CurrencyService(db, new RecordingMessageBus()), auth), auth, store, new RecordingMessageBus());
     }
 
     [Fact]
     public async Task Muster_Create_StoresMuster_ViaFunnel()
     {
         using var db = await SeededAsync(ownerId: 7); // owner = admin → passes the TrackingManager gate
-        var (musters, auth, bus) = NewMusters(db);
+        var (musters, auth, store, bus) = NewMusters(db);
 
         var result = await CreateMusterHandler.Handle(
             new CreateMuster(1, ActorId: 7, ChannelId: 500, Title: null, Prompt: "Roll call",
                 CurrencyId: null, Reward: 10, Capacity: null, ExpiresAt: null, SessionId: null),
-            auth, db, musters, bus, default);
+            auth, db, musters, store, bus, default);
 
         Assert.True(result.Ok);
 
@@ -61,21 +64,21 @@ public class MusterQuestCommandTests
     public async Task Muster_Create_RejectsBadInput_AndNonManagers()
     {
         using var db = await SeededAsync(ownerId: 7);
-        var (musters, auth, bus) = NewMusters(db);
+        var (musters, auth, store, bus) = NewMusters(db);
 
         CreateMuster Cmd(ulong actor, string prompt, long reward, int? capacity) =>
             new(1, actor, 500, null, prompt, null, reward, capacity, null, null);
 
-        Assert.Equal("PromptRequired", (await CreateMusterHandler.Handle(Cmd(7, "", 10, null), auth, db, musters, bus, default)).Status);
-        Assert.Equal("RewardNegative", (await CreateMusterHandler.Handle(Cmd(7, "p", -1, null), auth, db, musters, bus, default)).Status);
-        Assert.Equal("BadCapacity", (await CreateMusterHandler.Handle(Cmd(7, "p", 10, 0), auth, db, musters, bus, default)).Status);
+        Assert.Equal("PromptRequired", (await CreateMusterHandler.Handle(Cmd(7, "", 10, null), auth, db, musters, store, bus, default)).Status);
+        Assert.Equal("RewardNegative", (await CreateMusterHandler.Handle(Cmd(7, "p", -1, null), auth, db, musters, store, bus, default)).Status);
+        Assert.Equal("BadCapacity", (await CreateMusterHandler.Handle(Cmd(7, "p", 10, 0), auth, db, musters, store, bus, default)).Status);
 
         // A non-manager with otherwise-valid input is refused at the gate.
-        Assert.Equal("Forbidden", (await CreateMusterHandler.Handle(Cmd(999, "p", 10, null), auth, db, musters, bus, default)).Status);
+        Assert.Equal("Forbidden", (await CreateMusterHandler.Handle(Cmd(999, "p", 10, null), auth, db, musters, store, bus, default)).Status);
 
         // A reward currency that doesn't belong to the guild is rejected.
         var cross = new CreateMuster(1, 7, 500, null, "p", CurrencyId: Guid.NewGuid(), Reward: 10, Capacity: null, ExpiresAt: null, SessionId: null);
-        Assert.Equal("CurrencyNotFound", (await CreateMusterHandler.Handle(cross, auth, db, musters, bus, default)).Status);
+        Assert.Equal("CurrencyNotFound", (await CreateMusterHandler.Handle(cross, auth, db, musters, store, bus, default)).Status);
 
         Assert.Equal(0, await db.ReactionMusters.CountAsync());
     }
@@ -84,19 +87,17 @@ public class MusterQuestCommandTests
     public async Task Muster_Create_HonorsChannelAllowList()
     {
         using var db = await SeededAsync(ownerId: 7);
-        var (musters, auth, bus) = NewMusters(db);
+        var (musters, auth, store, bus) = NewMusters(db);
 
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.Musters.AllowedChannelIds = [999];
-        guild.Settings = guild.Settings; // owned JSON column — reassign so it's detected as changed
+        db.GuildMusterSettings.Add(new GuildMusterSettings { GuildId = 1, AllowedChannelIds = [999] });
         await db.SaveChangesAsync();
 
         CreateMuster At(ulong channelId) => new(1, 7, channelId, null, "Roll call", null, 0, null, null, null);
 
         // Disallowed explicit channel is rejected; an allowed one and the "fall back to default" (0) pass.
-        Assert.Equal("ChannelNotAllowed", (await CreateMusterHandler.Handle(At(500), auth, db, musters, bus, default)).Status);
-        Assert.True((await CreateMusterHandler.Handle(At(999), auth, db, musters, bus, default)).Ok);
-        Assert.True((await CreateMusterHandler.Handle(At(0), auth, db, musters, bus, default)).Ok);
+        Assert.Equal("ChannelNotAllowed", (await CreateMusterHandler.Handle(At(500), auth, db, musters, store, bus, default)).Status);
+        Assert.True((await CreateMusterHandler.Handle(At(999), auth, db, musters, store, bus, default)).Ok);
+        Assert.True((await CreateMusterHandler.Handle(At(0), auth, db, musters, store, bus, default)).Ok);
     }
 
     [Fact]

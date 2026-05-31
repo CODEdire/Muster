@@ -35,6 +35,7 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<ReactionMuster> ReactionMusters => Set<ReactionMuster>();
     public DbSet<ReactionParticipant> ReactionParticipants => Set<ReactionParticipant>();
     public DbSet<MusterSessionLink> MusterSessionLinks => Set<MusterSessionLink>();
+    public DbSet<GuildMusterSettings> GuildMusterSettings => Set<GuildMusterSettings>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Currency> Currencies => Set<Currency>();

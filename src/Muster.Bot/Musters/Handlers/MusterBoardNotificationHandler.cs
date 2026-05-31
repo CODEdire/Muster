@@ -5,6 +5,7 @@ using Muster.Bot.Musters.Rendering;
 using Muster.Contracts;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
+using Muster.Infrastructure.Services.Musters;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using NetCord.Gateway;
@@ -25,6 +26,7 @@ public static class MusterBoardNotificationHandler
     public static async Task Handle(
         MusterChanged e,
         MusterDbContext db,
+        GuildMusterSettingsService musterSettings,
         GatewayClient client,
         IConfiguration config,
         ILogger<MusterBoardNotification> logger,
@@ -34,10 +36,9 @@ public static class MusterBoardNotificationHandler
         var existing = await db.FindPostedMessageAsync(EntityType, e.MusterId, ct);
 
         // Target = the muster's own channel, falling back to the configured default.
-        var settings = await db.GetSettingsAsync(e.GuildId, ct);
         var target = muster is null ? 0UL
             : muster.ChannelId != 0 ? muster.ChannelId
-            : settings.Musters.MusterChannelId;
+            : (await musterSettings.GetAsync(e.GuildId, ct)).MusterChannelId;
 
         // Nothing to show (muster gone, or no channel resolved): drop any card we have.
         if (muster is null || target == 0)

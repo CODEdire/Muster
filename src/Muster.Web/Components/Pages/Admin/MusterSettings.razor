@@ -3,10 +3,11 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
 @inject ConfigCommandService Config
-@inject WebAdminService AdminRead
+@inject GuildMusterSettingsService MusterStore
 @inject Muster.Web.GuildChannelOptions Channels
 @using Muster.Infrastructure.Commands.Membership
 @using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
 @using Muster.Infrastructure.Services.Web
 
 <PageTitle>Muster settings — Muster</PageTitle>
@@ -116,15 +117,15 @@ else if (State == AccessState.Ready)
         _channels = await Channels.ChatAsync(GuildId);
         _channelById = _channels.ToDictionary(c => c.Id);
 
-        var settings = await AdminRead.GetSettingsAsync(GuildId);
+        var ms = await MusterStore.GetAsync(GuildId);
         Input = new SettingsInput
         {
-            ChannelId = settings.Musters.MusterChannelId,
-            RetentionHours = settings.Musters.BoardRetentionHours,
-            AutoCreate = settings.AutoCreateMusterOnSession,
+            ChannelId = ms.MusterChannelId,
+            RetentionHours = ms.BoardRetentionHours,
+            AutoCreate = ms.AutoCreateOnSession,
         };
         _allowed.Clear();
-        foreach (var id in settings.Musters.AllowedChannelIds)
+        foreach (var id in ms.AllowedChannelIds)
         {
             _allowed.Add(id);
         }

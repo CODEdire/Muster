@@ -16,7 +16,7 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
 /// are opened manually by an admin or bound to a Discord scheduled event.
 /// </summary>
-public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers, IMessageBus bus, MusterService? musters = null)
+public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers, IMessageBus bus, MusterService? musters = null, GuildMusterSettingsService? musterSettings = null)
 {
     public const int DefaultPointsPerMinute = 1;
 
@@ -121,10 +121,11 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
         // Optionally spin up a check-in muster for the session (guild default, overridable per open). It posts to the
         // configured muster channel, links to the session, and gates the session coin on check-in (mode Any).
-        if ((createMuster ?? settings.AutoCreateMusterOnSession) && musters is not null)
+        var musterCfg = musterSettings is null ? null : await musterSettings.GetAsync(guildId, ct);
+        if ((createMuster ?? musterCfg?.AutoCreateOnSession ?? false) && musters is not null)
         {
             var muster = await musters.CreatePointsAsync(
-                guildId, settings.Musters.MusterChannelId, title: null, prompt: $"Check in for {name}",
+                guildId, musterCfg?.MusterChannelId ?? 0, title: null, prompt: $"Check in for {name}",
                 rewardPoints: 0, capacity: null, expiresAt: null, createdBy: openedBy, sessionId: session.Id, ct: ct);
 
             session.CoinGate = SessionCoinGate.Any;

@@ -46,6 +46,10 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<IQuestReadService, QuestReadService>();
         builder.Services.AddScoped<MusterService>();
         builder.Services.AddScoped<Services.Musters.IMusterReadService, Services.Musters.MusterReadService>();
+        builder.Services.AddScoped<Services.Musters.GuildMusterSettingsService>();
+        // Platform defaults for a guild's muster settings (AppConfig / appsettings) — seed new rows + fill read-misses.
+        builder.Services.Configure<Domain.Entities.Guilds.GuildMusterSettings>(
+            builder.Configuration.GetSection("GuildDefaults:Musters"));
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<BackgroundTrackingService>();

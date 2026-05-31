@@ -34,8 +34,8 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         {
             // Channel precedence: explicit override → configured muster channel → the channel the command was run in.
             var chosen = ulong.TryParse(channel, out var cid) ? cid : (ulong?)null;
-            var settings = await sp.GetRequiredService<MusterDbContext>().GetSettingsAsync(guildId);
-            var channelId = chosen ?? (settings.Musters.MusterChannelId != 0 ? settings.Musters.MusterChannelId : Context.Channel.Id);
+            var configured = (await sp.GetRequiredService<GuildMusterSettingsService>().GetAsync(guildId)).MusterChannelId;
+            var channelId = chosen ?? (configured != 0 ? configured : Context.Channel.Id);
             DateTimeOffset? expires = expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(expiresHours) : null;
 
             var command = new CreateMuster(guildId, Context.User.Id, channelId,

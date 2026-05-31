@@ -3,7 +3,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
 @inject IMusterReadService Reads
-@inject WebAdminService AdminRead
+@inject GuildMusterSettingsService MusterStore
 @inject Muster.Web.GuildChannelOptions Channels
 @inject Wolverine.IMessageBus Bus
 @using Muster.Contracts
@@ -125,13 +125,12 @@ else if (State == AccessState.Ready)
 
     protected override async Task LoadAsync()
     {
-        var settings = await AdminRead.GetSettingsAsync(GuildId);
-        _defaultChannelId = settings.Musters.MusterChannelId;
+        var ms = await MusterStore.GetAsync(GuildId);
+        _defaultChannelId = ms.MusterChannelId;
 
         // Offer chat channels; when an allow-list is set, only those.
         var chat = await Channels.ChatAsync(GuildId);
-        var allowed = settings.Musters.AllowedChannelIds;
-        _channels = allowed.Count == 0 ? chat : chat.Where(c => allowed.Contains(c.Id)).ToList();
+        _channels = ms.AllowedChannelIds.Count == 0 ? chat : chat.Where(c => ms.AllowedChannelIds.Contains(c.Id)).ToList();
 
         await LoadListAsync();
     }

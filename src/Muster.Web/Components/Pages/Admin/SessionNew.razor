@@ -3,6 +3,7 @@
 @inherits GuildAdminComponentBase
 @inject TrackingCommandService Tracking
 @inject WebAdminService AdminRead
+@inject Muster.Infrastructure.Services.Musters.GuildMusterSettingsService MusterStore
 @using Muster.Domain.Entities.Guilds
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands.Tracking
@@ -78,7 +79,7 @@ else if (State == AccessState.Ready)
         // Default the check-in-muster checkbox to the guild setting (only before the form is first submitted).
         if (Input.Submitted is null)
         {
-            Input.CreateMuster = (await AdminRead.GetSettingsAsync(GuildId)).AutoCreateMusterOnSession;
+            Input.CreateMuster = (await MusterStore.GetAsync(GuildId)).AutoCreateOnSession;
         }
     }
 

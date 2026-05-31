@@ -4,6 +4,7 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Musters;
 
 namespace Muster.Infrastructure.Commands.Membership;
 
@@ -28,7 +29,9 @@ public record LedgerRetentionChange(int OldDays, int NewDays);
 /// The guild owner can always run these even before any role is mapped, so the server can be
 /// configured without being locked out.
 /// </summary>
-public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention)
+// musterSettings is always supplied by DI; the null-forgiving default keeps the many ConfigCommandService test
+// constructions (which don't touch the muster setters) from each needing to build one.
+public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention, GuildMusterSettingsService musterSettings = null!)
 {
     /// <summary>Set how many days of detailed ledger history this guild keeps before the prune sweep compacts older
     /// rows into carry-forward checkpoints (0 = inherit the platform default / keep forever). Validated against the
@@ -325,13 +328,13 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("The default channel must be one of the allowed channels.");
         }
 
-        var settings = guild.Settings;
-        settings.Musters.MusterChannelId = channelId;
-        settings.Musters.BoardRetentionHours = retentionHours;
-        settings.Musters.AllowedChannelIds = allowed;
-        settings.AutoCreateMusterOnSession = autoCreate;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
+        await musterSettings.UpsertAsync(guildId, s =>
+        {
+            s.MusterChannelId = channelId;
+            s.BoardRetentionHours = retentionHours;
+            s.AllowedChannelIds = allowed;
+            s.AutoCreateOnSession = autoCreate;
+        }, ct);
 
         return CommandResult.Ok("Muster settings updated.");
     }
@@ -391,16 +394,12 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     /// coin). A per-session override still applies at open time.</summary>
     public async Task<CommandResult> SetAutoCreateMusterAsync(ulong guildId, bool enabled, CancellationToken ct = default)
     {
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        if (await db.FindGuildAsync(guildId, ct) is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var settings = guild.Settings;
-        settings.AutoCreateMusterOnSession = enabled;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
+        await musterSettings.UpsertAsync(guildId, s => s.AutoCreateOnSession = enabled, ct);
 
         return CommandResult.Ok(enabled
             ? "New sessions will auto-post a check-in muster and gate their coin on it (mode Any)."
@@ -411,8 +410,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     /// created from). <paramref name="retentionHours"/> null = leave the linger window unchanged.</summary>
     public async Task<CommandResult> SetMusterChannelAsync(ulong guildId, ulong channelId, int? retentionHours = null, CancellationToken ct = default)
     {
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        if (await db.FindGuildAsync(guildId, ct) is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
@@ -422,19 +420,18 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as terminal).");
         }
 
-        var settings = guild.Settings;
-        settings.Musters.MusterChannelId = channelId;
-        if (retentionHours is { } hours)
+        var saved = await musterSettings.UpsertAsync(guildId, s =>
         {
-            settings.Musters.BoardRetentionHours = hours;
-        }
-
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
+            s.MusterChannelId = channelId;
+            if (retentionHours is { } hours)
+            {
+                s.BoardRetentionHours = hours;
+            }
+        }, ct);
 
         return CommandResult.Ok(channelId == 0
             ? "Musters will post to the channel they're created from."
-            : $"Muster cards will post to <#{channelId}> (terminal cards linger {settings.Musters.BoardRetentionHours}h).");
+            : $"Muster cards will post to <#{channelId}> (terminal cards linger {saved.BoardRetentionHours}h).");
     }
 
     /// <summary>Configure anti-staleness auto-resolve timeouts and per-player quest limits.</summary>

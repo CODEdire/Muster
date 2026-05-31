@@ -33,7 +33,8 @@ public class MusterChannelAutocompleteProvider(IServiceScopeFactory scopeFactory
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
 
-        var allowed = (await db.GetSettingsAsync(guildId)).Musters.AllowedChannelIds;
+        var allowed = (await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Musters.GuildMusterSettingsService>()
+            .GetAsync(guildId)).AllowedChannelIds;
 
         var query = db.GuildChannels
             .Where(c => c.GuildId == guildId && c.DeletedAt == null

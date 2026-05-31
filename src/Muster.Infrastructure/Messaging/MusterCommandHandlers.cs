@@ -22,7 +22,8 @@ namespace Muster.Infrastructure.Messaging;
 public static class CreateMusterHandler
 {
     public static async Task<Result<Guid>> Handle(
-        CreateMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
+        CreateMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters,
+        GuildMusterSettingsService musterSettings, IMessageBus bus, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(command.Prompt))
         {
@@ -52,8 +53,8 @@ public static class CreateMusterHandler
 
         // Honor the guild's muster channel allow-list (empty = any channel). channelId 0 resolves to the configured
         // default at render time, which is itself validated when set — so only an explicit channel is checked here.
-        var settings = await db.GetSettingsAsync(command.GuildId, ct);
-        if (!settings.Musters.ChannelAllowed(command.ChannelId))
+        var ms = await musterSettings.GetAsync(command.GuildId, ct);
+        if (!ms.ChannelAllowed(command.ChannelId))
         {
             return Result<Guid>.Fail("ChannelNotAllowed");
         }
