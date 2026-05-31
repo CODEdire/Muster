@@ -1,0 +1,227 @@
+@page "/guilds/{GuildIdRaw}/guild/musters/{MusterId:guid}/edit"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IMusterReadService Reads
+@inject ICurrencyAdminService CurrencyAdmin
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Edit muster — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading, MusterLinks.MusterDetail(GuildId, MusterId)), new("Edit") })"
+                Subtitle="Edit the live card and options.">
+        <Toolbar>
+            @if (_m is not null && _canManage && _m.Status == MusterStatus.Open)
+            {
+                <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterDetail(GuildId, MusterId)">Cancel</a>
+                <button type="button" class="btn btn-sm" disabled="@_saving" @onclick="SaveAsync">
+                    <span class="material-symbols-outlined">save</span> Save changes
+                </button>
+            }
+        </Toolbar>
+    </PageHeader>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_m is null)
+    {
+        <div class="panel glass empty">Muster not found.</div>
+    }
+    else if (!_canManage)
+    {
+        <div class="panel glass empty">You can only edit musters you own.</div>
+    }
+    else if (_m.Status != MusterStatus.Open)
+    {
+        <div class="panel glass empty">This muster is @_m.Status.ToString().ToLowerInvariant() and can no longer be edited.</div>
+    }
+    else
+    {
+        <Accordion>
+            <AccordionPane Title="Card content" Icon="article" Open="true">
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Prompt</label>
+                        <MarkdownEditor @bind-Value="_prompt" Rows="3" MaxLength="2000" Placeholder="What members are checking in for" />
+                    </div>
+                    <div class="field span2">
+                        <label>Title</label>
+                        <input @bind="_title" maxlength="100" placeholder="(optional) heading shown above the prompt" />
+                    </div>
+                </div>
+            </AccordionPane>
+
+            <AccordionPane Title="Options" Icon="tune" Open="true">
+                <div class="mform">
+                    <div class="field">
+                        <label>Capacity</label>
+                        <input type="number" min="1" placeholder="Uncapped" @bind="_capacity" />
+                        <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+                    </div>
+                    <div class="field">
+                        <label>Auto-close in</label>
+                        <div class="suffixed"><input type="number" min="0" placeholder="No auto-close" @bind="_expiresHours" /><span>hours from now</span></div>
+                        <p class="hint">Leave blank to clear the auto-close. Set to reschedule from now.</p>
+                    </div>
+                </div>
+            </AccordionPane>
+
+            @if (_isManager)
+            {
+                <AccordionPane Title="Reward" Icon="paid" Open="true">
+                    <div class="mform">
+                        <div class="field">
+                            <label>Points</label>
+                            <input type="number" min="0" @bind="_points" />
+                        </div>
+                        <div class="field">
+                            <label>Coins</label>
+                            <input type="number" min="0" @bind="_coins" />
+                        </div>
+                        <div class="field span2">
+                            <label>Coin currency</label>
+                            <select @bind="_coinCurrencyId">
+                                <option value="">— none —</option>
+                                @foreach (var c in _coins0)
+                                {
+                                    <option value="@c.Id">@c.Code — @c.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field span2">
+                            <label>Minimum check-ins to reward</label>
+                            <input type="number" min="0" placeholder="No minimum" @bind="_minCheckIns" />
+                        </div>
+                    </div>
+                </AccordionPane>
+            }
+            else
+            {
+                <AccordionPane Title="Reward" Icon="paid" Open="true">
+                    <p class="subtitle">Locked to the template: @RewardLabel(_m.Points, _m.Coins, _m.CoinCode)@(_m.MinCheckIns is { } mn && mn > 0 ? $" · min {mn}" : "").</p>
+                </AccordionPane>
+            }
+        </Accordion>
+    }
+}
+
+@code {
+    [Parameter] public Guid MusterId { get; set; }
+
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
+
+    private MusterDetailView? _m;
+    private bool _canManage;
+    private bool _isManager;
+    private bool _saving;
+    private string _heading = "Muster";
+
+    private string _prompt = "";
+    private string _title = "";
+    private int? _capacity;
+    private int _expiresHours;
+    private int _points;
+    private int _coins;
+    private string _coinCurrencyId = "";
+    private int? _minCheckIns;
+    private IReadOnlyList<CurrencyView> _coins0 = [];
+
+    protected override async Task LoadAsync()
+    {
+        _m = await Reads.GetDetailAsync(GuildId, MusterId);
+        if (_m is null)
+        {
+            return;
+        }
+
+        _heading = !string.IsNullOrWhiteSpace(_m.Title) ? _m.Title! : "Muster";
+        _isManager = await Auth.IsTrackingManagerAsync(GuildId, UserId);
+        _canManage = await Auth.CanManageMusterAsync(GuildId, UserId, _m.CreatedBy);
+        if (!_canManage || _m.Status != MusterStatus.Open)
+        {
+            return;
+        }
+
+        _prompt = _m.Prompt;
+        _title = _m.Title ?? "";
+        _capacity = _m.Capacity;
+        _expiresHours = _m.ExpiresAt is { } ex ? Math.Max(0, (int)Math.Ceiling((ex - DateTimeOffset.UtcNow).TotalHours)) : 0;
+        _points = (int)_m.Points;
+        _coins = (int)_m.Coins;
+        _minCheckIns = _m.MinCheckIns;
+
+        if (_isManager)
+        {
+            _coins0 = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+            // Prefill the currency from the current code (read view exposes the code, not the id).
+            _coinCurrencyId = _coins0.FirstOrDefault(c => c.Code == _m.CoinCode)?.Id.ToString() ?? "";
+        }
+    }
+
+    private static string RewardLabel(long points, long coins, string? coinCode)
+    {
+        var parts = new List<string>();
+        if (points > 0) { parts.Add($"{points} pts"); }
+        if (coins > 0) { parts.Add($"{coins} {coinCode ?? "coins"}"); }
+        return parts.Count == 0 ? "check-in only" : string.Join(" + ", parts);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || _m is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_prompt))
+        {
+            Message = "Enter a prompt.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            DateTimeOffset? expires = _expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(_expiresHours) : null;
+
+            var command = new EditMuster(GuildId, UserId, MusterId,
+                string.IsNullOrWhiteSpace(_title) ? null : _title.Trim(),
+                _prompt.Trim(),
+                Capacity: _capacity > 0 ? _capacity : null,
+                ExpiresAt: expires,
+                // Reward fields are applied by the handler only for managers; for creators they're ignored.
+                Points: _isManager ? _points : null,
+                Coins: _isManager ? _coins : null,
+                CoinCurrencyId: _isManager && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
+                MinCheckIns: _isManager ? _minCheckIns : null);
+
+            var result = await Bus.InvokeAsync<Result>(command);
+            if (result.Ok)
+            {
+                Nav.NavigateTo(MusterLinks.MusterDetail(GuildId, MusterId));
+                return;
+            }
+
+            Message = MusterStatusText.Friendly(result.Status);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -17,11 +17,20 @@ public static class MusterLinks
     /// <summary>One session's detail page.</summary>
     public static string SessionDetail(ulong guildId, Guid sessionId) => $"/guilds/{guildId}/sessions/{sessionId}";
 
-    /// <summary>The Musters board (Guild nav group).</summary>
+    /// <summary>The Musters board — member card view (Guild nav group).</summary>
     public static string Musters(ulong guildId) => $"/guilds/{guildId}/guild/musters";
+
+    /// <summary>The staff manage grid (managers: all; creators: their own).</summary>
+    public static string MusterManage(ulong guildId) => $"/guilds/{guildId}/guild/musters/manage";
+
+    /// <summary>Post a new muster.</summary>
+    public static string MusterNew(ulong guildId) => $"/guilds/{guildId}/guild/musters/new";
 
     /// <summary>One muster's detail page.</summary>
     public static string MusterDetail(ulong guildId, Guid musterId) => $"/guilds/{guildId}/guild/musters/{musterId}";
+
+    /// <summary>Edit a live muster.</summary>
+    public static string MusterEdit(ulong guildId, Guid musterId) => $"/guilds/{guildId}/guild/musters/{musterId}/edit";
 
     /// <summary>Muster settings (Management nav group).</summary>
     public static string MusterSettings(ulong guildId) => $"/guilds/{guildId}/management/musters";

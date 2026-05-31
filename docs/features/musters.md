@@ -39,9 +39,10 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - Ending a session auto-closes its linked musters.
 
 ## Admin (web)
-- Muster **board**: KPI cards (open / checked-in / linked / total) + a datagrid (search, status filter, sortable, paged). The Linked column deep-links to the session.
-- **New muster** on its own page (toolbar button): card content (markdown prompt), template/custom reward, options.
-- Muster **detail**: sectioned (Overview, Participants, Linked sessions) — roster **add/remove**, close, link/unlink sessions + coin-gate mode, remove the Discord card.
+- Muster **board** (`/guild/musters`): participant **card view** of active musters with check-in/out. Staff also get **Manage** + **New** buttons.
+- **Manage** grid (`/guild/musters/manage`): managers see all musters + KPIs; creators see only their own. Search, status filter, sortable, paged; row actions (edit/close) gated by ownership.
+- **New** + **Edit** on their own pages (markdown prompt, template/custom reward, options); edit is owner/manager-only and live-muster-only.
+- Muster **detail**: role-aware — participants get the card + check-in/out; owners/managers get sectioned management (Overview, Participants add/remove, Linked sessions). Session linking/coin-gate controls show only for managers.
 - Settings page: default channel, card retention, max active time, reward defaults, creator auto-check-in, auto-create-on-session + gate, allowed channels.
 
 ## Lifecycle & housekeeping
@@ -50,7 +51,8 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - `/muster summary` shows any muster's roster (incl. closed) as an ephemeral reply.
 
 ## Access & audit
-- **Tracking Manager** (+ admin): full create (custom rewards or templates), close, link, edit roster, settings.
-- **Muster Creator**: post from templates only (rewards locked).
-- Check-in is open to eligible members.
-- Every action is recorded to the audit log.
+- **Participant** (has the participant role): sees active musters (card view), checks **in/out** from web or the Discord button, sees the general card info.
+- **Muster Creator**: a participant who can also **create** (from templates, reward-locked) and fully manage the musters **they own** — edit (title/prompt/capacity/auto-close, reward stays template-locked), close, curate roster, remove the card. They can't touch others' musters.
+- **Tracking Manager** (+ Officer/Admin umbrellas): full lifecycle over **all** musters, custom rewards, and **session linking + coin gate**, plus settings/templates.
+- **Session linking, coin-gate, settings, and templates are Tracking-Manager-only** (they affect session economics), even for a creator's own muster.
+- Enforcement is at the command handler (ownership-aware `CanManageMuster`); every action is recorded to the audit log.

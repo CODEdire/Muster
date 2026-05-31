@@ -20,8 +20,14 @@ else if (State == AccessState.Ready)
     <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading) })"
                 Subtitle="@(_m is null ? null : $"Posted {_m.Status.ToString().ToLowerInvariant()}")">
         <Toolbar>
-            @if (_m is not null)
+            @if (_m is not null && _canManage)
             {
+                @if (_m.Status == MusterStatus.Open)
+                {
+                    <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterEdit(GuildId, MusterId)">
+                        <span class="material-symbols-outlined">edit</span> Edit
+                    </a>
+                }
                 @if (_m.Status is MusterStatus.Open or MusterStatus.Locked)
                 {
                     <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync">
@@ -66,8 +72,33 @@ else if (State == AccessState.Ready)
                         <div><dt>@(_m.Status is MusterStatus.Open or MusterStatus.Locked ? "Closes" : "Closed at")</dt><dd><LocalTime Value="ex" /></dd></div>
                     }
                 </dl>
+
+                @if (_isParticipant)
+                {
+                    <div class="btn-row mc-self">
+                        @if (_m.Status == MusterStatus.Open && !YouCheckedIn)
+                        {
+                            <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CheckInSelfAsync">
+                                <span class="material-symbols-outlined">how_to_reg</span> Check in
+                            </button>
+                        }
+                        else if (_m.Status == MusterStatus.Open && YouCheckedIn)
+                        {
+                            <span class="mc-youin"><span class="material-symbols-outlined">task_alt</span> You're checked in</span>
+                            <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="CheckOutSelfAsync">
+                                <span class="material-symbols-outlined">logout</span> Check out
+                            </button>
+                        }
+                        else if (YouCheckedIn)
+                        {
+                            <span class="mc-youin"><span class="material-symbols-outlined">task_alt</span> You're checked in</span>
+                        }
+                    </div>
+                }
             </AccordionPane>
 
+            @if (_canManage)
+            {
             <AccordionPane Title="@($"Participants ({_m.Participants.Count})")" Icon="group" Open="true">
                 <div class="dg-scroll">
                     <table class="dg-table">
@@ -112,30 +143,45 @@ else if (State == AccessState.Ready)
                         {
                             <li>
                                 <a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a> <span class="subtitle">(@s.Status)</span>
-                                <label class="subtitle">Coin gate:
-                                    <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
-                                        <option value="@SessionCoinGate.None">None — mint to all</option>
-                                        <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
-                                        <option value="@SessionCoinGate.All">All — in every linked muster</option>
-                                    </select>
-                                </label>
-                                <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)">Unlink</button>
+                                @if (_isManager)
+                                {
+                                    <label class="subtitle">Coin gate:
+                                        <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
+                                            <option value="@SessionCoinGate.None">None — mint to all</option>
+                                            <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
+                                            <option value="@SessionCoinGate.All">All — in every linked muster</option>
+                                        </select>
+                                    </label>
+                                    <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)">Unlink</button>
+                                }
+                                else
+                                {
+                                    <span class="subtitle">· gate @s.Gate</span>
+                                }
                             </li>
                         }
                     </ul>
                 }
-                <div class="form-inline">
-                    <select class="dg-select" @bind="_linkSessionId">
-                        <option value="">Select a session…</option>
-                        @foreach (var s in _sessions)
-                        {
-                            <option value="@s.SessionId">@s.Name (@s.Status)</option>
-                        }
-                    </select>
-                    <button type="button" disabled="@_busy" @onclick="LinkAsync">Link session</button>
-                </div>
-                <p class="subtitle">Linking defaults the session's coin gate to <strong>Any</strong>. Add more musters (e.g. mission rounds) and switch to <strong>All</strong> to require every one — under <strong>All</strong>, every linked muster is required, so one that nobody checked into blocks the coin (use <strong>Any</strong>, or don't link it, if that's not intended). A session with no muster linked at all mints to everyone.</p>
+                @if (_isManager)
+                {
+                    <div class="form-inline">
+                        <select class="dg-select" @bind="_linkSessionId">
+                            <option value="">Select a session…</option>
+                            @foreach (var s in _sessions)
+                            {
+                                <option value="@s.SessionId">@s.Name (@s.Status)</option>
+                            }
+                        </select>
+                        <button type="button" disabled="@_busy" @onclick="LinkAsync">Link session</button>
+                    </div>
+                    <p class="subtitle">Linking defaults the session's coin gate to <strong>Any</strong>. Add more musters (e.g. mission rounds) and switch to <strong>All</strong> to require every one — under <strong>All</strong>, every linked muster is required, so one that nobody checked into blocks the coin (use <strong>Any</strong>, or don't link it, if that's not intended). A session with no muster linked at all mints to everyone.</p>
+                }
+                else
+                {
+                    <p class="subtitle">Session linking + coin gating are managed by tracking staff.</p>
+                }
             </AccordionPane>
+            }
         </Accordion>
     }
 }
@@ -145,12 +191,19 @@ else if (State == AccessState.Ready)
     .muster-prompt > :first-child { margin-top: 0; }
     .muster-prompt > :last-child { margin-bottom: 0; }
     .muster-links li { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.35rem 0; }
+    .mc-self { align-items: center; gap: 0.75rem; }
+    .mc-youin { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--accent); font-size: 0.9rem; }
+    .mc-youin .material-symbols-outlined { font-size: 1.1rem; }
 </style>
 
 @code {
     [Parameter] public Guid MusterId { get; set; }
 
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
+
+    // Participants can view (card info + check in/out); staff get the manage view. Ownership decides which actions show.
+    protected override async Task<bool> IsAuthorizedAsync(ulong guildId, ulong userId)
+        => await base.IsAuthorizedAsync(guildId, userId) || await Auth.IsParticipantAsync(guildId, userId);
 
     private MusterDetailView? _m;
     private IReadOnlyList<MusterLinkedSession> _sessions = [];
@@ -160,6 +213,10 @@ else if (State == AccessState.Ready)
     private string? _linkSessionId;
 
     private string _heading = "Muster";
+    private bool _canManage;   // owner or manager — close / edit / roster / remove-card
+    private bool _isManager;   // full — session linking / coin gate
+    private bool _isParticipant;
+    private bool YouCheckedIn => _m is not null && _m.Participants.Any(p => p.UserId == UserId);
 
     protected override async Task LoadAsync()
     {
@@ -169,6 +226,10 @@ else if (State == AccessState.Ready)
             _heading = "Muster";
             return;
         }
+
+        _isManager = await Auth.IsTrackingManagerAsync(GuildId, UserId);
+        _canManage = await Auth.CanManageMusterAsync(GuildId, UserId, _m.CreatedBy);
+        _isParticipant = await Auth.IsParticipantAsync(GuildId, UserId);
 
         _heading = !string.IsNullOrWhiteSpace(_m.Title)
             ? _m.Title!
@@ -208,6 +269,9 @@ else if (State == AccessState.Ready)
         MusterStatus.Cancelled => "🚫 Cancelled",
         _ => s.ToString(),
     };
+
+    private async Task CheckInSelfAsync() => await RunAsync(new CheckInMuster(GuildId, UserId, MusterId), "Checked in.");
+    private async Task CheckOutSelfAsync() => await RunAsync(new CheckOutMuster(GuildId, UserId, MusterId), "Checked out.");
 
     private async Task CloseAsync() => await RunAsync(new CloseMuster(GuildId, UserId, MusterId), "Muster closed.");
 

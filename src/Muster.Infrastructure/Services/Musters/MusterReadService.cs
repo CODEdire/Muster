@@ -18,6 +18,13 @@ public record MusterListItem(
 /// <summary>At-a-glance counts for the muster board KPI cards.</summary>
 public record MusterKpis(int Open, int Locked, int CheckedInOnOpen, int Linked, int Total);
 
+/// <summary>A member-facing muster card (the web analogue of the Discord card): the general info plus whether the
+/// viewing member is currently checked in. Used by the participant board — no roster, no admin fields.</summary>
+public record MusterCard(
+    Guid Id, string? Title, string Prompt, MusterStatus Status, int CheckedIn, int? Capacity, int? MinCheckIns,
+    long Points, long Coins, string? CoinCode, bool YouCheckedIn, ulong CreatedBy,
+    IReadOnlyList<MusterListSession> Sessions);
+
 /// <summary>One muster's detail for the web admin page.</summary>
 public record MusterDetailView(
     Guid Id, ulong GuildId, string? Title, string Prompt, MusterStatus Status,
@@ -38,6 +45,11 @@ public interface IMusterReadService
 {
     Task<IReadOnlyList<MusterListItem>> ListAsync(ulong guildId, bool includeClosed, CancellationToken ct = default);
     Task<MusterKpis> GetKpisAsync(ulong guildId, CancellationToken ct = default);
+
+    /// <summary>Active musters (Open + Locked) as member-facing cards, flagged with whether <paramref name="userId"/>
+    /// is checked in — for the participant board.</summary>
+    Task<IReadOnlyList<MusterCard>> ActiveCardsAsync(ulong guildId, ulong userId, CancellationToken ct = default);
+
     Task<MusterDetailView?> GetDetailAsync(ulong guildId, Guid musterId, CancellationToken ct = default);
 
     /// <summary>Recent sessions a muster could be linked to (newest first) — for the link picker.</summary>
@@ -83,6 +95,35 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
         return rows.Select(r => new MusterListItem(
             r.Id, r.Display, r.Status, r.Count, r.Capacity, r.MinCheckIns, r.Points, r.Coins, r.Code,
             r.CreatedAt, r.CreatedBy,
+            r.SessionIds.Select(id => new MusterListSession(id, names.GetValueOrDefault(id, "session"))).ToList()))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<MusterCard>> ActiveCardsAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        var rows = await db.ReactionMusters
+            .Where(m => m.GuildId == guildId && (m.Status == MusterStatus.Open || m.Status == MusterStatus.Locked))
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => new
+            {
+                m.Id, m.Title, m.Prompt, m.Status, Count = m.Participants.Count, m.Capacity, m.MinCheckIns,
+                m.Points, m.Coins, m.CreatedBy,
+                Code = db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
+                YouCheckedIn = m.Participants.Any(p => p.UserId == userId),
+                SessionIds = m.SessionLinks.Select(l => l.SessionId).ToList(),
+            })
+            .ToListAsync(ct);
+
+        var sessionIds = rows.SelectMany(r => r.SessionIds).Distinct().ToList();
+        var names = sessionIds.Count == 0
+            ? []
+            : await db.TrackingSessions.Where(s => sessionIds.Contains(s.Id))
+                .Select(s => new { s.Id, s.Name })
+                .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        return rows.Select(r => new MusterCard(
+            r.Id, r.Title, r.Prompt, r.Status, r.Count, r.Capacity, r.MinCheckIns, r.Points, r.Coins, r.Code,
+            r.YouCheckedIn, r.CreatedBy,
             r.SessionIds.Select(id => new MusterListSession(id, names.GetValueOrDefault(id, "session"))).ToList()))
             .ToList();
     }
