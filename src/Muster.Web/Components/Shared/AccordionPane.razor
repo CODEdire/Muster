@@ -9,7 +9,7 @@
             <span class="material-symbols-outlined acc-icon">@Icon</span>
         }
         <span class="acc-title">@Title</span>
-        @if (Summary is not null)
+        @if (!string.IsNullOrWhiteSpace(Summary))
         {
             <span class="acc-summary">@Summary</span>
         }
@@ -29,8 +29,8 @@
     /// <summary>Optional Material Symbols icon shown before the title.</summary>
     [Parameter] public string? Icon { get; set; }
 
-    /// <summary>Optional right-aligned header content (a hint, count, or badge).</summary>
-    [Parameter] public RenderFragment? Summary { get; set; }
+    /// <summary>Optional right-aligned header hint (current state at a glance).</summary>
+    [Parameter] public string? Summary { get; set; }
 
     /// <summary>Initial open state when the accordion first renders.</summary>
     [Parameter] public bool Open { get; set; }

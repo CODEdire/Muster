@@ -36,7 +36,7 @@ else if (State == AccessState.Ready)
     </PageHeader>
 
     <Accordion>
-    <AccordionPane Title="Muster defaults" Icon="tune" Open="true">
+    <AccordionPane Title="Muster defaults" Icon="tune" Open="true" Summary="@DefaultsSummary">
         <p class="subtitle">Applied to a muster when no template overrides them.</p>
         <div class="form-grid">
             <label>Card channel
@@ -71,7 +71,7 @@ else if (State == AccessState.Ready)
         </div>
     </AccordionPane>
 
-    <AccordionPane Title="Auto-create on session" Icon="bolt">
+    <AccordionPane Title="Auto-create on session" Icon="bolt" Summary="@AutoCreateSummary">
         <p class="subtitle">Opening a tracking session posts + links a check-in muster and gates the session coin. Each session open can override.</p>
         <div class="form-grid">
             <label class="check">
@@ -88,7 +88,7 @@ else if (State == AccessState.Ready)
         </div>
     </AccordionPane>
 
-    <AccordionPane Title="Allowed channels" Icon="tag">
+    <AccordionPane Title="Allowed channels" Icon="tag" Summary="@AllowedSummary">
         <p class="subtitle">Where musters may post. <strong>Empty (nothing on the right) = any chat channel</strong>; otherwise only those on the right.</p>
         @if (_chat.Count == 0)
         {
@@ -146,6 +146,26 @@ else if (State == AccessState.Ready)
 
     private const int DebounceMs = 600;
     private CancellationTokenSource? _debounce;
+
+    // At-a-glance header hints, recomputed on each render (autosave triggers StateHasChanged).
+    private string DefaultsSummary
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Input.Points > 0) { parts.Add($"{Input.Points} pts"); }
+            if (Input.Coins > 0)
+            {
+                var code = _coins.FirstOrDefault(c => c.Id == Input.CoinCurrencyId)?.Code ?? "coins";
+                parts.Add($"{Input.Coins} {code}");
+            }
+            return parts.Count == 0 ? "check-in only" : string.Join(" · ", parts);
+        }
+    }
+
+    private string AutoCreateSummary => Input.AutoCreate ? $"On · gate {Input.Gate}" : "Off";
+
+    private string AllowedSummary => _allowed.Count == 0 ? "Any channel" : $"{_allowed.Count} channel{(_allowed.Count == 1 ? "" : "s")}";
 
     protected override async Task LoadAsync()
     {
