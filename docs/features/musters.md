@@ -56,3 +56,19 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - **Tracking Manager** (+ Officer/Admin umbrellas): full lifecycle over **all** musters, custom rewards, and **session linking + coin gate**, plus settings/templates.
 - **Session linking, coin-gate, settings, and templates are Tracking-Manager-only** (they affect session economics), even for a creator's own muster.
 - Enforcement is at the command handler (ownership-aware `CanManageMuster`); every action is recorded to the audit log.
+
+### Permission matrix
+
+| Action | Participant | Creator — own | Creator — others' | Manager / Officer |
+|---|:---:|:---:|:---:|:---:|
+| See active musters + card info | ✓ | ✓ | ✓ | ✓ |
+| Check **in/out** (self, while Open) | ✓ | ✓ | ✓ | ✓ |
+| See full roster | – | ✓ | – | ✓ |
+| Create (template-locked for creators) | – | ✓ | – | ✓ (custom too) |
+| Edit (title/prompt/capacity/auto-close) | – | ✓ | – | ✓ |
+| Edit reward (points/coins/min) | – | – | – | ✓ |
+| Close / curate roster / remove card | – | ✓ | – | ✓ |
+| Link session + set coin gate | – | – | – | ✓ |
+| Settings / templates | – | – | – | ✓ |
+
+"Own" = the muster's `CreatedBy`. Officer/Admin resolve as Manager-equivalent.
