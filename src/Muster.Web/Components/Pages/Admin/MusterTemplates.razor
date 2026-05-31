@@ -74,7 +74,7 @@ else if (State == AccessState.Ready)
                         <option value="">— none —</option>
                         @foreach (var c in _coins)
                         {
-                            <option value="@c.Id">@c.Code</option>
+                            <option value="@c.Id">@c.Code — @c.Name</option>
                         }
                     </select>
                 </label>

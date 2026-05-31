@@ -421,13 +421,22 @@ label.checkbox {
 .acc-body { padding: 0 1.25rem 1.25rem; }
 
 /* ---- Scrollbars (themed) ------------------------------------------------- */
-* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
+* { scrollbar-width: auto; scrollbar-color: var(--text-muted) transparent; }
+*::-webkit-scrollbar { width: 14px; height: 14px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px;
-    border: 2px solid transparent; background-clip: padding-box; }
-*::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
+*::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 999px;
+    border: 3px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
 *::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---- Save / status pill -------------------------------------------------- */
+.save-pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.75rem;
+    border-radius: 999px; font-size: 0.8rem; font-weight: 600; animation: save-pop 0.15s ease; }
+.save-pill.is-saving { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.save-pill.is-saved { background: color-mix(in srgb, #22c55e 22%, transparent); color: #22c55e; }
+.save-pill.is-error { background: color-mix(in srgb, #ef4444 22%, transparent); color: #ef4444; }
+.save-pill .material-symbols-outlined { font-size: 1rem; }
+@keyframes save-pop { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 /* ---- Card grids ---------------------------------------------------------- */
 .card-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }

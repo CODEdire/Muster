@@ -74,7 +74,7 @@ else if (State == AccessState.Ready)
                         <option value="">— none —</option>
                         @foreach (var c in _coinCurrencies)
                         {
-                            <option value="@c.Id">@c.Code</option>
+                            <option value="@c.Id">@c.Code — @c.Name</option>
                         }
                     </select>
                 </label>
@@ -88,9 +88,14 @@ else if (State == AccessState.Ready)
             <label>Channel
                 <select class="dg-select" @bind="_channelId">
                     <option value="0">Server default@(_defaultChannelId == 0 ? " — none set, no Discord card" : "")</option>
-                    @foreach (var c in _channels)
+                    @foreach (var g in _channels.GroupBy(c => c.Kind))
                     {
-                        <option value="@c.Id">#@c.Name</option>
+                        <optgroup label="@g.Key">
+                            @foreach (var c in g)
+                            {
+                                <option value="@c.Id">#@c.Name</option>
+                            }
+                        </optgroup>
                     }
                 </select>
             </label>

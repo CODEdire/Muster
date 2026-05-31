@@ -31,20 +31,31 @@ else if (State == AccessState.Ready)
             <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/muster-templates">
                 <span class="material-symbols-outlined">dashboard_customize</span> Manage templates
             </a>
-            <span class="save-state">@_saveState</span>
+            @if (_save != SaveStatus.None)
+            {
+                <span class="save-pill is-@_save.ToString().ToLowerInvariant()">
+                    <span class="material-symbols-outlined">@(_save switch { SaveStatus.Saving => "sync", SaveStatus.Saved => "check_circle", _ => "error" })</span>
+                    @(_save switch { SaveStatus.Saving => "Saving…", SaveStatus.Saved => "Saved", _ => _saveMsg ?? "Error" })
+                </span>
+            }
         </Toolbar>
     </PageHeader>
 
-    <Accordion>
+    <Accordion SingleOpen="true">
     <AccordionPane Title="Muster defaults" Icon="tune" Open="true" Summary="@DefaultsSummary">
         <p class="subtitle">Applied to a muster when no template overrides them.</p>
         <div class="form-grid">
             <label>Card channel
                 <select @bind="Input.ChannelId" @bind:after="ScheduleSave">
                     <option value="0">— none (post where the command runs) —</option>
-                    @foreach (var c in _chat)
+                    @foreach (var g in _chat.GroupBy(c => c.Kind))
                     {
-                        <option value="@c.Id">#@c.Name</option>
+                        <optgroup label="@g.Key">
+                            @foreach (var c in g)
+                            {
+                                <option value="@c.Id">#@c.Name</option>
+                            }
+                        </optgroup>
                     }
                 </select>
             </label>
@@ -52,18 +63,18 @@ else if (State == AccessState.Ready)
                 <input type="number" min="0" @bind="Input.RetentionHours" @bind:after="ScheduleSave" />
             </label>
             <label>Default points
-                <input type="number" min="0" @bind="Input.Points" @bind:after="ScheduleSave" />
+                <input type="number" min="0" placeholder="Not assigned" @bind="Input.Points" @bind:after="ScheduleSave" />
                 <span class="subtitle">participation points per check-in</span>
             </label>
             <label>Default coins
-                <input type="number" min="0" @bind="Input.Coins" @bind:after="ScheduleSave" />
+                <input type="number" min="0" placeholder="Not assigned" @bind="Input.Coins" @bind:after="ScheduleSave" />
             </label>
             <label>Coin currency
                 <select @bind="Input.CoinCurrencyId" @bind:after="ScheduleSave">
                     <option value="">— none —</option>
                     @foreach (var c in _coins)
                     {
-                        <option value="@c.Id">@c.Code</option>
+                        <option value="@c.Id">@c.Code — @c.Name</option>
                     }
                 </select>
                 <span class="subtitle">spendable currency for the coin reward</span>
@@ -98,22 +109,36 @@ else if (State == AccessState.Ready)
             <div class="dual-col">
                 <span class="dual-label">Available</span>
                 <select multiple size="10" @bind="_availSel">
-                    @foreach (var c in _chat.Where(c => !_allowed.Contains(c.Id)).OrderBy(c => c.Name))
+                    @foreach (var g in _chat.Where(c => !_allowed.Contains(c.Id)).GroupBy(c => c.Kind))
                     {
-                        <option value="@c.Id">#@c.Name</option>
+                        <optgroup label="@g.Key">
+                            @foreach (var c in g)
+                            {
+                                <option value="@c.Id">#@c.Name</option>
+                            }
+                        </optgroup>
                     }
                 </select>
             </div>
             <div class="dual-mid">
-                <button type="button" class="btn btn-sm" @onclick="MoveToAllowed" title="Allow selected">»</button>
-                <button type="button" class="btn btn-sm" @onclick="MoveToAvailable" title="Remove selected">«</button>
+                <button type="button" class="btn btn-sm" @onclick="MoveToAllowed" title="Allow selected" aria-label="Allow selected">
+                    <span class="material-symbols-outlined">chevron_right</span>
+                </button>
+                <button type="button" class="btn btn-sm" @onclick="MoveToAvailable" title="Remove selected" aria-label="Remove selected">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                </button>
             </div>
             <div class="dual-col">
                 <span class="dual-label">Allowed</span>
                 <select multiple size="10" @bind="_allowedSel">
-                    @foreach (var c in _chat.Where(c => _allowed.Contains(c.Id)).OrderBy(c => c.Name))
+                    @foreach (var g in _chat.Where(c => _allowed.Contains(c.Id)).GroupBy(c => c.Kind))
                     {
-                        <option value="@c.Id">#@c.Name</option>
+                        <optgroup label="@g.Key">
+                            @foreach (var c in g)
+                            {
+                                <option value="@c.Id">#@c.Name</option>
+                            }
+                        </optgroup>
                     }
                 </select>
             </div>
@@ -123,14 +148,14 @@ else if (State == AccessState.Ready)
 }
 
 <style>
-    .save-state { color: var(--text-muted); font-size: 0.85rem; margin-left: auto; }
     .warn-text { color: #d97706; }
     .dual { display: flex; gap: 1rem; align-items: stretch; }
     .dual-col { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
     .dual-col select { width: 100%; }
     .dual-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
     .dual-mid { display: flex; flex-direction: column; gap: 0.6rem; justify-content: center; }
-    .dual-mid .btn { min-width: 3rem; padding: 0.6rem 0.9rem; font-size: 1.35rem; line-height: 1; font-weight: 700; }
+    .dual-mid .btn { min-width: 3rem; padding: 0.55rem 0.8rem; line-height: 1; }
+    .dual-mid .btn .material-symbols-outlined { font-size: 1.6rem; }
 </style>
 
 @code {
@@ -142,7 +167,10 @@ else if (State == AccessState.Ready)
     private readonly HashSet<ulong> _allowed = [];
     private string[] _availSel = [];
     private string[] _allowedSel = [];
-    private string? _saveState;
+
+    private enum SaveStatus { None, Saving, Saved, Error }
+    private SaveStatus _save = SaveStatus.None;
+    private string? _saveMsg;
 
     private const int DebounceMs = 600;
     private CancellationTokenSource? _debounce;
@@ -153,8 +181,8 @@ else if (State == AccessState.Ready)
         get
         {
             var parts = new List<string>();
-            if (Input.Points > 0) { parts.Add($"{Input.Points} pts"); }
-            if (Input.Coins > 0)
+            if (Input.Points is > 0) { parts.Add($"{Input.Points} pts"); }
+            if (Input.Coins is > 0)
             {
                 var code = _coins.FirstOrDefault(c => c.Id == Input.CoinCurrencyId)?.Code ?? "coins";
                 parts.Add($"{Input.Coins} {code}");
@@ -177,8 +205,9 @@ else if (State == AccessState.Ready)
         {
             ChannelId = ms.MusterChannelId,
             RetentionHours = ms.BoardRetentionHours,
-            Points = ms.DefaultPoints,
-            Coins = ms.DefaultCoins,
+            // 0 is "not assigned" — surface as empty so placeholder shows.
+            Points = ms.DefaultPoints == 0 ? null : ms.DefaultPoints,
+            Coins = ms.DefaultCoins == 0 ? null : ms.DefaultCoins,
             CoinCurrencyId = ms.DefaultCoinCurrencyId,
             AutoCreate = ms.AutoCreateOnSession,
             Gate = ms.AutoCreateGate,
@@ -215,7 +244,7 @@ else if (State == AccessState.Ready)
     {
         _debounce?.Cancel();
         var cts = _debounce = new CancellationTokenSource();
-        _saveState = "Saving…";
+        _save = SaveStatus.Saving;
         _ = InvokeAsync(async () =>
         {
             try { await Task.Delay(DebounceMs, cts.Token); }
@@ -228,16 +257,19 @@ else if (State == AccessState.Ready)
     private async Task SaveAsync()
     {
         var allowed = _allowed.ToList();
+        var points = Input.Points ?? 0;
+        var coins = Input.Coins ?? 0;
         var result = await Config.SetMusterSettingsAsync(
             GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
-            Input.Points, Input.Coins, Input.CoinCurrencyId, allowed);
+            points, coins, Input.CoinCurrencyId, allowed);
 
         if (!result.IsError)
         {
             await AuditAsync("muster.config",
-                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} points:{Input.Points} coins:{Input.Coins} gate:{Input.Gate} auto:{Input.AutoCreate} allowed:[{string.Join(",", allowed)}]");
+                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} allowed:[{string.Join(",", allowed)}]");
         }
-        _saveState = result.IsError ? $"⚠️ {result.Message}" : "Saved ✓";
+        _save = result.IsError ? SaveStatus.Error : SaveStatus.Saved;
+        _saveMsg = result.IsError ? result.Message : null;
     }
 
     public void Dispose()
@@ -250,8 +282,9 @@ else if (State == AccessState.Ready)
     {
         public ulong ChannelId { get; set; }
         public int RetentionHours { get; set; } = 48;
-        public long Points { get; set; }
-        public long Coins { get; set; }
+        // null/0 both mean "not assigned" — placeholder shows.
+        public long? Points { get; set; }
+        public long? Coins { get; set; }
         public Guid? CoinCurrencyId { get; set; }
         public bool AutoCreate { get; set; }
         public SessionCoinGate Gate { get; set; } = SessionCoinGate.Any;
