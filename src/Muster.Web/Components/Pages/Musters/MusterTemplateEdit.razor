@@ -1,5 +1,5 @@
-@page "/guilds/{GuildIdRaw}/muster-templates/new"
-@page "/guilds/{GuildIdRaw}/muster-templates/{TemplateId:guid}/edit"
+@page "/guilds/{GuildIdRaw}/management/musters/templates/new"
+@page "/guilds/{GuildIdRaw}/management/musters/templates/{TemplateId:guid}/edit"
 @layout GuildLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
@@ -21,15 +21,15 @@ else if (State == AccessState.Ready)
     <PageHeader Crumbs="@(new PageHeader.Crumb[]
                 {
                     new("Admin", $"/guilds/{GuildId}/admin"),
-                    new("Muster settings", $"/guilds/{GuildId}/muster-settings"),
-                    new("Templates", $"/guilds/{GuildId}/muster-templates"),
+                    new("Muster settings", MusterLinks.MusterSettings(GuildId)),
+                    new("Templates", MusterLinks.MusterTemplates(GuildId)),
                     new(IsNew ? "New template" : "Edit template"),
                 })"
                 Subtitle="A named reward preset creators pick from. Its values override the guild defaults.">
         <Toolbar>
             @if (_t is not null)
             {
-                <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/muster-templates">Cancel</a>
+                <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterTemplates(GuildId)">Cancel</a>
                 <button type="button" class="btn btn-sm" disabled="@_saving" @onclick="SaveAsync">
                     <span class="material-symbols-outlined">save</span> @(IsNew ? "Create template" : "Save changes")
                 </button>
@@ -210,7 +210,7 @@ else if (State == AccessState.Ready)
             }
 
             await AuditAsync("muster.template", $"{(IsNew ? "create" : "update")}:{saved.Name}");
-            Nav.NavigateTo($"/guilds/{GuildId}/muster-templates");
+            Nav.NavigateTo(MusterLinks.MusterTemplates(GuildId));
         }
         finally
         {

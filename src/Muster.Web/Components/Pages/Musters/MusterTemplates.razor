@@ -1,4 +1,4 @@
-@page "/guilds/{GuildIdRaw}/muster-templates"
+@page "/guilds/{GuildIdRaw}/management/musters/templates"
 @layout GuildLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
@@ -17,7 +17,7 @@
 }
 else if (State == AccessState.Ready)
 {
-    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings", $"/guilds/{GuildId}/muster-settings"), new("Templates") })"
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings", MusterLinks.MusterSettings(GuildId)), new("Templates") })"
                 Subtitle="Named reward presets creators pick from. A Muster Creator can only post from a template; managers can also override." />
 
     @if (Message is not null)
@@ -37,7 +37,7 @@ else if (State == AccessState.Ready)
                 </div>
             </div>
             <div class="dg-actions">
-                <a class="btn btn-sm" href="/guilds/@GuildId/muster-templates/new">
+                <a class="btn btn-sm" href="@MusterLinks.MusterTemplateNew(GuildId)">
                     <span class="material-symbols-outlined">add</span> New template
                 </a>
             </div>
@@ -73,7 +73,7 @@ else if (State == AccessState.Ready)
                         {
                             <tr>
                                 <td>
-                                    <a href="/guilds/@GuildId/muster-templates/@t.Id/edit">@t.Name</a>
+                                    <a href="@MusterLinks.MusterTemplateEdit(GuildId, t.Id)">@t.Name</a>
                                     @if (!string.IsNullOrWhiteSpace(t.Description))
                                     {
                                         <div class="subtitle dg-sub">@t.Description</div>
@@ -87,7 +87,7 @@ else if (State == AccessState.Ready)
                                 <td class="num">@(t.RetentionHours)h</td>
                                 <td>@(t.Enabled ? "✓" : "—")</td>
                                 <td class="dg-actions-col">
-                                    <a class="icon-btn" title="Edit" href="/guilds/@GuildId/muster-templates/@t.Id/edit"><span class="material-symbols-outlined">edit</span></a>
+                                    <a class="icon-btn" title="Edit" href="@MusterLinks.MusterTemplateEdit(GuildId, t.Id)"><span class="material-symbols-outlined">edit</span></a>
                                     <button type="button" class="icon-btn danger" title="Delete" disabled="@_busy" @onclick="() => Delete(t)"><span class="material-symbols-outlined">delete</span></button>
                                 </td>
                             </tr>

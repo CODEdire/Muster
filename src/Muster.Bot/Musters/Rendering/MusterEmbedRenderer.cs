@@ -93,7 +93,7 @@ public static class MusterEmbedRenderer
     };
 
     private static string? WebUrl(string? baseUrl, ulong guildId, Guid musterId) =>
-        string.IsNullOrWhiteSpace(baseUrl) ? null : $"{baseUrl.TrimEnd('/')}/guilds/{guildId}/musters/{musterId}";
+        string.IsNullOrWhiteSpace(baseUrl) ? null : $"{baseUrl.TrimEnd('/')}/guilds/{guildId}/guild/musters/{musterId}";
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..Math.Max(0, max - 1)] + "…";
 }

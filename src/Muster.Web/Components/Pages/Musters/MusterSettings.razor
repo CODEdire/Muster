@@ -1,4 +1,4 @@
-@page "/guilds/{GuildIdRaw}/muster-settings"
+@page "/guilds/{GuildIdRaw}/management/musters"
 @layout GuildLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
@@ -28,7 +28,7 @@ else if (State == AccessState.Ready)
     <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings") })"
                 Subtitle="Defaults for new musters and where their cards post.">
         <Toolbar>
-            <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/muster-templates">
+            <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterTemplates(GuildId)">
                 <span class="material-symbols-outlined">dashboard_customize</span> Manage templates
             </a>
             @if (_save != SaveStatus.None)

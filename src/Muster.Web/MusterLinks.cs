@@ -17,9 +17,19 @@ public static class MusterLinks
     /// <summary>One session's detail page.</summary>
     public static string SessionDetail(ulong guildId, Guid sessionId) => $"/guilds/{guildId}/sessions/{sessionId}";
 
-    /// <summary>The Musters page.</summary>
-    public static string Musters(ulong guildId) => $"/guilds/{guildId}/musters";
+    /// <summary>The Musters board (Guild nav group).</summary>
+    public static string Musters(ulong guildId) => $"/guilds/{guildId}/guild/musters";
 
     /// <summary>One muster's detail page.</summary>
-    public static string MusterDetail(ulong guildId, Guid musterId) => $"/guilds/{guildId}/musters/{musterId}";
+    public static string MusterDetail(ulong guildId, Guid musterId) => $"/guilds/{guildId}/guild/musters/{musterId}";
+
+    /// <summary>Muster settings (Management nav group).</summary>
+    public static string MusterSettings(ulong guildId) => $"/guilds/{guildId}/management/musters";
+
+    /// <summary>Muster templates list.</summary>
+    public static string MusterTemplates(ulong guildId) => $"/guilds/{guildId}/management/musters/templates";
+
+    /// <summary>New / edit a muster template.</summary>
+    public static string MusterTemplateNew(ulong guildId) => $"/guilds/{guildId}/management/musters/templates/new";
+    public static string MusterTemplateEdit(ulong guildId, Guid templateId) => $"/guilds/{guildId}/management/musters/templates/{templateId}/edit";
 }
