@@ -242,6 +242,31 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         }
     }
 
+    /// <summary>Apply an edit to a live (Open) muster's card + options. The caller has already authorized + validated;
+    /// reward values are passed as the final intended values (a creator passes the unchanged template values).
+    /// Returns false if the muster is gone or no longer Open.</summary>
+    public async Task<bool> EditAsync(
+        Guid musterId, string? title, string prompt, int? capacity, DateTimeOffset? expiresAt,
+        long points, long coins, Guid? coinCurrencyId, int? minCheckIns, CancellationToken ct = default)
+    {
+        var muster = await db.FindMusterAsync(musterId, ct);
+        if (muster is null || muster.Status != MusterStatus.Open)
+        {
+            return false;
+        }
+
+        muster.Title = title;
+        muster.Prompt = prompt;
+        muster.Capacity = capacity;
+        muster.ExpiresAt = expiresAt;
+        muster.Points = points;
+        muster.Coins = coins;
+        muster.CoinCurrencyId = coins > 0 ? coinCurrencyId : null;
+        muster.MinCheckIns = minCheckIns;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     /// <summary>Soft-close a muster: stop accepting check-ins without paying or going terminal. Used when a <b>linked</b>
     /// muster hits its max active time — it stays around (Locked) and is paid + closed at session close. Idempotent;
     /// only an Open muster locks.</summary>

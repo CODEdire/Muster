@@ -266,6 +266,112 @@ public class MusterQuestCommandTests
         Assert.True(await musters.CloseAsync(muster.Id, MusterStatus.Closed));
     }
 
+    // Sets up a template-only Muster Creator (role 500) named "creator" as member 50.
+    private static async Task SeedCreatorAsync(MusterDbContext db, ulong userId = 50)
+    {
+        var guild = await db.Guilds.SingleAsync();
+        guild.Settings.MusterCreatorRoleIds = [500];
+        await db.SaveChangesAsync();
+        await new MemberSyncService(db).UpsertAsync(1, userId, "creator", null, null, roleIds: [500]);
+    }
+
+    private static Guid SeedTemplate(MusterDbContext db, long points = 5)
+    {
+        var id = Guid.NewGuid();
+        db.MusterTemplates.Add(new MusterTemplate { Id = id, GuildId = 1, Name = "T", Points = points, Enabled = true });
+        db.SaveChanges();
+        return id;
+    }
+
+    [Fact]
+    public async Task Muster_Creator_ManagesOwnButNotOthers()
+    {
+        using var db = await SeededAsync(ownerId: 7); // 7 = manager/admin
+        var (musters, auth, store, bus) = NewMusters(db);
+        await SeedCreatorAsync(db);
+        var tpl = SeedTemplate(db);
+
+        CreateMuster Create(ulong actor, Guid? template) =>
+            new(1, actor, 500, null, "go", template, null, null, null, null, null, null);
+
+        // Creator 50 owns one; manager 7 owns another.
+        var mine = (await CreateMusterHandler.Handle(Create(50, tpl), auth, db, musters, store, bus, default)).Value;
+        var theirs = (await CreateMusterHandler.Handle(Create(7, null), auth, db, musters, store, bus, default)).Value;
+
+        // Creator may close + curate roster on their OWN.
+        Assert.True((await CloseMusterHandler.Handle(new CloseMuster(1, 50, mine), auth, db, musters, bus, default)).Ok);
+
+        // Creator may NOT close someone else's.
+        Assert.Equal("Forbidden", (await CloseMusterHandler.Handle(new CloseMuster(1, 50, theirs), auth, db, musters, bus, default)).Status);
+        Assert.Equal("Forbidden", (await AddMusterParticipantHandler.Handle(new AddMusterParticipant(1, 50, theirs, 99), auth, db, musters, bus, default)).Status);
+
+        // Manager can act on anyone's.
+        Assert.True((await CloseMusterHandler.Handle(new CloseMuster(1, 7, theirs), auth, db, musters, bus, default)).Ok);
+
+        // Session linking stays manager-only even on the creator's own muster.
+        var sid = Guid.NewGuid();
+        db.TrackingSessions.Add(new TrackingSession { Id = sid, GuildId = 1, Name = "S", Status = TrackingSessionStatus.Active });
+        await db.SaveChangesAsync();
+        Assert.Equal("Forbidden", (await LinkMusterToSessionHandler.Handle(new LinkMusterToSession(1, 50, mine, sid), auth, db, musters, default)).Status);
+    }
+
+    [Fact]
+    public async Task Muster_SelfCheckOut_DropsRoster_OpenOnly()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db);
+
+        var muster = await musters.CreateAsync(1, 0, null, "Roll call", points: 0, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: null, createdBy: 7);
+
+        // Member self-checks-in, then self-checks-out.
+        Assert.True((await CheckInMusterHandler.Handle(new CheckInMuster(1, 50, muster.Id), db, musters, bus, default)).Ok);
+        Assert.True((await CheckOutMusterHandler.Handle(new CheckOutMuster(1, 50, muster.Id), db, musters, bus, default)).Ok);
+        Assert.False(await db.ReactionParticipants.AnyAsync(p => p.MusterId == muster.Id && p.UserId == 50));
+
+        // Checking out again when not on the roster fails clearly.
+        Assert.Equal("NotCheckedIn", (await CheckOutMusterHandler.Handle(new CheckOutMuster(1, 50, muster.Id), db, musters, bus, default)).Status);
+
+        // Once closed, you can't check out.
+        await musters.CloseAsync(muster.Id, MusterStatus.Closed);
+        Assert.Equal("Closed", (await CheckOutMusterHandler.Handle(new CheckOutMuster(1, 50, muster.Id), db, musters, bus, default)).Status);
+    }
+
+    [Fact]
+    public async Task Muster_Edit_ManagerChangesReward_CreatorRewardLocked()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db);
+        await SeedCreatorAsync(db);
+        var tpl = SeedTemplate(db, points: 5);
+
+        var mine = (await CreateMusterHandler.Handle(
+            new CreateMuster(1, 50, 500, null, "go", tpl, null, null, null, null, null, null), auth, db, musters, store, bus, default)).Value;
+
+        // Creator edits own: prompt changes, but the reward override is ignored (stays template's 5).
+        Assert.True((await EditMusterHandler.Handle(
+            new EditMuster(1, 50, mine, "New title", "new prompt", Capacity: 10, ExpiresAt: null,
+                Points: 999, Coins: null, CoinCurrencyId: null, MinCheckIns: null), auth, db, musters, bus, default)).Ok);
+        var afterCreator = await db.ReactionMusters.SingleAsync(m => m.Id == mine);
+        Assert.Equal("new prompt", afterCreator.Prompt);
+        Assert.Equal("New title", afterCreator.Title);
+        Assert.Equal(10, afterCreator.Capacity);
+        Assert.Equal(5, afterCreator.Points); // reward locked to the template
+
+        // Manager edits the same muster's reward → applied.
+        Assert.True((await EditMusterHandler.Handle(
+            new EditMuster(1, 7, mine, null, "p", Capacity: null, ExpiresAt: null,
+                Points: 25, Coins: null, CoinCurrencyId: null, MinCheckIns: null), auth, db, musters, bus, default)).Ok);
+        Assert.Equal(25, (await db.ReactionMusters.SingleAsync(m => m.Id == mine)).Points);
+
+        // A non-owner creator can't edit someone else's muster.
+        var theirs = (await CreateMusterHandler.Handle(
+            new CreateMuster(1, 7, 500, null, "go", null, 1, null, null, null, null, null), auth, db, musters, store, bus, default)).Value;
+        await SeedCreatorAsync(db, 51);
+        Assert.Equal("Forbidden", (await EditMusterHandler.Handle(
+            new EditMuster(1, 51, theirs, null, "x", null, null, null, null, null, null), auth, db, musters, bus, default)).Status);
+    }
+
     [Fact]
     public async Task Quest_PostClaimSubmitApprove_AwardsMember()
     {

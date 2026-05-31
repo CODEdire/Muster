@@ -32,6 +32,10 @@ public record CreateMuster(
 /// clicker), so no manager gate — eligibility (participant role + open/!full/!expired) is enforced in the handler.</summary>
 public record CheckInMuster(ulong GuildId, ulong ActorId, Guid MusterId) : IGuildCommand;
 
+/// <summary>A member checks themselves out (leaves the roster). Self-action — no manager gate — allowed only while the
+/// muster is Open. Reward pays at close, so leaving before close simply drops them; there's nothing to reverse.</summary>
+public record CheckOutMuster(ulong GuildId, ulong ActorId, Guid MusterId) : IGuildCommand;
+
 /// <summary>Staff adds a member to a muster by hand (web/command). Mints the reward like a normal check-in,
 /// idempotent on the same source key, and bypasses the capacity cap (staff override).</summary>
 public record AddMusterParticipant(ulong GuildId, ulong ActorId, Guid MusterId, ulong UserId) : IGuildCommand;
@@ -39,6 +43,23 @@ public record AddMusterParticipant(ulong GuildId, ulong ActorId, Guid MusterId, 
 /// <summary>Staff removes a member from a muster's roster. Does NOT reverse any already-minted reward — a paid coin
 /// is undone via the EconomyManager currency-adjust path, not here.</summary>
 public record RemoveMusterParticipant(ulong GuildId, ulong ActorId, Guid MusterId, ulong UserId) : IGuildCommand;
+
+/// <summary>Edit a live (Open) muster's card + options. <paramref name="Prompt"/> is required; <paramref name="Title"/>,
+/// <paramref name="Capacity"/>, <paramref name="ExpiresAt"/> apply for owners and managers. The reward fields
+/// (<paramref name="Points"/>/<paramref name="Coins"/>/<paramref name="CoinCurrencyId"/>/<paramref name="MinCheckIns"/>)
+/// are applied only for a Tracking Manager — a template-locked Muster Creator keeps the template's reward unchanged.</summary>
+public record EditMuster(
+    ulong GuildId,
+    ulong ActorId,
+    Guid MusterId,
+    string? Title,
+    string Prompt,
+    int? Capacity,
+    DateTimeOffset? ExpiresAt,
+    long? Points,
+    long? Coins,
+    Guid? CoinCurrencyId,
+    int? MinCheckIns) : IGuildCommand;
 
 /// <summary>Close a muster: stop accepting check-ins and render its card terminal.</summary>
 public record CloseMuster(ulong GuildId, ulong ActorId, Guid MusterId) : IGuildCommand;
@@ -60,6 +81,7 @@ public enum MusterChangeKind
     CheckedIn = 1,           // a participant joined (or was added)
     ParticipantsChanged = 2, // a participant was removed
     Closed = 3,
+    Edited = 4,              // card fields/options changed
 }
 
 /// <summary>Muster lifecycle notification (bot renders the card off this).</summary>

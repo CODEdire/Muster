@@ -20,6 +20,7 @@ public static class MusterStatusText
         "NotFound" => "That muster no longer exists.",
         "SessionNotFound" => "That tracking session doesn't exist.",
         "AlreadyParticipated" => "You're already checked in.",
+        "NotCheckedIn" => "You're not checked in.",
         "Full" => "This muster is full.",
         "Expired" => "This muster has expired.",
         "Closed" => "This muster is closed.",

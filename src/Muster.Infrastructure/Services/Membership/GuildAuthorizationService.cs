@@ -128,6 +128,21 @@ public class GuildAuthorizationService(MusterDbContext db)
         return member.RoleIds.Any(r => guild.Settings.MusterCreatorRoleIds.Contains(r));
     }
 
+    /// <summary>Whether <paramref name="userId"/> may manage the lifecycle of a specific muster (close, edit, curate
+    /// roster, remove card). A Tracking Manager (and the legacy Officer/Admin umbrellas it absorbs) may manage <i>any</i>
+    /// muster; a template-only Muster Creator may manage only the ones they <paramref name="createdBy"/> own. Session
+    /// linking + coin-gate are deliberately NOT covered here — those stay Tracking-Manager-only (they affect session
+    /// economics).</summary>
+    public async Task<bool> CanManageMusterAsync(ulong guildId, ulong userId, ulong createdBy, CancellationToken ct = default)
+    {
+        if (await IsTrackingManagerAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        return createdBy == userId && await IsMusterCreatorAsync(guildId, userId, ct);
+    }
+
     /// <summary>Read-only observer — audit log, ledger, participation. Implied by any mutating role
     /// (admin / officer / economy manager / event officer / tracking manager / quest manager) so adding the role
     /// is purely additive.</summary>

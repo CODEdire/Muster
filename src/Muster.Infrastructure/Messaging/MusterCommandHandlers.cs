@@ -167,6 +167,42 @@ public static class CheckInMusterHandler
 
     internal static Task<bool> OwnsAsync(MusterDbContext db, ulong guildId, Guid musterId, CancellationToken ct)
         => db.ReactionMusters.AnyAsync(m => m.Id == musterId && m.GuildId == guildId, ct);
+
+    /// <summary>The muster's <c>CreatedBy</c> (owner), or null if it doesn't exist in this guild — used by the
+    /// ownership-aware manage gate so a Muster Creator can act on their own musters.</summary>
+    internal static Task<ulong?> OwnerAsync(MusterDbContext db, ulong guildId, Guid musterId, CancellationToken ct)
+        => db.ReactionMusters.Where(m => m.Id == musterId && m.GuildId == guildId)
+            .Select(m => (ulong?)m.CreatedBy).FirstOrDefaultAsync(ct);
+}
+
+public static class CheckOutMusterHandler
+{
+    public static async Task<Result> Handle(
+        CheckOutMuster command, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
+    {
+        var status = await db.ReactionMusters
+            .Where(m => m.Id == command.MusterId && m.GuildId == command.GuildId)
+            .Select(m => (MusterStatus?)m.Status)
+            .FirstOrDefaultAsync(ct);
+        if (status is not { } s)
+        {
+            return Result.Fail("NotFound");
+        }
+
+        // You can only leave a muster that's still taking check-ins.
+        if (s != MusterStatus.Open)
+        {
+            return Result.Fail("Closed");
+        }
+
+        if (!await musters.RemoveParticipantAsync(command.MusterId, command.ActorId, ct))
+        {
+            return Result.Fail("NotCheckedIn");
+        }
+
+        await bus.PublishAsync(new MusterChanged(command.GuildId, command.MusterId, MusterChangeKind.ParticipantsChanged));
+        return Result.Success();
+    }
 }
 
 public static class AddMusterParticipantHandler
@@ -174,14 +210,14 @@ public static class AddMusterParticipantHandler
     public static async Task<Result> Handle(
         AddMusterParticipant command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
     {
-        if (!await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct))
-        {
-            return Result.Fail("Forbidden");
-        }
-
-        if (!await CheckInMusterHandler.OwnsAsync(db, command.GuildId, command.MusterId, ct))
+        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
         {
             return Result.Fail("NotFound");
+        }
+
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        {
+            return Result.Fail("Forbidden");
         }
 
         var outcome = await musters.CheckInAsync(command.MusterId, command.UserId, MusterParticipantSource.Admin, ct);
@@ -200,14 +236,14 @@ public static class RemoveMusterParticipantHandler
     public static async Task<Result> Handle(
         RemoveMusterParticipant command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
     {
-        if (!await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct))
-        {
-            return Result.Fail("Forbidden");
-        }
-
-        if (!await CheckInMusterHandler.OwnsAsync(db, command.GuildId, command.MusterId, ct))
+        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
         {
             return Result.Fail("NotFound");
+        }
+
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        {
+            return Result.Fail("Forbidden");
         }
 
         if (!await musters.RemoveParticipantAsync(command.MusterId, command.UserId, ct))
@@ -220,19 +256,93 @@ public static class RemoveMusterParticipantHandler
     }
 }
 
+public static class EditMusterHandler
+{
+    public static async Task<Result> Handle(
+        EditMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(command.Prompt))
+        {
+            return Result.Fail("PromptRequired");
+        }
+
+        var m = await db.ReactionMusters
+            .Where(x => x.Id == command.MusterId && x.GuildId == command.GuildId)
+            .Select(x => new { x.CreatedBy, x.Status, x.Points, x.Coins, x.CoinCurrencyId, x.MinCheckIns })
+            .FirstOrDefaultAsync(ct);
+        if (m is null)
+        {
+            return Result.Fail("NotFound");
+        }
+
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, m.CreatedBy, ct))
+        {
+            return Result.Fail("Forbidden");
+        }
+
+        if (m.Status != MusterStatus.Open)
+        {
+            return Result.Fail("AlreadyClosed"); // only a live muster is editable
+        }
+
+        // Reward: a Tracking Manager may change it; a template-locked creator keeps the existing values.
+        var isManager = await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct);
+        var points = isManager ? command.Points ?? 0 : m.Points;
+        var coins = isManager ? command.Coins ?? 0 : m.Coins;
+        var coinCcy = isManager ? command.CoinCurrencyId : m.CoinCurrencyId;
+        var minCheckIns = isManager ? command.MinCheckIns : m.MinCheckIns;
+
+        if (points < 0 || coins < 0)
+        {
+            return Result.Fail("RewardNegative");
+        }
+
+        if (command.Capacity is <= 0)
+        {
+            return Result.Fail("BadCapacity");
+        }
+
+        if (minCheckIns is < 0)
+        {
+            return Result.Fail("BadMinimum");
+        }
+
+        if (command.Capacity is { } capVal && minCheckIns is { } minVal && minVal > capVal)
+        {
+            return Result.Fail("MinAboveCapacity");
+        }
+
+        if (coins > 0 && (coinCcy is not { } cc || !await db.Currencies.AnyAsync(c => c.Id == cc && c.GuildId == command.GuildId && c.IsSpendable, ct)))
+        {
+            return Result.Fail("CoinCurrencyInvalid");
+        }
+
+        var title = string.IsNullOrWhiteSpace(command.Title) ? null : command.Title.Trim();
+
+        if (!await musters.EditAsync(command.MusterId, title, command.Prompt.Trim(), command.Capacity, command.ExpiresAt,
+                points, coins, coinCcy, minCheckIns, ct))
+        {
+            return Result.Fail("AlreadyClosed");
+        }
+
+        await bus.PublishAsync(new MusterChanged(command.GuildId, command.MusterId, MusterChangeKind.Edited));
+        return Result.Success();
+    }
+}
+
 public static class CloseMusterHandler
 {
     public static async Task<Result> Handle(
         CloseMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
     {
-        if (!await auth.IsTrackingManagerAsync(command.GuildId, command.ActorId, ct))
-        {
-            return Result.Fail("Forbidden");
-        }
-
-        if (!await CheckInMusterHandler.OwnsAsync(db, command.GuildId, command.MusterId, ct))
+        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
         {
             return Result.Fail("NotFound");
+        }
+
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        {
+            return Result.Fail("Forbidden");
         }
 
         if (!await musters.CloseAsync(command.MusterId, MusterStatus.Closed, ct))
