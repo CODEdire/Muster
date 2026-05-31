@@ -53,11 +53,12 @@ else if (State == AccessState.Ready)
                 <div class="field span2">
                     <label>Default card prompt</label>
                     <textarea rows="2" @bind="_t.Prompt" maxlength="500" placeholder="(optional) what members are checking in for"></textarea>
-                    <p class="hint">Used as the card text when the author leaves the prompt blank — lets a creator post in one click.</p>
+                    <p class="hint">Shown <strong>on the muster card</strong> members see. Used when the author leaves the prompt blank — lets a creator post in one click.</p>
                 </div>
                 <div class="field span2">
-                    <label>Description</label>
-                    <input @bind="_t.Description" maxlength="300" placeholder="(optional) admin note — what this template is for" />
+                    <label>Description (admin only)</label>
+                    <input @bind="_t.Description" maxlength="300" placeholder="(optional) e.g. Use for weekly fleet ops" />
+                    <p class="hint"><strong>Not shown on the card.</strong> A private note to help admins/creators pick the right template.</p>
                 </div>
 
                 <div class="field">
@@ -85,6 +86,11 @@ else if (State == AccessState.Ready)
                     <label>Capacity</label>
                     <input type="number" min="0" placeholder="Uncapped" @bind="_t.Capacity" />
                     <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+                </div>
+                <div class="field">
+                    <label>Minimum check-ins to reward</label>
+                    <input type="number" min="0" @bind="_t.MinCheckIns" />
+                    <p class="hint">If fewer than this check in, nobody is rewarded. 0 = no minimum.</p>
                 </div>
                 <div class="field">
                     <label>Auto-close after</label>
@@ -152,9 +158,15 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        if (_t.Points < 0 || _t.Coins < 0 || _t.RetentionHours < 0 || _t.Capacity is < 0 || _t.ExpiryHours is < 0)
+        if (_t.Points < 0 || _t.Coins < 0 || _t.RetentionHours < 0 || _t.Capacity is < 0 || _t.ExpiryHours is < 0 || _t.MinCheckIns < 0)
         {
-            Message = "Points, coins, capacity, expiry, and retention can't be negative.";
+            Message = "Points, coins, capacity, expiry, retention, and minimum can't be negative.";
+            return;
+        }
+
+        if (_t.Capacity is { } cap && _t.MinCheckIns > cap)
+        {
+            Message = "Minimum check-ins can't be more than the capacity.";
             return;
         }
 

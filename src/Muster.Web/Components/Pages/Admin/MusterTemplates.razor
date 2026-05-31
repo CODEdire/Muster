@@ -50,6 +50,7 @@ else if (State == AccessState.Ready)
                         <th class="sortable num" @onclick='() => SetSort("points")'>Points @Ind("points")</th>
                         <th class="sortable num" @onclick='() => SetSort("coins")'>Coins @Ind("coins")</th>
                         <th class="sortable num" @onclick='() => SetSort("capacity")'>Capacity @Ind("capacity")</th>
+                        <th class="sortable num" @onclick='() => SetSort("min")'>Min @Ind("min")</th>
                         <th class="sortable num" @onclick='() => SetSort("expiry")'>Auto-close @Ind("expiry")</th>
                         <th class="sortable num" @onclick='() => SetSort("retention")'>Keep @Ind("retention")</th>
                         <th class="sortable" @onclick='() => SetSort("enabled")'>Enabled @Ind("enabled")</th>
@@ -59,11 +60,11 @@ else if (State == AccessState.Ready)
                 <tbody>
                     @if (_list is null)
                     {
-                        <tr class="dg-empty"><td colspan="8">Loading…</td></tr>
+                        <tr class="dg-empty"><td colspan="9">Loading…</td></tr>
                     }
                     else if (Filtered.Count == 0)
                     {
-                        <tr class="dg-empty"><td colspan="8">@(_list.Count == 0 ? "No templates yet — create one to get started." : "No templates match your filter.")</td></tr>
+                        <tr class="dg-empty"><td colspan="9">@(_list.Count == 0 ? "No templates yet — create one to get started." : "No templates match your filter.")</td></tr>
                     }
                     else
                     {
@@ -80,6 +81,7 @@ else if (State == AccessState.Ready)
                                 <td class="num">@(t.Points > 0 ? t.Points.ToString("N0") : "—")</td>
                                 <td class="num">@(t.Coins > 0 ? $"{t.Coins:N0} {CoinCode(t.CoinCurrencyId)}" : "—")</td>
                                 <td class="num">@(t.Capacity is { } cap ? cap.ToString("N0") : "—")</td>
+                                <td class="num">@(t.MinCheckIns > 0 ? t.MinCheckIns.ToString("N0") : "—")</td>
                                 <td class="num">@(t.ExpiryHours is { } ex ? $"{ex}h" : "—")</td>
                                 <td class="num">@(t.RetentionHours)h</td>
                                 <td>@(t.Enabled ? "✓" : "—")</td>
@@ -149,6 +151,7 @@ else if (State == AccessState.Ready)
                 "points" => t => t.Points,
                 "coins" => t => t.Coins,
                 "capacity" => t => t.Capacity ?? -1,
+                "min" => t => t.MinCheckIns,
                 "expiry" => t => t.ExpiryHours ?? -1,
                 "retention" => t => t.RetentionHours,
                 "enabled" => t => t.Enabled ? 1 : 0,

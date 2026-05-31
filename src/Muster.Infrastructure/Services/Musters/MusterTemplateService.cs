@@ -44,6 +44,7 @@ public class MusterTemplateService(MusterDbContext db)
         row.CoinCurrencyId = input.CoinCurrencyId;
         row.RetentionHours = input.RetentionHours;
         row.Capacity = input.Capacity;
+        row.MinCheckIns = input.MinCheckIns;
         row.ExpiryHours = input.ExpiryHours;
         row.Enabled = input.Enabled;
         await db.SaveChangesAsync(ct);

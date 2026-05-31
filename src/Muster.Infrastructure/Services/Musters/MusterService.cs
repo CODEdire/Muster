@@ -33,7 +33,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         ulong guildId, ulong channelId, string? title, string prompt,
         long points, long coins, Guid? coinCurrencyId, int retentionHours,
         int? capacity, DateTimeOffset? expiresAt, ulong createdBy,
-        Guid? sessionId = null, bool checkInCreator = false, CancellationToken ct = default)
+        Guid? sessionId = null, bool checkInCreator = false, int minCheckIns = 0, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
         var muster = new ReactionMuster
@@ -48,6 +48,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
             CoinCurrencyId = coins > 0 ? coinCurrencyId : null,
             RetentionHours = retentionHours,
             Capacity = capacity,
+            MinCheckIns = minCheckIns,
             ExpiresAt = expiresAt,
             Status = MusterStatus.Open,
             CreatedBy = createdBy,
@@ -206,8 +207,10 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         await db.SaveChangesAsync(ct);
 
         // Pay a non-linked muster's reward (points + coins) to everyone on its roster, once, at close. (Linked musters
-        // are paid by the session close; cancelled musters pay nothing.) Idempotent per (muster, user, leg).
-        if (status != MusterStatus.Cancelled && muster.SessionLinks.Count == 0)
+        // are paid by the session close; cancelled musters pay nothing.) Idempotent per (muster, user, leg). The
+        // minimum-check-ins gate: a roster that fell short of MinCheckIns pays nobody.
+        if (status != MusterStatus.Cancelled && muster.SessionLinks.Count == 0
+            && muster.Participants.Count >= muster.MinCheckIns)
         {
             foreach (var p in muster.Participants)
             {

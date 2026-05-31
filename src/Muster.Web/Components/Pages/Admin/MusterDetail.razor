@@ -39,6 +39,10 @@ else if (State == AccessState.Ready)
                 <div><dt>Status</dt><dd>@_m.Status</dd></div>
                 <div><dt>Checked in</dt><dd>@_m.Participants.Count@(_m.Capacity is { } c ? $" / {c}" : "")</dd></div>
                 <div><dt>Reward</dt><dd>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</dd></div>
+                @if (_m.MinCheckIns > 0)
+                {
+                    <div><dt>Min to reward</dt><dd>@_m.Participants.Count / @_m.MinCheckIns @(_m.Participants.Count >= _m.MinCheckIns ? "✅ met" : "⚠️ not met")</dd></div>
+                }
                 <div><dt>Created</dt><dd><LocalTime Value="_m.CreatedAt" /> by @Name(_m.CreatedBy)</dd></div>
                 @if (_m.ExpiresAt is { } ex)
                 {

@@ -21,6 +21,7 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 ## Rewards
 - A muster grants **Points** (participation) and optional **Coins** (a spendable currency), paid **at close** — not on check-in, so removing someone before close needs no reversal.
 - Values resolve **template → custom → guild defaults**; both 0 = check-in tracking only.
+- **Minimum check-ins to reward** — an optional gate: if fewer than N members check in, *nobody* is rewarded (the card shows progress toward it). Settable as a guild default, per template, or per muster.
 
 ## Templates
 - Named presets (e.g. "Tactical Strike Group") set Points, Coins + coin type, retention, and optional capacity/expiry — so creators pick a type instead of dialing in rewards.

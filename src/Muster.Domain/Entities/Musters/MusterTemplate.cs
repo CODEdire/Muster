@@ -37,6 +37,9 @@ public class MusterTemplate
     /// <summary>Optional default hard cap applied to musters from this template (null = uncapped).</summary>
     public int? Capacity { get; set; }
 
+    /// <summary>Minimum check-ins required before this template's musters pay out (0 = no minimum).</summary>
+    public int MinCheckIns { get; set; }
+
     /// <summary>Optional default auto-expire window in hours (null = no auto-expire).</summary>
     public int? ExpiryHours { get; set; }
 

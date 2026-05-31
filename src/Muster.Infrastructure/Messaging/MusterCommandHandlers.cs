@@ -51,7 +51,7 @@ public static class CreateMusterHandler
 
         // Resolve effective values: template (if any) is the base; a manager's non-null custom fields override; with
         // no template, a manager's values fall back to the guild defaults.
-        long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires;
+        long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires; int minCheckIns;
 
         var now = DateTimeOffset.UtcNow;
         // Guild default max active time (0 = none). A template's own ExpiryHours wins; if a template doesn't set one,
@@ -65,6 +65,7 @@ public static class CreateMusterHandler
             coinCcy = template.CoinCurrencyId;
             retention = template.RetentionHours;
             capacity = template.Capacity;
+            minCheckIns = template.MinCheckIns;
             expires = template.ExpiryHours is { } eh ? now.AddHours(eh) : GuildExpiry();
 
             if (isManager) // overrides
@@ -73,6 +74,7 @@ public static class CreateMusterHandler
                 if (command.Coins is { } c) { coins = c; coinCcy = command.CoinCurrencyId ?? coinCcy; }
                 if (command.Capacity is { } cap) capacity = cap;
                 if (command.ExpiresAt is { } ex) expires = ex;
+                if (command.MinCheckIns is { } mc) minCheckIns = mc;
             }
         }
         else
@@ -82,6 +84,7 @@ public static class CreateMusterHandler
             coinCcy = command.CoinCurrencyId ?? defaults.DefaultCoinCurrencyId;
             retention = defaults.BoardRetentionHours;
             capacity = command.Capacity;
+            minCheckIns = command.MinCheckIns ?? defaults.DefaultMinCheckIns;
             expires = command.ExpiresAt ?? GuildExpiry();
         }
 
@@ -93,6 +96,17 @@ public static class CreateMusterHandler
         if (capacity is <= 0)
         {
             return Result<Guid>.Fail("BadCapacity");
+        }
+
+        if (minCheckIns < 0)
+        {
+            return Result<Guid>.Fail("BadMinimum");
+        }
+
+        // A minimum above a hard cap could never be reached — the muster would always pay nobody.
+        if (capacity is { } capVal && minCheckIns > capVal)
+        {
+            return Result<Guid>.Fail("MinAboveCapacity");
         }
 
         // Coins require a spendable currency that belongs to this guild.
@@ -124,7 +138,7 @@ public static class CreateMusterHandler
         var muster = await musters.CreateAsync(
             command.GuildId, command.ChannelId, title, prompt, points, coins, coinCcy, retention,
             capacity, expires, command.ActorId,
-            sessionId: command.SessionId, checkInCreator: checkInCreator, ct: ct);
+            sessionId: command.SessionId, checkInCreator: checkInCreator, minCheckIns: minCheckIns, ct: ct);
 
         await bus.PublishAsync(new MusterChanged(command.GuildId, muster.Id, MusterChangeKind.Created));
         return Result<Guid>.Success(muster.Id);

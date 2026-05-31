@@ -141,7 +141,8 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 guildId, channelId, title: null, prompt: $"Check in for {name}",
                 points: musterCfg?.DefaultPoints ?? 0, coins: musterCfg?.DefaultCoins ?? 0, coinCurrencyId: musterCfg?.DefaultCoinCurrencyId,
                 retentionHours: musterCfg?.BoardRetentionHours ?? 48, capacity: null, expiresAt: expiresAt, createdBy: openedBy,
-                sessionId: session.Id, checkInCreator: musterCfg?.CreatorAutoCheckIn ?? true, ct: ct);
+                sessionId: session.Id, checkInCreator: musterCfg?.CreatorAutoCheckIn ?? true,
+                minCheckIns: musterCfg?.DefaultMinCheckIns ?? 0, ct: ct);
 
             session.CoinGate = musterCfg?.AutoCreateGate ?? SessionCoinGate.Any;
             await db.SaveChangesAsync(ct);
@@ -524,7 +525,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             // to several sessions pays its bonus once (the first attended close).
             foreach (var m in linkedMusters)
             {
-                if (m.Status == MusterStatus.Cancelled || !m.Roster.Contains(attendance.UserId))
+                // Skip cancelled musters, non-checked-in attendees, and any muster whose roster fell short of its
+                // minimum-check-ins gate (it pays nobody).
+                if (m.Status == MusterStatus.Cancelled || m.Roster.Count < m.MinCheckIns || !m.Roster.Contains(attendance.UserId))
                 {
                     continue;
                 }

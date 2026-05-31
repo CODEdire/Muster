@@ -25,7 +25,8 @@ public record CreateMuster(
     int? Capacity,
     DateTimeOffset? ExpiresAt,
     Guid? SessionId,
-    bool? CheckInCreator = null) : IGuildCommand;
+    bool? CheckInCreator = null,
+    int? MinCheckIns = null) : IGuildCommand;
 
 /// <summary>Record a member's check-in. <see cref="IGuildCommand.ActorId"/> is the member checking in (the button
 /// clicker), so no manager gate — eligibility (participant role + open/!full/!expired) is enforced in the handler.</summary>

@@ -81,6 +81,11 @@ else if (State == AccessState.Ready)
                 <input type="number" min="0" placeholder="Not assigned" @bind="Input.Coins" @bind:after="ScheduleSave" />
                 <p class="hint">Spendable coins per check-in.</p>
             </div>
+            <div class="field">
+                <label>Minimum check-ins to reward</label>
+                <input type="number" min="0" placeholder="No minimum" @bind="Input.MinCheckIns" @bind:after="ScheduleSave" />
+                <p class="hint">If fewer than this check in, nobody is rewarded. 0 = no minimum.</p>
+            </div>
             <div class="field span2">
                 <label>Coin currency</label>
                 <select @bind="Input.CoinCurrencyId" @bind:after="ScheduleSave">
@@ -226,6 +231,7 @@ else if (State == AccessState.Ready)
             }
             parts.Add(reward.Count == 0 ? "no reward" : string.Join(" + ", reward));
 
+            if (Input.MinCheckIns is > 0) { parts.Add($"min {Input.MinCheckIns}"); }
             if (Input.ExpiryHours is > 0) { parts.Add($"auto-close {Input.ExpiryHours}h"); }
             if (Input.CreatorAutoCheckIn) { parts.Add("self check-in"); }
 
@@ -253,6 +259,7 @@ else if (State == AccessState.Ready)
             Points = ms.DefaultPoints == 0 ? null : ms.DefaultPoints,
             Coins = ms.DefaultCoins == 0 ? null : ms.DefaultCoins,
             CoinCurrencyId = ms.DefaultCoinCurrencyId,
+            MinCheckIns = ms.DefaultMinCheckIns == 0 ? null : ms.DefaultMinCheckIns,
             ExpiryHours = ms.DefaultExpiryHours == 0 ? null : ms.DefaultExpiryHours,
             CreatorAutoCheckIn = ms.CreatorAutoCheckIn,
             AutoCreate = ms.AutoCreateOnSession,
@@ -323,14 +330,15 @@ else if (State == AccessState.Ready)
         var points = Input.Points ?? 0;
         var coins = Input.Coins ?? 0;
         var expiry = Input.ExpiryHours ?? 0;
+        var minCheckIns = Input.MinCheckIns ?? 0;
         var result = await Config.SetMusterSettingsAsync(
             GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
-            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel);
+            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel, minCheckIns);
 
         if (!result.IsError)
         {
             await AuditAsync("muster.config",
-                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} autochannel:{Input.AutoCreateChannel} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
+                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} min:{minCheckIns} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} autochannel:{Input.AutoCreateChannel} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
         }
         _save = result.IsError ? SaveStatus.Error : SaveStatus.Saved;
         _saveMsg = result.IsError ? result.Message : null;
@@ -355,6 +363,7 @@ else if (State == AccessState.Ready)
         public long? Points { get; set; }
         public long? Coins { get; set; }
         public Guid? CoinCurrencyId { get; set; }
+        public int? MinCheckIns { get; set; }
         public int? ExpiryHours { get; set; }
         public bool CreatorAutoCheckIn { get; set; } = true;
         public bool AutoCreate { get; set; }

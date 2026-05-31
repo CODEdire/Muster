@@ -314,7 +314,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         ulong guildId, ulong channelId, int retentionHours, bool autoCreate, SessionCoinGate autoCreateGate,
         long defaultPoints, long defaultCoins, Guid? defaultCoinCurrencyId,
         IReadOnlyList<ulong>? allowedChannelIds = null, bool creatorAutoCheckIn = true, int defaultExpiryHours = 0,
-        MusterAutoCreateChannel autoCreateChannel = MusterAutoCreateChannel.DefaultChannel,
+        MusterAutoCreateChannel autoCreateChannel = MusterAutoCreateChannel.DefaultChannel, int defaultMinCheckIns = 0,
         CancellationToken ct = default)
     {
         var guild = await db.FindGuildAsync(guildId, ct);
@@ -323,9 +323,9 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        if (retentionHours < 0 || defaultPoints < 0 || defaultCoins < 0 || defaultExpiryHours < 0)
+        if (retentionHours < 0 || defaultPoints < 0 || defaultCoins < 0 || defaultExpiryHours < 0 || defaultMinCheckIns < 0)
         {
-            return CommandResult.Error("Retention, expiry, points, and coins can't be negative.");
+            return CommandResult.Error("Retention, expiry, points, coins, and minimum check-ins can't be negative.");
         }
 
         // A default coin reward needs a spendable currency that belongs to this guild.
@@ -353,6 +353,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             s.AutoCreateChannel = autoCreateChannel;
             s.CreatorAutoCheckIn = creatorAutoCheckIn;
             s.DefaultExpiryHours = defaultExpiryHours;
+            s.DefaultMinCheckIns = defaultMinCheckIns;
             s.DefaultPoints = defaultPoints;
             s.DefaultCoins = defaultCoins;
             s.DefaultCoinCurrencyId = defaultCoins > 0 ? defaultCoinCurrencyId : null;

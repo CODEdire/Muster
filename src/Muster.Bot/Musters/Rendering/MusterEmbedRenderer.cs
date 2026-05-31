@@ -41,6 +41,13 @@ public static class MusterEmbedRenderer
             fields.Add(new() { Name = "Reward", Value = string.Join(" · ", reward), Inline = true });
         }
 
+        // Minimum-check-ins gate: show the bar and whether it's met (so members can see when the reward unlocks).
+        if (muster.MinCheckIns > 0)
+        {
+            var met = checkedIn >= muster.MinCheckIns;
+            fields.Add(new() { Name = "Min to reward", Value = $"{(met ? "✅" : "⚠️")} {checkedIn}/{muster.MinCheckIns}", Inline = true });
+        }
+
         if (muster.Status == MusterStatus.Open && muster.ExpiresAt is { } expiry)
         {
             fields.Add(new() { Name = "Closes", Value = $"<t:{expiry.ToUnixTimeSeconds()}:R>", Inline = true });

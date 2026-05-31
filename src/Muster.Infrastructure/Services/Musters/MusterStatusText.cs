@@ -11,6 +11,8 @@ public static class MusterStatusText
         "PromptRequired" => "Give the muster a prompt (what members are checking in for).",
         "RewardNegative" => "Reward can't be negative.",
         "BadCapacity" => "Capacity must be a positive number.",
+        "BadMinimum" => "Minimum check-ins can't be negative.",
+        "MinAboveCapacity" => "Minimum check-ins can't be more than the capacity.",
         "ChannelNotAllowed" => "That channel isn't on the allowed list for musters.",
         "CoinCurrencyInvalid" => "Pick a spendable currency in this server for the coin reward.",
         "TemplateNotFound" => "That template doesn't exist or is disabled.",

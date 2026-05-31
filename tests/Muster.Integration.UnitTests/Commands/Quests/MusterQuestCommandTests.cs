@@ -162,6 +162,42 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_MinCheckIns_GatesPayout_AtClose()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, _, _, _) = NewMusters(db);
+
+        // Standalone muster, 10 pts, needs 2 check-ins to pay.
+        var muster = await musters.CreateAsync(1, 0, null, "Roll call", points: 10, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: null, createdBy: 7, minCheckIns: 2);
+
+        // Only one checks in → below the minimum → close pays nobody.
+        await musters.CheckInAsync(muster.Id, 50, MusterParticipantSource.Admin);
+        Assert.True(await musters.CloseAsync(muster.Id, MusterStatus.Closed));
+        Assert.False(await db.Wallets.AnyAsync(w => w.UserId == 50 && w.Balance != 0));
+
+        // A second muster that reaches the minimum pays everyone on the roster.
+        var ok = await musters.CreateAsync(1, 0, null, "Roll call 2", points: 10, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: null, createdBy: 7, minCheckIns: 2);
+        await musters.CheckInAsync(ok.Id, 60, MusterParticipantSource.Admin);
+        await musters.CheckInAsync(ok.Id, 61, MusterParticipantSource.Admin);
+        await musters.CloseAsync(ok.Id, MusterStatus.Closed);
+        Assert.Equal(10, (await db.Wallets.SingleAsync(w => w.UserId == 60)).Balance);
+        Assert.Equal(10, (await db.Wallets.SingleAsync(w => w.UserId == 61)).Balance);
+    }
+
+    [Fact]
+    public async Task Muster_Create_RejectsMinimumAboveCapacity()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db);
+
+        var cmd = new CreateMuster(1, 7, 500, null, "p", TemplateId: null, Points: 1, Coins: null, CoinCurrencyId: null,
+            Capacity: 2, ExpiresAt: null, SessionId: null, MinCheckIns: 5);
+        Assert.Equal("MinAboveCapacity", (await CreateMusterHandler.Handle(cmd, auth, db, musters, store, bus, default)).Status);
+    }
+
+    [Fact]
     public async Task Muster_Create_HonorsChannelAllowList()
     {
         using var db = await SeededAsync(ownerId: 7);
