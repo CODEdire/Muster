@@ -315,6 +315,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         long defaultPoints, long defaultCoins, Guid? defaultCoinCurrencyId,
         IReadOnlyList<ulong>? allowedChannelIds = null, bool creatorAutoCheckIn = true, int defaultExpiryHours = 0,
         MusterAutoCreateChannel autoCreateChannel = MusterAutoCreateChannel.DefaultChannel, int? defaultMinCheckIns = null,
+        MusterResolveMode defaultResolveMode = MusterResolveMode.Pay,
         CancellationToken ct = default)
     {
         var guild = await db.FindGuildAsync(guildId, ct);
@@ -353,6 +354,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             s.AutoCreateChannel = autoCreateChannel;
             s.CreatorAutoCheckIn = creatorAutoCheckIn;
             s.DefaultExpiryHours = defaultExpiryHours;
+            s.DefaultResolveMode = defaultResolveMode;
             s.DefaultMinCheckIns = defaultMinCheckIns;
             s.DefaultPoints = defaultPoints;
             s.DefaultCoins = defaultCoins;

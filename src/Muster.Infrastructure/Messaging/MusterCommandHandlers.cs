@@ -134,11 +134,14 @@ public static class CreateMusterHandler
         title = string.IsNullOrWhiteSpace(title) ? null : title;
 
         var checkInCreator = command.CheckInCreator ?? defaults.CreatorAutoCheckIn;
+        // Resolve mode is a workflow setting (not reward), so a creator may pick it per-muster: command → template → guild.
+        var resolveMode = command.ResolveMode ?? template?.ResolveMode ?? defaults.DefaultResolveMode;
 
         var muster = await musters.CreateAsync(
             command.GuildId, command.ChannelId, title, prompt, points, coins, coinCcy, retention,
             capacity, expires, command.ActorId,
-            sessionId: command.SessionId, checkInCreator: checkInCreator, minCheckIns: minCheckIns, ct: ct);
+            sessionId: command.SessionId, checkInCreator: checkInCreator, minCheckIns: minCheckIns,
+            resolveMode: resolveMode, ct: ct);
 
         await bus.PublishAsync(new MusterChanged(command.GuildId, muster.Id, MusterChangeKind.Created));
         return Result<Guid>.Success(muster.Id);
@@ -268,7 +271,7 @@ public static class EditMusterHandler
 
         var m = await db.ReactionMusters
             .Where(x => x.Id == command.MusterId && x.GuildId == command.GuildId)
-            .Select(x => new { x.CreatedBy, x.Status, x.Points, x.Coins, x.CoinCurrencyId, x.MinCheckIns })
+            .Select(x => new { x.CreatedBy, x.Status, x.Points, x.Coins, x.CoinCurrencyId, x.MinCheckIns, x.ResolveMode })
             .FirstOrDefaultAsync(ct);
         if (m is null)
         {
@@ -291,6 +294,7 @@ public static class EditMusterHandler
         var coins = isManager ? command.Coins ?? 0 : m.Coins;
         var coinCcy = isManager ? command.CoinCurrencyId : m.CoinCurrencyId;
         var minCheckIns = isManager ? command.MinCheckIns : m.MinCheckIns;
+        var resolveMode = command.ResolveMode ?? m.ResolveMode; // workflow setting — owner or manager may change it
 
         if (points < 0 || coins < 0)
         {
@@ -320,7 +324,7 @@ public static class EditMusterHandler
         var title = string.IsNullOrWhiteSpace(command.Title) ? null : command.Title.Trim();
 
         if (!await musters.EditAsync(command.MusterId, title, command.Prompt.Trim(), command.Capacity, command.ExpiresAt,
-                points, coins, coinCcy, minCheckIns, ct))
+                points, coins, coinCcy, minCheckIns, resolveMode, ct))
         {
             return Result.Fail("AlreadyClosed");
         }
@@ -346,6 +350,58 @@ public static class CloseMusterHandler
         }
 
         if (!await musters.CloseAsync(command.MusterId, MusterStatus.Closed, ct))
+        {
+            return Result.Fail("AlreadyClosed");
+        }
+
+        await bus.PublishAsync(new MusterChanged(command.GuildId, command.MusterId, MusterChangeKind.Closed));
+        return Result.Success();
+    }
+}
+
+public static class LockMusterHandler
+{
+    public static async Task<Result> Handle(
+        LockMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
+    {
+        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
+        {
+            return Result.Fail("NotFound");
+        }
+
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        {
+            return Result.Fail("Forbidden");
+        }
+
+        // Only an Open muster can be locked for review (LockAsync no-ops otherwise).
+        if (!await musters.LockAsync(command.MusterId, ct))
+        {
+            return Result.Fail("NotOpen");
+        }
+
+        await bus.PublishAsync(new MusterChanged(command.GuildId, command.MusterId, MusterChangeKind.Edited));
+        return Result.Success();
+    }
+}
+
+public static class CancelMusterHandler
+{
+    public static async Task<Result> Handle(
+        CancelMuster command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
+    {
+        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
+        {
+            return Result.Fail("NotFound");
+        }
+
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        {
+            return Result.Fail("Forbidden");
+        }
+
+        // Discard without paying — Cancelled pays nobody (CloseAsync skips the payout for Cancelled).
+        if (!await musters.CloseAsync(command.MusterId, MusterStatus.Cancelled, ct))
         {
             return Result.Fail("AlreadyClosed");
         }

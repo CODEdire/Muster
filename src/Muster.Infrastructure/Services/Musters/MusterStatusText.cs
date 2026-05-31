@@ -27,6 +27,7 @@ public static class MusterStatusText
         "NotEligible" => "You're not eligible to check in.",
         "NotAParticipant" => "That member isn't on this muster.",
         "AlreadyClosed" => "This muster is already closed.",
+        "NotOpen" => "This muster isn't open.",
         "AlreadyLinked" => "That muster is already linked to this session.",
         "NotLinked" => "That muster isn't linked to this session.",
         _ => $"Couldn't do that — {status}.",

@@ -113,7 +113,7 @@ else if (State == AccessState.Ready)
                         {
                             <tr>
                                 <td><a href="@MusterLinks.MusterDetail(GuildId, m.Id)">@m.Display</a></td>
-                                <td>@StatusLabel(m.Status)</td>
+                                <td>@StatusLabel(m)</td>
                                 <td class="num">
                                     @m.CheckedIn@(m.Capacity is { } c ? $" / {c}" : "")
                                     @if (m.MinCheckIns is { } min && min > 0)
@@ -142,10 +142,15 @@ else if (State == AccessState.Ready)
                                     @if (CanManage(m) && m.Status == MusterStatus.Open)
                                     {
                                         <a class="icon-btn" title="Edit" href="@MusterLinks.MusterEdit(GuildId, m.Id)"><span class="material-symbols-outlined">edit</span></a>
+                                        <button type="button" class="icon-btn" title="Lock for review" disabled="@_busy" @onclick="() => LockAsync(m.Id)"><span class="material-symbols-outlined">rule</span></button>
                                     }
                                     @if (CanManage(m) && m.Status is MusterStatus.Open or MusterStatus.Locked)
                                     {
-                                        <button type="button" class="icon-btn danger" title="Close" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">stop_circle</span></button>
+                                        <button type="button" class="icon-btn" title="@(m.Status == MusterStatus.Locked && m.Sessions.Count == 0 ? "Approve & pay" : "Close & pay")" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">paid</span></button>
+                                    }
+                                    @if (CanManage(m) && m.Status == MusterStatus.Locked && m.Sessions.Count == 0)
+                                    {
+                                        <button type="button" class="icon-btn danger" title="Discard" disabled="@_busy" @onclick="() => DiscardAsync(m.Id)"><span class="material-symbols-outlined">block</span></button>
                                     }
                                 </td>
                             </tr>
@@ -274,7 +279,11 @@ else if (State == AccessState.Ready)
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
 
-    private async Task CloseAsync(Guid musterId)
+    private Task CloseAsync(Guid musterId) => ActAsync(new CloseMuster(GuildId, UserId, musterId), "Done.");
+    private Task LockAsync(Guid musterId) => ActAsync(new LockMuster(GuildId, UserId, musterId), "Locked for review.");
+    private Task DiscardAsync(Guid musterId) => ActAsync(new CancelMuster(GuildId, UserId, musterId), "Muster discarded.");
+
+    private async Task ActAsync(IGuildCommand command, string okMessage)
     {
         if (_busy)
         {
@@ -284,8 +293,8 @@ else if (State == AccessState.Ready)
         _busy = true;
         try
         {
-            var result = await Bus.InvokeAsync<Result>(new CloseMuster(GuildId, UserId, musterId));
-            Message = result.Ok ? "Muster closed." : MusterStatusText.Friendly(result.Status);
+            var result = await Bus.InvokeAsync<Result>(command);
+            Message = result.Ok ? okMessage : MusterStatusText.Friendly(result.Status);
         }
         finally
         {
@@ -302,13 +311,13 @@ else if (State == AccessState.Ready)
         return parts.Count == 0 ? "—" : string.Join(" + ", parts);
     }
 
-    private static string StatusLabel(MusterStatus s) => s switch
+    private static string StatusLabel(MusterListItem m) => m.Status switch
     {
         MusterStatus.Open => "🟢 Open",
-        MusterStatus.Locked => "🔒 Locked",
+        MusterStatus.Locked => m.Sessions.Count > 0 ? "🔒 Locked" : "🔍 Pending review",
         MusterStatus.Closed => "✅ Closed",
         MusterStatus.Expired => "⌛ Expired",
         MusterStatus.Cancelled => "🚫 Cancelled",
-        _ => s.ToString(),
+        _ => m.Status.ToString(),
     };
 }

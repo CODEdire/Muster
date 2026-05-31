@@ -50,6 +50,7 @@ admin sets them in the web/bot, live in the guild's own table and are unaffected
 | `GuildDefaults:Musters:DefaultExpiryHours` | int | `0` | ✅ | Default max active time before a muster auto-closes; 0 = no expiry. Templates/per-post override. |
 | `GuildDefaults:Musters:DefaultMinCheckIns` | int? | _unset_ | ✅ | Default minimum check-ins before a muster pays out; unset = no minimum, 0 = an always-met minimum. Templates/per-post override. |
 | `GuildDefaults:Musters:AutoCreateChannel` | enum | `DefaultChannel` | ✅ | Where an auto-created muster posts: `DefaultChannel` or `SessionChannel` (session's channel when allow-listed, else default). |
+| `GuildDefaults:Musters:DefaultResolveMode` | enum | `Pay` | ✅ | What a standalone muster's auto-close does: `Pay` (close + pay now) or `Review` (hold pending for manual approval). Templates/per-post override. |
 | `GuildDefaults:Musters:MusterChannelId` | ulong | `0` | ⚠️ rarely | Default card channel. Channel ids are **per-guild** — a platform-wide value almost never makes sense. Leave unset. |
 | `GuildDefaults:Musters:AllowedChannelIds` | ulong[] | `[]` | ⚠️ rarely | Allowed posting channels. Per-guild; not normally a platform default. |
 

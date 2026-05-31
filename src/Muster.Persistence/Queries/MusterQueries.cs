@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Contracts;
 using Muster.Domain.Entities.Musters;
 using Muster.Domain.Enums;
 
@@ -68,20 +69,21 @@ public static class MusterQueries
             .ToList();
     }
 
-    /// <summary>Open, non-linked musters past their <c>ExpiresAt</c> — the sweep auto-expires (and pays out) these.
-    /// Linked musters are excluded: they live with their session and are closed/paid at session close.</summary>
+    /// <summary>Open, standalone, <b>Pay-mode</b> musters past their <c>ExpiresAt</c> — the sweep auto-expires (and
+    /// pays out) these. Linked and Review-mode musters lock instead (see <see cref="ListDueLockMustersAsync"/>).</summary>
     public static Task<List<MusterDueExpiry>> ListDueExpiredMustersAsync(this MusterDbContext db, DateTimeOffset now, CancellationToken ct = default)
         => db.ReactionMusters
-            .Where(m => m.Status == MusterStatus.Open && m.ExpiresAt != null && m.ExpiresAt <= now && !m.SessionLinks.Any())
+            .Where(m => m.Status == MusterStatus.Open && m.ExpiresAt != null && m.ExpiresAt <= now
+                && !m.SessionLinks.Any() && m.ResolveMode == MusterResolveMode.Pay)
             .Select(m => new MusterDueExpiry(m.Id, m.GuildId))
             .ToListAsync(ct);
 
-    /// <summary>Open, <b>linked</b> musters past their <c>ExpiresAt</c> — the sweep soft-closes (Locks) these so they
-    /// stop taking check-ins; they're paid + closed when their session ends. (Standalone ones go through
-    /// <see cref="ListDueExpiredMustersAsync"/> instead.)</summary>
+    /// <summary>Open musters past their <c>ExpiresAt</c> that should soft-close (Lock) rather than pay now: <b>linked</b>
+    /// ones (paid + closed at session close) and standalone <b>Review-mode</b> ones (awaiting manual approval).</summary>
     public static Task<List<MusterDueExpiry>> ListDueLockMustersAsync(this MusterDbContext db, DateTimeOffset now, CancellationToken ct = default)
         => db.ReactionMusters
-            .Where(m => m.Status == MusterStatus.Open && m.ExpiresAt != null && m.ExpiresAt <= now && m.SessionLinks.Any())
+            .Where(m => m.Status == MusterStatus.Open && m.ExpiresAt != null && m.ExpiresAt <= now
+                && (m.SessionLinks.Any() || m.ResolveMode == MusterResolveMode.Review))
             .Select(m => new MusterDueExpiry(m.Id, m.GuildId))
             .ToListAsync(ct);
 

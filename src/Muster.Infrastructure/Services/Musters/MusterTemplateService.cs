@@ -46,6 +46,7 @@ public class MusterTemplateService(MusterDbContext db)
         row.Capacity = input.Capacity;
         row.MinCheckIns = input.MinCheckIns;
         row.ExpiryHours = input.ExpiryHours;
+        row.ResolveMode = input.ResolveMode;
         row.Enabled = input.Enabled;
         await db.SaveChangesAsync(ct);
         return row;

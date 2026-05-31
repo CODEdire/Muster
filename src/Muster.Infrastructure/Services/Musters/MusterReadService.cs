@@ -28,8 +28,8 @@ public record MusterCard(
 /// <summary>One muster's detail for the web admin page.</summary>
 public record MusterDetailView(
     Guid Id, ulong GuildId, string? Title, string Prompt, MusterStatus Status,
-    long Points, long Coins, string? CoinCode, int? Capacity, int? MinCheckIns, DateTimeOffset? ExpiresAt,
-    DateTimeOffset CreatedAt, ulong CreatedBy, DateTimeOffset? ClosedAt, ulong ChannelId,
+    long Points, long Coins, string? CoinCode, int? Capacity, int? MinCheckIns, MusterResolveMode ResolveMode,
+    DateTimeOffset? ExpiresAt, DateTimeOffset CreatedAt, ulong CreatedBy, DateTimeOffset? ClosedAt, ulong ChannelId,
     IReadOnlyList<MusterParticipantView> Participants, IReadOnlyList<MusterLinkedSession> Sessions);
 
 public record MusterParticipantView(ulong UserId, MusterParticipantSource Source, DateTimeOffset CheckedInAt);
@@ -147,7 +147,7 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
             .Select(m => new
             {
                 m.Id, m.GuildId, m.Title, m.Prompt, m.Status, m.Points, m.Coins, m.CoinCurrencyId,
-                m.Capacity, m.MinCheckIns, m.ExpiresAt, m.CreatedAt, m.CreatedBy, m.ClosedAt, m.ChannelId,
+                m.Capacity, m.MinCheckIns, m.ResolveMode, m.ExpiresAt, m.CreatedAt, m.CreatedBy, m.ClosedAt, m.ChannelId,
                 Code = db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
                 Participants = m.Participants
                     .OrderBy(p => p.CheckedInAt)
@@ -166,7 +166,7 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
 
         return new MusterDetailView(
             muster.Id, muster.GuildId, muster.Title, muster.Prompt, muster.Status, muster.Points, muster.Coins, muster.Code,
-            muster.Capacity, muster.MinCheckIns, muster.ExpiresAt, muster.CreatedAt, muster.CreatedBy, muster.ClosedAt, muster.ChannelId,
+            muster.Capacity, muster.MinCheckIns, muster.ResolveMode, muster.ExpiresAt, muster.CreatedAt, muster.CreatedBy, muster.ClosedAt, muster.ChannelId,
             muster.Participants, muster.Sessions);
     }
 

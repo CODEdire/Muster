@@ -5,6 +5,7 @@
 @inherits GuildAdminComponentBase
 @inject MusterTemplateService Templates
 @inject ICurrencyAdminService CurrencyAdmin
+@using Muster.Contracts
 @using Muster.Domain.Entities.Musters
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Membership
@@ -136,6 +137,15 @@ else if (State == AccessState.Ready)
                         <label>Keep terminal cards for</label>
                         <div class="suffixed"><input type="number" min="0" @bind="_t.RetentionHours" /><span>hours</span></div>
                         <p class="hint">How long closed cards linger before cleanup.</p>
+                    </div>
+                    <div class="field">
+                        <label>When it auto-closes</label>
+                        <select @bind="_t.ResolveMode">
+                            <option value="">Inherit guild default</option>
+                            <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                            <option value="@MusterResolveMode.Review">Hold for review</option>
+                        </select>
+                        <p class="hint">Review holds the muster pending until an owner/manager approves.</p>
                     </div>
                 </div>
             </AccordionPane>

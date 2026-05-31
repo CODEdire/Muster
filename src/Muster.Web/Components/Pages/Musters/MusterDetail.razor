@@ -27,9 +27,26 @@ else if (State == AccessState.Ready)
                     <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterEdit(GuildId, MusterId)">
                         <span class="material-symbols-outlined">edit</span> Edit
                     </a>
+                    <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="LockAsync">
+                        <span class="material-symbols-outlined">rule</span> Lock for review
+                    </button>
+                    <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync">
+                        <span class="material-symbols-outlined">paid</span> Close &amp; pay
+                    </button>
                 }
-                @if (_m.Status is MusterStatus.Open or MusterStatus.Locked)
+                else if (_m.Status == MusterStatus.Locked && _m.Sessions.Count == 0)
                 {
+                    @* Pending review (standalone). *@
+                    <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync">
+                        <span class="material-symbols-outlined">paid</span> Approve &amp; pay
+                    </button>
+                    <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="DiscardAsync">
+                        <span class="material-symbols-outlined">block</span> Discard
+                    </button>
+                }
+                else if (_m.Status == MusterStatus.Locked)
+                {
+                    @* Linked muster — resolves at session close; managers can still force-close. *@
                     <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync">
                         <span class="material-symbols-outlined">stop_circle</span> Close
                     </button>
@@ -260,10 +277,10 @@ else if (State == AccessState.Ready)
         return parts.Count == 0 ? "Check-in only" : string.Join(" + ", parts);
     }
 
-    private static string StatusLabel(MusterStatus s) => s switch
+    private string StatusLabel(MusterStatus s) => s switch
     {
         MusterStatus.Open => "🟢 Open",
-        MusterStatus.Locked => "🔒 Locked — closes with session",
+        MusterStatus.Locked => (_m?.Sessions.Count ?? 0) > 0 ? "🔒 Locked — closes with session" : "🔍 Pending review",
         MusterStatus.Closed => "✅ Closed",
         MusterStatus.Expired => "⌛ Expired",
         MusterStatus.Cancelled => "🚫 Cancelled",
@@ -274,6 +291,8 @@ else if (State == AccessState.Ready)
     private async Task CheckOutSelfAsync() => await RunAsync(new CheckOutMuster(GuildId, UserId, MusterId), "Checked out.");
 
     private async Task CloseAsync() => await RunAsync(new CloseMuster(GuildId, UserId, MusterId), "Muster closed.");
+    private async Task LockAsync() => await RunAsync(new LockMuster(GuildId, UserId, MusterId), "Locked for review.");
+    private async Task DiscardAsync() => await RunAsync(new CancelMuster(GuildId, UserId, MusterId), "Muster discarded.");
 
     private async Task RemoveCardAsync()
     {

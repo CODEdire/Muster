@@ -34,6 +34,11 @@ public class GuildMusterSettings
     /// soft-closes (Locked) and pays at session close. Templates/per-create values override.</summary>
     public int DefaultExpiryHours { get; set; }
 
+    /// <summary>What a standalone muster does when its window ends: <see cref="MusterResolveMode.Pay"/> (close + pay
+    /// immediately) or <see cref="MusterResolveMode.Review"/> (soft-close to pending for manual approval).
+    /// Templates/per-create values override.</summary>
+    public MusterResolveMode DefaultResolveMode { get; set; } = MusterResolveMode.Pay;
+
     /// <summary>Gate mode applied to a session's coin when a muster is auto-created for it on open (Any = checking
     /// into the muster suffices). Default <see cref="SessionCoinGate.Any"/>.</summary>
     public SessionCoinGate AutoCreateGate { get; set; } = SessionCoinGate.Any;

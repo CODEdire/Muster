@@ -1,3 +1,4 @@
+using Muster.Contracts;
 using Muster.Domain.Enums;
 
 namespace Muster.Domain.Entities.Musters;
@@ -44,6 +45,11 @@ public class ReactionMuster
     public int RetentionHours { get; set; } = 48;
 
     public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>What happens when this (standalone) muster's window ends — pay immediately, or soft-close to pending
+    /// review. Snapshot of the template/guild default at creation. Linked musters always soft-close at their window
+    /// (they resolve at session close) regardless of this.</summary>
+    public MusterResolveMode ResolveMode { get; set; } = MusterResolveMode.Pay;
 
     public MusterStatus Status { get; set; } = MusterStatus.Open;
 

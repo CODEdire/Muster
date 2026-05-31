@@ -72,6 +72,14 @@ else if (State == AccessState.Ready)
                 <p class="hint">Max active time before a muster auto-closes (linked ones lock until the session ends).</p>
             </div>
             <div class="field">
+                <label>When a muster auto-closes</label>
+                <select @bind="Input.ResolveMode" @bind:after="ScheduleSave">
+                    <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                    <option value="@MusterResolveMode.Review">Hold for review</option>
+                </select>
+                <p class="hint">Review soft-closes to a pending state so an owner/manager approves before paying.</p>
+            </div>
+            <div class="field">
                 <label>Default points</label>
                 <input type="number" min="0" placeholder="Not assigned" @bind="Input.Points" @bind:after="ScheduleSave" />
                 <p class="hint">Participation points per check-in.</p>
@@ -261,6 +269,7 @@ else if (State == AccessState.Ready)
             CoinCurrencyId = ms.DefaultCoinCurrencyId,
             MinCheckIns = ms.DefaultMinCheckIns,
             ExpiryHours = ms.DefaultExpiryHours == 0 ? null : ms.DefaultExpiryHours,
+            ResolveMode = ms.DefaultResolveMode,
             CreatorAutoCheckIn = ms.CreatorAutoCheckIn,
             AutoCreate = ms.AutoCreateOnSession,
             Gate = ms.AutoCreateGate,
@@ -332,7 +341,8 @@ else if (State == AccessState.Ready)
         var expiry = Input.ExpiryHours ?? 0;
         var result = await Config.SetMusterSettingsAsync(
             GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
-            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel, Input.MinCheckIns);
+            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel, Input.MinCheckIns,
+            Input.ResolveMode);
 
         if (!result.IsError)
         {
@@ -364,6 +374,7 @@ else if (State == AccessState.Ready)
         public Guid? CoinCurrencyId { get; set; }
         public int? MinCheckIns { get; set; }
         public int? ExpiryHours { get; set; }
+        public MusterResolveMode ResolveMode { get; set; } = MusterResolveMode.Pay;
         public bool CreatorAutoCheckIn { get; set; } = true;
         public bool AutoCreate { get; set; }
         public SessionCoinGate Gate { get; set; } = SessionCoinGate.Any;

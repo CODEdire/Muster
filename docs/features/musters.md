@@ -14,6 +14,11 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - A muster can **auto-close after a max active time** so it doesn't go stale: set per-template, per-post, or as a **guild default** (`DefaultExpiryHours`, 0 = none); a template's own expiry wins, then the guild default.
 - A **standalone** muster past its window **expires and pays out**. A **linked** muster instead **soft-closes (Locked)** — it stops taking check-ins (button disabled) but isn't terminal; it's paid + closed when its session ends.
 
+## Pay vs review
+- A standalone muster's **resolve mode** decides what auto-close does: **Pay** (close + pay immediately, the default) or **Review** (soft-close to a **pending** state — no check-ins, not paid).
+- In **pending review** the owner/manager curates the roster, then **Approve & pay** (close) or **Discard** (cancel, pay nothing). A manager can also **Lock for review** any open muster manually; a normal **Close & pay** still finalizes immediately.
+- Resolve mode resolves **per-muster → template → guild default**.
+
 ## Channels
 - Posts to the guild's configured **default channel**, an **explicit per-post channel**, or the channel the command ran in.
 - Optional **allowed-channel list** — empty = any chat channel (text or voice), set = restrict; pickers, autocomplete, and posting all honor it.

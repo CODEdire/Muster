@@ -131,6 +131,14 @@ else if (State == AccessState.Ready)
                         <label>Auto-close after</label>
                         <div class="suffixed"><input type="number" min="0" placeholder="Guild default" @bind="_expiresHours" /><span>hours</span></div>
                     </div>
+                    <div class="field">
+                        <label>When it auto-closes</label>
+                        <select @bind="_resolveMode">
+                            <option value="">Default</option>
+                            <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                            <option value="@MusterResolveMode.Review">Hold for review</option>
+                        </select>
+                    </div>
                     <div class="field span2">
                         <label class="checkbox">
                             <input type="checkbox" @bind="_checkMeIn" />
@@ -148,6 +156,7 @@ else if (State == AccessState.Ready)
 
     private bool _posting;
     private bool _isManager;
+    private MusterResolveMode? _resolveMode;
 
     private string _prompt = "";
     private string _title = "";
@@ -219,7 +228,8 @@ else if (State == AccessState.Ready)
                 CoinCurrencyId: custom && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
                 Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: null,
                 CheckInCreator: _checkMeIn,
-                MinCheckIns: custom ? _minCheckIns : null);
+                MinCheckIns: custom ? _minCheckIns : null,
+                ResolveMode: _resolveMode);
 
             var result = await Bus.InvokeAsync<Result<Guid>>(command);
             if (result.Ok)

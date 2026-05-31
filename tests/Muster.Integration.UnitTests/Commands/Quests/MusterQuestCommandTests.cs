@@ -198,6 +198,60 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_ReviewMode_AutoExpiry_LocksWithoutPaying_ThenApprovePays()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, _, bus) = NewMusters(db);
+
+        // Standalone, Review mode, already past its window, creator on the roster.
+        var m = await musters.CreateAsync(1, 0, null, "Roll call", points: 10, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: DateTimeOffset.UtcNow.AddHours(-1), createdBy: 7,
+            checkInCreator: true, resolveMode: MusterResolveMode.Review);
+
+        // The lazy-expiry path soft-closes to pending review (not Expired) and pays nobody.
+        await musters.CheckInAsync(m.Id, 50, MusterParticipantSource.Button);
+        Assert.Equal(MusterStatus.Locked, (await db.ReactionMusters.SingleAsync(x => x.Id == m.Id)).Status);
+        Assert.False(await db.Wallets.AnyAsync(w => w.UserId == 7 && w.Balance != 0));
+
+        // Approve & pay (Close) finalizes the roster.
+        Assert.True((await CloseMusterHandler.Handle(new CloseMuster(1, 7, m.Id), auth, db, musters, bus, default)).Ok);
+        Assert.Equal(10, (await db.Wallets.SingleAsync(w => w.UserId == 7)).Balance);
+    }
+
+    [Fact]
+    public async Task Muster_LockThenDiscard_PaysNothing()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, _, bus) = NewMusters(db);
+
+        var m = await musters.CreateAsync(1, 0, null, "p", points: 10, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: null, createdBy: 7, checkInCreator: true);
+
+        Assert.True((await LockMusterHandler.Handle(new LockMuster(1, 7, m.Id), auth, db, musters, bus, default)).Ok);
+        Assert.Equal(MusterStatus.Locked, (await db.ReactionMusters.SingleAsync(x => x.Id == m.Id)).Status);
+
+        Assert.True((await CancelMusterHandler.Handle(new CancelMuster(1, 7, m.Id), auth, db, musters, bus, default)).Ok);
+        Assert.Equal(MusterStatus.Cancelled, (await db.ReactionMusters.SingleAsync(x => x.Id == m.Id)).Status);
+        Assert.False(await db.Wallets.AnyAsync(w => w.UserId == 7 && w.Balance != 0));
+    }
+
+    [Fact]
+    public async Task Muster_Create_InheritsGuildDefaultResolveMode()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, store, bus) = NewMusters(db);
+        db.GuildMusterSettings.Add(new GuildMusterSettings { GuildId = 1, DefaultResolveMode = MusterResolveMode.Review });
+        await db.SaveChangesAsync();
+
+        var created = await CreateMusterHandler.Handle(
+            new CreateMuster(1, 7, 500, null, "p", TemplateId: null, Points: 1, Coins: null, CoinCurrencyId: null,
+                Capacity: null, ExpiresAt: null, SessionId: null), auth, db, musters, store, bus, default);
+
+        Assert.True(created.Ok);
+        Assert.Equal(MusterResolveMode.Review, (await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync()).ResolveMode);
+    }
+
+    [Fact]
     public async Task Muster_Create_HonorsChannelAllowList()
     {
         using var db = await SeededAsync(ownerId: 7);

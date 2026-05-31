@@ -1,3 +1,5 @@
+using Muster.Contracts;
+
 namespace Muster.Domain.Entities.Musters;
 
 /// <summary>
@@ -43,6 +45,9 @@ public class MusterTemplate
 
     /// <summary>Optional default auto-expire window in hours (null = no auto-expire).</summary>
     public int? ExpiryHours { get; set; }
+
+    /// <summary>How this template's musters resolve when their window ends. null = inherit the guild default.</summary>
+    public MusterResolveMode? ResolveMode { get; set; }
 
     /// <summary>Retired templates stay for history but aren't offered when creating.</summary>
     public bool Enabled { get; set; } = true;

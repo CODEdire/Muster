@@ -26,7 +26,8 @@ public record CreateMuster(
     DateTimeOffset? ExpiresAt,
     Guid? SessionId,
     bool? CheckInCreator = null,
-    int? MinCheckIns = null) : IGuildCommand;
+    int? MinCheckIns = null,
+    MusterResolveMode? ResolveMode = null) : IGuildCommand;
 
 /// <summary>Record a member's check-in. <see cref="IGuildCommand.ActorId"/> is the member checking in (the button
 /// clicker), so no manager gate — eligibility (participant role + open/!full/!expired) is enforced in the handler.</summary>
@@ -59,10 +60,19 @@ public record EditMuster(
     long? Points,
     long? Coins,
     Guid? CoinCurrencyId,
-    int? MinCheckIns) : IGuildCommand;
+    int? MinCheckIns,
+    MusterResolveMode? ResolveMode = null) : IGuildCommand;
 
-/// <summary>Close a muster: stop accepting check-ins and render its card terminal.</summary>
+/// <summary>Close a muster: stop accepting check-ins, pay its roster (non-linked), and render its card terminal.
+/// "Approve &amp; pay" for a pending-review muster routes here too.</summary>
 public record CloseMuster(ulong GuildId, ulong ActorId, Guid MusterId) : IGuildCommand;
+
+/// <summary>Soft-close a muster into pending review (no check-ins, not paid) so an owner/manager can vet the roster
+/// before finalizing. Manual "Lock for review".</summary>
+public record LockMuster(ulong GuildId, ulong ActorId, Guid MusterId) : IGuildCommand;
+
+/// <summary>Discard a muster without paying — sets it Cancelled. For a posted-by-mistake or rejected-after-review muster.</summary>
+public record CancelMuster(ulong GuildId, ulong ActorId, Guid MusterId) : IGuildCommand;
 
 /// <summary>Link a muster to a tracking session so that session's coin mint is gated on muster check-in.</summary>
 public record LinkMusterToSession(ulong GuildId, ulong ActorId, Guid MusterId, Guid SessionId) : IGuildCommand;

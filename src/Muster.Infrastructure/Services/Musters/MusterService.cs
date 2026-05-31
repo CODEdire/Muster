@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities.Musters;
@@ -33,7 +34,8 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         ulong guildId, ulong channelId, string? title, string prompt,
         long points, long coins, Guid? coinCurrencyId, int retentionHours,
         int? capacity, DateTimeOffset? expiresAt, ulong createdBy,
-        Guid? sessionId = null, bool checkInCreator = false, int? minCheckIns = null, CancellationToken ct = default)
+        Guid? sessionId = null, bool checkInCreator = false, int? minCheckIns = null,
+        MusterResolveMode resolveMode = MusterResolveMode.Pay, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
         var muster = new ReactionMuster
@@ -50,6 +52,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
             Capacity = capacity,
             MinCheckIns = minCheckIns,
             ExpiresAt = expiresAt,
+            ResolveMode = resolveMode,
             Status = MusterStatus.Open,
             CreatedBy = createdBy,
             CreatedAt = now,
@@ -93,11 +96,12 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
 
         var isAdmin = source == MusterParticipantSource.Admin;
 
-        // Lazy expiry: a still-Open muster past its window transitions now. A linked muster soft-closes (Locked, pays
-        // at session close); a standalone one expires and pays out immediately.
+        // Lazy expiry: a still-Open muster past its window transitions now. A linked muster (or a standalone one in
+        // Review mode) soft-closes (Locked — pays at session close / awaits manual approval); a standalone Pay-mode
+        // muster expires and pays out immediately.
         if (muster.Status == MusterStatus.Open && muster.ExpiresAt is { } expiry && expiry <= DateTimeOffset.UtcNow)
         {
-            if (muster.SessionLinks.Count > 0)
+            if (muster.SessionLinks.Count > 0 || muster.ResolveMode == MusterResolveMode.Review)
             {
                 await LockAsync(muster.Id, ct);
                 muster.Status = MusterStatus.Locked;
@@ -247,7 +251,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
     /// Returns false if the muster is gone or no longer Open.</summary>
     public async Task<bool> EditAsync(
         Guid musterId, string? title, string prompt, int? capacity, DateTimeOffset? expiresAt,
-        long points, long coins, Guid? coinCurrencyId, int? minCheckIns, CancellationToken ct = default)
+        long points, long coins, Guid? coinCurrencyId, int? minCheckIns, MusterResolveMode resolveMode, CancellationToken ct = default)
     {
         var muster = await db.FindMusterAsync(musterId, ct);
         if (muster is null || muster.Status != MusterStatus.Open)
@@ -263,6 +267,7 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
         muster.Coins = coins;
         muster.CoinCurrencyId = coins > 0 ? coinCurrencyId : null;
         muster.MinCheckIns = minCheckIns;
+        muster.ResolveMode = resolveMode;
         await db.SaveChangesAsync(ct);
         return true;
     }

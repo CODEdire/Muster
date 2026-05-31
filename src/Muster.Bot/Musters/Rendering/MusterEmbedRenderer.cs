@@ -21,7 +21,7 @@ public static class MusterEmbedRenderer
 
         var fields = new List<EmbedFieldProperties>
         {
-            new() { Name = "Status", Value = StatusLabel(muster.Status), Inline = true },
+            new() { Name = "Status", Value = StatusLabel(muster.Status, muster.SessionLinks.Count > 0), Inline = true },
             new() { Name = "Checked in", Value = countValue, Inline = true },
         };
 
@@ -73,10 +73,12 @@ public static class MusterEmbedRenderer
         };
     }
 
-    private static string StatusLabel(MusterStatus s) => s switch
+    private static string StatusLabel(MusterStatus s, bool linked) => s switch
     {
         MusterStatus.Open => "🟢 Open",
-        MusterStatus.Locked => "🔒 Locked — closes with session",
+        // Locked means "soft-closed, awaiting resolution" — a linked muster resolves at session close, a standalone
+        // one is pending manual review.
+        MusterStatus.Locked => linked ? "🔒 Locked — closes with session" : "🔍 Locked — pending review",
         MusterStatus.Closed => "✅ Closed",
         MusterStatus.Expired => "⌛ Expired",
         MusterStatus.Cancelled => "🚫 Cancelled",

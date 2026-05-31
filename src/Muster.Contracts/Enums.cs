@@ -27,6 +27,18 @@ public enum SessionCoinGate
     All = 2,
 }
 
+/// <summary>What happens when a standalone muster's active window ends (auto-close / expiry).</summary>
+public enum MusterResolveMode
+{
+    /// <summary>Auto-resolve: the muster closes and pays its roster immediately (the default).</summary>
+    Pay = 0,
+
+    /// <summary>Review: the muster soft-closes into a pending state (no check-ins, not paid) so an owner/manager can
+    /// vet the roster, then Approve &amp; pay (close) or Discard (cancel). Manual "Close &amp; pay" still finalizes
+    /// immediately regardless of this mode.</summary>
+    Review = 1,
+}
+
 /// <summary>Where an auto-created (on session open) muster posts its card.</summary>
 public enum MusterAutoCreateChannel
 {

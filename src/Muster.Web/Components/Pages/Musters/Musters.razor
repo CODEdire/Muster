@@ -57,7 +57,7 @@ else if (State == AccessState.Ready)
             {
                 <div class="muster-card panel glass @(m.YouCheckedIn ? "is-in" : null)">
                     <div class="mc-head">
-                        <span class="mc-status mc-@(m.Status.ToString().ToLowerInvariant())">@StatusLabel(m.Status)</span>
+                        <span class="mc-status mc-@(m.Status.ToString().ToLowerInvariant())">@StatusLabel(m)</span>
                         @if (m.YouCheckedIn)
                         {
                             <span class="mc-youin"><span class="material-symbols-outlined">task_alt</span> You're in</span>
@@ -158,11 +158,11 @@ else if (State == AccessState.Ready)
         return string.Join(" + ", parts);
     }
 
-    private static string StatusLabel(MusterStatus s) => s switch
+    private static string StatusLabel(MusterCard m) => m.Status switch
     {
         MusterStatus.Open => "Open",
-        MusterStatus.Locked => "Locked",
-        _ => s.ToString(),
+        MusterStatus.Locked => m.Sessions.Count > 0 ? "Locked" : "In review",
+        _ => m.Status.ToString(),
     };
 
     private async Task CheckInAsync(Guid musterId) => await ActAsync(new CheckInMuster(GuildId, UserId, musterId), "Checked in.");

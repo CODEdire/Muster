@@ -78,6 +78,13 @@ else if (State == AccessState.Ready)
                         <div class="suffixed"><input type="number" min="0" placeholder="No auto-close" @bind="_expiresHours" /><span>hours from now</span></div>
                         <p class="hint">Leave blank to clear the auto-close. Set to reschedule from now.</p>
                     </div>
+                    <div class="field">
+                        <label>When it auto-closes</label>
+                        <select @bind="_resolveMode">
+                            <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                            <option value="@MusterResolveMode.Review">Hold for review</option>
+                        </select>
+                    </div>
                 </div>
             </AccordionPane>
 
@@ -139,6 +146,7 @@ else if (State == AccessState.Ready)
     private int _coins;
     private string _coinCurrencyId = "";
     private int? _minCheckIns;
+    private MusterResolveMode _resolveMode = MusterResolveMode.Pay;
     private IReadOnlyList<CurrencyView> _coins0 = [];
 
     protected override async Task LoadAsync()
@@ -164,6 +172,7 @@ else if (State == AccessState.Ready)
         _points = (int)_m.Points;
         _coins = (int)_m.Coins;
         _minCheckIns = _m.MinCheckIns;
+        _resolveMode = _m.ResolveMode;
 
         if (_isManager)
         {
@@ -208,7 +217,8 @@ else if (State == AccessState.Ready)
                 Points: _isManager ? _points : null,
                 Coins: _isManager ? _coins : null,
                 CoinCurrencyId: _isManager && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
-                MinCheckIns: _isManager ? _minCheckIns : null);
+                MinCheckIns: _isManager ? _minCheckIns : null,
+                ResolveMode: _resolveMode);
 
             var result = await Bus.InvokeAsync<Result>(command);
             if (result.Ok)
