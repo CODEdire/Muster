@@ -38,87 +38,110 @@ else if (State == AccessState.Ready)
             <p class="message">@Message</p>
         }
 
-        <div class="panel glass">
-            <div class="mform">
-                <div class="field">
-                    <label>Name</label>
-                    <input @bind="_t.Name" maxlength="100" placeholder="e.g. Tactical Strike Group" />
-                    <p class="hint">Shown in the template picker (admin/creator), not on the card.</p>
+        <Accordion>
+            <AccordionPane Title="Template" Icon="label" Open="true">
+                <p class="subtitle">How this template is identified in the admin/creator picker — not shown on the card.</p>
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Name</label>
+                        <input @bind="_t.Name" maxlength="100" placeholder="e.g. Tactical Strike Group" />
+                        <p class="hint">What admins/creators pick from the list.</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Description (admin only)</label>
+                        <input @bind="_t.Description" maxlength="300" placeholder="(optional) e.g. Use for weekly fleet ops" />
+                        <p class="hint"><strong>Not shown on the card.</strong> A private note to help pick the right template.</p>
+                    </div>
+                    <div class="field span2">
+                        <label class="checkbox">
+                            <input type="checkbox" @bind="_t.Enabled" />
+                            <span>Enabled</span>
+                        </label>
+                        <p class="hint">Disabled templates stay for history but aren't offered when creating.</p>
+                    </div>
                 </div>
-                <div class="field">
-                    <label>Default card title</label>
-                    <input @bind="_t.Title" maxlength="120" placeholder="(optional)" />
-                    <p class="hint">Heading on the muster card when the author doesn't set one.</p>
-                </div>
-                <div class="field span2">
-                    <label>Default card prompt</label>
-                    <textarea rows="2" @bind="_t.Prompt" maxlength="500" placeholder="(optional) what members are checking in for"></textarea>
-                    <p class="hint">Shown <strong>on the muster card</strong> members see. Used when the author leaves the prompt blank — lets a creator post in one click.</p>
-                </div>
-                <div class="field span2">
-                    <label>Description (admin only)</label>
-                    <input @bind="_t.Description" maxlength="300" placeholder="(optional) e.g. Use for weekly fleet ops" />
-                    <p class="hint"><strong>Not shown on the card.</strong> A private note to help admins/creators pick the right template.</p>
-                </div>
+            </AccordionPane>
 
-                <div class="field">
-                    <label>Points</label>
-                    <input type="number" min="0" @bind="_t.Points" />
-                    <p class="hint">Participation points per check-in.</p>
+            <AccordionPane Title="Card content" Icon="article" Open="true">
+                <p class="subtitle">What members see on the posted muster card. Authors can still override per muster.</p>
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Default card title</label>
+                        <input @bind="_t.Title" maxlength="120" placeholder="(optional)" />
+                        <p class="hint">Heading on the card when the author doesn't set one.</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Default card prompt</label>
+                        <textarea rows="2" @bind="_t.Prompt" maxlength="500" placeholder="(optional) what members are checking in for"></textarea>
+                        <p class="hint">The card text. Used when the author leaves the prompt blank — lets a creator post in one click.</p>
+                    </div>
                 </div>
-                <div class="field">
-                    <label>Coins</label>
-                    <input type="number" min="0" @bind="_t.Coins" />
-                    <p class="hint">Spendable coins per check-in (needs a currency).</p>
-                </div>
-                <div class="field span2">
-                    <label>Coin currency</label>
-                    <select @bind="_t.CoinCurrencyId">
-                        <option value="">— none —</option>
-                        @foreach (var c in _coins)
-                        {
-                            <option value="@c.Id">@c.Code — @c.Name</option>
-                        }
-                    </select>
-                </div>
+            </AccordionPane>
 
-                <div class="field">
-                    <label>Capacity</label>
-                    <input type="number" min="0" placeholder="Uncapped" @bind="_t.Capacity" />
-                    <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+            <AccordionPane Title="Rewards" Icon="paid" Open="true">
+                <p class="subtitle">Paid at close to everyone on the roster (overrides the guild defaults).</p>
+                <div class="mform">
+                    <div class="field">
+                        <label>Points</label>
+                        <input type="number" min="0" @bind="_t.Points" />
+                        <p class="hint">Participation points per check-in.</p>
+                    </div>
+                    <div class="field">
+                        <label>Coins</label>
+                        <input type="number" min="0" @bind="_t.Coins" />
+                        <p class="hint">Spendable coins per check-in (needs a currency).</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Coin currency</label>
+                        <select @bind="_t.CoinCurrencyId">
+                            <option value="">— none —</option>
+                            @foreach (var c in _coins)
+                            {
+                                <option value="@c.Id">@c.Code — @c.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field span2">
+                        <label>Minimum check-ins to reward</label>
+                        <input type="number" min="0" @bind="_t.MinCheckIns" />
+                        <p class="hint">If fewer than this check in, nobody is rewarded. 0 = no minimum.</p>
+                    </div>
                 </div>
-                <div class="field">
-                    <label>Minimum check-ins to reward</label>
-                    <input type="number" min="0" @bind="_t.MinCheckIns" />
-                    <p class="hint">If fewer than this check in, nobody is rewarded. 0 = no minimum.</p>
-                </div>
-                <div class="field">
-                    <label>Auto-close after</label>
-                    <div class="suffixed"><input type="number" min="0" placeholder="No expiry" @bind="_t.ExpiryHours" /><span>hours</span></div>
-                    <p class="hint">Max active time before the muster auto-closes.</p>
-                </div>
-                <div class="field">
-                    <label>Keep terminal cards for</label>
-                    <div class="suffixed"><input type="number" min="0" @bind="_t.RetentionHours" /><span>hours</span></div>
-                    <p class="hint">How long closed cards linger before cleanup.</p>
-                </div>
+            </AccordionPane>
 
-                <div class="field span2">
-                    <label class="checkbox">
-                        <input type="checkbox" @bind="_t.Enabled" />
-                        <span>Enabled</span>
-                    </label>
-                    <p class="hint">Disabled templates stay for history but aren't offered when creating.</p>
+            <AccordionPane Title="Limits & lifecycle" Icon="timer" Open="true">
+                <p class="subtitle">Capacity and timing for musters created from this template.</p>
+                <div class="mform">
+                    <div class="field">
+                        <label>Capacity</label>
+                        <input type="number" min="0" placeholder="Uncapped" @bind="_t.Capacity" />
+                        <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+                    </div>
+                    <div class="field">
+                        <label>Auto-close after</label>
+                        <div class="suffixed"><input type="number" min="0" placeholder="No expiry" @bind="_t.ExpiryHours" /><span>hours</span></div>
+                        <p class="hint">Max active time before the muster auto-closes.</p>
+                    </div>
+                    <div class="field">
+                        <label>Keep terminal cards for</label>
+                        <div class="suffixed"><input type="number" min="0" @bind="_t.RetentionHours" /><span>hours</span></div>
+                        <p class="hint">How long closed cards linger before cleanup.</p>
+                    </div>
                 </div>
-            </div>
+            </AccordionPane>
+        </Accordion>
 
-            <div class="btn-row">
-                <button type="button" disabled="@_saving" @onclick="SaveAsync">@(IsNew ? "Create template" : "Save changes")</button>
-                <a class="btn btn-ghost" href="/guilds/@GuildId/muster-templates">Cancel</a>
-            </div>
+        <div class="btn-row template-actions">
+            <button type="button" disabled="@_saving" @onclick="SaveAsync">@(IsNew ? "Create template" : "Save changes")</button>
+            <a class="btn btn-ghost" href="/guilds/@GuildId/muster-templates">Cancel</a>
         </div>
     }
 }
+
+<style>
+    .template-actions { margin-top: 1.25rem; }
+</style>
+
 
 @code {
     protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
