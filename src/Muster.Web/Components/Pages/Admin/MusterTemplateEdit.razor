@@ -1,0 +1,183 @@
+@page "/guilds/{GuildIdRaw}/muster-templates/new"
+@page "/guilds/{GuildIdRaw}/muster-templates/{TemplateId:guid}/edit"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject MusterTemplateService Templates
+@inject ICurrencyAdminService CurrencyAdmin
+@using Muster.Domain.Entities.Musters
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>@(IsNew ? "New" : "Edit") muster template — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[]
+                {
+                    new("Admin", $"/guilds/{GuildId}/admin"),
+                    new("Muster settings", $"/guilds/{GuildId}/muster-settings"),
+                    new("Templates", $"/guilds/{GuildId}/muster-templates"),
+                    new(IsNew ? "New template" : "Edit template"),
+                })"
+                Subtitle="A named reward preset creators pick from. Its values override the guild defaults." />
+
+    @if (_t is null)
+    {
+        <div class="panel glass empty">That template doesn't exist.</div>
+    }
+    else
+    {
+        @if (Message is not null)
+        {
+            <p class="message">@Message</p>
+        }
+
+        <div class="panel glass">
+            <div class="mform">
+                <div class="field">
+                    <label>Name</label>
+                    <input @bind="_t.Name" maxlength="100" placeholder="e.g. Tactical Strike Group" />
+                </div>
+                <div class="field">
+                    <label>Emoji</label>
+                    <input @bind="_t.Emoji" maxlength="8" placeholder="(optional)" />
+                    <p class="hint">Shown on the card for this template's musters.</p>
+                </div>
+                <div class="field span2">
+                    <label>Description</label>
+                    <input @bind="_t.Description" maxlength="300" placeholder="(optional) what this template is for" />
+                </div>
+
+                <div class="field">
+                    <label>Points</label>
+                    <input type="number" min="0" @bind="_t.Points" />
+                    <p class="hint">Participation points per check-in.</p>
+                </div>
+                <div class="field">
+                    <label>Coins</label>
+                    <input type="number" min="0" @bind="_t.Coins" />
+                    <p class="hint">Spendable coins per check-in (needs a currency).</p>
+                </div>
+                <div class="field span2">
+                    <label>Coin currency</label>
+                    <select @bind="_t.CoinCurrencyId">
+                        <option value="">— none —</option>
+                        @foreach (var c in _coins)
+                        {
+                            <option value="@c.Id">@c.Code — @c.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Capacity</label>
+                    <input type="number" min="0" placeholder="Uncapped" @bind="_t.Capacity" />
+                    <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+                </div>
+                <div class="field">
+                    <label>Auto-close after</label>
+                    <div class="suffixed"><input type="number" min="0" placeholder="No expiry" @bind="_t.ExpiryHours" /><span>hours</span></div>
+                    <p class="hint">Max active time before the muster auto-closes.</p>
+                </div>
+                <div class="field">
+                    <label>Keep terminal cards for</label>
+                    <div class="suffixed"><input type="number" min="0" @bind="_t.RetentionHours" /><span>hours</span></div>
+                    <p class="hint">How long closed cards linger before cleanup.</p>
+                </div>
+                <div class="field">
+                    <label>Sort order</label>
+                    <input type="number" @bind="_t.SortOrder" />
+                    <p class="hint">Lower sorts first in the picker.</p>
+                </div>
+
+                <div class="field span2">
+                    <label class="checkbox">
+                        <input type="checkbox" @bind="_t.Enabled" />
+                        <span>Enabled</span>
+                    </label>
+                    <p class="hint">Disabled templates stay for history but aren't offered when creating.</p>
+                </div>
+            </div>
+
+            <div class="btn-row">
+                <button type="button" disabled="@_saving" @onclick="SaveAsync">@(IsNew ? "Create template" : "Save changes")</button>
+                <a class="btn btn-ghost" href="/guilds/@GuildId/muster-templates">Cancel</a>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    [Parameter] public Guid? TemplateId { get; set; }
+
+    private bool IsNew => TemplateId is null;
+
+    private MusterTemplate? _t;
+    private IReadOnlyList<CurrencyView> _coins = [];
+    private bool _saving;
+
+    protected override async Task LoadAsync()
+    {
+        _coins = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+        _t = IsNew
+            ? new MusterTemplate { GuildId = GuildId, Enabled = true, RetentionHours = 48 }
+            : await Templates.GetAsync(GuildId, TemplateId!.Value);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_t is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_t.Name))
+        {
+            Message = "Give the template a name.";
+            return;
+        }
+
+        if (_t.Coins > 0 && _t.CoinCurrencyId is null)
+        {
+            Message = "Pick a coin currency, or set coins to 0.";
+            return;
+        }
+
+        if (_t.Points < 0 || _t.Coins < 0 || _t.RetentionHours < 0 || _t.Capacity is < 0 || _t.ExpiryHours is < 0)
+        {
+            Message = "Points, coins, capacity, expiry, and retention can't be negative.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _t.GuildId = GuildId;
+            if (_t.Coins <= 0) { _t.CoinCurrencyId = null; }
+            if (_t.Capacity is <= 0) { _t.Capacity = null; }
+            if (_t.ExpiryHours is <= 0) { _t.ExpiryHours = null; }
+
+            var saved = await Templates.SaveAsync(_t);
+            if (saved is null)
+            {
+                Message = "Couldn't save that template.";
+                return;
+            }
+
+            await AuditAsync("muster.template", $"{(IsNew ? "create" : "update")}:{saved.Name}");
+            Nav.NavigateTo($"/guilds/{GuildId}/muster-templates");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -341,6 +341,22 @@ label.checkbox {
     gap: 0.6rem;
     cursor: pointer;
 }
+
+/* ---- .mform: clean stacked field grid for settings/config forms ---------- */
+/* Interactive pages drop the <form> wrapper, so labels would render inline — stack them explicitly.
+   Shared by the muster settings panes and the template add/edit page. */
+.mform { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1.5rem; max-width: 680px; }
+.mform .field { display: flex; flex-direction: column; gap: 0.35rem; margin: 0; }
+.mform .field.span2 { grid-column: 1 / -1; }
+.mform .field > label { color: var(--text); font-size: 0.9rem; font-weight: 600; margin: 0; }
+.mform .field .hint { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
+/* Full width for value inputs/selects, but NOT the checkbox switch (it has a fixed track width). */
+.mform input:not([type="checkbox"]), .mform select, .mform textarea { width: 100%; }
+.mform .suffixed { display: flex; align-items: center; gap: 0.5rem; }
+.mform .suffixed input { width: 7rem; }
+.mform .suffixed span { color: var(--text-muted); font-size: 0.85rem; }
+.mform label.checkbox { font-weight: 600; color: var(--text); cursor: pointer; }
+@media (max-width: 640px) { .mform { grid-template-columns: 1fr; } }
 .message {
     padding: 0.75rem 1rem;
     border-radius: var(--radius-sm);

@@ -25,31 +25,69 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    <div class="panel glass">
+    <div class="panel glass dg-frame">
         <div class="dg-toolbar">
-            <button type="button" class="btn btn-sm" @onclick="NewTemplate">+ New template</button>
+            <div class="dg-filters">
+                <input type="search" class="dg-search" placeholder="Search name or description…" @bind="_search" @bind:event="oninput" />
+                <select class="dg-select" @bind="_enabledFilter">
+                    <option value="all">All</option>
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+            </div>
+            <div class="dg-actions">
+                <a class="btn btn-sm" href="/guilds/@GuildId/muster-templates/new">
+                    <span class="material-symbols-outlined">add</span> New template
+                </a>
+            </div>
         </div>
+
         <div class="dg-scroll">
             <table class="dg-table">
-                <thead><tr><th>Name</th><th class="num">Points</th><th>Coins</th><th class="num">Keep (h)</th><th>Enabled</th><th></th></tr></thead>
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick='() => SetSort("name")'>Name @Ind("name")</th>
+                        <th class="sortable num" @onclick='() => SetSort("points")'>Points @Ind("points")</th>
+                        <th class="sortable num" @onclick='() => SetSort("coins")'>Coins @Ind("coins")</th>
+                        <th class="sortable num" @onclick='() => SetSort("capacity")'>Capacity @Ind("capacity")</th>
+                        <th class="sortable num" @onclick='() => SetSort("expiry")'>Auto-close @Ind("expiry")</th>
+                        <th class="sortable num" @onclick='() => SetSort("retention")'>Keep @Ind("retention")</th>
+                        <th class="sortable num" @onclick='() => SetSort("sort")'>Order @Ind("sort")</th>
+                        <th class="sortable" @onclick='() => SetSort("enabled")'>Enabled @Ind("enabled")</th>
+                        <th></th>
+                    </tr>
+                </thead>
                 <tbody>
-                    @if (_list.Count == 0)
+                    @if (_list is null)
                     {
-                        <tr class="dg-empty"><td colspan="6">No templates yet.</td></tr>
+                        <tr class="dg-empty"><td colspan="9">Loading…</td></tr>
+                    }
+                    else if (Filtered.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="9">@(_list.Count == 0 ? "No templates yet — create one to get started." : "No templates match your filter.")</td></tr>
                     }
                     else
                     {
-                        @foreach (var t in _list)
+                        @foreach (var t in Filtered)
                         {
                             <tr>
-                                <td>@(string.IsNullOrWhiteSpace(t.Emoji) ? "" : t.Emoji + " ")@t.Name</td>
-                                <td class="num">@t.Points</td>
-                                <td>@(t.Coins > 0 ? $"{t.Coins} {CoinCode(t.CoinCurrencyId)}" : "—")</td>
-                                <td class="num">@t.RetentionHours</td>
+                                <td>
+                                    <a href="/guilds/@GuildId/muster-templates/@t.Id/edit">@(string.IsNullOrWhiteSpace(t.Emoji) ? "" : t.Emoji + " ")@t.Name</a>
+                                    @if (!string.IsNullOrWhiteSpace(t.Description))
+                                    {
+                                        <div class="subtitle dg-sub">@t.Description</div>
+                                    }
+                                </td>
+                                <td class="num">@(t.Points > 0 ? t.Points.ToString("N0") : "—")</td>
+                                <td class="num">@(t.Coins > 0 ? $"{t.Coins:N0} {CoinCode(t.CoinCurrencyId)}" : "—")</td>
+                                <td class="num">@(t.Capacity is { } cap ? cap.ToString("N0") : "—")</td>
+                                <td class="num">@(t.ExpiryHours is { } ex ? $"{ex}h" : "—")</td>
+                                <td class="num">@(t.RetentionHours)h</td>
+                                <td class="num">@t.SortOrder</td>
                                 <td>@(t.Enabled ? "✓" : "—")</td>
                                 <td class="dg-actions-col">
-                                    <button type="button" class="icon-btn" title="Edit" @onclick="() => Edit(t)"><span class="material-symbols-outlined">edit</span></button>
-                                    <button type="button" class="icon-btn danger" title="Delete" @onclick="() => Delete(t)"><span class="material-symbols-outlined">delete</span></button>
+                                    <a class="icon-btn" title="Edit" href="/guilds/@GuildId/muster-templates/@t.Id/edit"><span class="material-symbols-outlined">edit</span></a>
+                                    <button type="button" class="icon-btn danger" title="Delete" disabled="@_busy" @onclick="() => Delete(t)"><span class="material-symbols-outlined">delete</span></button>
                                 </td>
                             </tr>
                         }
@@ -57,48 +95,28 @@ else if (State == AccessState.Ready)
                 </tbody>
             </table>
         </div>
-    </div>
 
-    @if (_edit is not null)
-    {
-        <div class="panel glass">
-            <h2>@(_edit.Id == Guid.Empty ? "New template" : "Edit template")</h2>
-            <div class="form-grid">
-                <label>Name <input @bind="_edit.Name" maxlength="100" /></label>
-                <label>Emoji <input @bind="_edit.Emoji" maxlength="8" placeholder="(optional)" /></label>
-                <label>Description <input @bind="_edit.Description" placeholder="(optional)" /></label>
-                <label>Points <input type="number" min="0" @bind="_edit.Points" /></label>
-                <label>Coins <input type="number" min="0" @bind="_edit.Coins" /></label>
-                <label>Coin currency
-                    <select @bind="_edit.CoinCurrencyId">
-                        <option value="">— none —</option>
-                        @foreach (var c in _coins)
-                        {
-                            <option value="@c.Id">@c.Code — @c.Name</option>
-                        }
-                    </select>
-                </label>
-                <label>Keep terminal cards for (hours) <input type="number" min="0" @bind="_edit.RetentionHours" /></label>
-                <label>Default capacity <input type="number" min="0" @bind="_edit.Capacity" placeholder="(uncapped)" /></label>
-                <label>Auto-expire after (hours) <input type="number" min="0" @bind="_edit.ExpiryHours" placeholder="(none)" /></label>
-                <label>Sort order <input type="number" @bind="_edit.SortOrder" /></label>
-                <label class="check"><input type="checkbox" @bind="_edit.Enabled" /> Enabled</label>
-            </div>
-            <div class="btn-row">
-                <button type="button" disabled="@_saving" @onclick="SaveAsync">Save</button>
-                <button type="button" class="btn btn-ghost" @onclick="() => _edit = null">Cancel</button>
-            </div>
+        <div class="dg-footer">
+            <span class="dg-tz">@(Filtered.Count) of @(_list?.Count ?? 0) template@(_list?.Count == 1 ? "" : "s")</span>
         </div>
-    }
+    </div>
 }
+
+<style>
+    .dg-sub { margin: 0.15rem 0 0; font-size: 0.78rem; }
+</style>
 
 @code {
     protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
 
-    private IReadOnlyList<MusterTemplate> _list = [];
+    private IReadOnlyList<MusterTemplate>? _list;
     private IReadOnlyList<CurrencyView> _coins = [];
-    private MusterTemplate? _edit;
-    private bool _saving;
+    private bool _busy;
+
+    private string _search = "";
+    private string _enabledFilter = "all";
+    private string _sortKey = "sort";
+    private bool _descending;
 
     protected override async Task LoadAsync()
     {
@@ -106,55 +124,68 @@ else if (State == AccessState.Ready)
         _coins = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
     }
 
-    private string CoinCode(Guid? id) => _coins.FirstOrDefault(c => c.Id == id)?.Code ?? "coins";
-
-    private void NewTemplate() => _edit = new MusterTemplate { GuildId = GuildId, Enabled = true, RetentionHours = 48 };
-
-    // Edit a copy so Cancel doesn't mutate the list row.
-    private void Edit(MusterTemplate t) => _edit = new MusterTemplate
+    // In-memory filter + sort — the template set is small (a handful per guild).
+    private IReadOnlyList<MusterTemplate> Filtered
     {
-        Id = t.Id, GuildId = t.GuildId, Name = t.Name, Description = t.Description, Emoji = t.Emoji,
-        Points = t.Points, Coins = t.Coins, CoinCurrencyId = t.CoinCurrencyId, RetentionHours = t.RetentionHours,
-        Capacity = t.Capacity, ExpiryHours = t.ExpiryHours, Enabled = t.Enabled, SortOrder = t.SortOrder,
-    };
+        get
+        {
+            if (_list is null)
+            {
+                return [];
+            }
 
-    private async Task SaveAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_edit!.Name))
-        {
-            Message = "Give the template a name.";
-            return;
-        }
+            IEnumerable<MusterTemplate> q = _list;
 
-        if (_edit.Coins > 0 && _edit.CoinCurrencyId is null)
-        {
-            Message = "Pick a coin currency, or set coins to 0.";
-            return;
-        }
+            if (_enabledFilter == "enabled") { q = q.Where(t => t.Enabled); }
+            else if (_enabledFilter == "disabled") { q = q.Where(t => !t.Enabled); }
 
-        _saving = true;
-        try
-        {
-            _edit.GuildId = GuildId;
-            if (_edit.Coins <= 0) { _edit.CoinCurrencyId = null; }
-            var saved = await Templates.SaveAsync(_edit);
-            await AuditAsync("muster.template", $"{(_edit.Id == Guid.Empty ? "create" : "update")}:{_edit.Name}");
-            Message = saved is null ? "Couldn't save that template." : $"Saved “{saved.Name}”.";
-            _edit = null;
-        }
-        finally
-        {
-            _saving = false;
-            await LoadAsync();
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(t => (t.Name?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                              || (t.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            Func<MusterTemplate, IComparable> key = _sortKey switch
+            {
+                "name" => t => t.Name ?? "",
+                "points" => t => t.Points,
+                "coins" => t => t.Coins,
+                "capacity" => t => t.Capacity ?? -1,
+                "expiry" => t => t.ExpiryHours ?? -1,
+                "retention" => t => t.RetentionHours,
+                "enabled" => t => t.Enabled ? 1 : 0,
+                _ => t => t.SortOrder,
+            };
+
+            q = _descending ? q.OrderByDescending(key).ThenBy(t => t.Name) : q.OrderBy(key).ThenBy(t => t.Name);
+            return q.ToList();
         }
     }
 
+    private void SetSort(string column)
+    {
+        _descending = _sortKey == column ? !_descending : false;
+        _sortKey = column;
+    }
+
+    private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    private string CoinCode(Guid? id) => _coins.FirstOrDefault(c => c.Id == id)?.Code ?? "coins";
+
     private async Task Delete(MusterTemplate t)
     {
-        await Templates.DeleteAsync(GuildId, t.Id);
-        await AuditAsync("muster.template", $"delete:{t.Name}");
-        Message = $"Deleted “{t.Name}”.";
-        if (_edit?.Id == t.Id) { _edit = null; }
-        await LoadAsync();
+        _busy = true;
+        try
+        {
+            await Templates.DeleteAsync(GuildId, t.Id);
+            await AuditAsync("muster.template", $"delete:{t.Name}");
+            Message = $"Deleted “{t.Name}”.";
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 }
