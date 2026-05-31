@@ -18,6 +18,14 @@ public sealed class GuildChannelOptions(MusterDbContext db)
     public Task<IReadOnlyList<ChannelOption>> VoiceAsync(ulong guildId, CancellationToken ct = default)
         => ForKindAsync(guildId, GuildChannelKind.Voice, ct);
 
+    /// <summary>Every chat-capable channel — text and voice (voice channels carry text chat) — for muster posting.</summary>
+    public async Task<IReadOnlyList<ChannelOption>> ChatAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var text = await TextAsync(guildId, ct);
+        var voice = await VoiceAsync(guildId, ct);
+        return text.Concat(voice).OrderBy(c => c.Name).ToList();
+    }
+
     private async Task<IReadOnlyList<ChannelOption>> ForKindAsync(ulong guildId, GuildChannelKind kind, CancellationToken ct)
         => (await db.ListChannelsByKindAsync(guildId, kind, ct))
             .Select(c => new ChannelOption(c.ChannelId, c.Name))

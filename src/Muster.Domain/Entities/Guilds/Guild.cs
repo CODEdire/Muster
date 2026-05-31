@@ -152,6 +152,17 @@ public class MusterSettings
     /// Discord message (the muster + roster + ledger stay in the DB; web keeps full history). 0 = delete as soon as
     /// terminal.</summary>
     public int BoardRetentionHours { get; set; } = 48;
+
+    /// <summary>Channels a muster may be posted to. <b>Empty (default) = any chat-capable channel</b> (text or voice
+    /// text). Set to restrict muster posting to a curated list; pickers/autocomplete then offer only these and the
+    /// post funnel rejects anything else.</summary>
+    public List<ulong> AllowedChannelIds { get; set; } = [];
+
+    /// <summary>Whether a muster may be posted to <paramref name="channelId"/>: always when no allow-list is set,
+    /// otherwise only if the channel is on it. (channelId 0 = "fall back to the default channel" and is allowed here;
+    /// the default channel itself is validated when it's configured.)</summary>
+    public bool ChannelAllowed(ulong channelId)
+        => channelId == 0 || AllowedChannelIds.Count == 0 || AllowedChannelIds.Contains(channelId);
 }
 
 /// <summary>The quest-board slice of a guild's configuration.</summary>

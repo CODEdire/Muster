@@ -4,6 +4,7 @@
 @inherits GuildAdminComponentBase
 @inject IMusterReadService Reads
 @inject WebAdminService AdminRead
+@inject Muster.Web.GuildChannelOptions Channels
 @inject Wolverine.IMessageBus Bus
 @using Muster.Contracts
 @using Muster.Domain.Entities.Guilds
@@ -54,7 +55,7 @@ else if (State == AccessState.Ready)
                     <option value="0">Server default@(_defaultChannelId == 0 ? " — none set, no Discord card" : "")</option>
                     @foreach (var c in _channels)
                     {
-                        <option value="@c.ChannelId">#@c.Name</option>
+                        <option value="@c.Id">#@c.Name</option>
                     }
                 </select>
             </label>
@@ -120,12 +121,18 @@ else if (State == AccessState.Ready)
     private int _expiresHours;
     private ulong _channelId;
     private ulong _defaultChannelId;
-    private IReadOnlyList<GuildChannel> _channels = [];
+    private IReadOnlyList<GuildChannelOptions.ChannelOption> _channels = [];
 
     protected override async Task LoadAsync()
     {
-        _channels = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Text);
-        _defaultChannelId = (await AdminRead.GetSettingsAsync(GuildId)).Musters.MusterChannelId;
+        var settings = await AdminRead.GetSettingsAsync(GuildId);
+        _defaultChannelId = settings.Musters.MusterChannelId;
+
+        // Offer chat channels; when an allow-list is set, only those.
+        var chat = await Channels.ChatAsync(GuildId);
+        var allowed = settings.Musters.AllowedChannelIds;
+        _channels = allowed.Count == 0 ? chat : chat.Where(c => allowed.Contains(c.Id)).ToList();
+
         await LoadListAsync();
     }
 

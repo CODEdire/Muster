@@ -81,6 +81,25 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_Create_HonorsChannelAllowList()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, bus) = NewMusters(db);
+
+        var guild = await db.Guilds.SingleAsync();
+        guild.Settings.Musters.AllowedChannelIds = [999];
+        guild.Settings = guild.Settings; // owned JSON column — reassign so it's detected as changed
+        await db.SaveChangesAsync();
+
+        CreateMuster At(ulong channelId) => new(1, 7, channelId, null, "Roll call", null, 0, null, null, null);
+
+        // Disallowed explicit channel is rejected; an allowed one and the "fall back to default" (0) pass.
+        Assert.Equal("ChannelNotAllowed", (await CreateMusterHandler.Handle(At(500), auth, db, musters, bus, default)).Status);
+        Assert.True((await CreateMusterHandler.Handle(At(999), auth, db, musters, bus, default)).Ok);
+        Assert.True((await CreateMusterHandler.Handle(At(0), auth, db, musters, bus, default)).Ok);
+    }
+
+    [Fact]
     public async Task Quest_PostClaimSubmitApprove_AwardsMember()
     {
         using var db = await SeededAsync();

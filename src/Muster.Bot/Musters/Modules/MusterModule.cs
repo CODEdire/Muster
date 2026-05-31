@@ -28,12 +28,14 @@ public class MusterModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "reward", Description = "Points per check-in (0 = check-in only)")] long reward = 0,
         [SlashCommandParameter(Name = "capacity", Description = "Max check-ins (optional; ignored when linked to a session)")] long capacity = 0,
         [SlashCommandParameter(Name = "expires-hours", Description = "Auto-close after this many hours (optional)")] long expiresHours = 0,
-        [SlashCommandParameter(Name = "channel", Description = "Channel to post to (default: the configured muster channel, else here)")] TextGuildChannel? channel = null)
+        [SlashCommandParameter(Name = "channel", Description = "Channel to post to (default: configured muster channel, else here)",
+            AutocompleteProviderType = typeof(MusterChannelAutocompleteProvider))] string? channel = null)
         => RunAsync(async (sp, guildId) =>
         {
             // Channel precedence: explicit override → configured muster channel → the channel the command was run in.
+            var chosen = ulong.TryParse(channel, out var cid) ? cid : (ulong?)null;
             var settings = await sp.GetRequiredService<MusterDbContext>().GetSettingsAsync(guildId);
-            var channelId = channel?.Id ?? (settings.Musters.MusterChannelId != 0 ? settings.Musters.MusterChannelId : Context.Channel.Id);
+            var channelId = chosen ?? (settings.Musters.MusterChannelId != 0 ? settings.Musters.MusterChannelId : Context.Channel.Id);
             DateTimeOffset? expires = expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(expiresHours) : null;
 
             var command = new CreateMuster(guildId, Context.User.Id, channelId,

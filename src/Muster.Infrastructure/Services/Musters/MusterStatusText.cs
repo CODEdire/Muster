@@ -11,6 +11,8 @@ public static class MusterStatusText
         "PromptRequired" => "Give the muster a prompt (what members are checking in for).",
         "RewardNegative" => "Reward can't be negative.",
         "BadCapacity" => "Capacity must be a positive number.",
+        "ChannelNotAllowed" => "That channel isn't on the allowed list for musters.",
+        "CurrencyNotFound" => "That reward currency doesn't exist in this server.",
         "NotFound" => "That muster no longer exists.",
         "SessionNotFound" => "That tracking session doesn't exist.",
         "AlreadyParticipated" => "You're already checked in.",

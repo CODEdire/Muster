@@ -18,6 +18,7 @@ public static class MustersExtensions
         // Autocomplete for the muster id parameters (so staff pick a muster, never type a GUID).
         builder.Services.AddTransient<MusterAutocompleteProvider>();
         builder.Services.AddTransient<RecentMusterAutocompleteProvider>();
+        builder.Services.AddTransient<MusterChannelAutocompleteProvider>();
 
         // Auto-expires open, non-linked musters past their window (pays out + flips the card terminal).
         builder.Services.AddHostedService<MusterExpirySweepScheduler>();

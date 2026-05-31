@@ -1,0 +1,174 @@
+@page "/guilds/{GuildIdRaw}/muster-settings"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject ConfigCommandService Config
+@inject WebAdminService AdminRead
+@inject Muster.Web.GuildChannelOptions Channels
+@using Muster.Infrastructure.Commands.Membership
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Web
+
+<PageTitle>Muster settings — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
+        <h1>Muster settings</h1>
+        <p class="subtitle">Where check-in muster cards post, how long terminal cards linger, and whether opening a session auto-creates one.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass">
+        <h2>Muster card channel</h2>
+        <p class="subtitle">Default channel muster cards post to. Leave unset and a muster posts to the channel its
+            <code>/muster post</code> ran in (web-authored musters then have no card). A per-muster channel still overrides this.</p>
+        @if (_channels.Count == 0)
+        {
+            <p class="subtitle warn-text">No channels available — check the bot is in this server and can view channels.</p>
+        }
+        <div class="form-grid">
+            <label>Card channel
+                <select @bind="Input.ChannelId">
+                    <option value="0">— none (post where the command runs) —</option>
+                    @foreach (var c in _channels)
+                    {
+                        <option value="@c.Id">#@c.Name</option>
+                    }
+                </select>
+                @if (Input.ChannelId != 0 && _channelById.TryGetValue(Input.ChannelId, out var ch))
+                {
+                    <span class="subtitle">posts to <code>#@ch.Name</code></span>
+                }
+            </label>
+            <label>Keep terminal cards for (hours)
+                <input type="number" @bind="Input.RetentionHours" />
+                <span class="subtitle">how long a closed/expired card lingers before deletion (web keeps full history; 0 = delete immediately)</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="panel glass">
+        <h2>Allowed channels</h2>
+        <p class="subtitle">Restrict where musters can be posted. <strong>Leave all unchecked = any chat channel allowed</strong>
+            (text or voice). When some are checked, only those may be used — pickers, <code>/muster post</code> autocomplete,
+            and the post funnel all honor it (the default channel above must be one of them).</p>
+        @if (_channels.Count == 0)
+        {
+            <p class="subtitle warn-text">No channels available — check the bot is in this server and can view channels.</p>
+        }
+        <div class="chan-grid">
+            @foreach (var c in _channels)
+            {
+                <label class="check">
+                    <input type="checkbox" checked="@_allowed.Contains(c.Id)" @onchange="e => ToggleAllowed(c.Id, e)" />
+                    #@c.Name
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="panel glass">
+        <h2>Auto-create on session</h2>
+        <p class="subtitle">When on, opening a tracking session posts a check-in muster, links it, and gates the
+            session's coin on it (mode <strong>Any</strong>). Each session open can override this.</p>
+        <label class="check">
+            <input type="checkbox" @bind="Input.AutoCreate" />
+            Auto-create a check-in muster when a session opens
+        </label>
+    </div>
+
+    <div class="btn-row">
+        <button type="button" @onclick="SaveAsync" disabled="@_saving">@(_saving ? "Saving…" : "Save settings")</button>
+    </div>
+}
+
+<style>
+    .warn-text { color: #d97706; }
+    .chan-grid { display: grid; gap: 0.4rem 1rem; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+</style>
+
+@code {
+    // Musters are managed by Tracking Managers (+ legacy Officer, + Admin implicitly).
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private SettingsInput Input { get; set; } = new();
+    private IReadOnlyList<GuildChannelOptions.ChannelOption> _channels = [];
+    private Dictionary<ulong, GuildChannelOptions.ChannelOption> _channelById = new();
+    private readonly HashSet<ulong> _allowed = [];
+    private bool _saving;
+
+    protected override async Task LoadAsync()
+    {
+        _channels = await Channels.ChatAsync(GuildId);
+        _channelById = _channels.ToDictionary(c => c.Id);
+
+        var settings = await AdminRead.GetSettingsAsync(GuildId);
+        Input = new SettingsInput
+        {
+            ChannelId = settings.Musters.MusterChannelId,
+            RetentionHours = settings.Musters.BoardRetentionHours,
+            AutoCreate = settings.AutoCreateMusterOnSession,
+        };
+        _allowed.Clear();
+        foreach (var id in settings.Musters.AllowedChannelIds)
+        {
+            _allowed.Add(id);
+        }
+    }
+
+    private void ToggleAllowed(ulong channelId, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _allowed.Add(channelId);
+        }
+        else
+        {
+            _allowed.Remove(channelId);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            var allowed = _allowed.ToList();
+            var result = await Config.SetMusterSettingsAsync(GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, allowed);
+            if (!result.IsError)
+            {
+                await AuditAsync("muster.config",
+                    $"channel:{Input.ChannelId} retentionHours:{Input.RetentionHours} autoCreate:{Input.AutoCreate} allowed:[{string.Join(",", allowed)}]");
+            }
+            Message = result.Message;
+        }
+        finally
+        {
+            _saving = false;
+            await LoadAsync();
+            StateHasChanged();
+        }
+    }
+
+    public class SettingsInput
+    {
+        public ulong ChannelId { get; set; }
+        public int RetentionHours { get; set; } = 48;
+        public bool AutoCreate { get; set; }
+    }
+}

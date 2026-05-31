@@ -299,6 +299,43 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         return CommandResult.Ok("Quest approval settings updated.");
     }
 
+    /// <summary>Configure all guild muster settings in one save: card channel (0 = post to the command's channel),
+    /// terminal-card retention hours, whether opening a session auto-creates + links a check-in muster, and the
+    /// optional allow-list of channels musters may post to (empty = any chat-capable channel).</summary>
+    public async Task<CommandResult> SetMusterSettingsAsync(
+        ulong guildId, ulong channelId, int retentionHours, bool autoCreate,
+        IReadOnlyList<ulong>? allowedChannelIds = null, CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (retentionHours < 0)
+        {
+            return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as terminal).");
+        }
+
+        var allowed = (allowedChannelIds ?? []).Where(c => c != 0).Distinct().ToList();
+
+        // A configured default channel must itself be on the allow-list (when one is set), or musters couldn't post there.
+        if (channelId != 0 && allowed.Count > 0 && !allowed.Contains(channelId))
+        {
+            return CommandResult.Error("The default channel must be one of the allowed channels.");
+        }
+
+        var settings = guild.Settings;
+        settings.Musters.MusterChannelId = channelId;
+        settings.Musters.BoardRetentionHours = retentionHours;
+        settings.Musters.AllowedChannelIds = allowed;
+        settings.AutoCreateMusterOnSession = autoCreate;
+        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok("Muster settings updated.");
+    }
+
     /// <summary>Point the public quest board at a channel (0 clears it, leaving the board pull-only).</summary>
     public Task<CommandResult> SetQuestChannelAsync(ulong guildId, ulong channelId, CancellationToken ct = default)
         => SetQuestBoardAsync(guildId, channelId, modChannelId: null, retentionHours: null, ct);

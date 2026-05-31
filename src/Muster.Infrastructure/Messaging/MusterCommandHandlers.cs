@@ -4,6 +4,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Persistence;
+using Muster.Persistence.Queries;
 using Wolverine;
 
 namespace Muster.Infrastructure.Messaging;
@@ -47,6 +48,14 @@ public static class CreateMusterHandler
         if (command.CurrencyId is { } cid && !await db.Currencies.AnyAsync(c => c.Id == cid && c.GuildId == command.GuildId, ct))
         {
             return Result<Guid>.Fail("CurrencyNotFound");
+        }
+
+        // Honor the guild's muster channel allow-list (empty = any channel). channelId 0 resolves to the configured
+        // default at render time, which is itself validated when set — so only an explicit channel is checked here.
+        var settings = await db.GetSettingsAsync(command.GuildId, ct);
+        if (!settings.Musters.ChannelAllowed(command.ChannelId))
+        {
+            return Result<Guid>.Fail("ChannelNotAllowed");
         }
 
         var prompt = command.Prompt.Trim();
