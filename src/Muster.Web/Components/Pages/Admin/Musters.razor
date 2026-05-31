@@ -4,12 +4,16 @@
 @inherits GuildAdminComponentBase
 @inject IMusterReadService Reads
 @inject GuildMusterSettingsService MusterStore
+@inject MusterTemplateService TemplateSvc
+@inject ICurrencyAdminService CurrencyAdmin
 @inject Muster.Web.GuildChannelOptions Channels
 @inject Wolverine.IMessageBus Bus
 @using Muster.Contracts
 @using Muster.Domain.Entities.Guilds
+@using Muster.Domain.Entities.Musters
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Membership
 @using Muster.Infrastructure.Services.Musters
 @using Muster.Infrastructure.Services.Web
@@ -41,9 +45,40 @@ else if (State == AccessState.Ready)
             <label>Title (optional)
                 <input class="input" @bind="_title" placeholder="Heading shown above the prompt" maxlength="100" />
             </label>
-            <label>Points (participation; 0 = check-in only)
-                <input class="input" type="number" min="0" @bind="_points" />
+            <label>Template
+                <select class="dg-select" @bind="_templateId">
+                    @if (_isManager)
+                    {
+                        <option value="">— Custom rewards —</option>
+                    }
+                    @foreach (var t in _templates)
+                    {
+                        <option value="@t.Id">@(string.IsNullOrWhiteSpace(t.Emoji) ? "" : t.Emoji + " ")@t.Name</option>
+                    }
+                </select>
+                @if (!_isManager && _templates.Count == 0)
+                {
+                    <span class="subtitle warn-text">No templates available — ask an admin to create one.</span>
+                }
             </label>
+            @if (_isManager && string.IsNullOrEmpty(_templateId))
+            {
+                <label>Points (participation)
+                    <input class="input" type="number" min="0" @bind="_points" />
+                </label>
+                <label>Coins (optional)
+                    <input class="input" type="number" min="0" @bind="_coins" />
+                </label>
+                <label>Coin currency
+                    <select class="dg-select" @bind="_coinCurrencyId">
+                        <option value="">— none —</option>
+                        @foreach (var c in _coinCurrencies)
+                        {
+                            <option value="@c.Id">@c.Code</option>
+                        }
+                    </select>
+                </label>
+            }
             <label>Capacity (optional)
                 <input class="input" type="number" min="0" @bind="_capacity" />
             </label>
@@ -93,7 +128,7 @@ else if (State == AccessState.Ready)
                             <td><LocalTime Value="m.CreatedAt" /></td>
                             <td class="dg-actions-col">
                                 <a class="icon-btn" title="View" href="@MusterLinks.MusterDetail(GuildId, m.Id)"><span class="material-symbols-outlined">visibility</span></a>
-                                @if (m.Status == MusterStatus.Open)
+                                @if (_isManager && m.Status == MusterStatus.Open)
                                 {
                                     <button type="button" class="icon-btn danger" title="Close" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">stop_circle</span></button>
                                 }
@@ -107,7 +142,7 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
 
     private IReadOnlyList<MusterListItem>? _list;
     private bool _includeClosed;
@@ -117,20 +152,37 @@ else if (State == AccessState.Ready)
     private string _prompt = "";
     private string _title = "";
     private int _points;
+    private int _coins;
+    private string _coinCurrencyId = "";
+    private string _templateId = "";
     private int _capacity;
     private int _expiresHours;
     private ulong _channelId;
     private ulong _defaultChannelId;
+    private bool _isManager;
     private IReadOnlyList<GuildChannelOptions.ChannelOption> _channels = [];
+    private IReadOnlyList<MusterTemplate> _templates = [];
+    private IReadOnlyList<CurrencyView> _coinCurrencies = [];
 
     protected override async Task LoadAsync()
     {
+        _isManager = await Auth.IsTrackingManagerAsync(GuildId, UserId);
+
         var ms = await MusterStore.GetAsync(GuildId);
         _defaultChannelId = ms.MusterChannelId;
 
         // Offer chat channels; when an allow-list is set, only those.
         var chat = await Channels.ChatAsync(GuildId);
         _channels = ms.AllowedChannelIds.Count == 0 ? chat : chat.Where(c => ms.AllowedChannelIds.Contains(c.Id)).ToList();
+
+        _templates = await TemplateSvc.ListAsync(GuildId, includeDisabled: false);
+        _coinCurrencies = _isManager ? (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList() : [];
+
+        // Creators (non-managers) can't free-hand rewards — default to the first template.
+        if (!_isManager && string.IsNullOrEmpty(_templateId))
+        {
+            _templateId = _templates.FirstOrDefault()?.Id.ToString() ?? "";
+        }
 
         await LoadListAsync();
     }
@@ -152,10 +204,16 @@ else if (State == AccessState.Ready)
         try
         {
             DateTimeOffset? expires = _expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(_expiresHours) : null;
+            Guid? templateId = Guid.TryParse(_templateId, out var tg) ? tg : null;
+            var custom = _isManager && templateId is null; // manager picked "— Custom rewards —"
+
             // ChannelId 0 → the card renderer falls back to the guild's configured muster channel.
             var command = new CreateMuster(GuildId, UserId, _channelId,
                 string.IsNullOrWhiteSpace(_title) ? null : _title.Trim(), _prompt.Trim(),
-                TemplateId: null, Points: _points, Coins: null, CoinCurrencyId: null,
+                TemplateId: templateId,
+                Points: custom ? _points : null,
+                Coins: custom ? _coins : null,
+                CoinCurrencyId: custom && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
                 Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: null);
 
             var noCard = _channelId == 0 && _defaultChannelId == 0;
@@ -168,8 +226,9 @@ else if (State == AccessState.Ready)
             if (result.Ok)
             {
                 _prompt = _title = "";
-                _points = _capacity = _expiresHours = 0;
+                _points = _coins = _capacity = _expiresHours = 0;
                 _channelId = 0;
+                if (_isManager) { _templateId = ""; _coinCurrencyId = ""; }
             }
         }
         finally
