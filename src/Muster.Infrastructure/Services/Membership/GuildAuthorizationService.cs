@@ -109,6 +109,25 @@ public class GuildAuthorizationService(MusterDbContext db)
     public Task<bool> IsEventOfficerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
         => IsTrackingManagerAsync(guildId, userId, ct);
 
+    /// <summary>May post musters from a template. Tracking managers (and admins) implicitly qualify — and they can
+    /// additionally create custom musters; <see cref="GuildSettings.MusterCreatorRoleIds"/> holders are template-only.</summary>
+    public async Task<bool> IsMusterCreatorAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        if (await IsTrackingManagerAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var member = await db.FindMemberAsync(guildId, userId, ct);
+        if (guild is null || member is null)
+        {
+            return false;
+        }
+
+        return member.RoleIds.Any(r => guild.Settings.MusterCreatorRoleIds.Contains(r));
+    }
+
     /// <summary>Read-only observer — audit log, ledger, participation. Implied by any mutating role
     /// (admin / officer / economy manager / event officer / tracking manager / quest manager) so adding the role
     /// is purely additive.</summary>

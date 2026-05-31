@@ -1,3 +1,5 @@
+using Muster.Contracts;
+
 namespace Muster.Domain.Entities.Guilds;
 
 /// <summary>
@@ -19,9 +21,24 @@ public class GuildMusterSettings
     /// 0 = delete immediately. Web keeps full history regardless.</summary>
     public int BoardRetentionHours { get; set; } = 48;
 
-    /// <summary>When true, opening a tracking session auto-creates + links a check-in muster (gate mode Any). Each
-    /// session open may override it.</summary>
+    /// <summary>When true, opening a tracking session auto-creates + links a check-in muster. Each session open may
+    /// override it.</summary>
     public bool AutoCreateOnSession { get; set; }
+
+    /// <summary>Gate mode applied to a session's coin when a muster is auto-created for it on open (Any = checking
+    /// into the muster suffices). Default <see cref="SessionCoinGate.Any"/>.</summary>
+    public SessionCoinGate AutoCreateGate { get; set; } = SessionCoinGate.Any;
+
+    // --- Global reward defaults (a muster with no template uses these; templates override per-creation) ---
+
+    /// <summary>Baseline participation POINTS granted (at close) for checking into any muster. 0 = none.</summary>
+    public long DefaultPoints { get; set; }
+
+    /// <summary>Baseline spendable coins granted (at close) for checking into any muster. 0 = none.</summary>
+    public long DefaultCoins { get; set; }
+
+    /// <summary>Currency the default coins are minted in (a spendable currency). Null = no coin reward by default.</summary>
+    public Guid? DefaultCoinCurrencyId { get; set; }
 
     /// <summary>Channels a muster may post to. Empty (default) = any chat-capable channel; set to restrict.</summary>
     public List<ulong> AllowedChannelIds { get; set; } = [];

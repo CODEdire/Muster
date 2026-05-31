@@ -128,7 +128,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 guildId, musterCfg?.MusterChannelId ?? 0, title: null, prompt: $"Check in for {name}",
                 rewardPoints: 0, capacity: null, expiresAt: null, createdBy: openedBy, sessionId: session.Id, ct: ct);
 
-            session.CoinGate = SessionCoinGate.Any;
+            session.CoinGate = musterCfg?.AutoCreateGate ?? SessionCoinGate.Any;
             await db.SaveChangesAsync(ct);
 
             await bus.PublishAsync(new MusterChanged(guildId, muster.Id, MusterChangeKind.Created));

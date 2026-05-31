@@ -50,6 +50,11 @@ public class GuildSettings
     /// path. Holders of <see cref="OfficerRoleIds"/> are also treated as tracking managers (legacy alias).</summary>
     public List<ulong> TrackingManagerRoleIds { get; set; } = [];
 
+    /// <summary>Discord role ids allowed to post musters <b>from a template only</b> (rewards locked to the template
+    /// — no custom points/coins). Tracking managers + admins can also create custom musters. Lets muster creation be
+    /// delegated safely.</summary>
+    public List<ulong> MusterCreatorRoleIds { get; set; } = [];
+
     /// <summary>Discord role ids granted **read-only** access to audit log, ledger, and participation reports
     /// (no mutating power). Implied by Admin and any management role; this list adds non-staff observers
     /// (compliance / treasurer-without-mint roles).</summary>

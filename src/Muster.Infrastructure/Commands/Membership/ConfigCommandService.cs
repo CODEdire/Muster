@@ -17,6 +17,7 @@ public enum RoleKind
     EconomyManager,
     EventOfficer,
     TrackingManager,
+    MusterCreator,
     Auditor,
 }
 
@@ -278,6 +279,9 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
 
     public Task<CommandResult> ToggleTrackingManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.TrackingManager, ct);
+
+    public Task<CommandResult> ToggleMusterCreatorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.MusterCreator, ct);
 
     public Task<CommandResult> ToggleAuditorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Auditor, ct);
@@ -542,6 +546,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             RoleKind.EconomyManager => guild.Settings.EconomyManagerRoleIds,
             RoleKind.EventOfficer => guild.Settings.EventOfficerRoleIds,
             RoleKind.TrackingManager => guild.Settings.TrackingManagerRoleIds,
+            RoleKind.MusterCreator => guild.Settings.MusterCreatorRoleIds,
             RoleKind.Auditor => guild.Settings.AuditorRoleIds,
             _ => guild.Settings.ParticipantRoleIds,
         };
@@ -562,6 +567,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             case RoleKind.EconomyManager: guild.Settings.EconomyManagerRoleIds = updated; break;
             case RoleKind.EventOfficer: guild.Settings.EventOfficerRoleIds = updated; break;
             case RoleKind.TrackingManager: guild.Settings.TrackingManagerRoleIds = updated; break;
+            case RoleKind.MusterCreator: guild.Settings.MusterCreatorRoleIds = updated; break;
             case RoleKind.Auditor: guild.Settings.AuditorRoleIds = updated; break;
             default: guild.Settings.ParticipantRoleIds = updated; break;
         }

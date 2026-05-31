@@ -5,6 +5,16 @@ using Muster.Domain.Entities.Musters;
 
 namespace Muster.Persistence.Configurations;
 
+public class MusterTemplateConfiguration : IEntityTypeConfiguration<MusterTemplate>
+{
+    public void Configure(EntityTypeBuilder<MusterTemplate> e)
+    {
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => new { x.GuildId, x.Enabled });
+        e.Property(x => x.Name).HasMaxLength(100);
+    }
+}
+
 public class GuildMusterSettingsConfiguration : IEntityTypeConfiguration<GuildMusterSettings>
 {
     public void Configure(EntityTypeBuilder<GuildMusterSettings> e)
