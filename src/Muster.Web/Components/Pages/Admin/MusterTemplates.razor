@@ -28,12 +28,13 @@ else if (State == AccessState.Ready)
     <div class="panel glass dg-frame">
         <div class="dg-toolbar">
             <div class="dg-filters">
-                <input type="search" class="dg-search" placeholder="Search name or description…" @bind="_search" @bind:event="oninput" />
-                <select class="dg-select" @bind="_enabledFilter">
-                    <option value="all">All</option>
-                    <option value="enabled">Enabled</option>
-                    <option value="disabled">Disabled</option>
-                </select>
+                <input type="search" class="dg-search tpl-search" placeholder="Search name or description…" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" />
+                <div class="dg-pill-row" aria-label="Status filter">
+                    @foreach (var f in _filters)
+                    {
+                        <button type="button" class="dg-pill @(_enabledFilter == f.Key ? "active" : null)" @onclick="() => SetFilter(f.Key)">@f.Label</button>
+                    }
+                </div>
             </div>
             <div class="dg-actions">
                 <a class="btn btn-sm" href="/guilds/@GuildId/muster-templates/new">
@@ -68,7 +69,7 @@ else if (State == AccessState.Ready)
                     }
                     else
                     {
-                        @foreach (var t in Filtered)
+                        @foreach (var t in Paged)
                         {
                             <tr>
                                 <td>
@@ -97,13 +98,29 @@ else if (State == AccessState.Ready)
         </div>
 
         <div class="dg-footer">
-            <span class="dg-tz">@(Filtered.Count) of @(_list?.Count ?? 0) template@(_list?.Count == 1 ? "" : "s")</span>
+            <div class="dg-footer-left">
+                <div class="dg-pagesize">
+                    Rows
+                    <select class="dg-select" value="@_pageSize" @onchange="OnPageSize">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+                <span class="dg-tz">@(Filtered.Count) of @(_list?.Count ?? 0) template@(_list?.Count == 1 ? "" : "s")</span>
+            </div>
+            <div class="dg-pager">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurrentPage <= 1)" @onclick="Prev">← Prev</button>
+                <span>Page @CurrentPage of @TotalPages</span>
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurrentPage >= TotalPages)" @onclick="Next">Next →</button>
+            </div>
         </div>
     </div>
 }
 
 <style>
     .dg-sub { margin: 0.15rem 0 0; font-size: 0.78rem; }
+    .tpl-search { min-width: 20rem; }
 </style>
 
 @code {
@@ -117,6 +134,11 @@ else if (State == AccessState.Ready)
     private string _enabledFilter = "all";
     private string _sortKey = "name";
     private bool _descending;
+    private int _page = 1;
+    private int _pageSize = 25;
+
+    private static readonly (string Key, string Label)[] _filters =
+        [("all", "All"), ("enabled", "Enabled"), ("disabled", "Disabled")];
 
     protected override async Task LoadAsync()
     {
@@ -163,10 +185,32 @@ else if (State == AccessState.Ready)
         }
     }
 
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
+
+    // Clamped so filtering/deleting down past the last page still lands on a valid page.
+    private int CurrentPage => Math.Clamp(_page, 1, TotalPages);
+
+    private IReadOnlyList<MusterTemplate> Paged
+        => Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize).ToList();
+
+    private void SetFilter(string key) { _enabledFilter = key; _page = 1; }
+
+    private void ResetPage() => _page = 1;
+
+    private void OnPageSize(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value as string, out var v) ? v : 25;
+        _page = 1;
+    }
+
+    private void Prev() => _page = CurrentPage - 1;
+    private void Next() => _page = CurrentPage + 1;
+
     private void SetSort(string column)
     {
         _descending = _sortKey == column ? !_descending : false;
         _sortKey = column;
+        _page = 1;
     }
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
