@@ -1,0 +1,60 @@
+@* A section within an Accordion: a clickable header (title + optional icon + optional right-aligned Summary)
+   and a body shown only while open. *@
+@implements IDisposable
+
+<div class="acc-item glass @(Parent.IsOpen(this) ? "open" : null)">
+    <button type="button" class="acc-header" aria-expanded="@(Parent.IsOpen(this) ? "true" : "false")" @onclick="() => Parent.Toggle(this)">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="material-symbols-outlined acc-icon">@Icon</span>
+        }
+        <span class="acc-title">@Title</span>
+        @if (Summary is not null)
+        {
+            <span class="acc-summary">@Summary</span>
+        }
+        <span class="material-symbols-outlined acc-chevron">expand_more</span>
+    </button>
+    @if (Parent.IsOpen(this))
+    {
+        <div class="acc-body">@ChildContent</div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private Accordion Parent { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+
+    /// <summary>Optional Material Symbols icon shown before the title.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Optional right-aligned header content (a hint, count, or badge).</summary>
+    [Parameter] public RenderFragment? Summary { get; set; }
+
+    /// <summary>Initial open state when the accordion first renders.</summary>
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _registered;
+
+    protected override void OnInitialized()
+    {
+        if (Parent is null)
+        {
+            throw new InvalidOperationException($"{nameof(AccordionPane)} must be used inside an {nameof(Accordion)}.");
+        }
+
+        Parent.Register(this);
+        _registered = true;
+    }
+
+    public void Dispose()
+    {
+        if (_registered)
+        {
+            Parent.Unregister(this);
+        }
+    }
+}

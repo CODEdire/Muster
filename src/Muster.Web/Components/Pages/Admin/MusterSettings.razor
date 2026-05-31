@@ -35,8 +35,8 @@ else if (State == AccessState.Ready)
         </Toolbar>
     </PageHeader>
 
-    <div class="panel glass">
-        <h2>Muster defaults</h2>
+    <Accordion>
+    <AccordionPane Title="Muster defaults" Icon="tune" Open="true">
         <p class="subtitle">Applied to a muster when no template overrides them.</p>
         <div class="form-grid">
             <label>Card channel
@@ -69,10 +69,9 @@ else if (State == AccessState.Ready)
                 <span class="subtitle">spendable currency for the coin reward</span>
             </label>
         </div>
-    </div>
+    </AccordionPane>
 
-    <div class="panel glass">
-        <h2>Auto-create on session</h2>
+    <AccordionPane Title="Auto-create on session" Icon="bolt">
         <p class="subtitle">Opening a tracking session posts + links a check-in muster and gates the session coin. Each session open can override.</p>
         <div class="form-grid">
             <label class="check">
@@ -87,10 +86,9 @@ else if (State == AccessState.Ready)
                 </select>
             </label>
         </div>
-    </div>
+    </AccordionPane>
 
-    <div class="panel glass">
-        <h2>Allowed channels</h2>
+    <AccordionPane Title="Allowed channels" Icon="tag">
         <p class="subtitle">Where musters may post. <strong>Empty (nothing on the right) = any chat channel</strong>; otherwise only those on the right.</p>
         @if (_chat.Count == 0)
         {
@@ -120,7 +118,8 @@ else if (State == AccessState.Ready)
                 </select>
             </div>
         </div>
-    </div>
+    </AccordionPane>
+    </Accordion>
 }
 
 <style>

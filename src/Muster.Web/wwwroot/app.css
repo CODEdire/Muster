@@ -406,6 +406,20 @@ label.checkbox {
 .page-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
     margin-top: 0.85rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
 
+/* ---- Accordion ----------------------------------------------------------- */
+.accordion { display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 1.25rem; }
+.acc-item { overflow: hidden; }   /* .glass supplies the surface, border, radius + blur */
+.acc-header { width: 100%; display: flex; align-items: center; gap: 0.6rem;
+    padding: 1rem 1.25rem; background: none; border: none; cursor: pointer; color: inherit;
+    font-family: inherit; font-size: 1.05rem; font-weight: 600; text-align: left; }
+.acc-header:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.acc-icon { color: var(--text-muted); font-size: 1.2rem; }
+.acc-title { flex: 1; }
+.acc-summary { color: var(--text-muted); font-weight: 400; font-size: 0.85rem; }
+.acc-chevron { color: var(--text-muted); transition: transform 0.15s ease; }
+.acc-item.open .acc-chevron { transform: rotate(180deg); }
+.acc-body { padding: 0 1.25rem 1.25rem; }
+
 /* ---- Scrollbars (themed) ------------------------------------------------- */
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
