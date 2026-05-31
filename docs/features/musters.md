@@ -14,14 +14,19 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - Optional **allowed-channel list** — empty = any chat channel (text or voice), set = restrict; pickers, autocomplete, and posting all honor it.
 
 ## Rewards
-- Reward (points or any guild currency) is paid **at close**, not on check-in — so removing someone before close needs no reversal.
-- Reward `0` = check-in tracking only.
+- A muster grants **Points** (participation) and optional **Coins** (a spendable currency), paid **at close** — not on check-in, so removing someone before close needs no reversal.
+- Values resolve **template → custom → guild defaults**; both 0 = check-in tracking only.
+
+## Templates
+- Named presets (e.g. "Tactical Strike Group") set Points, Coins + coin type, retention, optional capacity/expiry, and an emoji — so creators pick a type instead of dialing in rewards.
+- Picking a template overrides the guild defaults; a **Tracking Manager** may further tweak its values per-post, a **Muster Creator** gets it locked.
+- No template picked → the guild's global muster defaults apply.
 
 ## Tracking-session integration
 - Link a muster to one or more **tracking sessions** to gate the session's spendable **coin** (points are never gated).
 - Gate modes: **None** (mint to all), **Any** (in any linked muster), **All** (in every linked muster).
 - A linked muster's own reward is paid at **session close**, only to members who checked in **and** attended.
-- Sessions can **auto-create** a check-in muster on open (guild default + per-session override).
+- Sessions can **auto-create** a check-in muster on open (guild default + per-session override), with a configurable default gate mode.
 - Ending a session auto-closes its linked musters.
 
 ## Admin (web)
@@ -35,5 +40,7 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - `/muster summary` shows any muster's roster (incl. closed) as an ephemeral reply.
 
 ## Access & audit
-- Authoring/managing musters → **Tracking Manager** (+ admin). Check-in is open to eligible members.
+- **Tracking Manager** (+ admin): full create (custom rewards or templates), close, link, edit roster, settings.
+- **Muster Creator**: post from templates only (rewards locked).
+- Check-in is open to eligible members.
 - Every action is recorded to the audit log.
