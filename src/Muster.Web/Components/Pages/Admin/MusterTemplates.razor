@@ -17,11 +17,8 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/muster-settings">← Muster settings</a>
-        <h1>Muster templates</h1>
-        <p class="subtitle">Named reward presets creators pick from. A Muster Creator can only post from a template; managers can also override.</p>
-    </div>
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings", $"/guilds/{GuildId}/muster-settings"), new("Templates") })"
+                Subtitle="Named reward presets creators pick from. A Muster Creator can only post from a template; managers can also override." />
 
     @if (Message is not null)
     {

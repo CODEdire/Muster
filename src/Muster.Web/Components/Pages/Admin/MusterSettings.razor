@@ -25,13 +25,15 @@ else if (State == AccessState.Forbidden)
 }
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
-        <h1>Muster settings</h1>
-        <p class="subtitle">Defaults for new musters and where their cards post. <a href="/guilds/@GuildId/muster-templates">Manage templates →</a></p>
-    </div>
-
-    <p class="save-state">@_saveState</p>
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings") })"
+                Subtitle="Defaults for new musters and where their cards post.">
+        <Toolbar>
+            <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/muster-templates">
+                <span class="material-symbols-outlined">dashboard_customize</span> Manage templates
+            </a>
+            <span class="save-state">@_saveState</span>
+        </Toolbar>
+    </PageHeader>
 
     <div class="panel glass">
         <h2>Muster defaults</h2>
@@ -122,13 +124,14 @@ else if (State == AccessState.Ready)
 }
 
 <style>
-    .save-state { min-height: 1.2em; color: var(--text-muted); font-size: 0.85rem; }
+    .save-state { color: var(--text-muted); font-size: 0.85rem; margin-left: auto; }
     .warn-text { color: #d97706; }
-    .dual { display: flex; gap: 1rem; align-items: center; }
+    .dual { display: flex; gap: 1rem; align-items: stretch; }
     .dual-col { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
     .dual-col select { width: 100%; }
     .dual-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-    .dual-mid { display: flex; flex-direction: column; gap: 0.5rem; }
+    .dual-mid { display: flex; flex-direction: column; gap: 0.6rem; justify-content: center; }
+    .dual-mid .btn { min-width: 3rem; padding: 0.6rem 0.9rem; font-size: 1.35rem; line-height: 1; font-weight: 700; }
 </style>
 
 @code {

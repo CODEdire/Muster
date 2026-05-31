@@ -394,6 +394,27 @@ label.checkbox {
 .page-head .subtitle { color: var(--text-muted); margin: 0.25rem 0 0; }
 .page-head .actions { margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
+/* Breadcrumb-style page title: parent crumbs link out, the last is the current page. */
+.page-breadcrumb { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
+    font-size: 1.6rem; font-weight: 700; line-height: 1.25; margin: 0; }
+.page-breadcrumb a { color: var(--text-muted); }
+.page-breadcrumb a:hover { color: var(--accent); text-decoration: none; }
+.page-breadcrumb .crumb-current { color: inherit; }
+.page-breadcrumb .crumb-sep { color: var(--text-muted); font-weight: 400; }
+
+/* Sub-nav / action toolbar that sits under the breadcrumb. */
+.page-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
+    margin-top: 0.85rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+
+/* ---- Scrollbars (themed) ------------------------------------------------- */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px;
+    border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
 /* ---- Card grids ---------------------------------------------------------- */
 .card-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .feature-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 1.75rem; }

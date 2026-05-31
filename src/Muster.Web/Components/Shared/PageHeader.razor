@@ -1,0 +1,42 @@
+@* Breadcrumb-style page header. Parent crumbs link out; the last crumb is the current page (title-sized).
+   Optional Subtitle and a Toolbar render fragment for sub-nav / actions under the breadcrumb. *@
+<div class="page-head">
+    <nav class="page-breadcrumb" aria-label="Breadcrumb">
+        @for (var i = 0; i < Crumbs.Count; i++)
+        {
+            var c = Crumbs[i];
+            var isLast = i == Crumbs.Count - 1;
+            if (!isLast && c.Href is { } href)
+            {
+                <a href="@href">@c.Label</a>
+                <span class="crumb-sep" aria-hidden="true">›</span>
+            }
+            else
+            {
+                <span class="crumb-current" aria-current="page">@c.Label</span>
+            }
+        }
+    </nav>
+
+    @if (!string.IsNullOrWhiteSpace(Subtitle))
+    {
+        <p class="subtitle">@Subtitle</p>
+    }
+
+    @if (Toolbar is not null)
+    {
+        <div class="page-toolbar">@Toolbar</div>
+    }
+</div>
+
+@code {
+    /// <summary>Breadcrumb trail in order; the last entry renders as the current page (its Href is ignored).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<Crumb> Crumbs { get; set; } = [];
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>Optional sub-nav / action bar rendered under the breadcrumb.</summary>
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+
+    public record Crumb(string Label, string? Href = null);
+}
