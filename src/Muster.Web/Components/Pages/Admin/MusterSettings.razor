@@ -231,17 +231,27 @@ else if (State == AccessState.Ready)
         get
         {
             var parts = new List<string>();
-            if (Input.Points is > 0) { parts.Add($"{Input.Points} pts"); }
+
+            // Reward first; "no reward" makes plain that a 0/0 muster just tracks check-ins.
+            var reward = new List<string>();
+            if (Input.Points is > 0) { reward.Add($"{Input.Points} pts"); }
             if (Input.Coins is > 0)
             {
                 var code = _coins.FirstOrDefault(c => c.Id == Input.CoinCurrencyId)?.Code ?? "coins";
-                parts.Add($"{Input.Coins} {code}");
+                reward.Add($"{Input.Coins} {code}");
             }
-            return parts.Count == 0 ? "check-in only" : string.Join(" · ", parts);
+            parts.Add(reward.Count == 0 ? "no reward" : string.Join(" + ", reward));
+
+            if (Input.ExpiryHours is > 0) { parts.Add($"auto-close {Input.ExpiryHours}h"); }
+            if (Input.CreatorAutoCheckIn) { parts.Add("self check-in"); }
+
+            return string.Join(" · ", parts);
         }
     }
 
-    private string AutoCreateSummary => Input.AutoCreate ? $"On · gate {Input.Gate}" : "Off";
+    private string AutoCreateSummary => Input.AutoCreate
+        ? $"On · gate {Input.Gate} · {(Input.AutoCreateChannel == MusterAutoCreateChannel.SessionChannel ? "session channel" : "default channel")}"
+        : "Off";
 
     private string AllowedSummary => _allowed.Count == 0 ? "Any channel" : $"{_allowed.Count} channel{(_allowed.Count == 1 ? "" : "s")}";
 
