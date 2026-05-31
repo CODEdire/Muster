@@ -51,7 +51,7 @@ public static class CreateMusterHandler
 
         // Resolve effective values: template (if any) is the base; a manager's non-null custom fields override; with
         // no template, a manager's values fall back to the guild defaults.
-        long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires; int minCheckIns;
+        long points; long coins; Guid? coinCcy; int retention; int? capacity; DateTimeOffset? expires; int? minCheckIns;
 
         var now = DateTimeOffset.UtcNow;
         // Guild default max active time (0 = none). A template's own ExpiryHours wins; if a template doesn't set one,
@@ -98,13 +98,13 @@ public static class CreateMusterHandler
             return Result<Guid>.Fail("BadCapacity");
         }
 
-        if (minCheckIns < 0)
+        if (minCheckIns is < 0)
         {
             return Result<Guid>.Fail("BadMinimum");
         }
 
         // A minimum above a hard cap could never be reached — the muster would always pay nobody.
-        if (capacity is { } capVal && minCheckIns > capVal)
+        if (capacity is { } capVal && minCheckIns is { } minVal && minVal > capVal)
         {
             return Result<Guid>.Fail("MinAboveCapacity");
         }

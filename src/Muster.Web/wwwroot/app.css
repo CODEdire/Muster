@@ -342,6 +342,22 @@ label.checkbox {
     cursor: pointer;
 }
 
+/* ---- Markdown editor (Discord-flavored toolbar + preview) ---------------- */
+.md-editor { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+.md-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 60%, var(--border)); }
+.md-toolbar button { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; background: transparent; color: var(--text-muted); border-radius: 6px; cursor: pointer; transition: background 0.12s ease, color 0.12s ease; }
+.md-toolbar button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); }
+.md-toolbar button.active { background: var(--accent); color: #fff; }
+.md-toolbar .material-symbols-outlined { font-size: 1.2rem; }
+.md-toolbar .md-sep { width: 1px; height: 1.3rem; background: var(--border); margin: 0 4px; }
+.md-toolbar .md-spacer { flex: 1; }
+.md-editor .md-textarea { display: block; width: 100%; border: 0; border-radius: 0; background: transparent; padding: 0.6rem 0.7rem; resize: vertical; font: inherit; line-height: 1.5; color: var(--text); }
+.md-editor .md-textarea:focus { outline: none; }
+.md-preview { padding: 0.6rem 0.7rem; min-height: 4.5rem; line-height: 1.5; }
+.md-preview > :first-child { margin-top: 0; }
+.md-preview > :last-child { margin-bottom: 0; }
+.md-preview-empty { color: var(--text-muted); font-style: italic; }
+
 /* ---- .mform: clean stacked field grid for settings/config forms ---------- */
 /* Interactive pages drop the <form> wrapper, so labels would render inline — stack them explicitly.
    Shared by the muster settings panes and the template add/edit page. */

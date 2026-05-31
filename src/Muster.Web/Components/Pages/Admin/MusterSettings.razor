@@ -259,7 +259,7 @@ else if (State == AccessState.Ready)
             Points = ms.DefaultPoints == 0 ? null : ms.DefaultPoints,
             Coins = ms.DefaultCoins == 0 ? null : ms.DefaultCoins,
             CoinCurrencyId = ms.DefaultCoinCurrencyId,
-            MinCheckIns = ms.DefaultMinCheckIns == 0 ? null : ms.DefaultMinCheckIns,
+            MinCheckIns = ms.DefaultMinCheckIns,
             ExpiryHours = ms.DefaultExpiryHours == 0 ? null : ms.DefaultExpiryHours,
             CreatorAutoCheckIn = ms.CreatorAutoCheckIn,
             AutoCreate = ms.AutoCreateOnSession,
@@ -330,15 +330,14 @@ else if (State == AccessState.Ready)
         var points = Input.Points ?? 0;
         var coins = Input.Coins ?? 0;
         var expiry = Input.ExpiryHours ?? 0;
-        var minCheckIns = Input.MinCheckIns ?? 0;
         var result = await Config.SetMusterSettingsAsync(
             GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
-            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel, minCheckIns);
+            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel, Input.MinCheckIns);
 
         if (!result.IsError)
         {
             await AuditAsync("muster.config",
-                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} min:{minCheckIns} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} autochannel:{Input.AutoCreateChannel} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
+                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} min:{Input.MinCheckIns?.ToString() ?? "none"} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} autochannel:{Input.AutoCreateChannel} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
         }
         _save = result.IsError ? SaveStatus.Error : SaveStatus.Saved;
         _saveMsg = result.IsError ? result.Message : null;

@@ -81,7 +81,7 @@ else if (State == AccessState.Ready)
                                 <td class="num">@(t.Points > 0 ? t.Points.ToString("N0") : "—")</td>
                                 <td class="num">@(t.Coins > 0 ? $"{t.Coins:N0} {CoinCode(t.CoinCurrencyId)}" : "—")</td>
                                 <td class="num">@(t.Capacity is { } cap ? cap.ToString("N0") : "—")</td>
-                                <td class="num">@(t.MinCheckIns > 0 ? t.MinCheckIns.ToString("N0") : "—")</td>
+                                <td class="num">@(t.MinCheckIns is { } min ? min.ToString("N0") : "—")</td>
                                 <td class="num">@(t.ExpiryHours is { } ex ? $"{ex}h" : "—")</td>
                                 <td class="num">@(t.RetentionHours)h</td>
                                 <td>@(t.Enabled ? "✓" : "—")</td>
@@ -151,7 +151,7 @@ else if (State == AccessState.Ready)
                 "points" => t => t.Points,
                 "coins" => t => t.Coins,
                 "capacity" => t => t.Capacity ?? -1,
-                "min" => t => t.MinCheckIns,
+                "min" => t => t.MinCheckIns ?? -1,
                 "expiry" => t => t.ExpiryHours ?? -1,
                 "retention" => t => t.RetentionHours,
                 "enabled" => t => t.Enabled ? 1 : 0,

@@ -42,10 +42,11 @@ public static class MusterEmbedRenderer
         }
 
         // Minimum-check-ins gate: show the bar and whether it's met (so members can see when the reward unlocks).
-        if (muster.MinCheckIns > 0)
+        // A minimum of 0 is always met, so only surface a positive bar.
+        if (muster.MinCheckIns is { } minReq && minReq > 0)
         {
-            var met = checkedIn >= muster.MinCheckIns;
-            fields.Add(new() { Name = "Min to reward", Value = $"{(met ? "✅" : "⚠️")} {checkedIn}/{muster.MinCheckIns}", Inline = true });
+            var met = checkedIn >= minReq;
+            fields.Add(new() { Name = "Min to reward", Value = $"{(met ? "✅" : "⚠️")} {checkedIn}/{minReq}", Inline = true });
         }
 
         if (muster.Status == MusterStatus.Open && muster.ExpiresAt is { } expiry)

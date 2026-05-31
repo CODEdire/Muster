@@ -6,7 +6,6 @@
       "AutoCreateOnSession": false,
       "CreatorAutoCheckIn": true,
       "DefaultExpiryHours": 0,
-      "DefaultMinCheckIns": 0,
       "AutoCreateChannel": "DefaultChannel"
     }
   }

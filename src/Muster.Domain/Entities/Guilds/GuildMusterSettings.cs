@@ -50,9 +50,9 @@ public class GuildMusterSettings
     /// <summary>Baseline spendable coins granted (at close) for checking into any muster. 0 = none.</summary>
     public long DefaultCoins { get; set; }
 
-    /// <summary>Baseline minimum check-ins required before a muster pays out (0 = no minimum). Templates/per-create
-    /// values override.</summary>
-    public int DefaultMinCheckIns { get; set; }
+    /// <summary>Baseline minimum check-ins required before a muster pays out. null = no minimum; 0 is a valid
+    /// (always-met) minimum. Templates/per-create values override.</summary>
+    public int? DefaultMinCheckIns { get; set; }
 
     /// <summary>Currency the default coins are minted in (a spendable currency). Null = no coin reward by default.</summary>
     public Guid? DefaultCoinCurrencyId { get; set; }

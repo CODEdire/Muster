@@ -78,12 +78,12 @@ else if (State == AccessState.Ready)
                         }
                     </select>
                 </label>
-                <label>Minimum check-ins to reward (0 = none)
-                    <input class="input" type="number" min="0" @bind="_minCheckIns" />
+                <label>Minimum check-ins to reward
+                    <input class="input" type="number" min="0" placeholder="No minimum" @bind="_minCheckIns" />
                 </label>
             }
             <label>Capacity (optional)
-                <input class="input" type="number" min="0" @bind="_capacity" />
+                <input class="input" type="number" min="1" placeholder="Uncapped" @bind="_capacity" />
             </label>
             <label>Auto-close after (hours; 0 = guild default)
                 <input class="input" type="number" min="0" @bind="_expiresHours" />
@@ -166,8 +166,8 @@ else if (State == AccessState.Ready)
     private int _coins;
     private string _coinCurrencyId = "";
     private string _templateId = "";
-    private int _capacity;
-    private int _minCheckIns;
+    private int? _capacity;
+    private int? _minCheckIns;
     private int _expiresHours;
     private bool _checkMeIn = true;
     private ulong _channelId;
@@ -251,7 +251,8 @@ else if (State == AccessState.Ready)
             if (result.Ok)
             {
                 _prompt = _title = "";
-                _points = _coins = _capacity = _minCheckIns = _expiresHours = 0;
+                _points = _coins = _expiresHours = 0;
+                _capacity = _minCheckIns = null;
                 _channelId = 0;
                 if (_isManager) { _templateId = ""; _coinCurrencyId = ""; }
             }

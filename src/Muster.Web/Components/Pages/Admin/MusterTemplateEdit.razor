@@ -82,8 +82,8 @@ else if (State == AccessState.Ready)
                     </div>
                     <div class="field span2">
                         <label>Default card prompt</label>
-                        <textarea rows="2" @bind="_t.Prompt" maxlength="500" placeholder="(optional) what members are checking in for"></textarea>
-                        <p class="hint">The card text. Used when the author leaves the prompt blank — lets a creator post in one click.</p>
+                        <MarkdownEditor @bind-Value="_t.Prompt" Rows="3" MaxLength="500" Placeholder="(optional) what members are checking in for" />
+                        <p class="hint">The card text (Discord markdown supported). Used when the author leaves the prompt blank — lets a creator post in one click.</p>
                     </div>
                 </div>
             </AccordionPane>
@@ -113,8 +113,8 @@ else if (State == AccessState.Ready)
                     </div>
                     <div class="field span2">
                         <label>Minimum check-ins to reward</label>
-                        <input type="number" min="0" @bind="_t.MinCheckIns" />
-                        <p class="hint">If fewer than this check in, nobody is rewarded. 0 = no minimum.</p>
+                        <input type="number" min="0" placeholder="No minimum" @bind="_t.MinCheckIns" />
+                        <p class="hint">If fewer than this check in, nobody is rewarded. Blank = no minimum.</p>
                     </div>
                 </div>
             </AccordionPane>
@@ -182,13 +182,13 @@ else if (State == AccessState.Ready)
             return;
         }
 
-        if (_t.Points < 0 || _t.Coins < 0 || _t.RetentionHours < 0 || _t.Capacity is < 0 || _t.ExpiryHours is < 0 || _t.MinCheckIns < 0)
+        if (_t.Points < 0 || _t.Coins < 0 || _t.RetentionHours < 0 || _t.Capacity is < 0 || _t.ExpiryHours is < 0 || _t.MinCheckIns is < 0)
         {
             Message = "Points, coins, capacity, expiry, retention, and minimum can't be negative.";
             return;
         }
 
-        if (_t.Capacity is { } cap && _t.MinCheckIns > cap)
+        if (_t.Capacity is { } cap && _t.MinCheckIns is { } min && min > cap)
         {
             Message = "Minimum check-ins can't be more than the capacity.";
             return;

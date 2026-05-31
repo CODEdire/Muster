@@ -142,7 +142,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 points: musterCfg?.DefaultPoints ?? 0, coins: musterCfg?.DefaultCoins ?? 0, coinCurrencyId: musterCfg?.DefaultCoinCurrencyId,
                 retentionHours: musterCfg?.BoardRetentionHours ?? 48, capacity: null, expiresAt: expiresAt, createdBy: openedBy,
                 sessionId: session.Id, checkInCreator: musterCfg?.CreatorAutoCheckIn ?? true,
-                minCheckIns: musterCfg?.DefaultMinCheckIns ?? 0, ct: ct);
+                minCheckIns: musterCfg?.DefaultMinCheckIns, ct: ct);
 
             session.CoinGate = musterCfg?.AutoCreateGate ?? SessionCoinGate.Any;
             await db.SaveChangesAsync(ct);
@@ -527,7 +527,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
             {
                 // Skip cancelled musters, non-checked-in attendees, and any muster whose roster fell short of its
                 // minimum-check-ins gate (it pays nobody).
-                if (m.Status == MusterStatus.Cancelled || m.Roster.Count < m.MinCheckIns || !m.Roster.Contains(attendance.UserId))
+                if (m.Status == MusterStatus.Cancelled
+                    || (m.MinCheckIns is { } min && m.Roster.Count < min)
+                    || !m.Roster.Contains(attendance.UserId))
                 {
                     continue;
                 }

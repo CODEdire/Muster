@@ -6,7 +6,7 @@ namespace Muster.Persistence.Queries;
 
 /// <summary>A muster linked to a session, with everything session-close needs: its check-in roster, its bonus
 /// reward (points + coins), and its current status (for auto-close).</summary>
-public record SessionLinkedMuster(Guid Id, long Points, long Coins, Guid? CoinCurrencyId, string Prompt, MusterStatus Status, int MinCheckIns, HashSet<ulong> Roster);
+public record SessionLinkedMuster(Guid Id, long Points, long Coins, Guid? CoinCurrencyId, string Prompt, MusterStatus Status, int? MinCheckIns, HashSet<ulong> Roster);
 
 /// <summary>A posted muster card whose muster has gone terminal (Closed/Expired/Cancelled) — a cleanup candidate.
 /// <see cref="RetentionHours"/> is the muster's own snapshot, so cleanup doesn't re-read guild settings.</summary>

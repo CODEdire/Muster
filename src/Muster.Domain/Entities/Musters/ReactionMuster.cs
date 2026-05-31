@@ -25,9 +25,10 @@ public class ReactionMuster
     /// Ignored for a muster linked to a session (a linked muster rewards everyone who attended, not the first N).</summary>
     public int? Capacity { get; set; }
 
-    /// <summary>Minimum check-ins required for the muster to pay out at all. 0 = no minimum. If the roster falls short
-    /// when the muster pays (its own close, or the linked session's close), nobody on it is rewarded.</summary>
-    public int MinCheckIns { get; set; }
+    /// <summary>Minimum check-ins required for the muster to pay out at all. <c>null</c> = no minimum (never gates);
+    /// 0 is a valid (always-met) minimum. If the roster falls short when the muster pays (its own close, or the linked
+    /// session's close), nobody on it is rewarded.</summary>
+    public int? MinCheckIns { get; set; }
 
     /// <summary>Participation POINTS granted (at close) to each member who checked in. 0 = none.</summary>
     public long Points { get; set; }

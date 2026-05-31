@@ -14,7 +14,7 @@ public record MusterListItem(
 /// <summary>One muster's detail for the web admin page.</summary>
 public record MusterDetailView(
     Guid Id, ulong GuildId, string? Title, string Prompt, MusterStatus Status,
-    long Points, long Coins, string? CoinCode, int? Capacity, int MinCheckIns, DateTimeOffset? ExpiresAt,
+    long Points, long Coins, string? CoinCode, int? Capacity, int? MinCheckIns, DateTimeOffset? ExpiresAt,
     DateTimeOffset CreatedAt, ulong CreatedBy, DateTimeOffset? ClosedAt, ulong ChannelId,
     IReadOnlyList<MusterParticipantView> Participants, IReadOnlyList<MusterLinkedSession> Sessions);
 
