@@ -6,10 +6,17 @@ using Muster.Persistence.Queries;
 
 namespace Muster.Infrastructure.Services.Musters;
 
+/// <summary>A session a muster is linked to (for the board's "Linked" column → session detail).</summary>
+public record MusterListSession(Guid SessionId, string Name);
+
 /// <summary>A muster row for the web admin list.</summary>
 public record MusterListItem(
-    Guid Id, string Display, MusterStatus Status, int CheckedIn, int? Capacity,
-    long Points, long Coins, string? CoinCode, DateTimeOffset CreatedAt, ulong CreatedBy, int LinkedSessions);
+    Guid Id, string Display, MusterStatus Status, int CheckedIn, int? Capacity, int? MinCheckIns,
+    long Points, long Coins, string? CoinCode, DateTimeOffset CreatedAt, ulong CreatedBy,
+    IReadOnlyList<MusterListSession> Sessions);
+
+/// <summary>At-a-glance counts for the muster board KPI cards.</summary>
+public record MusterKpis(int Open, int Locked, int CheckedInOnOpen, int Linked, int Total);
 
 /// <summary>One muster's detail for the web admin page.</summary>
 public record MusterDetailView(
@@ -30,6 +37,7 @@ public record SessionGateSummary(int Attendees, int CoinEligible, int Skipped, S
 public interface IMusterReadService
 {
     Task<IReadOnlyList<MusterListItem>> ListAsync(ulong guildId, bool includeClosed, CancellationToken ct = default);
+    Task<MusterKpis> GetKpisAsync(ulong guildId, CancellationToken ct = default);
     Task<MusterDetailView?> GetDetailAsync(ulong guildId, Guid musterId, CancellationToken ct = default);
 
     /// <summary>Recent sessions a muster could be linked to (newest first) — for the link picker.</summary>
@@ -43,22 +51,53 @@ public interface IMusterReadService
 public class MusterReadService(MusterDbContext db) : IMusterReadService
 {
     public async Task<IReadOnlyList<MusterListItem>> ListAsync(ulong guildId, bool includeClosed, CancellationToken ct = default)
-        => await db.ReactionMusters
+    {
+        var rows = await db.ReactionMusters
             .Where(m => m.GuildId == guildId && (includeClosed || m.Status == MusterStatus.Open))
             .OrderByDescending(m => m.CreatedAt)
-            .Select(m => new MusterListItem(
+            .Select(m => new
+            {
                 m.Id,
-                m.Title ?? m.Prompt,
+                Display = m.Title ?? m.Prompt,
                 m.Status,
-                m.Participants.Count,
+                Count = m.Participants.Count,
                 m.Capacity,
+                m.MinCheckIns,
                 m.Points,
                 m.Coins,
-                db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
+                Code = db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
                 m.CreatedAt,
                 m.CreatedBy,
-                m.SessionLinks.Count))
+                SessionIds = m.SessionLinks.Select(l => l.SessionId).ToList(),
+            })
             .ToListAsync(ct);
+
+        // Resolve linked-session names in one round-trip, then stitch (MusterSessionLink has no session navigation).
+        var sessionIds = rows.SelectMany(r => r.SessionIds).Distinct().ToList();
+        var names = sessionIds.Count == 0
+            ? []
+            : await db.TrackingSessions.Where(s => sessionIds.Contains(s.Id))
+                .Select(s => new { s.Id, s.Name })
+                .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        return rows.Select(r => new MusterListItem(
+            r.Id, r.Display, r.Status, r.Count, r.Capacity, r.MinCheckIns, r.Points, r.Coins, r.Code,
+            r.CreatedAt, r.CreatedBy,
+            r.SessionIds.Select(id => new MusterListSession(id, names.GetValueOrDefault(id, "session"))).ToList()))
+            .ToList();
+    }
+
+    public async Task<MusterKpis> GetKpisAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var guild = db.ReactionMusters.Where(m => m.GuildId == guildId);
+        var open = await guild.CountAsync(m => m.Status == MusterStatus.Open, ct);
+        var locked = await guild.CountAsync(m => m.Status == MusterStatus.Locked, ct);
+        var checkedIn = await guild.Where(m => m.Status == MusterStatus.Open).SelectMany(m => m.Participants).CountAsync(ct);
+        var linked = await guild.CountAsync(m => m.SessionLinks.Any()
+            && (m.Status == MusterStatus.Open || m.Status == MusterStatus.Locked), ct);
+        var total = await guild.CountAsync(ct);
+        return new MusterKpis(open, locked, checkedIn, linked, total);
+    }
 
     public async Task<MusterDetailView?> GetDetailAsync(ulong guildId, Guid musterId, CancellationToken ct = default)
     {

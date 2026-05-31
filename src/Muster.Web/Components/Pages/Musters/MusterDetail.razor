@@ -17,10 +17,23 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
-        <a class="back-link" href="@MusterLinks.Musters(GuildId)">← Musters</a>
-        <h1>@(_m is null ? "Muster" : (string.IsNullOrWhiteSpace(_m.Title) ? _m.Prompt : _m.Title))</h1>
-    </div>
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading) })"
+                Subtitle="@(_m is null ? null : $"Posted {_m.Status.ToString().ToLowerInvariant()}")">
+        <Toolbar>
+            @if (_m is not null)
+            {
+                @if (_m.Status is MusterStatus.Open or MusterStatus.Locked)
+                {
+                    <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync">
+                        <span class="material-symbols-outlined">stop_circle</span> Close
+                    </button>
+                }
+                <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="RemoveCardAsync">
+                    <span class="material-symbols-outlined">delete_sweep</span> Remove Discord card
+                </button>
+            }
+        </Toolbar>
+    </PageHeader>
 
     @if (Message is not null)
     {
@@ -33,103 +46,106 @@ else if (State == AccessState.Ready)
     }
     else
     {
-        <div class="panel glass">
-            <p>@_m.Prompt</p>
-            <dl class="kv">
-                <div><dt>Status</dt><dd>@_m.Status</dd></div>
-                <div><dt>Checked in</dt><dd>@_m.Participants.Count@(_m.Capacity is { } c ? $" / {c}" : "")</dd></div>
-                <div><dt>Reward</dt><dd>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</dd></div>
-                @if (_m.MinCheckIns is { } min && min > 0)
+        <Accordion>
+            <AccordionPane Title="Overview" Icon="info" Open="true" Summary="@OverviewSummary">
+                @if (!string.IsNullOrWhiteSpace(_m.Prompt))
                 {
-                    <div><dt>Min to reward</dt><dd>@_m.Participants.Count / @min @(_m.Participants.Count >= min ? "✅ met" : "⚠️ not met")</dd></div>
+                    <div class="muster-prompt">@Muster.Web.DiscordMarkdown.ToHtml(_m.Prompt)</div>
                 }
-                <div><dt>Created</dt><dd><LocalTime Value="_m.CreatedAt" /> by @Name(_m.CreatedBy)</dd></div>
-                @if (_m.ExpiresAt is { } ex)
-                {
-                    <div><dt>Closes</dt><dd><LocalTime Value="ex" /></dd></div>
-                }
-            </dl>
-            <div class="btn-row">
-                @if (_m.Status is MusterStatus.Open or MusterStatus.Locked)
-                {
-                    <button type="button" class="btn btn-danger" disabled="@_busy" @onclick="CloseAsync">Close muster</button>
-                }
-                <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="RemoveCardAsync">Remove Discord card</button>
-            </div>
-        </div>
+                <dl class="kv">
+                    <div><dt>Status</dt><dd>@StatusLabel(_m.Status)</dd></div>
+                    <div><dt>Checked in</dt><dd>@_m.Participants.Count@(_m.Capacity is { } c ? $" / {c}" : "")</dd></div>
+                    <div><dt>Reward</dt><dd>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</dd></div>
+                    @if (_m.MinCheckIns is { } min && min > 0)
+                    {
+                        <div><dt>Min to reward</dt><dd>@_m.Participants.Count / @min @(_m.Participants.Count >= min ? "✅ met" : "⚠️ not met")</dd></div>
+                    }
+                    <div><dt>Created</dt><dd><LocalTime Value="_m.CreatedAt" /> by @Name(_m.CreatedBy)</dd></div>
+                    @if (_m.ExpiresAt is { } ex)
+                    {
+                        <div><dt>@(_m.Status is MusterStatus.Open or MusterStatus.Locked ? "Closes" : "Closed at")</dt><dd><LocalTime Value="ex" /></dd></div>
+                    }
+                </dl>
+            </AccordionPane>
 
-        <div class="panel glass">
-            <h2>Participants (@_m.Participants.Count)</h2>
-            <div class="dg-scroll">
-                <table class="dg-table">
-                    <thead><tr><th>Member</th><th>Via</th><th>Checked in</th><th></th></tr></thead>
-                    <tbody>
-                        @if (_m.Participants.Count == 0)
-                        {
-                            <tr class="dg-empty"><td colspan="4">No check-ins yet.</td></tr>
-                        }
-                        else
-                        {
-                            @foreach (var p in _m.Participants)
+            <AccordionPane Title="@($"Participants ({_m.Participants.Count})")" Icon="group" Open="true">
+                <div class="dg-scroll">
+                    <table class="dg-table">
+                        <thead><tr><th>Member</th><th>Via</th><th>Checked in</th><th></th></tr></thead>
+                        <tbody>
+                            @if (_m.Participants.Count == 0)
                             {
-                                <tr>
-                                    <td>@Name(p.UserId)</td>
-                                    <td>@(p.Source == MusterParticipantSource.Admin ? "Added by staff" : "Button")</td>
-                                    <td><LocalTime Value="p.CheckedInAt" /></td>
-                                    <td class="dg-actions-col">
-                                        <button type="button" class="icon-btn danger" title="Remove" disabled="@_busy" @onclick="() => RemoveAsync(p.UserId)"><span class="material-symbols-outlined">person_remove</span></button>
-                                    </td>
-                                </tr>
+                                <tr class="dg-empty"><td colspan="4">No check-ins yet.</td></tr>
                             }
-                        }
-                    </tbody>
-                </table>
-            </div>
-            <div class="form-inline">
-                <input class="input" @bind="_addUserId" placeholder="Discord user id to add" />
-                <button type="button" disabled="@_busy" @onclick="AddAsync">Add participant</button>
-            </div>
-        </div>
+                            else
+                            {
+                                @foreach (var p in _m.Participants)
+                                {
+                                    <tr>
+                                        <td>@Name(p.UserId)</td>
+                                        <td>@(p.Source == MusterParticipantSource.Admin ? "Added by staff" : "Button")</td>
+                                        <td><LocalTime Value="p.CheckedInAt" /></td>
+                                        <td class="dg-actions-col">
+                                            <button type="button" class="icon-btn danger" title="Remove" disabled="@_busy" @onclick="() => RemoveAsync(p.UserId)"><span class="material-symbols-outlined">person_remove</span></button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="form-inline">
+                    <input class="input" @bind="_addUserId" placeholder="Discord user id to add" />
+                    <button type="button" disabled="@_busy" @onclick="AddAsync">Add participant</button>
+                </div>
+            </AccordionPane>
 
-        <div class="panel glass">
-            <h2>Linked sessions</h2>
-            @if (_m.Sessions.Count == 0)
-            {
-                <p class="subtitle">Not linked to any session. Link one to gate its spendable-coin mint on check-in — points are never gated, and a session with no linked muster mints coins to everyone.</p>
-            }
-            else
-            {
-                <ul class="list">
-                    @foreach (var s in _m.Sessions)
-                    {
-                        <li>
-                            <a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a> <span class="subtitle">(@s.Status)</span>
-                            <label class="subtitle">Coin gate:
-                                <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
-                                    <option value="@SessionCoinGate.None">None — mint to all</option>
-                                    <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
-                                    <option value="@SessionCoinGate.All">All — in every linked muster</option>
-                                </select>
-                            </label>
-                            <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)">Unlink</button>
-                        </li>
-                    }
-                </ul>
-            }
-            <div class="form-inline">
-                <select class="dg-select" @bind="_linkSessionId">
-                    <option value="">Select a session…</option>
-                    @foreach (var s in _sessions)
-                    {
-                        <option value="@s.SessionId">@s.Name (@s.Status)</option>
-                    }
-                </select>
-                <button type="button" disabled="@_busy" @onclick="LinkAsync">Link session</button>
-            </div>
-            <p class="subtitle">Linking defaults the session's coin gate to <strong>Any</strong>. Add more musters (e.g. mission rounds) and switch to <strong>All</strong> to require every one — under <strong>All</strong>, every linked muster is required, so one that nobody checked into blocks the coin (use <strong>Any</strong>, or don't link it, if that's not intended). A session with no muster linked at all mints to everyone.</p>
-        </div>
+            <AccordionPane Title="@($"Linked sessions ({_m.Sessions.Count})")" Icon="link" Open="true" Summary="@LinkedSummary">
+                @if (_m.Sessions.Count == 0)
+                {
+                    <p class="subtitle">Not linked to any session. Link one to gate its spendable-coin mint on check-in — points are never gated, and a session with no linked muster mints coins to everyone.</p>
+                }
+                else
+                {
+                    <ul class="list muster-links">
+                        @foreach (var s in _m.Sessions)
+                        {
+                            <li>
+                                <a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a> <span class="subtitle">(@s.Status)</span>
+                                <label class="subtitle">Coin gate:
+                                    <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
+                                        <option value="@SessionCoinGate.None">None — mint to all</option>
+                                        <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
+                                        <option value="@SessionCoinGate.All">All — in every linked muster</option>
+                                    </select>
+                                </label>
+                                <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)">Unlink</button>
+                            </li>
+                        }
+                    </ul>
+                }
+                <div class="form-inline">
+                    <select class="dg-select" @bind="_linkSessionId">
+                        <option value="">Select a session…</option>
+                        @foreach (var s in _sessions)
+                        {
+                            <option value="@s.SessionId">@s.Name (@s.Status)</option>
+                        }
+                    </select>
+                    <button type="button" disabled="@_busy" @onclick="LinkAsync">Link session</button>
+                </div>
+                <p class="subtitle">Linking defaults the session's coin gate to <strong>Any</strong>. Add more musters (e.g. mission rounds) and switch to <strong>All</strong> to require every one — under <strong>All</strong>, every linked muster is required, so one that nobody checked into blocks the coin (use <strong>Any</strong>, or don't link it, if that's not intended). A session with no muster linked at all mints to everyone.</p>
+            </AccordionPane>
+        </Accordion>
     }
 }
+
+<style>
+    .muster-prompt { margin: 0 0 1rem; line-height: 1.5; }
+    .muster-prompt > :first-child { margin-top: 0; }
+    .muster-prompt > :last-child { margin-bottom: 0; }
+    .muster-links li { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.35rem 0; }
+</style>
 
 @code {
     [Parameter] public Guid MusterId { get; set; }
@@ -143,13 +159,20 @@ else if (State == AccessState.Ready)
     private string _addUserId = "";
     private string? _linkSessionId;
 
+    private string _heading = "Muster";
+
     protected override async Task LoadAsync()
     {
         _m = await Reads.GetDetailAsync(GuildId, MusterId);
         if (_m is null)
         {
+            _heading = "Muster";
             return;
         }
+
+        _heading = !string.IsNullOrWhiteSpace(_m.Title)
+            ? _m.Title!
+            : Muster.Web.DiscordMarkdown.ToSnippet(_m.Prompt, 60) is { Length: > 0 } snip ? snip : "Muster";
 
         _sessions = await Reads.ListLinkableSessionsAsync(GuildId);
 
@@ -160,6 +183,12 @@ else if (State == AccessState.Ready)
         }
     }
 
+    private string OverviewSummary => _m is null ? "" : RewardLabel(_m.Points, _m.Coins, _m.CoinCode);
+
+    private string LinkedSummary => _m is null || _m.Sessions.Count == 0
+        ? "Not linked"
+        : $"{_m.Sessions.Count} session{(_m.Sessions.Count == 1 ? "" : "s")}";
+
     private string Name(ulong userId) => _names.TryGetValue(userId, out var n) ? n : $"<@{userId}>";
 
     private static string RewardLabel(long points, long coins, string? coinCode)
@@ -169,6 +198,16 @@ else if (State == AccessState.Ready)
         if (coins > 0) { parts.Add($"{coins} {coinCode ?? "coins"}"); }
         return parts.Count == 0 ? "Check-in only" : string.Join(" + ", parts);
     }
+
+    private static string StatusLabel(MusterStatus s) => s switch
+    {
+        MusterStatus.Open => "🟢 Open",
+        MusterStatus.Locked => "🔒 Locked — closes with session",
+        MusterStatus.Closed => "✅ Closed",
+        MusterStatus.Expired => "⌛ Expired",
+        MusterStatus.Cancelled => "🚫 Cancelled",
+        _ => s.ToString(),
+    };
 
     private async Task CloseAsync() => await RunAsync(new CloseMuster(GuildId, UserId, MusterId), "Muster closed.");
 

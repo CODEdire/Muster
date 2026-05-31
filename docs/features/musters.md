@@ -39,8 +39,9 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - Ending a session auto-closes its linked musters.
 
 ## Admin (web)
-- Musters list (active/past, status, count, linked sessions); author new musters.
-- Muster detail: roster, **add/remove participants**, close, link/unlink sessions + set the coin-gate mode, remove the Discord card.
+- Muster **board**: KPI cards (open / checked-in / linked / total) + a datagrid (search, status filter, sortable, paged). The Linked column deep-links to the session.
+- **New muster** on its own page (toolbar button): card content (markdown prompt), template/custom reward, options.
+- Muster **detail**: sectioned (Overview, Participants, Linked sessions) — roster **add/remove**, close, link/unlink sessions + coin-gate mode, remove the Discord card.
 - Settings page: default channel, card retention, max active time, reward defaults, creator auto-check-in, auto-create-on-session + gate, allowed channels.
 
 ## Lifecycle & housekeeping
