@@ -213,7 +213,9 @@ else if (State == AccessState.Ready)
     private string? _saveMsg;
 
     private const int DebounceMs = 600;
+    private const int HideMs = 10_000; // auto-hide the "Saved" pill after ~10s
     private CancellationTokenSource? _debounce;
+    private CancellationTokenSource? _hide;
 
     // At-a-glance header hints, recomputed on each render (autosave triggers StateHasChanged).
     private string DefaultsSummary
@@ -285,6 +287,7 @@ else if (State == AccessState.Ready)
     private void ScheduleSave()
     {
         _debounce?.Cancel();
+        _hide?.Cancel(); // a new edit cancels a pending "hide the pill"
         var cts = _debounce = new CancellationTokenSource();
         _save = SaveStatus.Saving;
         _ = InvokeAsync(async () =>
@@ -292,6 +295,21 @@ else if (State == AccessState.Ready)
             try { await Task.Delay(DebounceMs, cts.Token); }
             catch (TaskCanceledException) { return; }
             await SaveAsync();
+            StateHasChanged();
+            ScheduleHide();
+        });
+    }
+
+    // Fade the "Saved" pill after a short delay so it reads as a transient notification, not a permanent badge.
+    private void ScheduleHide()
+    {
+        _hide?.Cancel();
+        var hide = _hide = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(HideMs, hide.Token); }
+            catch (TaskCanceledException) { return; }
+            _save = SaveStatus.None;
             StateHasChanged();
         });
     }
@@ -319,6 +337,8 @@ else if (State == AccessState.Ready)
     {
         _debounce?.Cancel();
         _debounce?.Dispose();
+        _hide?.Cancel();
+        _hide?.Dispose();
     }
 
     // Voice channels carry chat too; show the speaker glyph, text channels the hash.
