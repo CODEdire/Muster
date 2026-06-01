@@ -37,6 +37,11 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
+    @if (Session is not null)
+    {
+        <p class="subtitle"><span class="material-symbols-outlined" style="vertical-align:-4px">link</span> This muster will be linked to the session it was created from (coin gate defaults to Any).</p>
+    }
+
     @if (!_isManager && _templates.Count == 0)
     {
         <div class="panel glass empty">No templates available yet — ask an admin to create one before posting.</div>
@@ -154,6 +159,9 @@ else if (State == AccessState.Ready)
 @code {
     protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
 
+    /// <summary>Pre-link the new muster to this session (set from the session detail's "New muster" action).</summary>
+    [SupplyParameterFromQuery(Name = "session")] public Guid? Session { get; set; }
+
     private bool _posting;
     private bool _isManager;
     private MusterResolveMode? _resolveMode;
@@ -226,7 +234,7 @@ else if (State == AccessState.Ready)
                 Points: custom ? _points : null,
                 Coins: custom ? _coins : null,
                 CoinCurrencyId: custom && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
-                Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: null,
+                Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: Session,
                 CheckInCreator: _checkMeIn,
                 MinCheckIns: custom ? _minCheckIns : null,
                 ResolveMode: _resolveMode);

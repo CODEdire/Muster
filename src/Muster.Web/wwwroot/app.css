@@ -1648,10 +1648,6 @@ img.avatar-sm { object-fit: cover; }
 .rule-chip .material-symbols-outlined { font-size: 1.05rem; }
 .rule-chip.on { background: var(--accent); color: #fff; border-color: transparent; }
 .rule-chip.off { color: var(--text-muted); opacity: 0.7; }
-/* Linked-muster chips (anchors) on the session detail. */
-.sess-musters a.rule-chip { text-decoration: none; }
-.sess-musters a.rule-chip:hover { filter: brightness(1.08); }
-.sess-musters .muster-count { background: rgba(255, 255, 255, 0.25); border-radius: 999px; padding: 0 0.4rem; font-size: 0.75rem; font-weight: 600; }
 
 /* Timeline visuals */
 .viz { padding: 1rem 1.2rem 1.2rem; }

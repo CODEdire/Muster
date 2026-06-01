@@ -146,19 +146,6 @@ else if (State == AccessState.Ready && _detail is not null)
         }
     </div>
 
-    @if (_musters.Count > 0)
-    {
-        <div class="sess-rules sess-musters">
-            <span class="rules-label">Linked musters</span>
-            @foreach (var m in _musters)
-            {
-                <a class="rule-chip on" href="@MusterLinks.MusterDetail(GuildId, m.Id)" title="@m.Status">
-                    <span class="material-symbols-outlined">groups</span>@m.Display <span class="muster-count">@m.CheckedIn</span>
-                </a>
-            }
-        </div>
-    }
-
     <div class="sess-rules">
         <span class="rules-label">Anti-AFK guards</span>
         <span class="rule-chip @(_detail.Guards.Unmuted() ? "on" : "off")"><span class="material-symbols-outlined">mic_off</span>Muted</span>
@@ -366,6 +353,43 @@ else if (State == AccessState.Ready && _detail is not null)
                         </tbody>
                     </table>
                 }
+            </TabPane>
+        }
+
+        @if (_isStaff)
+        {
+            <TabPane Id="musters" Label="@($"Musters ({_musters.Count})")" Icon="groups">
+                <div class="dg-frame" style="flex:1 1 auto; min-height:0; margin-bottom:0;">
+                    <div class="dg-toolbar">
+                        <div class="dg-filters"><span class="subtitle">Check-in musters gating this session's coin.</span></div>
+                        <div class="dg-actions">
+                            <a class="btn btn-sm" href="@MusterLinks.MusterNew(GuildId, _sessionGuid)"><span class="material-symbols-outlined">add</span> New muster</a>
+                        </div>
+                    </div>
+                    <div class="dg-scroll">
+                        <table class="dg-table">
+                            <thead><tr><th>Muster</th><th>Status</th><th class="num">Checked in</th></tr></thead>
+                            <tbody>
+                                @if (_musters.Count == 0)
+                                {
+                                    <tr class="dg-empty"><td colspan="3">No musters linked yet. Create one to gate this session's coin on check-in.</td></tr>
+                                }
+                                else
+                                {
+                                    @foreach (var m in _musters)
+                                    {
+                                        <tr>
+                                            <td><a href="@MusterLinks.MusterDetail(GuildId, m.Id)">@m.Display</a></td>
+                                            <td>@m.Status</td>
+                                            <td class="num">@m.CheckedIn</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="dg-footer"><span class="dg-tz">@_musters.Count linked muster@(_musters.Count == 1 ? "" : "s")</span></div>
+                </div>
             </TabPane>
         }
     </TabFrame>

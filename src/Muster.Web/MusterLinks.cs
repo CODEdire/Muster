@@ -23,8 +23,9 @@ public static class MusterLinks
     /// <summary>The staff manage grid (managers: all; creators: their own).</summary>
     public static string MusterManage(ulong guildId) => $"/guilds/{guildId}/guild/musters/manage";
 
-    /// <summary>Post a new muster.</summary>
-    public static string MusterNew(ulong guildId) => $"/guilds/{guildId}/guild/musters/new";
+    /// <summary>Post a new muster (optionally pre-linked to a session).</summary>
+    public static string MusterNew(ulong guildId, Guid? sessionId = null) =>
+        $"/guilds/{guildId}/guild/musters/new" + (sessionId is { } s ? $"?session={s}" : "");
 
     /// <summary>One muster's detail page.</summary>
     public static string MusterDetail(ulong guildId, Guid musterId) => $"/guilds/{guildId}/guild/musters/{musterId}";
