@@ -29,10 +29,11 @@ public record MusterCard(
 public record MusterDetailView(
     Guid Id, ulong GuildId, string? Title, string Prompt, MusterStatus Status,
     long Points, long Coins, string? CoinCode, int? Capacity, int? MinCheckIns, MusterResolveMode ResolveMode,
-    DateTimeOffset? ExpiresAt, DateTimeOffset CreatedAt, ulong CreatedBy, DateTimeOffset? ClosedAt, ulong ChannelId,
+    DateTimeOffset? ExpiresAt, DateTimeOffset CreatedAt, ulong CreatedBy, string CreatedByName, string? CreatedByAvatar,
+    DateTimeOffset? ClosedAt, ulong ChannelId,
     IReadOnlyList<MusterParticipantView> Participants, IReadOnlyList<MusterLinkedSession> Sessions);
 
-public record MusterParticipantView(ulong UserId, MusterParticipantSource Source, DateTimeOffset CheckedInAt);
+public record MusterParticipantView(ulong UserId, string Name, string? AvatarUrl, MusterParticipantSource Source, DateTimeOffset CheckedInAt);
 
 public record MusterLinkedSession(Guid SessionId, string Name, TrackingSessionStatus Status, SessionCoinGate Gate);
 
@@ -151,7 +152,7 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
                 Code = db.Currencies.Where(c => c.Id == m.CoinCurrencyId).Select(c => c.Code).FirstOrDefault(),
                 Participants = m.Participants
                     .OrderBy(p => p.CheckedInAt)
-                    .Select(p => new MusterParticipantView(p.UserId, p.Source, p.CheckedInAt))
+                    .Select(p => new { p.UserId, p.Source, p.CheckedInAt })
                     .ToList(),
                 Sessions = m.SessionLinks
                     .Join(db.TrackingSessions, l => l.SessionId, s => s.Id, (l, s) => new MusterLinkedSession(s.Id, s.Name, s.Status, s.CoinGate))
@@ -164,10 +165,24 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
             return null;
         }
 
+        // Resolve display name + avatar for the roster and the creator (one round-trip).
+        var ids = muster.Participants.Select(p => p.UserId).Append(muster.CreatedBy).Distinct().ToList();
+        var users = await db.Users.Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, Name = u.GlobalName ?? u.Username, u.AvatarHash })
+            .ToListAsync(ct);
+        var names = users.ToDictionary(u => u.Id, u => u.Name);
+        var avatars = users.ToDictionary(u => u.Id, u => Muster.Infrastructure.Discord.DiscordCdn.AvatarUrl(u.Id, u.AvatarHash));
+        string NameOf(ulong id) => names.GetValueOrDefault(id, $"member {id}");
+
+        var participants = muster.Participants
+            .Select(p => new MusterParticipantView(p.UserId, NameOf(p.UserId), avatars.GetValueOrDefault(p.UserId), p.Source, p.CheckedInAt))
+            .ToList();
+
         return new MusterDetailView(
             muster.Id, muster.GuildId, muster.Title, muster.Prompt, muster.Status, muster.Points, muster.Coins, muster.Code,
-            muster.Capacity, muster.MinCheckIns, muster.ResolveMode, muster.ExpiresAt, muster.CreatedAt, muster.CreatedBy, muster.ClosedAt, muster.ChannelId,
-            muster.Participants, muster.Sessions);
+            muster.Capacity, muster.MinCheckIns, muster.ResolveMode, muster.ExpiresAt, muster.CreatedAt, muster.CreatedBy,
+            NameOf(muster.CreatedBy), avatars.GetValueOrDefault(muster.CreatedBy), muster.ClosedAt, muster.ChannelId,
+            participants, muster.Sessions);
     }
 
     public async Task<IReadOnlyList<MusterLinkedSession>> ListLinkableSessionsAsync(ulong guildId, CancellationToken ct = default)

@@ -46,7 +46,7 @@ else if (State == AccessState.Ready)
                     @if (_m.Status == MusterStatus.Open)
                     {
                         <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterEdit(GuildId, MusterId)"><span class="material-symbols-outlined">edit</span> Edit</a>
-                        <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">rule</span> Lock for review</button>
+                        <button type="button" class="btn btn-sm btn-warn" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">rule</span> Lock for review</button>
                         <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Close &amp; pay</button>
                     }
                     else if (_m.Status == MusterStatus.Locked && _m.Sessions.Count == 0)
@@ -77,43 +77,51 @@ else if (State == AccessState.Ready)
     {
         <TabFrame ActiveId="@_tab" ActiveIdChanged="@(t => _tab = t)">
             <TabPane Id="overview" Label="Overview" Icon="info">
-                @if (!string.IsNullOrWhiteSpace(_m.Prompt))
-                {
-                    <div class="muster-prompt">@Muster.Web.DiscordMarkdown.ToHtml(_m.Prompt)</div>
-                }
-                <div class="mf-grid">
-                    <div class="mf"><span class="mf-k">Status</span><span class="mf-v">@StatusLabel(_m.Status)</span></div>
-                    <div class="mf"><span class="mf-k">Checked in</span><span class="mf-v">@_m.Participants.Count@(_m.Capacity is { } c ? $" / {c}" : "")</span></div>
-                    <div class="mf"><span class="mf-k">Reward</span><span class="mf-v">@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</span></div>
-                    @if (_m.MinCheckIns is { } min && min > 0)
+                <div class="tab-pad">
+                    @if (!string.IsNullOrWhiteSpace(_m.Prompt))
                     {
-                        <div class="mf"><span class="mf-k">Min to reward</span><span class="mf-v">@_m.Participants.Count / @min @(_m.Participants.Count >= min ? "✅" : "⚠️")</span></div>
+                        <div class="muster-prompt">@Muster.Web.DiscordMarkdown.ToHtml(_m.Prompt)</div>
                     }
-                    <div class="mf"><span class="mf-k">Created</span><span class="mf-v"><LocalTime Value="_m.CreatedAt" /> · @Name(_m.CreatedBy)</span></div>
-                    @if (_m.ExpiresAt is { } ex)
-                    {
-                        <div class="mf"><span class="mf-k">@(_m.Status is MusterStatus.Open or MusterStatus.Locked ? "Closes" : "Closed at")</span><span class="mf-v"><LocalTime Value="ex" /></span></div>
-                    }
-                    <div class="mf"><span class="mf-k">Auto-close</span><span class="mf-v">@(_m.ResolveMode == MusterResolveMode.Review ? "Hold for review" : "Pay out")</span></div>
+                    <div class="sess-meta muster-meta">
+                        <span>@StatusLabel(_m.Status)</span>
+                        <span><span class="material-symbols-outlined">group</span><b>@_m.Participants.Count</b>@(_m.Capacity is { } c ? $" / {c}" : "") checked in</span>
+                        <span><span class="material-symbols-outlined">paid</span>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</span>
+                        @if (_m.MinCheckIns is { } min && min > 0)
+                        {
+                            <span><span class="material-symbols-outlined">rule</span>min @_m.Participants.Count/@min @(_m.Participants.Count >= min ? "✅" : "⚠️")</span>
+                        }
+                        @if (_m.ExpiresAt is { } ex)
+                        {
+                            <span><span class="material-symbols-outlined">timer</span>@(_m.Status is MusterStatus.Open or MusterStatus.Locked ? "closes" : "closed") <LocalTime Value="ex" Pattern="MMM d, h:mm tt" /></span>
+                        }
+                        <span><span class="material-symbols-outlined">gavel</span>@(_m.ResolveMode == MusterResolveMode.Review ? "Hold for review" : "Pay out")</span>
+                        <span><span class="material-symbols-outlined">schedule</span>created <LocalTime Value="_m.CreatedAt" Pattern="MMM d, h:mm tt" /> by <UserChip Name="@_m.CreatedByName" AvatarUrl="@_m.CreatedByAvatar" Href="@MusterLinks.MemberDetail(GuildId, _m.CreatedBy)" /></span>
+                    </div>
                 </div>
             </TabPane>
 
             <TabPane Id="participants" Label="@($"Participants ({_m.Participants.Count})")" Icon="group">
-                <div class="dg-frame">
+                <div class="dg-frame parts-frame">
                     <div class="dg-toolbar">
                         <div class="dg-filters">
                             <input type="search" class="dg-search" placeholder="Search member…" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" />
+                            <div class="dg-pill-row" aria-label="Source filter">
+                                @foreach (var f in _viaFilters)
+                                {
+                                    <button type="button" class="dg-pill @(_viaFilter == f.Key ? "active" : null)" @onclick="() => SetVia(f.Key)">@f.Label</button>
+                                }
+                            </div>
                         </div>
                         @if (_canManage && _m.Status == MusterStatus.Open)
                         {
                             <div class="dg-actions member-add">
-                                <input type="search" class="dg-search" placeholder="Add a participant…" @bind="_addSearch" @bind:event="oninput" />
+                                <input type="search" class="dg-search" placeholder="Add a participant…" @bind="_addSearch" @bind:event="oninput" @onfocus="() => _addOpen = true" />
                                 @if (_addSel is not null)
                                 {
                                     <span class="member-chip">@_addSel.DisplayName <button type="button" class="member-chip-x" @onclick="() => _addSel = null">×</button></span>
                                     <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="AddSelectedAsync"><span class="material-symbols-outlined">person_add</span> Add</button>
                                 }
-                                @if (_addSel is null && !string.IsNullOrWhiteSpace(_addSearch))
+                                @if (_addSel is null && _addOpen)
                                 {
                                     <div class="member-results">
                                         @foreach (var opt in MemberMatches)
@@ -122,7 +130,7 @@ else if (State == AccessState.Ready)
                                         }
                                         @if (MemberMatches.Count == 0)
                                         {
-                                            <span class="member-result empty">No members match.</span>
+                                            <span class="member-result empty">@(_memberOptions.Count == 0 ? "No eligible members." : "Everyone eligible is already checked in.")</span>
                                         }
                                     </div>
                                 }
@@ -142,14 +150,14 @@ else if (State == AccessState.Ready)
                             <tbody>
                                 @if (Filtered.Count == 0)
                                 {
-                                    <tr class="dg-empty"><td colspan="4">@(_m.Participants.Count == 0 ? "No check-ins yet." : "No members match your search.")</td></tr>
+                                    <tr class="dg-empty"><td colspan="4">@(_m.Participants.Count == 0 ? "No check-ins yet." : "No participants match.")</td></tr>
                                 }
                                 else
                                 {
                                     @foreach (var p in Paged)
                                     {
                                         <tr>
-                                            <td>@Name(p.UserId)</td>
+                                            <td><UserChip Name="@p.Name" AvatarUrl="@p.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, p.UserId)" /></td>
                                             <td>@(p.Source == MusterParticipantSource.Admin ? "Added by staff" : "Button")</td>
                                             <td><LocalTime Value="p.CheckedInAt" /></td>
                                             <td class="dg-actions-col">
@@ -183,6 +191,7 @@ else if (State == AccessState.Ready)
             </TabPane>
 
             <TabPane Id="sessions" Label="@($"Linked sessions ({_m.Sessions.Count})")" Icon="link">
+                <div class="tab-pad">
                 @if (_m.Sessions.Count == 0)
                 {
                     <p class="subtitle">Not linked to any session. Link one to gate its spendable-coin mint on check-in — points are never gated, and a session with no linked muster mints coins to everyone.</p>
@@ -231,21 +240,27 @@ else if (State == AccessState.Ready)
                 {
                     <p class="subtitle">Session linking + coin gating are managed by tracking staff.</p>
                 }
+                </div>
             </TabPane>
         </TabFrame>
     }
 }
 
 <style>
+    /* Padding between the tab frame and light (non-grid) tab content. */
+    .tab-pad { padding: 1.25rem 1.4rem; }
+
     .muster-prompt { margin: 0 0 1rem; line-height: 1.5; }
     .muster-prompt > :first-child { margin-top: 0; }
     .muster-prompt > :last-child { margin-bottom: 0; }
 
-    /* Discord-style field grid: compact label/value cards. */
-    .mf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.85rem 1.25rem; }
-    .mf { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--surface) 50%, transparent); }
-    .mf-k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-    .mf-v { font-size: 0.95rem; color: var(--text); }
+    /* Inline meta row (Discord/session-detail style). Values readable, not boxed. */
+    .muster-meta { font-size: 0.92rem; row-gap: 0.5rem; }
+    .muster-meta b { color: var(--text); }
+    .muster-meta .user-chip { display: inline-flex; }
+
+    /* The participant datagrid fills the tab so the pager pins to the bottom even with few rows. */
+    .parts-frame { flex: 1 1 auto; min-height: 0; margin-bottom: 0; }
 
     .muster-links li { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.35rem 0; }
 
@@ -271,7 +286,6 @@ else if (State == AccessState.Ready)
     private MusterDetailView? _m;
     private IReadOnlyList<MusterLinkedSession> _sessions = [];
     private IReadOnlyList<MemberOption> _memberOptions = [];
-    private readonly Dictionary<ulong, string> _names = [];
     private bool _busy;
     private string? _linkSessionId;
     private string _tab = "overview";
@@ -284,13 +298,18 @@ else if (State == AccessState.Ready)
 
     // Participant grid state.
     private string _search = "";
+    private string _viaFilter = "all";
     private string _sortKey = "time";
     private bool _descending = true;
     private int _page = 1;
     private int _pageSize = 25;
 
+    private static readonly (string Key, string Label)[] _viaFilters =
+        [("all", "All"), ("button", "Button"), ("admin", "Staff-added")];
+
     // Add-member picker.
     private string _addSearch = "";
+    private bool _addOpen;
     private MemberOption? _addSel;
 
     protected override async Task LoadAsync()
@@ -314,12 +333,6 @@ else if (State == AccessState.Ready)
         {
             _sessions = await Reads.ListLinkableSessionsAsync(GuildId);
             _memberOptions = await Admin.GetParticipantMembersAsync(GuildId);
-        }
-
-        _names.Clear();
-        foreach (var id in _m.Participants.Select(p => p.UserId).Append(_m.CreatedBy).Distinct())
-        {
-            _names[id] = await HumanizeAsync($"<@{id}>");
         }
     }
 
@@ -348,8 +361,6 @@ else if (State == AccessState.Ready)
 
     public void Dispose() => Notifier.Updated -= OnMusterChanged;
 
-    private string Name(ulong userId) => _names.TryGetValue(userId, out var n) ? n : $"<@{userId}>";
-
     // ---- Participant grid ----
     private IReadOnlyList<MusterParticipantView> Filtered
     {
@@ -358,15 +369,22 @@ else if (State == AccessState.Ready)
             if (_m is null) { return []; }
             IEnumerable<MusterParticipantView> q = _m.Participants;
 
+            q = _viaFilter switch
+            {
+                "button" => q.Where(p => p.Source == MusterParticipantSource.Button),
+                "admin" => q.Where(p => p.Source == MusterParticipantSource.Admin),
+                _ => q,
+            };
+
             if (!string.IsNullOrWhiteSpace(_search))
             {
                 var s = _search.Trim();
-                q = q.Where(p => Name(p.UserId).Contains(s, StringComparison.OrdinalIgnoreCase));
+                q = q.Where(p => p.Name.Contains(s, StringComparison.OrdinalIgnoreCase));
             }
 
             Func<MusterParticipantView, IComparable> key = _sortKey switch
             {
-                "name" => p => Name(p.UserId),
+                "name" => p => p.Name,
                 "via" => p => (int)p.Source,
                 _ => p => p.CheckedInAt,
             };
@@ -374,6 +392,8 @@ else if (State == AccessState.Ready)
             return q.ToList();
         }
     }
+
+    private void SetVia(string key) { _viaFilter = key; _page = 1; }
 
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
     private int CurrentPage => Math.Clamp(_page, 1, TotalPages);
@@ -397,7 +417,7 @@ else if (State == AccessState.Ready)
         }
     }
 
-    private void Select(MemberOption opt) { _addSel = opt; _addSearch = ""; }
+    private void Select(MemberOption opt) { _addSel = opt; _addSearch = ""; _addOpen = false; }
 
     private async Task AddSelectedAsync()
     {

@@ -25,7 +25,7 @@ else if (State == AccessState.Ready)
         <p class="message">@Message</p>
     }
 
-    <div class="panel glass dg-frame">
+    <div class="panel glass dg-frame dg-fill">
         <div class="dg-toolbar">
             <div class="dg-filters">
                 <input type="search" class="dg-search tpl-search" placeholder="Search name or description…" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" />
