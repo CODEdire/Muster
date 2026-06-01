@@ -220,6 +220,12 @@ body::before {
 .btn-warn:hover { filter: brightness(1.08); }
 .btn-danger { background: #dc2626; color: #fff; border-color: transparent; }
 .btn-danger:hover { filter: brightness(1.08); }
+/* Positive primary (e.g. self check-in). */
+.btn-success { background: #16a34a; color: #fff; border-color: transparent; }
+.btn-success:hover { filter: brightness(1.08); }
+/* Quiet destructive: red outline that fills on hover — for removals that aren't the primary destructive action. */
+.btn-danger-ghost { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.btn-danger-ghost:hover { background: var(--danger); color: #fff; border-color: transparent; }
 .btn .material-symbols-outlined { font-size: 1.05rem; }
 
 /* ---- Theme toggle (segmented) ------------------------------------------- */

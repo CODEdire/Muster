@@ -21,8 +21,7 @@
 }
 else if (State == AccessState.Ready)
 {
-    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading) })"
-                Subtitle="@(_m is null ? null : StatusLabel(_m.Status))">
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading) })">
         <Toolbar>
             @if (_m is not null)
             {
@@ -36,7 +35,7 @@ else if (State == AccessState.Ready)
                     }
                     else
                     {
-                        <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CheckInSelfAsync">
+                        <button type="button" class="btn btn-sm btn-success" disabled="@_busy" @onclick="CheckInSelfAsync">
                             <span class="material-symbols-outlined">how_to_reg</span> Check in
                         </button>
                     }
@@ -58,11 +57,30 @@ else if (State == AccessState.Ready)
                     {
                         <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">stop_circle</span> Close</button>
                     }
-                    <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="RemoveCardAsync"><span class="material-symbols-outlined">delete_sweep</span> Remove card</button>
+                    <button type="button" class="btn btn-sm btn-danger-ghost" disabled="@_busy" @onclick="RemoveCardAsync"><span class="material-symbols-outlined">delete_sweep</span> Remove card</button>
                 }
             }
         </Toolbar>
     </PageHeader>
+
+    @if (_m is not null)
+    {
+        <div class="sess-meta muster-meta">
+            <span>@StatusLabel(_m.Status)</span>
+            <span><span class="material-symbols-outlined">group</span><b>@_m.Participants.Count</b>@(_m.Capacity is { } c ? $" / {c}" : "") checked in</span>
+            <span><span class="material-symbols-outlined">paid</span>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</span>
+            @if (_m.MinCheckIns is { } min && min > 0)
+            {
+                <span><span class="material-symbols-outlined">rule</span>min @_m.Participants.Count/@min @(_m.Participants.Count >= min ? "✅" : "⚠️")</span>
+            }
+            @if (_m.ExpiresAt is { } ex)
+            {
+                <span><span class="material-symbols-outlined">timer</span>@(_m.Status is MusterStatus.Open or MusterStatus.Locked ? "closes" : "closed") <LocalTime Value="ex" Pattern="MMM d, h:mm tt" /></span>
+            }
+            <span><span class="material-symbols-outlined">gavel</span>@(_m.ResolveMode == MusterResolveMode.Review ? "Hold for review" : "Pay out")</span>
+            <span><span class="material-symbols-outlined">schedule</span>created <LocalTime Value="_m.CreatedAt" Pattern="MMM d, h:mm tt" /> by <UserChip Name="@_m.CreatedByName" AvatarUrl="@_m.CreatedByAvatar" Href="@MusterLinks.MemberDetail(GuildId, _m.CreatedBy)" /></span>
+        </div>
+    }
 
     @if (Message is not null)
     {
@@ -78,25 +96,14 @@ else if (State == AccessState.Ready)
         <TabFrame ActiveId="@_tab" ActiveIdChanged="@(t => _tab = t)">
             <TabPane Id="overview" Label="Overview" Icon="info">
                 <div class="tab-pad">
-                    @if (!string.IsNullOrWhiteSpace(_m.Prompt))
+                    @if (string.IsNullOrWhiteSpace(_m.Prompt))
+                    {
+                        <p class="subtitle">No prompt set.</p>
+                    }
+                    else
                     {
                         <div class="muster-prompt">@Muster.Web.DiscordMarkdown.ToHtml(_m.Prompt)</div>
                     }
-                    <div class="sess-meta muster-meta">
-                        <span>@StatusLabel(_m.Status)</span>
-                        <span><span class="material-symbols-outlined">group</span><b>@_m.Participants.Count</b>@(_m.Capacity is { } c ? $" / {c}" : "") checked in</span>
-                        <span><span class="material-symbols-outlined">paid</span>@RewardLabel(_m.Points, _m.Coins, _m.CoinCode)</span>
-                        @if (_m.MinCheckIns is { } min && min > 0)
-                        {
-                            <span><span class="material-symbols-outlined">rule</span>min @_m.Participants.Count/@min @(_m.Participants.Count >= min ? "✅" : "⚠️")</span>
-                        }
-                        @if (_m.ExpiresAt is { } ex)
-                        {
-                            <span><span class="material-symbols-outlined">timer</span>@(_m.Status is MusterStatus.Open or MusterStatus.Locked ? "closes" : "closed") <LocalTime Value="ex" Pattern="MMM d, h:mm tt" /></span>
-                        }
-                        <span><span class="material-symbols-outlined">gavel</span>@(_m.ResolveMode == MusterResolveMode.Review ? "Hold for review" : "Pay out")</span>
-                        <span><span class="material-symbols-outlined">schedule</span>created <LocalTime Value="_m.CreatedAt" Pattern="MMM d, h:mm tt" /> by <UserChip Name="@_m.CreatedByName" AvatarUrl="@_m.CreatedByAvatar" Href="@MusterLinks.MemberDetail(GuildId, _m.CreatedBy)" /></span>
-                    </div>
                 </div>
             </TabPane>
 
@@ -115,7 +122,7 @@ else if (State == AccessState.Ready)
                         @if (_canManage && _m.Status == MusterStatus.Open)
                         {
                             <div class="dg-actions member-add">
-                                <input type="search" class="dg-search" placeholder="Add a participant…" @bind="_addSearch" @bind:event="oninput" @onfocus="() => _addOpen = true" />
+                                <input type="search" class="dg-search" placeholder="Add a participant…" @bind="_addSearch" @bind:event="oninput" @onfocus="() => _addOpen = true" @onblur="CloseAddSoon" />
                                 @if (_addSel is not null)
                                 {
                                     <span class="member-chip">@_addSel.DisplayName <button type="button" class="member-chip-x" @onclick="() => _addSel = null">×</button></span>
@@ -254,8 +261,8 @@ else if (State == AccessState.Ready)
     .muster-prompt > :first-child { margin-top: 0; }
     .muster-prompt > :last-child { margin-bottom: 0; }
 
-    /* Inline meta row (Discord/session-detail style). Values readable, not boxed. */
-    .muster-meta { font-size: 0.92rem; row-gap: 0.5rem; }
+    /* Inline meta row under the header (Discord/session-detail style). Values readable, not boxed. */
+    .muster-meta { font-size: 0.92rem; row-gap: 0.5rem; margin: -0.35rem 0 1rem; }
     .muster-meta b { color: var(--text); }
     .muster-meta .user-chip { display: inline-flex; }
 
@@ -418,6 +425,17 @@ else if (State == AccessState.Ready)
     }
 
     private void Select(MemberOption opt) { _addSel = opt; _addSearch = ""; _addOpen = false; }
+
+    // Close the results shortly after the input loses focus — the small delay lets a result's click register first.
+    private async Task CloseAddSoon()
+    {
+        await Task.Delay(160);
+        if (_addOpen)
+        {
+            _addOpen = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task AddSelectedAsync()
     {
