@@ -134,6 +134,26 @@ public class OpAndActivityTests
     }
 
     [Fact]
+    public async Task AutoCreateMuster_NoDefaultChannel_FallsBackToSessionChannel()
+    {
+        using var db = await SeededAsync();
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var auth = new GuildAuthorizationService(db);
+        var musters = new MusterService(db, awards, auth);
+        var store = new GuildMusterSettingsService(db, Microsoft.Extensions.Options.Options.Create(new GuildMusterSettings()));
+        var sut = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters, store);
+
+        // Auto-create on, DefaultChannel mode, but NO default muster channel + no allow-list.
+        db.GuildMusterSettings.Add(new GuildMusterSettings { GuildId = 1, AutoCreateOnSession = true });
+        await db.SaveChangesAsync();
+
+        // The auto-created muster falls back to the session's own voice channel so a card still posts.
+        await sut.OpenManualAsync(1, voiceChannelId: 555, openedBy: 5);
+        var muster = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(555ul, muster.ChannelId);
+    }
+
+    [Fact]
     public async Task MessageActivity_RecordsRollup_AndDedupes()
     {
         using var db = await SeededAsync();

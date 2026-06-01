@@ -137,6 +137,14 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
                 channelId = session.VoiceChannelId;
             }
 
+            // A session muster with no resolved channel (e.g. no default muster channel set) falls back to the
+            // session's own voice channel (which carries text chat) so an auto-created muster always posts a card —
+            // provided the allow-list permits it.
+            if (channelId == 0 && session.VoiceChannelId != 0 && (musterCfg?.ChannelAllowed(session.VoiceChannelId) ?? true))
+            {
+                channelId = session.VoiceChannelId;
+            }
+
             var muster = await musters.CreateAsync(
                 guildId, channelId, title: null, prompt: $"Check in for {name}",
                 points: musterCfg?.DefaultPoints ?? 0, coins: musterCfg?.DefaultCoins ?? 0, coinCurrencyId: musterCfg?.DefaultCoinCurrencyId,
