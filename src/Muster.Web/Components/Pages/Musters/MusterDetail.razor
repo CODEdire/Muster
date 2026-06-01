@@ -158,7 +158,7 @@ else if (State == AccessState.Ready)
                                             <td>@(p.Source == MusterParticipantSource.Admin ? "Added by staff" : "Button")</td>
                                             <td><LocalTime Value="p.CheckedInAt" /></td>
                                             <td class="dg-actions-col">
-                                                @if (_canManage)
+                                                @if (_canManage && _m.Status is MusterStatus.Open or MusterStatus.Locked)
                                                 {
                                                     <button type="button" class="icon-btn danger" title="Remove" disabled="@_busy" @onclick="() => RemoveAsync(p.UserId)"><span class="material-symbols-outlined">person_remove</span></button>
                                                 }

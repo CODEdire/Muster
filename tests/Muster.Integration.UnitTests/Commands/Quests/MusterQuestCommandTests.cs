@@ -252,6 +252,22 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_Add_Remove_BlockedOnClosedMuster()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, _, bus) = NewMusters(db);
+
+        var m = await musters.CreateAsync(1, 0, null, "p", points: 0, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: null, createdBy: 7, checkInCreator: true);
+        await musters.CloseAsync(m.Id, MusterStatus.Closed);
+
+        // The terminal muster's roster is final — no add, no remove.
+        Assert.Equal("MusterClosed", (await RemoveMusterParticipantHandler.Handle(new RemoveMusterParticipant(1, 7, m.Id, 7), auth, db, musters, bus, default)).Status);
+        Assert.Equal("MusterClosed", (await AddMusterParticipantHandler.Handle(new AddMusterParticipant(1, 7, m.Id, 99), auth, db, musters, bus, default)).Status);
+        Assert.True(await db.ReactionParticipants.AnyAsync(p => p.MusterId == m.Id && p.UserId == 7));
+    }
+
+    [Fact]
     public async Task Muster_Create_HonorsChannelAllowList()
     {
         using var db = await SeededAsync(ownerId: 7);

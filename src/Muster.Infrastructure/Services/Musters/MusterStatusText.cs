@@ -28,6 +28,7 @@ public static class MusterStatusText
         "NotAParticipant" => "That member isn't on this muster.",
         "AlreadyClosed" => "This muster is already closed.",
         "NotOpen" => "This muster isn't open.",
+        "MusterClosed" => "This muster is closed — its roster is final.",
         "AlreadyLinked" => "That muster is already linked to this session.",
         "NotLinked" => "That muster isn't linked to this session.",
         _ => $"Couldn't do that — {status}.",

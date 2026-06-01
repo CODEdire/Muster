@@ -213,14 +213,24 @@ public static class AddMusterParticipantHandler
     public static async Task<Result> Handle(
         AddMusterParticipant command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
     {
-        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
+        var info = await db.ReactionMusters
+            .Where(m => m.Id == command.MusterId && m.GuildId == command.GuildId)
+            .Select(m => new { m.CreatedBy, m.Status })
+            .FirstOrDefaultAsync(ct);
+        if (info is null)
         {
             return Result.Fail("NotFound");
         }
 
-        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, info.CreatedBy, ct))
         {
             return Result.Fail("Forbidden");
+        }
+
+        // No adding members to a terminal muster — its roster is final.
+        if (info.Status is not (MusterStatus.Open or MusterStatus.Locked))
+        {
+            return Result.Fail("MusterClosed");
         }
 
         var outcome = await musters.CheckInAsync(command.MusterId, command.UserId, MusterParticipantSource.Admin, ct);
@@ -239,14 +249,24 @@ public static class RemoveMusterParticipantHandler
     public static async Task<Result> Handle(
         RemoveMusterParticipant command, GuildAuthorizationService auth, MusterDbContext db, MusterService musters, IMessageBus bus, CancellationToken ct)
     {
-        if (await CheckInMusterHandler.OwnerAsync(db, command.GuildId, command.MusterId, ct) is not { } owner)
+        var info = await db.ReactionMusters
+            .Where(m => m.Id == command.MusterId && m.GuildId == command.GuildId)
+            .Select(m => new { m.CreatedBy, m.Status })
+            .FirstOrDefaultAsync(ct);
+        if (info is null)
         {
             return Result.Fail("NotFound");
         }
 
-        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, owner, ct))
+        if (!await auth.CanManageMusterAsync(command.GuildId, command.ActorId, info.CreatedBy, ct))
         {
             return Result.Fail("Forbidden");
+        }
+
+        // A terminal muster's roster is final (rewards already settled) — no more curation.
+        if (info.Status is not (MusterStatus.Open or MusterStatus.Locked))
+        {
+            return Result.Fail("MusterClosed");
         }
 
         if (!await musters.RemoveParticipantAsync(command.MusterId, command.UserId, ct))
