@@ -60,17 +60,21 @@ else if (State == AccessState.Ready)
                 @if (_m.Status == MusterStatus.Open)
                 {
                     <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterEdit(GuildId, MusterId)"><span class="material-symbols-outlined">edit</span> Edit</a>
-                    <button type="button" class="btn btn-sm btn-warn" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">rule</span> Lock for review</button>
-                    <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Close &amp; pay</button>
+                    @if (_m.Sessions.Count == 0)
+                    {
+                        <button type="button" class="btn btn-sm btn-warn" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">rule</span> Lock for review</button>
+                        <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Close &amp; pay</button>
+                    }
+                    else
+                    {
+                        @* Linked: pays + closes with its session. Lock to freeze the roster early; no manual close. *@
+                        <button type="button" class="btn btn-sm btn-warn" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">lock</span> Stop check-ins</button>
+                    }
                 }
                 else if (_m.Status == MusterStatus.Locked && _m.Sessions.Count == 0)
                 {
                     <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Approve &amp; pay</button>
                     <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="DiscardAsync"><span class="material-symbols-outlined">block</span> Discard</button>
-                }
-                else if (_m.Status == MusterStatus.Locked)
-                {
-                    <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">stop_circle</span> Close</button>
                 }
                 <button type="button" class="btn btn-sm btn-danger-ghost" disabled="@_busy" @onclick="RemoveCardAsync"><span class="material-symbols-outlined">delete_sweep</span> Remove card</button>
             }

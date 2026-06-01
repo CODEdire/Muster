@@ -29,6 +29,7 @@ public static class MusterStatusText
         "AlreadyClosed" => "This muster is already closed.",
         "NotOpen" => "This muster isn't open.",
         "MusterClosed" => "This muster is closed — its roster is final.",
+        "LinkedMuster" => "Linked musters pay + close with their session. Lock it to stop check-ins, or unlink it first to close it on its own.",
         "AlreadyLinked" => "That muster is already linked to this session.",
         "NotLinked" => "That muster isn't linked to this session.",
         _ => $"Couldn't do that — {status}.",

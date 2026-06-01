@@ -369,6 +369,13 @@ public static class CloseMusterHandler
             return Result.Fail("Forbidden");
         }
 
+        // A linked muster resolves with its session (paid at session close, gated on attendance) — it can't be
+        // manually closed/paid. Lock it to stop check-ins, or unlink it first to close + pay it standalone.
+        if (await db.MusterSessionLinks.AnyAsync(l => l.MusterId == command.MusterId, ct))
+        {
+            return Result.Fail("LinkedMuster");
+        }
+
         if (!await musters.CloseAsync(command.MusterId, MusterStatus.Closed, ct))
         {
             return Result.Fail("AlreadyClosed");

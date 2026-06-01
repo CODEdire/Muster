@@ -144,9 +144,10 @@ else if (State == AccessState.Ready)
                                         <a class="icon-btn" title="Edit" href="@MusterLinks.MusterEdit(GuildId, m.Id)"><span class="material-symbols-outlined">edit</span></a>
                                         <button type="button" class="icon-btn" title="Lock for review" disabled="@_busy" @onclick="() => LockAsync(m.Id)"><span class="material-symbols-outlined">rule</span></button>
                                     }
-                                    @if (CanManage(m) && m.Status is MusterStatus.Open or MusterStatus.Locked)
+                                    @* Linked musters pay + close with their session — no manual close from the grid. *@
+                                    @if (CanManage(m) && m.Sessions.Count == 0 && m.Status is MusterStatus.Open or MusterStatus.Locked)
                                     {
-                                        <button type="button" class="icon-btn" title="@(m.Status == MusterStatus.Locked && m.Sessions.Count == 0 ? "Approve & pay" : "Close & pay")" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">paid</span></button>
+                                        <button type="button" class="icon-btn" title="@(m.Status == MusterStatus.Locked ? "Approve & pay" : "Close & pay")" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">paid</span></button>
                                     }
                                     @if (CanManage(m) && m.Status == MusterStatus.Locked && m.Sessions.Count == 0)
                                     {

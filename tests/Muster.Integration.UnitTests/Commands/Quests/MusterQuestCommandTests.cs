@@ -252,6 +252,26 @@ public class MusterQuestCommandTests
     }
 
     [Fact]
+    public async Task Muster_Close_BlockedWhileLinked_AllowedAfterUnlink()
+    {
+        using var db = await SeededAsync(ownerId: 7);
+        var (musters, auth, _, bus) = NewMusters(db);
+        var sid = Guid.NewGuid();
+        db.TrackingSessions.Add(new TrackingSession { Id = sid, GuildId = 1, Name = "S", Status = TrackingSessionStatus.Active });
+        await db.SaveChangesAsync();
+
+        var m = await musters.CreateAsync(1, 0, null, "p", points: 10, coins: 0, coinCurrencyId: null,
+            retentionHours: 48, capacity: null, expiresAt: null, createdBy: 7, sessionId: sid);
+
+        // Linked → can't manually close/pay (it resolves with the session).
+        Assert.Equal("LinkedMuster", (await CloseMusterHandler.Handle(new CloseMuster(1, 7, m.Id), auth, db, musters, bus, default)).Status);
+
+        // Unlink → now it's standalone and closeable.
+        await musters.UnlinkSessionAsync(m.Id, sid);
+        Assert.True((await CloseMusterHandler.Handle(new CloseMuster(1, 7, m.Id), auth, db, musters, bus, default)).Ok);
+    }
+
+    [Fact]
     public async Task Muster_Add_Remove_BlockedOnClosedMuster()
     {
         using var db = await SeededAsync(ownerId: 7);
