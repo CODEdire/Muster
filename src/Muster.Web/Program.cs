@@ -65,6 +65,9 @@ builder.Services.AddSingleton<Muster.Web.Live.ISessionUpdateNotifier, Muster.Web
 // In-process fan-out of live quest changes to interactive Blazor circuits (fed by the quest-views handler).
 builder.Services.AddSingleton<Muster.Web.Live.IQuestUpdateNotifier, Muster.Web.Live.QuestUpdateNotifier>();
 
+// In-process fan-out of live muster changes to interactive Blazor circuits (fed by the muster-events handler).
+builder.Services.AddSingleton<Muster.Web.Live.IMusterUpdateNotifier, Muster.Web.Live.MusterUpdateNotifier>();
+
 // Per-circuit cache of the viewer's browser time zone, shared by every <LocalTime> for consistent localization.
 builder.Services.AddScoped<Muster.Web.BrowserTimeZone>();
 

@@ -47,7 +47,7 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 - Muster **board** (`/guild/musters`): participant **card view** of active musters with check-in/out. Staff also get **Manage** + **New** buttons.
 - **Manage** grid (`/guild/musters/manage`): managers see all musters + KPIs; creators see only their own. Search, status filter, sortable, paged; row actions (edit/close) gated by ownership.
 - **New** + **Edit** on their own pages (markdown prompt, template/custom reward, options); edit is owner/manager-only and live-muster-only.
-- Muster **detail**: role-aware — participants get the card + check-in/out; owners/managers get sectioned management (Overview, Participants add/remove, Linked sessions). Session linking/coin-gate controls show only for managers.
+- Muster **detail** (tabbed: Overview / Participants / Linked sessions), role-aware: participants get the card + a toolbar check-in/out; owners/managers get the management tabs. The **participant list is a live datagrid** (search/sort/page) that updates in place when a check-in lands from Discord, web, or API (via the MusterChanged fan-out). Adding a member uses a searchable participant picker. Session linking/coin-gate controls show only for managers.
 - Settings page: default channel, card retention, max active time, reward defaults, creator auto-check-in, auto-create-on-session + gate, allowed channels.
 
 ## Lifecycle & housekeeping

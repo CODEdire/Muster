@@ -24,9 +24,9 @@ public static class MessageRouting
     [
         // Bot renders the Discord channel board; web pushes the same change into the quest views circuit.
         new(typeof(QuestLifecycleNotified), [HostNames.Bot, HostNames.Web]),
-        // Bot renders the muster card from any host's change (slash, button, or web authoring). Web has no
-        // handler yet (its admin views reload on navigation), so it's a bot-only subscriber for now.
-        new(typeof(MusterChanged), [HostNames.Bot]),
+        // Bot renders the muster card from any host's change (slash, button, or web authoring); web fans the
+        // same change out to connected Blazor circuits so the detail/board reflect check-ins live.
+        new(typeof(MusterChanged), [HostNames.Bot, HostNames.Web]),
         // Bot deletes the Discord card on a manual "remove from channel" request (web → bot).
         new(typeof(RemoveMusterCard), [HostNames.Bot]),
         // Bot delivers DM receipts (CurrencyDmHandler) and HMAC-signed webhooks (CurrencyWebhookHandler).
