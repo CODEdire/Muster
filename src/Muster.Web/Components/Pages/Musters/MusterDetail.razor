@@ -21,47 +21,7 @@
 }
 else if (State == AccessState.Ready)
 {
-    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading) })">
-        <Toolbar>
-            @if (_m is not null)
-            {
-                @if (_isParticipant && _m.Status == MusterStatus.Open)
-                {
-                    @if (YouCheckedIn)
-                    {
-                        <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="CheckOutSelfAsync">
-                            <span class="material-symbols-outlined">logout</span> Check out
-                        </button>
-                    }
-                    else
-                    {
-                        <button type="button" class="btn btn-sm btn-success" disabled="@_busy" @onclick="CheckInSelfAsync">
-                            <span class="material-symbols-outlined">how_to_reg</span> Check in
-                        </button>
-                    }
-                }
-                @if (_canManage)
-                {
-                    @if (_m.Status == MusterStatus.Open)
-                    {
-                        <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterEdit(GuildId, MusterId)"><span class="material-symbols-outlined">edit</span> Edit</a>
-                        <button type="button" class="btn btn-sm btn-warn" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">rule</span> Lock for review</button>
-                        <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Close &amp; pay</button>
-                    }
-                    else if (_m.Status == MusterStatus.Locked && _m.Sessions.Count == 0)
-                    {
-                        <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Approve &amp; pay</button>
-                        <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="DiscardAsync"><span class="material-symbols-outlined">block</span> Discard</button>
-                    }
-                    else if (_m.Status == MusterStatus.Locked)
-                    {
-                        <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">stop_circle</span> Close</button>
-                    }
-                    <button type="button" class="btn btn-sm btn-danger-ghost" disabled="@_busy" @onclick="RemoveCardAsync"><span class="material-symbols-outlined">delete_sweep</span> Remove card</button>
-                }
-            }
-        </Toolbar>
-    </PageHeader>
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new(_heading) })" />
 
     @if (_m is not null)
     {
@@ -79,6 +39,41 @@ else if (State == AccessState.Ready)
             }
             <span><span class="material-symbols-outlined">gavel</span>@(_m.ResolveMode == MusterResolveMode.Review ? "Hold for review" : "Pay out")</span>
             <span><span class="material-symbols-outlined">schedule</span>created <LocalTime Value="_m.CreatedAt" Pattern="MMM d, h:mm tt" /> by <UserChip Name="@_m.CreatedByName" AvatarUrl="@_m.CreatedByAvatar" Href="@MusterLinks.MemberDetail(GuildId, _m.CreatedBy)" /></span>
+        </div>
+
+        <hr class="muster-divider" />
+
+        <div class="btn-row muster-actions">
+            @if (_isParticipant && _m.Status == MusterStatus.Open)
+            {
+                @if (YouCheckedIn)
+                {
+                    <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="CheckOutSelfAsync"><span class="material-symbols-outlined">logout</span> Check out</button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-sm btn-success" disabled="@_busy" @onclick="CheckInSelfAsync"><span class="material-symbols-outlined">how_to_reg</span> Check in</button>
+                }
+            }
+            @if (_canManage)
+            {
+                @if (_m.Status == MusterStatus.Open)
+                {
+                    <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterEdit(GuildId, MusterId)"><span class="material-symbols-outlined">edit</span> Edit</a>
+                    <button type="button" class="btn btn-sm btn-warn" disabled="@_busy" @onclick="LockAsync"><span class="material-symbols-outlined">rule</span> Lock for review</button>
+                    <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Close &amp; pay</button>
+                }
+                else if (_m.Status == MusterStatus.Locked && _m.Sessions.Count == 0)
+                {
+                    <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">paid</span> Approve &amp; pay</button>
+                    <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="DiscardAsync"><span class="material-symbols-outlined">block</span> Discard</button>
+                }
+                else if (_m.Status == MusterStatus.Locked)
+                {
+                    <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="CloseAsync"><span class="material-symbols-outlined">stop_circle</span> Close</button>
+                }
+                <button type="button" class="btn btn-sm btn-danger-ghost" disabled="@_busy" @onclick="RemoveCardAsync"><span class="material-symbols-outlined">delete_sweep</span> Remove card</button>
+            }
         </div>
     }
 
@@ -123,17 +118,12 @@ else if (State == AccessState.Ready)
                         {
                             <div class="dg-actions member-add">
                                 <input type="search" class="dg-search" placeholder="Add a participant…" @bind="_addSearch" @bind:event="oninput" @onfocus="() => _addOpen = true" @onblur="CloseAddSoon" />
-                                @if (_addSel is not null)
-                                {
-                                    <span class="member-chip">@_addSel.DisplayName <button type="button" class="member-chip-x" @onclick="() => _addSel = null">×</button></span>
-                                    <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="AddSelectedAsync"><span class="material-symbols-outlined">person_add</span> Add</button>
-                                }
-                                @if (_addSel is null && _addOpen)
+                                @if (_addOpen)
                                 {
                                     <div class="member-results">
                                         @foreach (var opt in MemberMatches)
                                         {
-                                            <button type="button" class="member-result" @onclick="() => Select(opt)">@opt.DisplayName</button>
+                                            <button type="button" class="member-result" disabled="@_busy" @onclick="() => AddDirectAsync(opt)"><span class="material-symbols-outlined">person_add</span> @opt.DisplayName</button>
                                         }
                                         @if (MemberMatches.Count == 0)
                                         {
@@ -198,55 +188,67 @@ else if (State == AccessState.Ready)
             </TabPane>
 
             <TabPane Id="sessions" Label="@($"Linked sessions ({_m.Sessions.Count})")" Icon="link">
-                <div class="tab-pad">
-                @if (_m.Sessions.Count == 0)
-                {
-                    <p class="subtitle">Not linked to any session. Link one to gate its spendable-coin mint on check-in — points are never gated, and a session with no linked muster mints coins to everyone.</p>
-                }
-                else
-                {
-                    <ul class="list muster-links">
-                        @foreach (var s in _m.Sessions)
-                        {
-                            <li>
-                                <a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a> <span class="subtitle">(@s.Status)</span>
-                                @if (_isManager)
+                <div class="dg-frame parts-frame">
+                    @if (_isManager)
+                    {
+                        <div class="dg-toolbar">
+                            <div class="dg-filters">
+                                <select class="dg-select" @bind="_linkSessionId">
+                                    <option value="">Link a session…</option>
+                                    @foreach (var s in _sessions.Where(s => !_m.Sessions.Any(x => x.SessionId == s.SessionId)))
+                                    {
+                                        <option value="@s.SessionId">@s.Name (@s.Status)</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="LinkAsync"><span class="material-symbols-outlined">add_link</span> Link</button>
+                            </div>
+                        </div>
+                    }
+                    <div class="dg-scroll">
+                        <table class="dg-table">
+                            <thead><tr><th>Session</th><th>Status</th><th>Coin gate</th><th></th></tr></thead>
+                            <tbody>
+                                @if (_m.Sessions.Count == 0)
                                 {
-                                    <label class="subtitle">Coin gate:
-                                        <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
-                                            <option value="@SessionCoinGate.None">None — mint to all</option>
-                                            <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
-                                            <option value="@SessionCoinGate.All">All — in every linked muster</option>
-                                        </select>
-                                    </label>
-                                    <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)">Unlink</button>
+                                    <tr class="dg-empty"><td colspan="4">Not linked to any session. Link one to gate its spendable-coin mint on check-in — points are never gated.</td></tr>
                                 }
                                 else
                                 {
-                                    <span class="subtitle">· gate @s.Gate</span>
+                                    @foreach (var s in _m.Sessions)
+                                    {
+                                        <tr>
+                                            <td><a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a></td>
+                                            <td>@s.Status</td>
+                                            <td>
+                                                @if (_isManager)
+                                                {
+                                                    <select class="dg-select" value="@s.Gate" disabled="@_busy" @onchange="(e) => OnGateChangeAsync(s.SessionId, e)">
+                                                        <option value="@SessionCoinGate.None">None — mint to all</option>
+                                                        <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
+                                                        <option value="@SessionCoinGate.All">All — in every linked muster</option>
+                                                    </select>
+                                                }
+                                                else
+                                                {
+                                                    @s.Gate
+                                                }
+                                            </td>
+                                            <td class="dg-actions-col">
+                                                @if (_isManager)
+                                                {
+                                                    <button type="button" class="icon-btn danger" title="Unlink" disabled="@_busy" @onclick="() => UnlinkAsync(s.SessionId)"><span class="material-symbols-outlined">link_off</span></button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
                                 }
-                            </li>
-                        }
-                    </ul>
-                }
-                @if (_isManager)
-                {
-                    <div class="form-inline">
-                        <select class="dg-select" @bind="_linkSessionId">
-                            <option value="">Select a session…</option>
-                            @foreach (var s in _sessions)
-                            {
-                                <option value="@s.SessionId">@s.Name (@s.Status)</option>
-                            }
-                        </select>
-                        <button type="button" disabled="@_busy" @onclick="LinkAsync">Link session</button>
+                            </tbody>
+                        </table>
                     </div>
-                    <p class="subtitle">Linking defaults the session's coin gate to <strong>Any</strong>. Under <strong>All</strong>, every linked muster is required. A session with no muster linked mints to everyone.</p>
-                }
-                else
-                {
-                    <p class="subtitle">Session linking + coin gating are managed by tracking staff.</p>
-                }
+                    <div class="dg-footer">
+                        <span class="dg-tz">@_m.Sessions.Count linked session@(_m.Sessions.Count == 1 ? "" : "s")</span>
+                        <span class="subtitle">@(_isManager ? "Under All, every linked muster is required; Any needs one. A session with no muster mints to everyone." : "Linking + coin gating are managed by tracking staff.")</span>
+                    </div>
                 </div>
             </TabPane>
         </TabFrame>
@@ -275,11 +277,14 @@ else if (State == AccessState.Ready)
     .member-add { position: relative; display: flex; align-items: center; gap: 0.5rem; }
     .member-results { position: absolute; top: 100%; right: 0; z-index: 20; margin-top: 4px; min-width: 14rem; max-height: 16rem; overflow: auto;
         background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 4px; }
-    .member-result { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); padding: 0.4rem 0.55rem; border-radius: 6px; cursor: pointer; }
-    .member-result:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+    .member-result { display: flex; align-items: center; gap: 0.4rem; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); padding: 0.4rem 0.55rem; border-radius: 6px; cursor: pointer; }
+    .member-result .material-symbols-outlined { font-size: 1.1rem; color: var(--text-muted); }
+    .member-result:hover:not(.empty) { background: color-mix(in srgb, var(--accent) 18%, transparent); }
     .member-result.empty { color: var(--text-muted); cursor: default; }
-    .member-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent); font-size: 0.85rem; }
-    .member-chip-x { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 1rem; line-height: 1; }
+
+    /* Header: details above the divider, action toolbar below it. */
+    .muster-divider { border: 0; border-top: 1px solid var(--border); margin: 0.25rem 0 1rem; }
+    .muster-actions { flex-wrap: wrap; margin-bottom: 1rem; }
 </style>
 
 @code {
@@ -317,7 +322,6 @@ else if (State == AccessState.Ready)
     // Add-member picker.
     private string _addSearch = "";
     private bool _addOpen;
-    private MemberOption? _addSel;
 
     protected override async Task LoadAsync()
     {
@@ -424,7 +428,13 @@ else if (State == AccessState.Ready)
         }
     }
 
-    private void Select(MemberOption opt) { _addSel = opt; _addSearch = ""; _addOpen = false; }
+    // Click a result → add immediately (no intermediate chip/Add button).
+    private async Task AddDirectAsync(MemberOption opt)
+    {
+        _addSearch = "";
+        _addOpen = false;
+        await RunAsync(new AddMusterParticipant(GuildId, UserId, MusterId, opt.UserId), $"Added {opt.DisplayName}.");
+    }
 
     // Close the results shortly after the input loses focus — the small delay lets a result's click register first.
     private async Task CloseAddSoon()
@@ -437,13 +447,6 @@ else if (State == AccessState.Ready)
         }
     }
 
-    private async Task AddSelectedAsync()
-    {
-        if (_addSel is not { } sel) { return; }
-        var picked = sel;
-        _addSel = null;
-        await RunAsync(new AddMusterParticipant(GuildId, UserId, MusterId, picked.UserId), $"Added {picked.DisplayName}.");
-    }
 
     private static string RewardLabel(long points, long coins, string? coinCode)
     {

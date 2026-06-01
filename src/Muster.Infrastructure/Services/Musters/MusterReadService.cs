@@ -18,6 +18,9 @@ public record MusterListItem(
 /// <summary>At-a-glance counts for the muster board KPI cards.</summary>
 public record MusterKpis(int Open, int Locked, int CheckedInOnOpen, int Linked, int Total);
 
+/// <summary>A muster linked to a session — for the session detail's reciprocal links back to the muster.</summary>
+public record SessionMusterRef(Guid Id, string Display, MusterStatus Status, int CheckedIn);
+
 /// <summary>A member-facing muster card (the web analogue of the Discord card): the general info plus whether the
 /// viewing member is currently checked in. Used by the participant board — no roster, no admin fields.</summary>
 public record MusterCard(
@@ -55,6 +58,9 @@ public interface IMusterReadService
 
     /// <summary>Recent sessions a muster could be linked to (newest first) — for the link picker.</summary>
     Task<IReadOnlyList<MusterLinkedSession>> ListLinkableSessionsAsync(ulong guildId, CancellationToken ct = default);
+
+    /// <summary>The musters linked to a session — for the session detail's reciprocal "linked musters" links.</summary>
+    Task<IReadOnlyList<SessionMusterRef>> MustersForSessionAsync(ulong guildId, Guid sessionId, CancellationToken ct = default);
 
     /// <summary>How a session's muster coin gate landed at close — for the "X earned the coin, Y skipped" notice.</summary>
     Task<SessionGateSummary?> SessionGateSummaryAsync(ulong guildId, Guid sessionId, CancellationToken ct = default);
@@ -184,6 +190,14 @@ public class MusterReadService(MusterDbContext db) : IMusterReadService
             NameOf(muster.CreatedBy), avatars.GetValueOrDefault(muster.CreatedBy), muster.ClosedAt, muster.ChannelId,
             participants, muster.Sessions);
     }
+
+    public async Task<IReadOnlyList<SessionMusterRef>> MustersForSessionAsync(ulong guildId, Guid sessionId, CancellationToken ct = default)
+        => await db.MusterSessionLinks
+            .Where(l => l.SessionId == sessionId && l.Muster!.GuildId == guildId)
+            .Select(l => l.Muster!)
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => new SessionMusterRef(m.Id, m.Title ?? m.Prompt, m.Status, m.Participants.Count))
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyList<MusterLinkedSession>> ListLinkableSessionsAsync(ulong guildId, CancellationToken ct = default)
         => await db.TrackingSessions

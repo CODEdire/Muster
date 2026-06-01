@@ -11,6 +11,7 @@
 @using Muster.Persistence.Queries
 @using Muster.Infrastructure.Services.Tracking
 @using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
 @using Muster.Infrastructure.Services.Platform
 
 <PageTitle>@(_detail?.Name ?? "Session") — Muster</PageTitle>
@@ -144,6 +145,19 @@ else if (State == AccessState.Ready && _detail is not null)
             <div class="kpi glass"><div class="kpi-num">@_detail.PointsPerMinute<span class="kpi-unit">pts/min</span></div><div class="kpi-label">Rate</div></div>
         }
     </div>
+
+    @if (_musters.Count > 0)
+    {
+        <div class="sess-rules sess-musters">
+            <span class="rules-label">Linked musters</span>
+            @foreach (var m in _musters)
+            {
+                <a class="rule-chip on" href="@MusterLinks.MusterDetail(GuildId, m.Id)" title="@m.Status">
+                    <span class="material-symbols-outlined">groups</span>@m.Display <span class="muster-count">@m.CheckedIn</span>
+                </a>
+            }
+        </div>
+    }
 
     <div class="sess-rules">
         <span class="rules-label">Anti-AFK guards</span>
@@ -366,6 +380,7 @@ else if (State == AccessState.Ready && _detail is not null)
     [Parameter] public string SessionId { get; set; } = string.Empty;
 
     private SessionDetailView? _detail;
+    private IReadOnlyList<Muster.Infrastructure.Services.Musters.SessionMusterRef> _musters = [];
     private bool _isStaff;
     private bool _ending;
     private bool _optingSelf;
@@ -407,6 +422,7 @@ else if (State == AccessState.Ready && _detail is not null)
         // Officer/EventOfficer umbrellas.
         _isStaff = await auth.IsTrackingManagerAsync(GuildId, UserId);
         _detail = await sp.GetRequiredService<ParticipationReadService>().SessionDetailAsync(GuildId, id);
+        _musters = _isStaff ? await sp.GetRequiredService<IMusterReadService>().MustersForSessionAsync(GuildId, id) : [];
         _lastLoaded = DateTimeOffset.UtcNow;
         BuildTimeline();
     }
