@@ -182,12 +182,12 @@ public class OpAndActivityTests
         using var db = await SeededAsync();
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.SessionCoinCurrencyCode = "COIN";
-        guild.Settings.MinutesPerCoin = 30;
-        guild.Settings.ApplyAfkGuardsToSessions = false; // single-user accrual test
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(1, t =>
+        {
+            t.SessionCoinCurrencyCode = "COIN";
+            t.MinutesPerCoin = 30;
+            t.DefaultSessionGuards = AfkGuards.None; // single-user accrual test
+        });
 
         var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var now = DateTimeOffset.UtcNow;
@@ -205,11 +205,12 @@ public class OpAndActivityTests
         using var db = await SeededAsync();
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.SessionCoinCurrencyCode = "COIN";
-        guild.Settings.MinutesPerCoin = 30;
-        guild.Settings.ApplyAfkGuardsToSessions = false;
-        guild.Settings = guild.Settings;
+        await db.SeedTrackingAsync(1, t =>
+        {
+            t.SessionCoinCurrencyCode = "COIN";
+            t.MinutesPerCoin = 30;
+            t.DefaultSessionGuards = AfkGuards.None;
+        });
         var now = DateTimeOffset.UtcNow;
         db.RewardMultipliers.Add(new RewardMultiplier
         {
@@ -231,12 +232,12 @@ public class OpAndActivityTests
     public async Task SessionClose_AwardsStartAndEndPresenceBonuses()
     {
         using var db = await SeededAsync();
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.ApplyAfkGuardsToSessions = false;
-        guild.Settings.SessionStartBonus = 50;
-        guild.Settings.SessionEndBonus = 25;
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(1, t =>
+        {
+            t.DefaultSessionGuards = AfkGuards.None;
+            t.SessionStartBonus = 50;
+            t.SessionEndBonus = 25;
+        });
 
         var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var now = DateTimeOffset.UtcNow;
@@ -264,7 +265,7 @@ public class OpAndActivityTests
         Assert.True((await sut.SetSessionCoinAsync(1, "NS", 30)).IsError);
         Assert.False((await sut.SetSessionCoinAsync(1, "SP", 30)).IsError);
 
-        var settings = (await db.FindGuildAsync(1))!.Settings;
+        var settings = await db.GetTrackingSettingsAsync(1);
         Assert.Equal("SP", settings.SessionCoinCurrencyCode);
         Assert.Equal(30, settings.MinutesPerCoin);
     }
@@ -332,9 +333,7 @@ public class OpAndActivityTests
     public async Task PruneOldRecords_DeletesBeyondRetention_KeepsRecent()
     {
         using var db = await SeededAsync();
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.ActivityRetentionDays = 30;
-        guild.Settings = guild.Settings;
+        await db.SeedTrackingAsync(1, t => t.ActivityRetentionDays = 30);
         var now = DateTimeOffset.UtcNow;
         db.ActivityRecords.Add(new ActivityRecord { GuildId = 1, ChannelId = 100, UserId = 10, Type = ActivityType.Message, Timestamp = now.AddDays(-40), SourceMessageId = 1 });
         db.ActivityRecords.Add(new ActivityRecord { GuildId = 1, ChannelId = 100, UserId = 10, Type = ActivityType.Message, Timestamp = now.AddDays(-1), SourceMessageId = 2 });

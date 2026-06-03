@@ -325,10 +325,13 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
     [SubSlashCommand("settings", "Session guards, limits, and multiplier/bonus policy.")]
     public class SettingsModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(scopeFactory)
     {
-        [SubSlashCommand("guards", "Whether new sessions pause reward time while muted/alone by default.")]
+        [SubSlashCommand("guards", "Default AFK guards for new manual sessions (the web has per-channel + background/event guards).")]
         public Task GuardsAsync(
-            [SlashCommandParameter(Name = "apply", Description = "true = pause muted/alone time; false = count all presence")] bool apply)
-            => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().SetApplyGuardsToSessionsAsync(guildId, apply),
+            [SlashCommandParameter(Name = "deafened", Description = "Pause reward time while deafened (default true)")] bool deafened = true,
+            [SlashCommandParameter(Name = "alone", Description = "Pause reward time while alone (default true)")] bool alone = true,
+            [SlashCommandParameter(Name = "muted", Description = "Pause reward time while muted (default false)")] bool muted = false)
+            => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>()
+                    .SetDefaultGuardsAsync(guildId, session: AfkGuardsExtensions.Compose(muted, deafened, alone)),
                 RequiredRole.TrackingManager, auditAction: "config.tracking");
 
         [SubSlashCommand("limits", "Session safety limits (omit a value to leave it unchanged).")]
@@ -370,7 +373,7 @@ public class TrackModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(s
             => RunAsync(async (sp, guildId) =>
             {
                 // Merge with current settings so omitted options stay unchanged.
-                var s = await sp.GetRequiredService<MusterDbContext>().GetSettingsAsync(guildId);
+                var s = await sp.GetRequiredService<MusterDbContext>().GetTrackingSettingsAsync(guildId);
                 return await sp.GetRequiredService<ConfigCommandService>().SetMultiplierSettingsAsync(
                     guildId,
                     stacking ?? s.MultiplierStacking,

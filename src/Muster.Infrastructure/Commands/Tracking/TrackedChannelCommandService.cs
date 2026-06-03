@@ -34,7 +34,7 @@ public class TrackedChannelCommandService(MusterDbContext db, ITrackingAuthorize
         channel.Mode = TrackedChannelMode.Reward;
         channel.PointsPerMinute = pointsPerMinute;
         channel.DailyCapPoints = dailyCapPoints;
-        channel.Guards = AfkGuardsExtensions.Compose(requireUnmuted, requireUndeafened, requireNotAlone);
+        channel.BackgroundGuards = AfkGuardsExtensions.Compose(requireUnmuted, requireUndeafened, requireNotAlone);
         await db.SaveChangesAsync(ct);
 
         var cap = dailyCapPoints == 0 ? "no daily cap" : $"cap {dailyCapPoints}/day";
@@ -105,6 +105,32 @@ public class TrackedChannelCommandService(MusterDbContext db, ITrackingAuthorize
 
         await db.SaveChangesAsync(ct);
         return CommandResult.Ok($"Stopped tracking <#{channelId}>.");
+    }
+
+    /// <summary>Set a monitored channel's per-lane AFK-guard overrides (background / manual session / scheduled
+    /// event). A null lane inherits the guild default for that lane; pass all-null to "reset to defaults". The
+    /// channel must already be tracked (added via <see cref="SetVoiceAsync"/>/<see cref="SetTextAsync"/>).</summary>
+    public async Task<CommandResult> SetGuardsAsync(
+        ulong guildId, ulong actorId, ulong channelId,
+        AfkGuards? background, AfkGuards? session, AfkGuards? events, CancellationToken ct = default)
+    {
+        if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), 0, TrackingPermission.ManageChannels, ct))
+        {
+            return CommandResult.Error("Forbidden");
+        }
+
+        var channel = await db.FindChannelAsync(guildId, channelId, ct);
+        if (channel is null || channel.Mode == TrackedChannelMode.Off)
+        {
+            return CommandResult.Error($"<#{channelId}> isn't being tracked.");
+        }
+
+        channel.BackgroundGuards = background;
+        channel.SessionGuards = session;
+        channel.EventGuards = events;
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok($"Updated guards for <#{channelId}>.");
     }
 
     public async Task<CommandResult> ListAsync(ulong guildId, CancellationToken ct = default)

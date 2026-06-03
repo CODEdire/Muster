@@ -60,9 +60,10 @@ public record WebhookDeletePayload(Guid WebhookId, string Url);
 /// <summary>Settings save on the Tracking page — captures every adjustable knob in one payload so the formatter can
 /// diff against the previous row.</summary>
 public record TrackingSettingsPayload(
-    bool BackgroundOptIn, bool ApplyGuardsToSessions,
-    string? CoinCurrency, int MinutesPerCoin, int MaxSessionHours,
-    int ActivityRetentionDays, int MinTrackedSeconds,
+    bool BackgroundOptIn,
+    AfkGuards DefaultBackgroundGuards, AfkGuards DefaultSessionGuards, AfkGuards DefaultEventGuards,
+    string? CoinCurrency, int MinutesPerCoin, int? MaxSessionHours,
+    int? ActivityRetentionDays, int? MinTrackedSeconds,
     MultiplierStacking Stacking, decimal? Cap,
     decimal StartBonus, decimal EndBonus,
     int StartWindowMinutes, int EndWindowMinutes, bool MultiplyBonuses);

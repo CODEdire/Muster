@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muster.Persistence;
 
@@ -11,9 +12,11 @@ using Muster.Persistence;
 namespace Muster.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    partial class MusterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260602193901_ExtractTrackingSettings")]
+    partial class ExtractTrackingSettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -463,7 +466,7 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<int?>("ActivityRetentionDays")
+                    b.Property<int>("ActivityRetentionDays")
                         .HasColumnType("int");
 
                     b.Property<bool>("BackgroundTrackingOptIn")
@@ -481,16 +484,16 @@ namespace Muster.Persistence.Migrations
                     b.Property<int>("EndBonusWindowMinutes")
                         .HasColumnType("int");
 
-                    b.Property<int?>("MaxSessionHours")
+                    b.Property<int>("MaxSessionHours")
                         .HasColumnType("int");
 
-                    b.Property<int?>("MinTrackedSeconds")
+                    b.Property<int>("MinTrackedSeconds")
                         .HasColumnType("int");
 
                     b.Property<int>("MinutesPerCoin")
                         .HasColumnType("int");
 
-                    b.Property<decimal?>("MultiplierCap")
+                    b.Property<decimal>("MultiplierCap")
                         .HasPrecision(6, 3)
                         .HasColumnType("decimal(6,3)");
 

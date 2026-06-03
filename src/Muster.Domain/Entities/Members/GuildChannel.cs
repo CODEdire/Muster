@@ -48,8 +48,17 @@ public class GuildChannel
     /// <summary>Cap on background voice points a member can earn in this channel per UTC day. 0 = uncapped.</summary>
     public int DailyCapPoints { get; set; }
 
-    /// <summary>Anti-AFK guards that pause background voice reward accrual (default: skip deafened + alone, allow muted).</summary>
-    public AfkGuards Guards { get; set; } = AfkGuards.Undeafened | AfkGuards.NotAlone;
+    // --- Per-lane anti-AFK guard overrides. null = inherit the guild default for that lane
+    // (GuildSettings.Default*Guards). "Reset to default" sets the lane back to null. ---
+
+    /// <summary>Override for the always-on background reward plane; null inherits <see cref="Guilds.GuildSettings.DefaultBackgroundGuards"/>.</summary>
+    public AfkGuards? BackgroundGuards { get; set; }
+
+    /// <summary>Override for manual sessions started in this channel; null inherits <see cref="Guilds.GuildSettings.DefaultSessionGuards"/>.</summary>
+    public AfkGuards? SessionGuards { get; set; }
+
+    /// <summary>Override for scheduled-event sessions in this channel; null inherits <see cref="Guilds.GuildSettings.DefaultEventGuards"/>.</summary>
+    public AfkGuards? EventGuards { get; set; }
 
     /// <summary>Runtime: when this channel last went from empty to occupied (UTC); null when empty. Drives the
     /// channel-wide "minimum time active" multiplier condition — it resets whenever the channel clears out.</summary>

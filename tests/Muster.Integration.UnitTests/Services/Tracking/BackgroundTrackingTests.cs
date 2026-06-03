@@ -42,7 +42,7 @@ public class BackgroundTrackingTests
             Mode = TrackedChannelMode.Reward,
             PointsPerMinute = rate,
             DailyCapPoints = dailyCap,
-            Guards = AfkGuardsExtensions.Compose(requireUnmuted, undeafened: false, requireNotAlone),
+            BackgroundGuards = AfkGuardsExtensions.Compose(requireUnmuted, undeafened: false, requireNotAlone),
         });
         await db.SaveChangesAsync();
     }
@@ -109,10 +109,7 @@ public class BackgroundTrackingTests
     {
         using var db = await SeededAsync();
         await AddRewardVoiceAsync(db, rate: 2);
-        var guild = await db.FindGuildAsync(Guild);
-        guild!.Settings.BackgroundTrackingOptIn = true; // opt-in guild
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(Guild, t => t.BackgroundTrackingOptIn = true); // opt-in guild
         var sut = Sut(db);
 
         var roster = Roster(new VoiceMemberSnapshot(10, false, false, false), new VoiceMemberSnapshot(20, false, false, false));

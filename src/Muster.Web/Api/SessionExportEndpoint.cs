@@ -12,7 +12,7 @@ namespace Muster.Web.Api;
 /// </summary>
 public static class SessionExportEndpoint
 {
-    [WolverineGet("/guilds/{guildId}/sessions/{sessionId}/export.csv")]
+    [WolverineGet("/guilds/{guildId}/guild/tracking/sessions/{sessionId}/export.csv")]
     public static async Task<IResult> Export(
         ulong guildId,
         Guid sessionId,

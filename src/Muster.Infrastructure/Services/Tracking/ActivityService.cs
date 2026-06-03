@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Options;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
@@ -15,7 +17,7 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// (<see cref="GuildChannel.PointsPerMessage"/>). Dedupes on the message id so gateway redelivery never
 /// inflates counts or double-pays.
 /// </summary>
-public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers)
+public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers, IOptions<GuildTrackingSettings>? trackingDefaults = null)
 {
     public async Task RecordMessageAsync(
         ulong guildId, ulong channelId, ulong userId, ulong messageId, DateTimeOffset timestamp,
@@ -29,7 +31,7 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
         }
 
         // Consent: message activity is part of the background plane.
-        var settings = await db.GetSettingsAsync(guildId, ct);
+        var settings = await db.GetTrackingSettingsAsync(guildId, ct);
         var choice = await db.MemberTrackingChoiceAsync(guildId, userId, ct);
         if (!TrackingConsentResolver.Resolve(choice, settings.BackgroundTrackingOptIn).Background)
         {
@@ -92,7 +94,7 @@ public class ActivityService(MusterDbContext db, ICurrencyService awards, GuildA
 
         foreach (var guild in await db.ListActiveGuildsAsync(ct))
         {
-            var days = guild.Settings.ActivityRetentionDays;
+            var days = (await db.GetTrackingSettingsAsync(guild.Id, ct)).EffectiveActivityRetentionDays(trackingDefaults?.Value);
             if (days <= 0)
             {
                 continue;

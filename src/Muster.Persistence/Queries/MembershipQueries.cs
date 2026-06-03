@@ -19,6 +19,13 @@ public static class MembershipQueries
     public static async Task<GuildSettings> GetSettingsAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
         => (await db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guildId, ct))?.Settings ?? new();
 
+    /// <summary>A guild's tracking settings (read-only, untracked); a fresh defaults instance when no row exists yet.
+    /// Mirrors <see cref="GetSettingsAsync"/> for the table-per-feature <c>GuildTrackingSettings</c>.</summary>
+    public static async Task<Muster.Domain.Entities.Guilds.GuildTrackingSettings> GetTrackingSettingsAsync(
+        this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => await db.GuildTrackingSettings.AsNoTracking().FirstOrDefaultAsync(t => t.GuildId == guildId, ct)
+           ?? new Muster.Domain.Entities.Guilds.GuildTrackingSettings { GuildId = guildId };
+
     /// <summary>All active guilds (for cross-guild sweeps).</summary>
     public static Task<List<Guild>> ListActiveGuildsAsync(this MusterDbContext db, CancellationToken ct = default)
         => db.Guilds.Where(g => g.IsActive).ToListAsync(ct);

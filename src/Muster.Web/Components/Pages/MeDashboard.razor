@@ -50,7 +50,7 @@ else if (State == AccessState.Ready)
                                 @foreach (var s in _active)
                                 {
                                     <tr>
-                                        <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                                        <td><a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a></td>
                                         <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
                                         <td>@Dur(s.MyMinutes)</td>
                                         <td>@(s.PresentNow ? "🟢 Active" : "🟡 Paused")</td>
@@ -81,7 +81,7 @@ else if (State == AccessState.Ready)
                             @foreach (var s in _history)
                             {
                                 <tr>
-                                    <td><a href="/guilds/@GuildId/sessions/@s.SessionId">@s.Name</a></td>
+                                    <td><a href="@MusterLinks.SessionDetail(GuildId, s.SessionId)">@s.Name</a></td>
                                     <td><ChannelLabel Name="@s.VoiceChannelName" /></td>
                                     <td>@if (s.EndedAt is { } e) { <LocalTime Value="e" Zone="@_zoneId" /> } else { <span class="subtitle">—</span> }</td>
                                     <td class="num">@Dur(s.MyMinutes)</td>
@@ -93,7 +93,7 @@ else if (State == AccessState.Ready)
             </div>
             <div class="dg-footer">
                 <span class="dg-tz">last @HistoryLimit sessions · times in <LocalTime ShowZone="true" Zone="@_zoneId" /></span>
-                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/sessions">All sessions →</a>
+                <a class="btn btn-ghost btn-sm" href="@MusterLinks.Sessions(GuildId)">All sessions →</a>
             </div>
         </TabPane>
 

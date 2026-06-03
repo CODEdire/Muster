@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
@@ -16,13 +17,13 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// channel accumulates; closing the session awards points proportional to minutes attended. Sessions
 /// are opened manually by an admin or bound to a Discord scheduled event.
 /// </summary>
-public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers, IMessageBus bus, MusterService? musters = null, GuildMusterSettingsService? musterSettings = null)
+public class TrackingSessionService(MusterDbContext db, ICurrencyService awards, GuildAuthorizationService auth, RewardMultiplierService multipliers, IMessageBus bus, MusterService? musters = null, GuildMusterSettingsService? musterSettings = null, IOptions<Muster.Domain.Entities.Guilds.GuildTrackingSettings>? trackingDefaults = null)
 {
     public const int DefaultPointsPerMinute = 1;
 
     /// <summary>
-    /// Open a manual session. Anti-AFK guards default to <paramref name="requireUnmuted"/>/<paramref name="requireNotAlone"/>
-    /// when supplied; a null falls back to the guild's <c>ApplyAfkGuardsToSessions</c> policy.
+    /// Open a manual session. Each anti-AFK guard uses the supplied <paramref name="requireUnmuted"/> etc. when
+    /// given; a null guard falls back to the channel's Session-lane override, then the guild's <c>DefaultSessionGuards</c>.
     /// <paramref name="createMuster"/> null falls back to the guild's <c>AutoCreateMusterOnSession</c> default.
     /// </summary>
     public async Task<TrackingSession> OpenManualAsync(
@@ -92,12 +93,18 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         ulong openedBy, string name, bool? requireUnmuted, bool? requireUndeafened, bool? requireNotAlone,
         bool? createMuster, CancellationToken ct)
     {
-        // A null guard defaults to the guild's session-guard policy (so scheduled events follow it). Deafened
-        // (checked out) and alone are the default AFK signals; merely muted (present, can't speak) is opt-in.
-        var settings = await db.GetSettingsAsync(guildId, ct);
-        var applyGuards = settings.ApplyAfkGuardsToSessions;
+        // Guard resolution chain: a null per-open override falls back to this channel's lane override, which
+        // itself falls back to the guild's per-lane default. Manual sessions read the Session lane; scheduled
+        // events read the Event lane (the channel may not be monitored at all — then it's purely the guild default).
+        var settings = await db.GetTrackingSettingsAsync(guildId, ct);
+        var channel = await db.FindChannelAsync(guildId, voiceChannelId, ct);
+        var laneDefault = source == TrackingSessionSource.DiscordScheduledEvent
+            ? (channel?.EventGuards ?? settings.DefaultEventGuards)
+            : (channel?.SessionGuards ?? settings.DefaultSessionGuards);
         var guards = AfkGuardsExtensions.Compose(
-            requireUnmuted ?? false, requireUndeafened ?? applyGuards, requireNotAlone ?? applyGuards);
+            requireUnmuted ?? laneDefault.Unmuted(),
+            requireUndeafened ?? laneDefault.Undeafened(),
+            requireNotAlone ?? laneDefault.NotAlone());
 
         var session = new TrackingSession
         {
@@ -182,7 +189,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         // Members who opted out of all tracking are excluded from sessions entirely (no attendance row).
         var presentUserIds = occupantsByChannel.Values.SelectMany(v => v).Where(m => !m.IsBot).Select(m => m.UserId).Distinct().ToList();
         var choices = await db.TrackingChoicesAsync(guildId, presentUserIds, ct);
-        var minTracked = (await db.GetSettingsAsync(guildId, ct)).MinTrackedSeconds;
+        var minTracked = (await db.GetTrackingSettingsAsync(guildId, ct)).EffectiveMinTrackedSeconds(trackingDefaults?.Value);
 
         // Reward multipliers weight each flush by the factor active now (time window + member role).
         var mult = await multipliers.LoadAsync(guildId, ct);
@@ -303,7 +310,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         {
             if (!maxHoursByGuild.TryGetValue(session.GuildId, out var maxHours))
             {
-                maxHours = (await db.GetSettingsAsync(session.GuildId, ct)).MaxSessionHours;
+                maxHours = (await db.GetTrackingSettingsAsync(session.GuildId, ct)).EffectiveMaxSessionHours(trackingDefaults?.Value);
                 maxHoursByGuild[session.GuildId] = maxHours;
             }
 
@@ -430,7 +437,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         session.EndedAt = now;
 
         // Reward multipliers: weight the final flush + (optionally) the presence bonuses.
-        var settings = await db.GetSettingsAsync(session.GuildId, ct);
+        var settings = await db.GetTrackingSettingsAsync(session.GuildId, ct);
         var attendeeIds = session.Attendance.Select(a => a.UserId).ToList();
         var mult = await multipliers.LoadAsync(session.GuildId, ct);
         var rolesByUser = mult.IsEmpty ? [] : await db.RoleIdsByUserAsync(session.GuildId, attendeeIds, ct);
@@ -446,7 +453,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
         }
 
         // Drop drive-bys (members who never accrued the guild's minimum) so they're neither counted nor rewarded.
-        var minTracked = settings.MinTrackedSeconds;
+        var minTracked = settings.EffectiveMinTrackedSeconds(trackingDefaults?.Value);
         if (minTracked > 0)
         {
             var driveBys = session.Attendance.Where(a => TotalSeconds(a) < minTracked).ToList();
@@ -600,7 +607,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
     /// <summary>Flat POINTS bonuses for being present at the session's start and/or end (windows configurable;
     /// optionally scaled by the multiplier active at that moment). Idempotent per-member source keys.</summary>
     private async Task AwardPresenceBonusesAsync(
-        TrackingSession session, VoiceAttendance attendance, GuildSettings settings,
+        TrackingSession session, VoiceAttendance attendance, GuildTrackingSettings settings,
         Func<ulong, DateTimeOffset, decimal> factorAt, CancellationToken ct)
     {
         var startedAt = session.StartedAt;
@@ -638,8 +645,7 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
 
     private async Task<int> ResolvePointsPerMinuteAsync(ulong guildId, CancellationToken ct)
     {
-        var guild = await db.FindGuildAsync(guildId, ct);
-        var rate = guild?.Settings.PointsPerVoiceMinute ?? DefaultPointsPerMinute;
+        var rate = (await db.GetTrackingSettingsAsync(guildId, ct)).PointsPerVoiceMinute;
         return rate > 0 ? rate : DefaultPointsPerMinute;
     }
 
@@ -647,9 +653,9 @@ public class TrackingSessionService(MusterDbContext db, ICurrencyService awards,
     /// unconfigured or the currency code no longer resolves.</summary>
     private async Task<(Currency? currency, int minutesPerCoin)> ResolveSessionCoinAsync(ulong guildId, CancellationToken ct)
     {
-        var settings = (await db.FindGuildAsync(guildId, ct))?.Settings;
-        var code = settings?.SessionCoinCurrencyCode;
-        var minutesPerCoin = settings?.MinutesPerCoin ?? 0;
+        var settings = await db.GetTrackingSettingsAsync(guildId, ct);
+        var code = settings.SessionCoinCurrencyCode;
+        var minutesPerCoin = settings.MinutesPerCoin;
         if (string.IsNullOrWhiteSpace(code) || minutesPerCoin <= 0)
         {
             return (null, 0);

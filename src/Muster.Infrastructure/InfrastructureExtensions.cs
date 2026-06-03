@@ -53,6 +53,12 @@ public static class InfrastructureExtensions
             builder.Configuration.GetSection("GuildDefaults:Musters"));
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
+        builder.Services.AddScoped<Services.Tracking.GuildTrackingSettingsService>();
+        // Platform defaults for a guild's tracking settings (AppConfig / appsettings) — seed new rows + fill read-misses.
+        builder.Services.Configure<Domain.Entities.Guilds.GuildTrackingSettings>(
+            builder.Configuration.GetSection("GuildDefaults:Tracking"));
+        // Platform-wide tracking retention cap (appsettings "Tracking:MaxActivityRetentionDays"; 0 = unlimited).
+        builder.Services.Configure<Services.Tracking.TrackingRetentionOptions>(builder.Configuration.GetSection("Tracking"));
         builder.Services.AddScoped<BackgroundTrackingService>();
         builder.Services.AddScoped<RewardMultiplierService>();
         builder.Services.AddScoped<ParticipationReadService>();

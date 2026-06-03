@@ -118,7 +118,10 @@ public static class ApiTrackingEndpoints
         => Results.Ok((await db.ListTrackedChannelsAsync(guildId)).Select(c => new
         {
             c.ChannelId, c.Name, Kind = c.Kind.ToString(), Mode = c.Mode.ToString(),
-            c.PointsPerMinute, c.PointsPerMessage, c.DailyCapPoints, Guards = c.Guards.ToString(), c.DeletedAt,
+            c.PointsPerMinute, c.PointsPerMessage, c.DailyCapPoints,
+            // Per-lane guard overrides; null = inherit the guild default for that lane.
+            BackgroundGuards = c.BackgroundGuards?.ToString(), SessionGuards = c.SessionGuards?.ToString(), EventGuards = c.EventGuards?.ToString(),
+            c.DeletedAt,
         }));
 
     /// <summary>The guild's reward multipliers.</summary>

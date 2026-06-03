@@ -75,7 +75,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
         }
 
         var now = at ?? DateTimeOffset.UtcNow;
-        var settings = await db.GetSettingsAsync(guildId, ct);
+        var settings = await db.GetTrackingSettingsAsync(guildId, ct);
         var seasonId = await db.ActiveSeasonIdAsync(guildId, ct);
 
         var trackedChannelIds = channels.Select(c => c.ChannelId).ToHashSet();
@@ -96,7 +96,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
         foreach (var cfg in channels)
         {
             var occupants = occupantsByChannel.TryGetValue(cfg.ChannelId, out var list) ? list : [];
-            staged |= await ReconcileChannelAsync(cfg, occupants, now, settings.BackgroundTrackingOptIn, choices, seasonId, mult, rolesByUser, ct);
+            staged |= await ReconcileChannelAsync(cfg, occupants, now, settings.BackgroundTrackingOptIn, settings.DefaultBackgroundGuards, choices, seasonId, mult, rolesByUser, ct);
         }
 
         if (staged)
@@ -108,7 +108,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
     /// <summary>Returns true if any presence row was touched (so the caller knows to commit).</summary>
     private async Task<bool> ReconcileChannelAsync(
         GuildChannel cfg, IReadOnlyList<VoiceMemberSnapshot> occupants, DateTimeOffset now,
-        bool guildBackgroundOptIn, IReadOnlyDictionary<ulong, TrackingChoice> choices, Guid? seasonId,
+        bool guildBackgroundOptIn, AfkGuards defaultBackgroundGuards, IReadOnlyDictionary<ulong, TrackingChoice> choices, Guid? seasonId,
         MultiplierSet mult, IReadOnlyDictionary<ulong, List<ulong>> rolesByUser, CancellationToken ct)
     {
         var presences = await db.ListPresencesForChannelAsync(cfg.GuildId, cfg.ChannelId, ct);
@@ -171,7 +171,7 @@ public class BackgroundTrackingService(MusterDbContext db, ICurrencyService awar
 
             // Reward time: guarded + suppressed while a Session owns the channel.
             var eligible = isReward && !sessionActive
-                && cfg.Guards.Allows(member.IsMuted, member.IsDeafened, humans.Count);
+                && (cfg.BackgroundGuards ?? defaultBackgroundGuards).Allows(member.IsMuted, member.IsDeafened, humans.Count);
 
             if (eligible)
             {

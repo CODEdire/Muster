@@ -1,4 +1,4 @@
-@page "/guilds/{GuildIdRaw}/sessions/{SessionId}"
+@page "/guilds/{GuildIdRaw}/guild/tracking/sessions/{SessionId}"
 @layout GuildLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildMemberComponentBase
@@ -22,13 +22,13 @@
 }
 else if (State == AccessState.Ready && _detail is null)
 {
-    <div class="panel glass empty">Session not found. <a href="/guilds/@GuildId/sessions">Back to sessions</a></div>
+    <div class="panel glass empty">Session not found. <a href="@MusterLinks.Sessions(GuildId)">Back to sessions</a></div>
 }
 else if (State == AccessState.Ready && _detail is not null)
 {
     <header class="sess-head">
         <div class="sess-head-bar">
-            <a class="btn btn-ghost btn-sm sess-back" href="/guilds/@GuildId/sessions">
+            <a class="btn btn-ghost btn-sm sess-back" href="@MusterLinks.Sessions(GuildId)">
                 <span class="material-symbols-outlined">arrow_back</span> Sessions
             </a>
             <div class="sess-head-actions">
@@ -49,7 +49,7 @@ else if (State == AccessState.Ready && _detail is not null)
                 }
                 @if (_isStaff)
                 {
-                    <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/sessions/@_detail.Id/export.csv" target="_blank">
+                    <a class="btn btn-ghost btn-sm" href="@MusterLinks.SessionExport(GuildId, _detail.Id)" target="_blank">
                         <span class="material-symbols-outlined">download</span> Export
                     </a>
                     @if (_detail.Active)

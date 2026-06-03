@@ -23,10 +23,10 @@ public class MembershipQueriesTests
     {
         using var sqlite = new SqliteDb();
         var db = sqlite.Context;
-        db.Guilds.Add(new Guild { Id = 1, Name = "G", Settings = new GuildSettings { PointsPerVoiceMinute = 7 } });
+        db.Guilds.Add(new Guild { Id = 1, Name = "G", Settings = new GuildSettings { LedgerRetentionDays = 7 } });
         await db.SaveChangesAsync();
 
-        Assert.Equal(7, (await db.GetSettingsAsync(1)).PointsPerVoiceMinute);
+        Assert.Equal(7, (await db.GetSettingsAsync(1)).LedgerRetentionDays);
     }
 
     [Fact]

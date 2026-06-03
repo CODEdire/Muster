@@ -45,9 +45,11 @@ public class ParticipationTests
     private static async Task DisableSessionGuardsAsync(MusterDbContext db)
     {
         var g = await db.Guilds.FirstAsync();
-        g.Settings.ApplyAfkGuardsToSessions = false;
-        g.Settings = g.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(g.Id, t =>
+        {
+            t.DefaultSessionGuards = Muster.Domain.Enums.AfkGuards.None;
+            t.DefaultEventGuards = Muster.Domain.Enums.AfkGuards.None;
+        });
     }
 
     [Fact]
@@ -94,10 +96,11 @@ public class ParticipationTests
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
         var guild = await db.Guilds.FirstAsync();
-        guild.Settings.SessionCoinCurrencyCode = "COIN";
-        guild.Settings.MinutesPerCoin = minutesPerCoin;
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(guild.Id, t =>
+        {
+            t.SessionCoinCurrencyCode = "COIN";
+            t.MinutesPerCoin = minutesPerCoin;
+        });
         return coin;
     }
 
@@ -323,7 +326,7 @@ public class ParticipationTests
     [Fact]
     public async Task Session_GuardsOn_PausesDeafenedAndCreditsPeer()
     {
-        var (db, _) = await SeededAsync(); // ApplyAfkGuardsToSessions defaults true → undeafened + not-alone guards on
+        var (db, _) = await SeededAsync(); // DefaultSessionGuards defaults to undeafened + not-alone → guards on
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
 
@@ -413,9 +416,7 @@ public class ParticipationTests
         var (db, _) = await SeededAsync();
         await DisableSessionGuardsAsync(db);
         var guild = await db.Guilds.FirstAsync();
-        guild.Settings.MinTrackedSeconds = 60;
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(guild.Id, t => t.MinTrackedSeconds = 60);
 
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);

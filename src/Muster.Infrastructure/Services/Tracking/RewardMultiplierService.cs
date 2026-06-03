@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Entities.Tracking;
 using Muster.Domain.Enums;
 using Muster.Persistence;
@@ -10,14 +12,14 @@ namespace Muster.Infrastructure.Services.Tracking;
 /// reward sinks then query per member/flush with no further IO. Splitting load from evaluation keeps the
 /// hot path (background reconcile credits many members per pass) cheap.
 /// </summary>
-public sealed class RewardMultiplierService(MusterDbContext db)
+public sealed class RewardMultiplierService(MusterDbContext db, IOptions<GuildTrackingSettings>? trackingDefaults = null)
 {
     public async Task<MultiplierSet> LoadAsync(ulong guildId, CancellationToken ct = default)
     {
         var multipliers = await db.ListEnabledMultipliersAsync(guildId, ct);
-        var settings = await db.GetSettingsAsync(guildId, ct);
+        var settings = await db.GetTrackingSettingsAsync(guildId, ct);
         var zoneId = await db.GuildTimeZoneIdAsync(guildId, ct);
-        return new MultiplierSet(multipliers, settings.MultiplierStacking, settings.MultiplierCap, ResolveZone(zoneId));
+        return new MultiplierSet(multipliers, settings.MultiplierStacking, settings.EffectiveMultiplierCap(trackingDefaults?.Value), ResolveZone(zoneId));
     }
 
     /// <summary>The base (role-agnostic, time-window) multiplier factor for a plane right now — 1.0 when none is

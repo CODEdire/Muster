@@ -1,4 +1,4 @@
-@page "/guilds/{GuildIdRaw}/sessions"
+@page "/guilds/{GuildIdRaw}/guild/tracking/sessions"
 @layout GuildLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildMemberComponentBase
@@ -69,7 +69,7 @@ else if (State == AccessState.Ready)
                 @if (_isStaff)
                 {
                     <div class="dg-actions">
-                        <a class="btn btn-sm" href="/guilds/@GuildId/sessions/new">
+                        <a class="btn btn-sm" href="@MusterLinks.SessionNew(GuildId)">
                             <span class="material-symbols-outlined">add_circle</span> Start session
                         </a>
                         <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/participation/export.csv">
@@ -110,7 +110,7 @@ else if (State == AccessState.Ready)
                             @foreach (var s in _grid.Items)
                             {
                                 <tr>
-                                    <td><a href="/guilds/@GuildId/sessions/@s.Id">@s.Name</a></td>
+                                    <td><a href="@MusterLinks.SessionDetail(GuildId, s.Id)">@s.Name</a></td>
                                     <td>
                                         <span class="status-dot @(s.Active ? "is-active" : "is-ended")"></span>
                                         @(s.Active ? "Active" : "Ended")
@@ -124,7 +124,7 @@ else if (State == AccessState.Ready)
                                     <td class="num">@s.TotalMinutes</td>
                                     <td class="dg-actions-col">
                                         <div class="dg-row-actions">
-                                            <a class="icon-btn" title="View session" aria-label="View session" href="/guilds/@GuildId/sessions/@s.Id">
+                                            <a class="icon-btn" title="View session" aria-label="View session" href="@MusterLinks.SessionDetail(GuildId, s.Id)">
                                                 <span class="material-symbols-outlined">visibility</span>
                                             </a>
                                             @if (_isStaff && s.Active)
@@ -256,7 +256,7 @@ else if (State == AccessState.Ready)
                                 : "No present member matches that search.")
                             <br />
                             Background tracking runs continuously on channels set to Stats or Reward — configure them on
-                            <a href="/guilds/@GuildId/tracking">Tracking settings</a>.
+                            <a href="@MusterLinks.TrackingSettings(GuildId)">Tracking settings</a>.
                         </p>
                     }
                     else
@@ -388,7 +388,7 @@ else if (State == AccessState.Ready)
         _bgFactor = mult.Factor(MultiplierScope.BackgroundVoice, now);
 
         // Staff = admin OR any management role that has a stake in sessions. Tracking manager runs them;
-        // legacy Officer kept for back-compat. The file lives under Admin/ for routing/nav cohesion only —
+        // legacy Officer kept for back-compat. The file lives under Tracking/ for routing/nav cohesion only —
         // base class is GuildMemberComponentBase since the read-side roster is open to any member.
         // IsTrackingManagerAsync already covers Admin + the legacy Officer/EventOfficer umbrellas.
         _isStaff = await auth.IsTrackingManagerAsync(GuildId, UserId);

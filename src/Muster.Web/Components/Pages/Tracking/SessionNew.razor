@@ -1,9 +1,10 @@
-@page "/guilds/{GuildIdRaw}/sessions/new"
+@page "/guilds/{GuildIdRaw}/guild/tracking/sessions/new"
 @layout GuildLayout
 @inherits GuildAdminComponentBase
 @inject TrackingCommandService Tracking
 @inject WebAdminService AdminRead
 @inject Muster.Infrastructure.Services.Musters.GuildMusterSettingsService MusterStore
+@inject Muster.Infrastructure.Services.Tracking.GuildTrackingSettingsService TrackingStore
 @using Muster.Domain.Entities.Guilds
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands.Tracking
@@ -22,7 +23,7 @@ else if (State == AccessState.Forbidden)
 else if (State == AccessState.Ready)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/sessions">← Sessions</a>
+        <a class="back-link" href="@MusterLinks.Sessions(GuildId)">← Sessions</a>
         <h1>Start a tracking session</h1>
         <p class="subtitle">Open a named voice session. Anyone already in the channel is picked up on the next sync.</p>
     </div>
@@ -54,8 +55,15 @@ else if (State == AccessState.Ready)
                     </InputSelect>
                 </label>
                 <label>Session name <InputText @bind-Value="Input.Name" placeholder="e.g. Friday raid" /></label>
+                <label>AFK guards
+                    <InputSelect @bind-Value="Input.GuardMode">
+                        <option value="default">Use channel / server default</option>
+                        <option value="custom">Customize (use the checkboxes below)</option>
+                    </InputSelect>
+                    <span class="subtitle">Default resolves to this channel's Session-lane override, then the server default. The boxes below apply only when set to Customize.</span>
+                </label>
                 <label class="check"><InputCheckbox @bind-Value="Input.SkipMuted" /> Pause while muted <span class="subtitle">can't speak (off counts phone-call presence)</span></label>
-                <label class="check"><InputCheckbox @bind-Value="Input.SkipDeafened" /> Pause while deafened <span class="subtitle">checked out (default)</span></label>
+                <label class="check"><InputCheckbox @bind-Value="Input.SkipDeafened" /> Pause while deafened <span class="subtitle">checked out</span></label>
                 <label class="check"><InputCheckbox @bind-Value="Input.SkipAlone" /> Pause while alone <span class="subtitle">fewer than two members present</span></label>
                 <label class="check"><InputCheckbox @bind-Value="Input.CreateMuster" /> Post a check-in muster <span class="subtitle">gates this session's coin on check-in (defaults to the server setting)</span></label>
                 <div class="btn-row"><button type="submit">Start session</button></div>
@@ -76,10 +84,15 @@ else if (State == AccessState.Ready)
     {
         _voice = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
 
-        // Default the check-in-muster checkbox to the guild setting (only before the form is first submitted).
+        // Default the check-in-muster checkbox + seed the guard checkboxes from the guild's Session-lane default
+        // (only before the form is first submitted) so "Customize" starts from the server policy.
         if (Input.Submitted is null)
         {
             Input.CreateMuster = (await MusterStore.GetAsync(GuildId)).AutoCreateOnSession;
+            var g = (await TrackingStore.GetAsync(GuildId)).DefaultSessionGuards;
+            Input.SkipMuted = g.Unmuted();
+            Input.SkipDeafened = g.Undeafened();
+            Input.SkipAlone = g.NotAlone();
         }
     }
 
@@ -94,9 +107,14 @@ else if (State == AccessState.Ready)
         var name = string.IsNullOrWhiteSpace(Input.Name) ? "Web session" : Input.Name.Trim();
         var channelName = _voice.FirstOrDefault(c => c.ChannelId == Input.ChannelId)?.Name;
 
+        // "default" → pass null so the service resolves channel Session-lane override → guild default.
+        // "custom" → send the explicit checkbox values as a per-open override.
+        var custom = Input.GuardMode == "custom";
         var result = await Tracking.StartAsync(
             GuildId, UserId, Input.ChannelId, name, channelName,
-            requireUnmuted: Input.SkipMuted, requireUndeafened: Input.SkipDeafened, requireNotAlone: Input.SkipAlone,
+            requireUnmuted: custom ? Input.SkipMuted : null,
+            requireUndeafened: custom ? Input.SkipDeafened : null,
+            requireNotAlone: custom ? Input.SkipAlone : null,
             createMuster: Input.CreateMuster);
 
         if (!result.IsError)
@@ -118,6 +136,7 @@ else if (State == AccessState.Ready)
         public string? Submitted { get; set; }
         public ulong ChannelId { get; set; }
         public string? Name { get; set; }
+        public string GuardMode { get; set; } = "default";
         public bool SkipMuted { get; set; }
         public bool SkipDeafened { get; set; } = true;
         public bool SkipAlone { get; set; }

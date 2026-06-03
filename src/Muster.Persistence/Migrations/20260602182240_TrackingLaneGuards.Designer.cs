@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muster.Persistence;
 
@@ -11,9 +12,11 @@ using Muster.Persistence;
 namespace Muster.Persistence.Migrations
 {
     [DbContext(typeof(MusterDbContext))]
-    partial class MusterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260602182240_TrackingLaneGuards")]
+    partial class TrackingLaneGuards
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -456,69 +459,6 @@ namespace Muster.Persistence.Migrations
                     b.HasKey("GuildId");
 
                     b.ToTable("GuildMusterSettings");
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildTrackingSettings", b =>
-                {
-                    b.Property<decimal>("GuildId")
-                        .HasColumnType("decimal(20,0)");
-
-                    b.Property<int?>("ActivityRetentionDays")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("BackgroundTrackingOptIn")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("DefaultBackgroundGuards")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DefaultEventGuards")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DefaultSessionGuards")
-                        .HasColumnType("int");
-
-                    b.Property<int>("EndBonusWindowMinutes")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("MaxSessionHours")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("MinTrackedSeconds")
-                        .HasColumnType("int");
-
-                    b.Property<int>("MinutesPerCoin")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("MultiplierCap")
-                        .HasPrecision(6, 3)
-                        .HasColumnType("decimal(6,3)");
-
-                    b.Property<int>("MultiplierStacking")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("MultiplyPresenceBonuses")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("PointsPerVoiceMinute")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SessionCoinCurrencyCode")
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<int>("SessionEndBonus")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SessionStartBonus")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StartBonusWindowMinutes")
-                        .HasColumnType("int");
-
-                    b.HasKey("GuildId");
-
-                    b.ToTable("GuildTrackingSettings");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Members.DiscordUser", b =>
@@ -1691,19 +1631,43 @@ namespace Muster.Persistence.Migrations
                         {
                             b1.Property<decimal>("GuildId");
 
+                            b1.Property<int>("ActivityRetentionDays");
+
                             b1.PrimitiveCollection<string>("AdminRoleIds")
                                 .IsRequired();
 
                             b1.PrimitiveCollection<string>("AuditorRoleIds")
                                 .IsRequired();
 
+                            b1.Property<bool>("BackgroundTrackingOptIn");
+
+                            b1.Property<int>("DefaultBackgroundGuards");
+
+                            b1.Property<int>("DefaultEventGuards");
+
+                            b1.Property<int>("DefaultSessionGuards");
+
                             b1.PrimitiveCollection<string>("EconomyManagerRoleIds")
                                 .IsRequired();
+
+                            b1.Property<int>("EndBonusWindowMinutes");
 
                             b1.PrimitiveCollection<string>("EventOfficerRoleIds")
                                 .IsRequired();
 
                             b1.Property<int>("LedgerRetentionDays");
+
+                            b1.Property<int>("MaxSessionHours");
+
+                            b1.Property<int>("MinTrackedSeconds");
+
+                            b1.Property<int>("MinutesPerCoin");
+
+                            b1.Property<decimal>("MultiplierCap");
+
+                            b1.Property<int>("MultiplierStacking");
+
+                            b1.Property<bool>("MultiplyPresenceBonuses");
 
                             b1.PrimitiveCollection<string>("MusterCreatorRoleIds")
                                 .IsRequired();
@@ -1714,8 +1678,18 @@ namespace Muster.Persistence.Migrations
                             b1.PrimitiveCollection<string>("ParticipantRoleIds")
                                 .IsRequired();
 
+                            b1.Property<int>("PointsPerVoiceMinute");
+
                             b1.PrimitiveCollection<string>("QuestManagerRoleIds")
                                 .IsRequired();
+
+                            b1.Property<string>("SessionCoinCurrencyCode");
+
+                            b1.Property<int>("SessionEndBonus");
+
+                            b1.Property<int>("SessionStartBonus");
+
+                            b1.Property<int>("StartBonusWindowMinutes");
 
                             b1.PrimitiveCollection<string>("TrackingManagerRoleIds")
                                 .IsRequired();
@@ -1806,15 +1780,6 @@ namespace Muster.Persistence.Migrations
                     b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
                         .WithOne()
                         .HasForeignKey("Muster.Domain.Entities.Guilds.GuildMusterSettings", "GuildId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildTrackingSettings", b =>
-                {
-                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
-                        .WithOne()
-                        .HasForeignKey("Muster.Domain.Entities.Guilds.GuildTrackingSettings", "GuildId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
