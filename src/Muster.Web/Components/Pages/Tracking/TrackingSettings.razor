@@ -493,8 +493,8 @@ else if (State == AccessState.Ready)
 </style>
 
 @code {
-    // TrackingManager + legacy Officer + Admin (implicit) — channel/session config.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    // TrackingManager + Admin (implicit) — channel/session config.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager;
 
     private SettingsInput Settings { get; set; } = new();
     private AddChannelInput AddChannel { get; set; } = new();

@@ -71,7 +71,7 @@ run *as the key's bound actor* (`ActsAsUserId`), so the key **must be actor-boun
   move from the actor's own wallet. The authorizer allows members to move only their own wallet; staff may move
   anyone's. Both legs of an `External`/`Hybrid` transfer push to the backing system before commit (`SourceType = Transfer`).
 - `adjust` body `{ "userId": 123, "delta": -50, "reason": "…", "externalId": "…" }` — positive mints, negative
-  deducts; **economy staff only** (officers + admins). `SourceType = Adjustment`.
+  deducts; **economy staff only** (economy managers + admins). `SourceType = Adjustment`.
 
 All four return `{ "balance": <resulting> }` on success.
 

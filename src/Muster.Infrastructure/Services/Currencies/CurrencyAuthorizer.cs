@@ -32,8 +32,7 @@ public sealed class CurrencyAuthorizer(GuildAuthorizationService roles) : ICurre
 {
     public async Task<bool> AuthorizeAsync(GuildActor actor, ulong subjectUserId, CurrencyPermission action, CancellationToken ct = default)
     {
-        // EconomyManager (or admin) is the economy-management tier — mint/adjust + acting on others. Legacy
-        // OfficerRoleIds still flow through because IsEconomyManagerAsync treats them as an alias.
+        // EconomyManager (or admin) is the economy-management tier — mint/adjust + acting on others.
         var isManager = await roles.IsEconomyManagerAsync(actor.GuildId, actor.UserId, ct);
         return Allows(actor, isManager, subjectUserId, action);
     }

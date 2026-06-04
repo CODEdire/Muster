@@ -19,7 +19,7 @@ public class GuildSettingsPersistenceTests
             Name = "G",
             Settings = new GuildSettings
             {
-                QuestManagerRoleIds = [7, 8],
+                LedgerRetentionDays = 21,
                 Quests = new QuestSettings
                 {
                     MaxRevisions = 3,
@@ -35,7 +35,7 @@ public class GuildSettingsPersistenceTests
         db.ChangeTracker.Clear();
         var reloaded = await db.Guilds.SingleAsync(g => g.Id == 1);
 
-        Assert.Equal([7ul, 8ul], reloaded.Settings.QuestManagerRoleIds);
+        Assert.Equal(21, reloaded.Settings.LedgerRetentionDays);
         Assert.Equal(3, reloaded.Settings.Quests.MaxRevisions);
         Assert.Equal(FinalApprovalMode.Forced, reloaded.Settings.Quests.FinalApprovalMode);
         Assert.Equal(999, reloaded.Settings.Quests.TierBPoints);

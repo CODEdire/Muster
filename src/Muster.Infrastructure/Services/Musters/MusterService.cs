@@ -84,7 +84,8 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
 
     /// <summary>Record a member's check-in (no reward — that's paid at close). Idempotent per (muster, user).
     /// <paramref name="source"/> <see cref="MusterParticipantSource.Admin"/> is a staff override that bypasses the
-    /// eligibility + capacity gates.</summary>
+    /// capacity + terminal-status gates — but NOT the participant gate: only members in the Participant role may be
+    /// added/rewarded, so staff can't onboard a non-participant onto a roster.</summary>
     public async Task<ReactionOutcome> CheckInAsync(
         Guid musterId, ulong userId, MusterParticipantSource source, CancellationToken ct = default)
     {
@@ -131,7 +132,9 @@ public class MusterService(MusterDbContext db, ICurrencyService awards, GuildAut
             return ReactionOutcome.Full;
         }
 
-        if (!isAdmin && !await auth.IsParticipantAsync(muster.GuildId, userId, ct))
+        // Participant gate applies to everyone, including staff Admin-source adds: a non-participant must never land
+        // on a roster (they'd be paid at close). Staff/admins satisfy this implicitly (staff role ⇒ participant).
+        if (!await auth.IsParticipantAsync(muster.GuildId, userId, ct))
         {
             return ReactionOutcome.NotEligible;
         }

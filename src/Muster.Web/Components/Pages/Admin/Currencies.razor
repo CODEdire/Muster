@@ -62,8 +62,8 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // EconomyManager + legacy Officer + Admin (implicit) — currency lifecycle is economy staff work.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.EconomyManager | GuildAccessTier.Officer;
+    // EconomyManager + Admin (implicit) — currency lifecycle is economy staff work.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.EconomyManager;
 
     private IReadOnlyList<CurrencyView> _currencies = [];
 

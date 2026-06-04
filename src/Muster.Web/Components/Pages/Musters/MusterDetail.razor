@@ -313,7 +313,7 @@ else if (State == AccessState.Ready)
 @code {
     [Parameter] public Guid MusterId { get; set; }
 
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator;
 
     protected override async Task<bool> IsAuthorizedAsync(ulong guildId, ulong userId)
         => await base.IsAuthorizedAsync(guildId, userId) || await Auth.IsParticipantAsync(guildId, userId);

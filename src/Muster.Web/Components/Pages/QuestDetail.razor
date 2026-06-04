@@ -294,7 +294,7 @@ else if (State == AccessState.Ready)
     protected override async Task LoadAsync()
     {
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
-        _isStaff = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsOfficerAsync(GuildId, UserId);
+        _isStaff = await Auth.IsEconomyManagerAsync(GuildId, UserId); // gates member-detail links (admin-inclusive)
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
 
         if (Guid.TryParse(QuestId, out var id))

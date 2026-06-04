@@ -155,7 +155,7 @@ else if (State == AccessState.Ready)
 
 
 @code {
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager;
 
     [Parameter] public Guid? TemplateId { get; set; }
 

@@ -14,7 +14,7 @@
 
 @if (State == AccessState.Forbidden)
 {
-    <div class="panel glass empty">You need officer or admin access for this server.</div>
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
@@ -157,8 +157,8 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // Officer (legacy umbrella) + EconomyManager — economy staff need to award/inspect members from here.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.Officer | GuildAccessTier.EconomyManager;
+    // EconomyManager — economy staff need to award/inspect members from here.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.EconomyManager;
 
     private const int SearchDebounceMs = 350;
 

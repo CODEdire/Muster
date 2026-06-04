@@ -56,9 +56,7 @@ public class GuildAccessAuthorizerTests
         await SeedRole(db, roleId: 700, userId: 10);
         var config = Config(db);
         // Give member every non-admin role.
-        await config.ToggleOfficerRoleAsync(GuildId, 700);
         await config.ToggleEconomyManagerRoleAsync(GuildId, 700);
-        await config.ToggleEventOfficerRoleAsync(GuildId, 700);
         await config.ToggleTrackingManagerRoleAsync(GuildId, 700);
         await config.ToggleQuestManagerRoleAsync(GuildId, 700);
         await config.ToggleAuditorRoleAsync(GuildId, 700);
@@ -78,7 +76,6 @@ public class GuildAccessAuthorizerTests
         Assert.True(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 11, GuildAccessTier.EconomyManager));
         Assert.False(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 11, GuildAccessTier.TrackingManager));
         Assert.False(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 11, GuildAccessTier.QuestManager));
-        Assert.False(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 11, GuildAccessTier.EventOfficer));
         // EconomyManager implies Auditor (mgmt-role inclusion in IsAuditorAsync) — passes Auditor too.
         Assert.True(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 11, GuildAccessTier.Auditor));
     }
@@ -119,21 +116,5 @@ public class GuildAccessAuthorizerTests
         Assert.False(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, RandomMember, GuildAccessTier.AnyStaff));
         Assert.False(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, RandomMember,
             GuildAccessTier.EconomyManager | GuildAccessTier.Auditor));
-    }
-
-    [Fact]
-    public async Task LegacyOfficer_StillSatisfiesOfficerTier()
-    {
-        using var db = NewDb();
-        await SeedRole(db, roleId: 1200, userId: 14);
-        await Config(db).ToggleOfficerRoleAsync(GuildId, 1200);
-
-        var roles = new GuildAuthorizationService(db);
-        Assert.True(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 14, GuildAccessTier.Officer));
-        // Legacy Officer is treated as Economy + Tracking + Event by IsEconomyManagerAsync etc. — these
-        // combined-tier checks also pass through the alias.
-        Assert.True(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 14, GuildAccessTier.EconomyManager));
-        Assert.True(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 14, GuildAccessTier.TrackingManager));
-        Assert.True(await GuildAccessAuthorizer.IsAuthorizedAsync(roles, GuildId, 14, GuildAccessTier.EventOfficer));
     }
 }

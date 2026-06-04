@@ -210,7 +210,7 @@ spanning a season rollover is split exactly at the boundary by construction. Day
 - **P6.2 — Sessions as an operational view. ✅ Done.** Design goal: admin hub trends toward *config only*;
   operational views live on the nav rail. Sessions moved off the admin hub onto the **nav rail** (member-visible).
   `Sessions.razor` rebased to `GuildMemberComponentBase` with an **access gradient**: members see **Active** +
-  **Leaderboard** (read-only); **History** + CSV export are staff (admin/officer) only. SSR query-param
+  **Leaderboard** (read-only); **History** + CSV export are staff (admin/tracking manager) only. SSR query-param
   **datagrid** (tabs + search + sortable headers + paging), mirroring the audit console. **Drill-in**
   `SessionDetail.razor` (`/sessions/{id}`) shows the full attendance roster (member, joined, minutes,
   present-now) for active or closed sessions — open to any member. An **opt-out CTA** shows on the live tab when

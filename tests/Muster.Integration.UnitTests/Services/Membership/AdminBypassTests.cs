@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Persistence;
 using Muster.Domain;
+using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
@@ -25,7 +26,7 @@ public class AdminBypassTests
 
         var auth = new GuildAuthorizationService(db);
         Assert.True(await auth.IsAdminAsync(1, 10));
-        Assert.True(await auth.IsOfficerAsync(1, 10));
+        Assert.True(await auth.IsAnyStaffAsync(1, 10));
         Assert.False(await auth.IsAdminAsync(1, 999));
     }
 
@@ -53,7 +54,7 @@ public class AdminBypassTests
 
         var auth = new GuildAuthorizationService(db);
         Assert.False(await auth.IsAdminAsync(1, 10));
-        Assert.False(await auth.IsOfficerAsync(1, 10));
+        Assert.False(await auth.IsAnyStaffAsync(1, 10));
     }
 
     [Fact]
@@ -65,10 +66,10 @@ public class AdminBypassTests
 
         var added = await sut.ToggleAdminRoleAsync(1, 700);
         Assert.Contains("Added", added.Message);
-        Assert.Contains(700ul, (await db.Guilds.SingleAsync()).Settings.AdminRoleIds);
+        Assert.True(await db.GuildRoleMappings.AnyAsync(m => m.RoleId == 700 && m.Tiers == GuildRoleTier.Admin));
 
         var removed = await sut.ToggleAdminRoleAsync(1, 700);
         Assert.Contains("Removed", removed.Message);
-        Assert.DoesNotContain(700ul, (await db.Guilds.SingleAsync()).Settings.AdminRoleIds);
+        Assert.False(await db.GuildRoleMappings.AnyAsync(m => m.RoleId == 700)); // row deleted when last bit clears
     }
 }

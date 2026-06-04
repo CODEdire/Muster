@@ -8,7 +8,9 @@ namespace Muster.Web.Api;
 
 /// <summary>
 /// CSV export of a single session's attendance roster (member, joined, minutes, projected/earned points).
-/// Web endpoint protected by the cookie session: the signed-in user must be a guild admin.
+/// Web endpoint protected by the cookie session: the signed-in user must be tracking staff (TrackingManager,
+/// admin-inclusive). This matches the in-app export button, which is shown to the same tier, and the
+/// session-detail view that already surfaces this data to them.
 /// </summary>
 public static class SessionExportEndpoint
 {
@@ -25,7 +27,7 @@ public static class SessionExportEndpoint
             return Results.Challenge();
         }
 
-        if (!await auth.IsAdminAsync(guildId, userId))
+        if (!await auth.IsTrackingManagerAsync(guildId, userId))
         {
             return Results.Forbid();
         }

@@ -31,7 +31,7 @@ public class GuildSettingsTests
     {
         var original = new GuildSettings
         {
-            QuestManagerRoleIds = [1, 2, 3],
+            LedgerRetentionDays = 30,
             Quests = new QuestSettings
             {
                 PersonalQuestIntakeApproval = false,
@@ -51,6 +51,6 @@ public class GuildSettingsTests
         Assert.Equal(StaleSubmissionAction.Dispute, round.Quests.SubmissionTimeoutAction);
         Assert.Equal(3, round.Quests.MaxRevisions);
         Assert.Equal(999, round.Quests.TierBPoints);
-        Assert.Equal([1ul, 2ul, 3ul], round.QuestManagerRoleIds);
+        Assert.Equal(30, round.LedgerRetentionDays);
     }
 }

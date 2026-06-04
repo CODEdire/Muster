@@ -38,13 +38,13 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Guild onboarding + rename/icon/owner + role snapshot sync: `GuildCreate`/`GuildUpdate` (`GuildLifecycleHandler`, `RoleLifecycleHandler`)
 - [x] Guild teardown: `GuildDelete` marks the guild inactive
 - [x] Member sync: lazy upsert on activity + `GuildUserAdd/Update/Remove` (`MemberLifecycleHandler`, `MemberSyncService`)
-- [x] Authorization with lockout-proof bypass: owner **or** Discord Administrator/Manage-Guild **or** mapped admin/officer role (`GuildAuthorizationService`)
+- [x] Authorization with lockout-proof bypass: owner **or** Discord Administrator/Manage-Guild **or** mapped admin/staff role (`GuildAuthorizationService`)
 - [x] Participant gate: optional allowlist of Discord roles for who can earn/be tracked; empty = open to all (excludes guests when set)
 - [x] Quest Manager role (`QuestManagerRoleIds`) — create guild quests + arbitrate player bounties (`/config-questmanager-role`)
 - [x] Player bounty board: post (escrow from own balance) → take → submit → owner confirm (payout) / cancel / dispute → Quest Manager arbitrate; expiry sweep. Atomic escrow + state changes (`BountyService`, `/bounty-*`, web bounty board)
 - [x] Application-command framework wired (`AddApplicationCommands`)
-- [x] Admin/officer gating of mutating commands via shared `MusterModuleBase`
-- [x] `/config-admin-role`, `/config-officer-role`, `/config-show` (admin) — role mapping
+- [x] Admin/staff gating of mutating commands via shared `MusterModuleBase`
+- [x] `/config-admin-role`, `/config-*-role` (economy/tracking/quest/auditor/participant/muster-creator), `/config-show` (admin) — role mapping
 - [ ] Command registration strategy (guild commands in dev, global in prod)
 - [x] `/ping` command
 - [ ] Bot install (OAuth2 invite) flow + documentation
@@ -98,7 +98,7 @@ durable outbox) · Blazor SSR · Azure Container Apps · Azure DevOps CI/CD.
 - [x] Discord OAuth login + logout + cookie session; cascading auth state
 - [x] Guild listing + access checks (reusing `GuildAuthorizationService`); SuperAdmin (host) still TODO
 - [x] Guild dashboard + season leaderboard (`WebGuildService`, pinned web port for stable OAuth redirect)
-- [x] Admin consoles: award, quest approval queue, season management, role-mapping config (gated by owner/admin/officer)
+- [x] Admin consoles: award, quest approval queue, season management, role-mapping config (gated by owner/admin/staff)
 - [ ] Tracking-session management (incl. voice attendance view)
 - [ ] Event-op management; muster management consoles
 - [x] Currency configuration (web): create/edit currencies — code, name, seasonal, spendable, mode

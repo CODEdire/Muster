@@ -18,7 +18,7 @@ else if (State == AccessState.Ready)
         <div class="actions">
             <a class="btn btn-ghost" href="/guilds/@GuildId/me">My wallet</a>
             <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Quest board</a>
-            @if (_isOfficer)
+            @if (_isStaff)
             {
                 <a class="btn btn-ghost" href="/guilds/@GuildId/admin">Admin</a>
             }
@@ -67,7 +67,7 @@ else if (State == AccessState.Ready)
                         <tr>
                             <td class="rank @(row.Rank <= 3 ? $"rank-{row.Rank}" : null)">@row.Rank</td>
                             <td>
-                                @if (_isOfficer)
+                                @if (_canViewMembers)
                                 {
                                     <a href="/guilds/@GuildId/members/@row.UserId">@row.DisplayName</a>
                                 }
@@ -92,7 +92,8 @@ else if (State == AccessState.Ready)
     // The selected currency code; blank = the season POINTS leaderboard (the default view).
     [SupplyParameterFromForm(FormName = "leaderboard-currency")] private string? Currency { get; set; }
 
-    private bool _isOfficer;
+    private bool _isStaff;          // any staff tier — gates the Admin landing link
+    private bool _canViewMembers;   // economy tier — gates leaderboard member-detail links
     private string? _seasonName;
     private IReadOnlyList<LeaderboardRow>? _leaderboard;
     private IReadOnlyList<CurrencyInfo> _currencies = [];
@@ -103,7 +104,8 @@ else if (State == AccessState.Ready)
 
     protected override async Task LoadAsync()
     {
-        _isOfficer = await Auth.IsOfficerAsync(GuildId, UserId);
+        _isStaff = await Auth.IsAnyStaffAsync(GuildId, UserId);
+        _canViewMembers = await Auth.IsEconomyManagerAsync(GuildId, UserId);
         _seasonName = (await Seasons.GetActiveAsync(GuildId))?.Name;
 
         // Non-POINTS currencies populate the selector (POINTS has its own "season" default entry).

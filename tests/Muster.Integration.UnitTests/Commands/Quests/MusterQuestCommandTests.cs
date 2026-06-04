@@ -94,9 +94,8 @@ public class MusterQuestCommandTests
         db.Currencies.Add(new Currency { Id = coinId, GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true });
         var tplId = Guid.NewGuid();
         db.MusterTemplates.Add(new MusterTemplate { Id = tplId, GuildId = 1, Name = "Strike", Points = 5, Coins = 3, CoinCurrencyId = coinId, RetentionHours = 24, Enabled = true });
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.MusterCreatorRoleIds = [500];
         await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 500, GuildRoleTier.MusterCreator);
         await new MemberSyncService(db).UpsertAsync(1, 50, "creator", null, null, roleIds: [500]); // template-only creator
 
         CreateMuster Cmd(ulong actor, Guid? template, long? points) =>
@@ -359,9 +358,7 @@ public class MusterQuestCommandTests
     // Sets up a template-only Muster Creator (role 500) named "creator" as member 50.
     private static async Task SeedCreatorAsync(MusterDbContext db, ulong userId = 50)
     {
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.MusterCreatorRoleIds = [500];
-        await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 500, GuildRoleTier.MusterCreator);
         await new MemberSyncService(db).UpsertAsync(1, userId, "creator", null, null, roleIds: [500]);
     }
 

@@ -298,6 +298,46 @@ public enum AppRole
     SuperAdmin = 2,
 }
 
+/// <summary>The app permission tiers a Discord role can grant in a guild, stored as a bitmask on
+/// <see cref="Muster.Domain.Entities.Members.GuildRoleMapping"/> (one row per role). Backed by a <c>short</c>
+/// (16 bits) with deliberate gaps for growth: the <b>mini</b> region (low bits) holds the floor + lightweight
+/// roles, <see cref="Auditor"/> caps that region at bit 7 (read-only but security-adjacent), the <b>manager</b>
+/// region starts at the halfway bit (bit 8), and <see cref="Admin"/> sits at the top. Bit 15 (the signed sign
+/// bit) is left unused.</summary>
+[Flags]
+public enum GuildRoleTier : short
+{
+    None            = 0,
+
+    // --- Mini region: floor + lightweight tiers (bits 0-6, room to grow) ---
+
+    /// <summary>May earn rewards / be tracked. The floor — implied by every staff tier.</summary>
+    Participant     = 1 << 0, // 1
+
+    /// <summary>May post musters from a template only (no custom rewards).</summary>
+    MusterCreator   = 1 << 1, // 2
+
+    /// <summary>Read-only observer: audit log, ledger, participation. Sits at the top of the mini region
+    /// (bit 7) — not a manager, but security-side rather than a lightweight perk.</summary>
+    Auditor         = 1 << 7, // 128
+
+    // --- Manager region: mutating staff tiers (from bit 8, the halfway point, room to grow) ---
+
+    /// <summary>Mint / adjust / bulk-move currency and view any wallet.</summary>
+    EconomyManager  = 1 << 8, // 256
+
+    /// <summary>Sessions, monitored channels, multipliers, event ops, force-opt-out.</summary>
+    TrackingManager = 1 << 9, // 512
+
+    /// <summary>Create guild quests, approve/arbitrate player bounties.</summary>
+    QuestManager    = 1 << 10, // 1024
+
+    // --- Top: full access (bit 14; bit 15 is the signed-short sign bit, left unused) ---
+
+    /// <summary>Full administrative access — implies every other tier.</summary>
+    Admin           = 1 << 14, // 16384
+}
+
 /// <summary>Lifecycle of a queued bulk currency adjustment (staff mint/adjust applied to many members async).</summary>
 public enum BulkBatchStatus
 {

@@ -32,9 +32,10 @@ Developer Portal (Bot settings); below 100 guilds this needs no approval. We sti
 - **Lifecycle:** `MemberLifecycleHandler` handles `GuildUserAdd`/`GuildUserUpdate` (upsert nickname +
   role snapshot) and `GuildUserRemove` (drop the membership; the shared user + ledger history persist).
 - **Guild:** `GuildLifecycleHandler` handles `GuildCreate` (provision) and `GuildUpdate` (rename/icon).
-- **Authorization by role mapping:** `GuildAuthorizationService` derives admin/officer status by
-  intersecting a member's `RoleIds` with `GuildSettings.AdminRoleIds` / `OfficerRoleIds` — Discord
-  roles, not individual users. Re-syncing role snapshots keeps these answers current.
+- **Authorization by role mapping:** `GuildAuthorizationService` derives admin/staff status by
+  intersecting a member's `RoleIds` with the `GuildRoleMapping` table — one row per Discord role carrying a
+  `GuildRoleTier` bitmask of the tiers it grants — Discord roles, not individual users. Re-syncing role
+  snapshots keeps these answers current.
 - **Participant gate:** `GuildSettings.ParticipantRoleIds` controls who can earn rewards / be tracked.
   Empty (default) = everyone participates; setting roles restricts earning to org members and excludes
   guests/newcomers. Enforced at muster reactions, quest claims, op sign-ups, and voice-attendance

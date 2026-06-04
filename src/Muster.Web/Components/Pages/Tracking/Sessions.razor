@@ -387,10 +387,8 @@ else if (State == AccessState.Ready)
         _sessionFactor = mult.Factor(MultiplierScope.Sessions, now);
         _bgFactor = mult.Factor(MultiplierScope.BackgroundVoice, now);
 
-        // Staff = admin OR any management role that has a stake in sessions. Tracking manager runs them;
-        // legacy Officer kept for back-compat. The file lives under Tracking/ for routing/nav cohesion only —
-        // base class is GuildMemberComponentBase since the read-side roster is open to any member.
-        // IsTrackingManagerAsync already covers Admin + the legacy Officer/EventOfficer umbrellas.
+        // Staff = the tracking-management tier (admin-inclusive). The file lives under Tracking/ for routing/nav
+        // cohesion only — base class is GuildMemberComponentBase since the read-side roster is open to any member.
         _isStaff = await auth.IsTrackingManagerAsync(GuildId, UserId);
         _hasBackground = _isStaff && await adminRead.HasActiveBackgroundTrackingAsync(GuildId);
         _present = await participation.IsMemberPresentInLiveSessionAsync(GuildId, UserId);

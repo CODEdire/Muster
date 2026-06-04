@@ -7,10 +7,8 @@ namespace Muster.Infrastructure.Services.Membership;
 /// <remarks>
 /// <para>Admin always passes implicitly — the lockout-proof owner / Discord-admin-perm / mapped admin role works
 /// for every page. The flags here describe which <b>additional</b> tiers also pass.</para>
-/// <para>The legacy <see cref="Officer"/> flag is the broad umbrella that <i>used</i> to be the only non-admin tier;
-/// pages re-targeted at a specific Phase 4 split role (Economy / Tracking / Event / Quest / Auditor) should drop
-/// it once their domain-specific role is wired up. Pages whose action mix spans tiers (e.g. an admin landing) can
-/// use <see cref="AnyStaff"/>.</para>
+/// <para>Each flag maps to one dedicated role list (Economy / Tracking / Quest / Auditor). Pages whose action mix
+/// spans tiers (e.g. an admin landing) can use <see cref="AnyStaff"/>.</para>
 /// </remarks>
 [Flags]
 public enum GuildAccessTier
@@ -18,16 +16,10 @@ public enum GuildAccessTier
     /// <summary>Admin-only (default). Listed for explicitness; admin always passes anyway.</summary>
     Admin            = 0,
 
-    /// <summary>Legacy umbrella role — admin OR <c>OfficerRoleIds</c>. Kept for back-compat with v0 guilds.</summary>
-    Officer          = 1 << 0,
-
     /// <summary>Mint / adjust / view-anyone wallets. Covers POINTS + COIN equally.</summary>
     EconomyManager   = 1 << 1,
 
-    /// <summary>Event ops (create / close <c>/op</c> entries).</summary>
-    EventOfficer     = 1 << 2,
-
-    /// <summary>Tracking config — sessions, monitored channels, multipliers.</summary>
+    /// <summary>Tracking config — sessions, monitored channels, multipliers, event ops (the <c>/op</c> family).</summary>
     TrackingManager  = 1 << 3,
 
     /// <summary>Quest workflow management (intake, arbitration, finalize).</summary>
@@ -41,7 +33,7 @@ public enum GuildAccessTier
     MusterCreator    = 1 << 6,
 
     /// <summary>Any staff tier — use on landing pages that link out to role-specific sub-areas (admin nav).</summary>
-    AnyStaff         = Officer | EconomyManager | EventOfficer | TrackingManager | QuestManager | Auditor,
+    AnyStaff         = EconomyManager | TrackingManager | QuestManager | Auditor,
 }
 
 /// <summary>
@@ -66,13 +58,11 @@ public static class GuildAccessAuthorizer
             return false; // admin-only and they're not admin
         }
 
-        // Hottest-first ordering: Officer + Economy are the most-used Phase 4 tiers; cold tiers last.
-        if (required.HasFlag(GuildAccessTier.Officer)         && await roles.IsOfficerAsync(guildId, userId, ct)) return true;
+        // Hottest-first ordering: Economy + Tracking are the most-used tiers; cold tiers last.
         if (required.HasFlag(GuildAccessTier.EconomyManager)  && await roles.IsEconomyManagerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.TrackingManager) && await roles.IsTrackingManagerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.MusterCreator)    && await roles.IsMusterCreatorAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.QuestManager)    && await roles.IsQuestManagerAsync(guildId, userId, ct)) return true;
-        if (required.HasFlag(GuildAccessTier.EventOfficer)    && await roles.IsEventOfficerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.Auditor)         && await roles.IsAuditorAsync(guildId, userId, ct)) return true;
         return false;
     }

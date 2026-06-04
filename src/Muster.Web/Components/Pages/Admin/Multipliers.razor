@@ -258,8 +258,8 @@ else if (State == AccessState.Ready)
 </style>
 
 @code {
-    // TrackingManager + legacy Officer + Admin (implicit) — multipliers govern tracking rewards.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    // TrackingManager + Admin (implicit) — multipliers govern tracking rewards.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager;
 
     private AddInput Add { get; set; } = new();
 

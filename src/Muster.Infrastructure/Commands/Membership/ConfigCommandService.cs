@@ -4,25 +4,13 @@ using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Domain.Entities.Guilds;
+using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.Infrastructure.Commands.Membership;
-
-public enum RoleKind
-{
-    Admin,
-    Officer,         // legacy umbrella — kept for back-compat
-    Participant,
-    QuestManager,
-    EconomyManager,
-    EventOfficer,
-    TrackingManager,
-    MusterCreator,
-    Auditor,
-}
 
 /// <summary>The previous + new ledger retention day values — returned by <see cref="ConfigCommandService.SetLedgerRetentionAsync"/>
 /// so the UI can audit the change without re-reading the guild settings.</summary>
@@ -257,31 +245,25 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     }
 
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.Admin, ct);
-
-    public Task<CommandResult> ToggleOfficerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.Officer, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.Admin, ct);
 
     public Task<CommandResult> ToggleParticipantRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.Participant, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.Participant, ct);
 
     public Task<CommandResult> ToggleQuestManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.QuestManager, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.QuestManager, ct);
 
     public Task<CommandResult> ToggleEconomyManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.EconomyManager, ct);
-
-    public Task<CommandResult> ToggleEventOfficerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.EventOfficer, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.EconomyManager, ct);
 
     public Task<CommandResult> ToggleTrackingManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.TrackingManager, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.TrackingManager, ct);
 
     public Task<CommandResult> ToggleMusterCreatorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.MusterCreator, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.MusterCreator, ct);
 
     public Task<CommandResult> ToggleAuditorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
-        => ToggleAsync(guildId, roleId, RoleKind.Auditor, ct);
+        => ToggleAsync(guildId, roleId, GuildRoleTier.Auditor, ct);
 
     /// <summary>Configure the personal-quest approval workflow (intake gate + final sign-off policy).</summary>
     public async Task<CommandResult> SetQuestApprovalAsync(
@@ -532,75 +514,83 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var participants = guild.Settings.ParticipantRoleIds.Count == 0
-            ? "_everyone (open)_"
-            : Format(guild.Settings.ParticipantRoleIds);
+        var map = await db.RoleMapAsync(guildId, ct);
+
+        string roles(GuildRoleTier tier)
+        {
+            var ids = map.Where(kv => kv.Value.HasFlag(tier)).Select(kv => kv.Key).ToList();
+            return ids.Count == 0 ? "_none_" : string.Join(", ", ids.Select(r => $"<@&{r}>"));
+        }
+
+        var participants = map.Values.Any(t => t.HasFlag(GuildRoleTier.Participant))
+            ? roles(GuildRoleTier.Participant)
+            : "_everyone (open)_";
 
         return CommandResult.Ok(
-            $"**Role mapping**\nAdmin roles: {Format(guild.Settings.AdminRoleIds)}\n" +
-            $"Officer roles (legacy umbrella): {Format(guild.Settings.OfficerRoleIds)}\n" +
-            $"Economy manager roles: {Format(guild.Settings.EconomyManagerRoleIds)}\n" +
-            $"Event officer roles: {Format(guild.Settings.EventOfficerRoleIds)}\n" +
-            $"Tracking manager roles: {Format(guild.Settings.TrackingManagerRoleIds)}\n" +
-            $"Quest manager roles: {Format(guild.Settings.QuestManagerRoleIds)}\n" +
-            $"Auditor roles (read-only): {Format(guild.Settings.AuditorRoleIds)}\n" +
+            $"**Role mapping**\nAdmin roles: {roles(GuildRoleTier.Admin)}\n" +
+            $"Economy manager roles: {roles(GuildRoleTier.EconomyManager)}\n" +
+            $"Tracking manager roles: {roles(GuildRoleTier.TrackingManager)}\n" +
+            $"Quest manager roles: {roles(GuildRoleTier.QuestManager)}\n" +
+            $"Muster creator roles: {roles(GuildRoleTier.MusterCreator)}\n" +
+            $"Auditor roles (read-only): {roles(GuildRoleTier.Auditor)}\n" +
             $"Participant roles: {participants}\nGuild owner always has admin access.");
     }
 
-    private async Task<CommandResult> ToggleAsync(ulong guildId, ulong roleId, RoleKind kind, CancellationToken ct)
+    /// <summary>Flip one tier bit on a role's mapping row: add it if absent, clear it if present. The row is
+    /// created on first grant and deleted when its last bit clears, so the table only holds live grants.</summary>
+    private async Task<CommandResult> ToggleAsync(ulong guildId, ulong roleId, GuildRoleTier tier, CancellationToken ct)
     {
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        if (await db.FindGuildAsync(guildId, ct) is null)
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var current = kind switch
-        {
-            RoleKind.Admin => guild.Settings.AdminRoleIds,
-            RoleKind.Officer => guild.Settings.OfficerRoleIds,
-            RoleKind.QuestManager => guild.Settings.QuestManagerRoleIds,
-            RoleKind.EconomyManager => guild.Settings.EconomyManagerRoleIds,
-            RoleKind.EventOfficer => guild.Settings.EventOfficerRoleIds,
-            RoleKind.TrackingManager => guild.Settings.TrackingManagerRoleIds,
-            RoleKind.MusterCreator => guild.Settings.MusterCreatorRoleIds,
-            RoleKind.Auditor => guild.Settings.AuditorRoleIds,
-            _ => guild.Settings.ParticipantRoleIds,
-        };
+        var mapping = await db.FindRoleMappingAsync(guildId, roleId, ct);
+        var added = mapping is null || !mapping.Tiers.HasFlag(tier);
 
-        var updated = new List<ulong>(current);
-        var added = !updated.Remove(roleId);
         if (added)
         {
-            updated.Add(roleId);
+            if (mapping is null)
+            {
+                db.GuildRoleMappings.Add(new GuildRoleMapping { GuildId = guildId, RoleId = roleId, Tiers = tier });
+            }
+            else
+            {
+                mapping.Tiers |= tier;
+            }
         }
-
-        // Reassign to ensure the owned JSON column is detected as changed.
-        switch (kind)
+        else
         {
-            case RoleKind.Admin: guild.Settings.AdminRoleIds = updated; break;
-            case RoleKind.Officer: guild.Settings.OfficerRoleIds = updated; break;
-            case RoleKind.QuestManager: guild.Settings.QuestManagerRoleIds = updated; break;
-            case RoleKind.EconomyManager: guild.Settings.EconomyManagerRoleIds = updated; break;
-            case RoleKind.EventOfficer: guild.Settings.EventOfficerRoleIds = updated; break;
-            case RoleKind.TrackingManager: guild.Settings.TrackingManagerRoleIds = updated; break;
-            case RoleKind.MusterCreator: guild.Settings.MusterCreatorRoleIds = updated; break;
-            case RoleKind.Auditor: guild.Settings.AuditorRoleIds = updated; break;
-            default: guild.Settings.ParticipantRoleIds = updated; break;
+            mapping!.Tiers &= ~tier;
+            if (mapping.Tiers == GuildRoleTier.None)
+            {
+                db.GuildRoleMappings.Remove(mapping);
+            }
         }
 
         await db.SaveChangesAsync(ct);
 
-        var label = kind.ToString().ToLowerInvariant();
-        var note = kind == RoleKind.Participant && updated.Count == 0
-            ? " Participation is now open to everyone."
-            : string.Empty;
+        var label = Label(tier);
+        var note = string.Empty;
+        if (tier == GuildRoleTier.Participant && !added
+            && !(await db.RoleMapAsync(guildId, ct)).Values.Any(t => t.HasFlag(GuildRoleTier.Participant)))
+        {
+            note = " Participation is now open to everyone.";
+        }
 
         return CommandResult.Ok((added
             ? $"Added <@&{roleId}> as a {label} role."
             : $"Removed <@&{roleId}> from {label} roles.") + note);
     }
 
-    private static string Format(List<ulong> roleIds)
-        => roleIds.Count == 0 ? "_none_" : string.Join(", ", roleIds.Select(r => $"<@&{r}>"));
+    private static string Label(GuildRoleTier tier) => tier switch
+    {
+        GuildRoleTier.Admin => "admin",
+        GuildRoleTier.EconomyManager => "economy manager",
+        GuildRoleTier.TrackingManager => "tracking manager",
+        GuildRoleTier.QuestManager => "quest manager",
+        GuildRoleTier.MusterCreator => "muster creator",
+        GuildRoleTier.Auditor => "auditor",
+        _ => "participant",
+    };
 }

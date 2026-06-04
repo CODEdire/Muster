@@ -124,7 +124,7 @@ else if (State == AccessState.Ready)
 </style>
 
 @code {
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager;
 
     private IReadOnlyList<MusterTemplate>? _list;
     private IReadOnlyList<CurrencyView> _coins = [];

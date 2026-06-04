@@ -42,9 +42,7 @@ public class ParticipantGateTests
     public async Task Participation_RestrictedToConfiguredRoles()
     {
         using var db = await SeededAsync();
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.ParticipantRoleIds = [500]; // org member role
-        await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 500, GuildRoleTier.Participant); // org member role
 
         var sync = new MemberSyncService(db);
         await sync.UpsertAsync(1, 10, "member", null, null, roleIds: [500]);
@@ -60,9 +58,7 @@ public class ParticipantGateTests
     public async Task IneligibleMember_CannotEarnFromMuster_OrClaimQuest()
     {
         using var db = await SeededAsync();
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.ParticipantRoleIds = [500];
-        await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 500, GuildRoleTier.Participant);
 
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
         var auth = new GuildAuthorizationService(db);
@@ -79,5 +75,23 @@ public class ParticipantGateTests
         var quests = new QuestService(db, awards, auth, new RecordingMessageBus());
         var quest = (await quests.PostQuestAsync(new QuestDraft(1, 1, QuestOrigin.Guild, "Recruit", "desc", points.Id, 50))).Quest!;
         Assert.Equal(QuestResult.NotEligible, await quests.ClaimAsync(quest.Id, 20));
+    }
+
+    [Fact]
+    public async Task StaffAdminAdd_CannotOnboardNonParticipant_ToMuster()
+    {
+        using var db = await SeededAsync();
+        await db.MapRoleAsync(1, 500, GuildRoleTier.Participant);
+
+        var auth = new GuildAuthorizationService(db);
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        await new MemberSyncService(db).UpsertAsync(1, 20, "guest", null, null, roleIds: [123]);
+
+        // The Admin source bypasses capacity + terminal-status, but NOT the participant gate: a staff member
+        // must not be able to add a non-participant to a roster (they'd be paid at close).
+        var musters = new MusterService(db, awards, auth);
+        var muster = await musters.CreateAsync(1, 100, null, "Roll call", 10, 0, null, 48, capacity: null, expiresAt: null, createdBy: 1);
+        Assert.Equal(ReactionOutcome.NotEligible, await musters.CheckInAsync(muster.Id, 20, MusterParticipantSource.Admin));
+        Assert.Equal(0, await db.CurrencyLedgerEntries.CountAsync());
     }
 }
