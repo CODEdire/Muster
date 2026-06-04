@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Members;
 
 namespace Muster.Persistence.Configurations;
 
@@ -37,6 +38,18 @@ public class GuildRoleConfiguration : IEntityTypeConfiguration<GuildRole>
 {
     public void Configure(EntityTypeBuilder<GuildRole> e)
         => e.HasKey(x => new { x.GuildId, x.RoleId });
+}
+
+public class GuildRoleMappingConfiguration : IEntityTypeConfiguration<GuildRoleMapping>
+{
+    public void Configure(EntityTypeBuilder<GuildRoleMapping> e)
+    {
+        e.HasKey(x => new { x.GuildId, x.RoleId });
+        // GuildRoleTier is a [Flags] byte enum → stored as tinyint.
+        e.Property(x => x.Tiers);
+        // Cascade with the guild; no FK to GuildRole (a mapping may outlive an unsynced role snapshot).
+        e.HasOne(x => x.Guild).WithMany().HasForeignKey(x => x.GuildId).OnDelete(DeleteBehavior.Cascade);
+    }
 }
 
 public class GuildChannelConfiguration : IEntityTypeConfiguration<GuildChannel>

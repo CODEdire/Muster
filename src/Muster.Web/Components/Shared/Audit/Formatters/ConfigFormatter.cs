@@ -14,9 +14,9 @@ public class ConfigFormatter : IAuditFormatter
 
     private static readonly HashSet<string> _keys =
     [
-        AuditActions.Config.AdminRole.Key, AuditActions.Config.OfficerRole.Key,
+        AuditActions.Config.AdminRole.Key,
         AuditActions.Config.ParticipantRole.Key, AuditActions.Config.QuestManagerRole.Key,
-        AuditActions.Config.EconomyManagerRole.Key, AuditActions.Config.EventOfficerRole.Key,
+        AuditActions.Config.EconomyManagerRole.Key,
         AuditActions.Config.TrackingManagerRole.Key, AuditActions.Config.AuditorRole.Key,
         AuditActions.Config.LedgerRetention.Key,
         AuditActions.Config.MultiplierAdd.Key, AuditActions.Config.MultiplierRemove.Key,

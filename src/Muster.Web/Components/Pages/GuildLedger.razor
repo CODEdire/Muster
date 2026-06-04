@@ -17,7 +17,7 @@
 
 @if (State == AccessState.Forbidden)
 {
-    <div class="panel glass empty">You need officer or admin access for this server.</div>
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
 }
 else if (State == AccessState.Ready)
 {
@@ -229,9 +229,9 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // Read-only ledger view — Officer (legacy umbrella) + EconomyManager + Auditor. Admin passes implicitly.
+    // Read-only ledger view — EconomyManager + Auditor. Admin passes implicitly.
     protected override GuildAccessTier RequiredAccess =>
-        GuildAccessTier.Officer | GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
+        GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
 
     private const int PageSize = 25;
     private const int SearchDebounceMs = 350;

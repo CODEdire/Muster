@@ -316,8 +316,8 @@ else if (State == AccessState.Ready)
 </style>
 
 @code {
-    // EconomyManager + legacy Officer + Admin (implicit) — same tier as Currencies list.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.EconomyManager | GuildAccessTier.Officer;
+    // EconomyManager + Admin (implicit) — same tier as Currencies list.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.EconomyManager;
 
     [Parameter] public string? CurrencyId { get; set; }
     private EditModel Input { get; set; } = new();

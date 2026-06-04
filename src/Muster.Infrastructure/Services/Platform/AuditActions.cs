@@ -37,11 +37,9 @@ public static class AuditActions
     public static class Config
     {
         public static readonly AuditAction AdminRole = new("config.adminRole", AuditCategory.Configuration, "Role mapping");
-        public static readonly AuditAction OfficerRole = new("config.officerRole", AuditCategory.Configuration, "Role mapping");
         public static readonly AuditAction ParticipantRole = new("config.participantRole", AuditCategory.Configuration, "Role mapping");
         public static readonly AuditAction QuestManagerRole = new("config.questmanagerRole", AuditCategory.Configuration, "Role mapping");
         public static readonly AuditAction EconomyManagerRole = new("config.economyRole", AuditCategory.Configuration, "Role mapping");
-        public static readonly AuditAction EventOfficerRole = new("config.eventRole", AuditCategory.Configuration, "Role mapping");
         public static readonly AuditAction TrackingManagerRole = new("config.trackingRole", AuditCategory.Configuration, "Role mapping");
         public static readonly AuditAction AuditorRole = new("config.auditorRole", AuditCategory.Configuration, "Role mapping");
         public static readonly AuditAction LedgerRetention = new("config.ledgerRetention", AuditCategory.Configuration, "Currency");
@@ -56,14 +54,12 @@ public static class AuditActions
         public static readonly AuditAction MultiplierAdd = new("config.multiplier.add", AuditCategory.Configuration, "Multipliers");
         public static readonly AuditAction MultiplierRemove = new("config.multiplier.remove", AuditCategory.Configuration, "Multipliers");
 
-        /// <summary>Map the legacy role-toggle "kind" string from the role-mapping form to the typed action.</summary>
+        /// <summary>Map the role-toggle "kind" string from the role-mapping form to the typed action.</summary>
         public static AuditAction RoleByKind(string kind) => kind switch
         {
-            "officer" => OfficerRole,
             "participant" => ParticipantRole,
             "questmanager" => QuestManagerRole,
             "economy" => EconomyManagerRole,
-            "event" => EventOfficerRole,
             "tracking" => TrackingManagerRole,
             "auditor" => AuditorRole,
             _ => AdminRole,

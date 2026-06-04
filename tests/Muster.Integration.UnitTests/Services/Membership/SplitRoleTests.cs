@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain;
+using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Commands.Membership;
@@ -12,9 +13,8 @@ using Xunit;
 namespace Muster.IntegrationTests;
 
 /// <summary>
-/// Phase 4 role expansion: EconomyManager / EventOfficer / Auditor split out from Officer. Legacy
-/// OfficerRoleIds still grants both EconomyManager + EventOfficer (back-compat). Auditor is implied by
-/// any management role. Admin bypasses every check.
+/// Role tiers: EconomyManager / TrackingManager / QuestManager / Auditor, each a dedicated role list.
+/// Auditor is implied by any management role. Admin bypasses every check.
 /// </summary>
 public class SplitRoleTests
 {
@@ -45,33 +45,16 @@ public class SplitRoleTests
     }
 
     [Fact]
-    public async Task EventOfficerRole_DoesNotGrantMint()
+    public async Task TrackingManagerRole_DoesNotGrantMint()
     {
         using var db = NewDb();
         await Seed(db, roleId: 800, userId: 11);
 
         var config = new ConfigCommandService(db, Microsoft.Extensions.Options.Options.Create(new CurrencyRetentionOptions()));
-        await config.ToggleEventOfficerRoleAsync(1, 800);
+        await config.ToggleTrackingManagerRoleAsync(1, 800);
 
         var auth = new CurrencyAuthorizer(new GuildAuthorizationService(db));
         Assert.False(await auth.AuthorizeAsync(new GuildActor(1, 11), subjectUserId: 99, CurrencyPermission.Mint));
-    }
-
-    [Fact]
-    public async Task LegacyOfficerRole_StillGrantsEconomyAndEvent()
-    {
-        using var db = NewDb();
-        await Seed(db, roleId: 900, userId: 12);
-
-        var config = new ConfigCommandService(db, Microsoft.Extensions.Options.Options.Create(new CurrencyRetentionOptions()));
-        await config.ToggleOfficerRoleAsync(1, 900);
-
-        var roles = new GuildAuthorizationService(db);
-        Assert.True(await roles.IsEconomyManagerAsync(1, 12));
-        Assert.True(await roles.IsEventOfficerAsync(1, 12));
-
-        var currency = new CurrencyAuthorizer(roles);
-        Assert.True(await currency.AuthorizeAsync(new GuildActor(1, 12), subjectUserId: 99, CurrencyPermission.Mint));
     }
 
     [Fact]
@@ -101,7 +84,6 @@ public class SplitRoleTests
 
         var roles = new GuildAuthorizationService(db);
         Assert.False(await roles.IsEconomyManagerAsync(1, 20));
-        Assert.False(await roles.IsEventOfficerAsync(1, 20));
         Assert.False(await roles.IsTrackingManagerAsync(1, 20));
         Assert.False(await roles.IsAuditorAsync(1, 20));
     }
@@ -114,7 +96,6 @@ public class SplitRoleTests
 
         var roles = new GuildAuthorizationService(db);
         Assert.True(await roles.IsEconomyManagerAsync(1, 99));
-        Assert.True(await roles.IsEventOfficerAsync(1, 99));
         Assert.True(await roles.IsTrackingManagerAsync(1, 99));
         Assert.True(await roles.IsAuditorAsync(1, 99));
     }
@@ -149,22 +130,6 @@ public class SplitRoleTests
         var auth = new TrackingAuthorizer(new GuildAuthorizationService(db));
         Assert.False(await auth.AuthorizeAsync(new GuildActor(1, 31), 0, TrackingPermission.ManageSessions));
         Assert.False(await auth.AuthorizeAsync(new GuildActor(1, 31), 0, TrackingPermission.ManageChannels));
-    }
-
-    [Fact]
-    public async Task LegacyOfficerRole_StillGrantsTracking()
-    {
-        using var db = NewDb();
-        await Seed(db, roleId: 1700, userId: 32);
-
-        var config = new ConfigCommandService(db, Microsoft.Extensions.Options.Options.Create(new CurrencyRetentionOptions()));
-        await config.ToggleOfficerRoleAsync(1, 1700);
-
-        var roles = new GuildAuthorizationService(db);
-        Assert.True(await roles.IsTrackingManagerAsync(1, 32));
-
-        var auth = new TrackingAuthorizer(roles);
-        Assert.True(await auth.AuthorizeAsync(new GuildActor(1, 32), 0, TrackingPermission.ManageMultipliers));
     }
 
     [Fact]
@@ -218,22 +183,19 @@ public class SplitRoleTests
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
         var sut = new ConfigCommandService(db, Microsoft.Extensions.Options.Options.Create(new CurrencyRetentionOptions()));
 
-        await RoundTrip(sut.ToggleEconomyManagerRoleAsync,  s => s.EconomyManagerRoleIds);
-        await RoundTrip(sut.ToggleEventOfficerRoleAsync,    s => s.EventOfficerRoleIds);
-        await RoundTrip(sut.ToggleTrackingManagerRoleAsync, s => s.TrackingManagerRoleIds);
-        await RoundTrip(sut.ToggleAuditorRoleAsync,         s => s.AuditorRoleIds);
+        await RoundTrip(sut.ToggleEconomyManagerRoleAsync,  GuildRoleTier.EconomyManager);
+        await RoundTrip(sut.ToggleTrackingManagerRoleAsync, GuildRoleTier.TrackingManager);
+        await RoundTrip(sut.ToggleAuditorRoleAsync,         GuildRoleTier.Auditor);
 
-        async Task RoundTrip(
-            Func<ulong, ulong, CancellationToken, Task<CommandResult>> toggle,
-            Func<GuildSettings, List<ulong>> picker)
+        async Task RoundTrip(Func<ulong, ulong, CancellationToken, Task<CommandResult>> toggle, GuildRoleTier tier)
         {
             var added = await toggle(1, 1234, default);
             Assert.Contains("Added", added.Message);
-            Assert.Contains(1234ul, picker((await db.Guilds.AsNoTracking().SingleAsync()).Settings));
+            Assert.True(await db.GuildRoleMappings.AsNoTracking().AnyAsync(m => m.RoleId == 1234 && m.Tiers == tier));
 
             var removed = await toggle(1, 1234, default);
             Assert.Contains("Removed", removed.Message);
-            Assert.DoesNotContain(1234ul, picker((await db.Guilds.AsNoTracking().SingleAsync()).Settings));
+            Assert.False(await db.GuildRoleMappings.AsNoTracking().AnyAsync(m => m.RoleId == 1234)); // row deleted
         }
     }
 }

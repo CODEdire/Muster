@@ -55,6 +55,22 @@ public class QuestCommandHandlerTests
     }
 
     [Fact]
+    public async Task Approve_WithMismatchedGuildId_IsNotFound_AndAwardsNothing()
+    {
+        var c = await SeededAsync();
+        var quest = await SubmittedGuildQuestAsync(c); // belongs to guild 1
+
+        // Same quest id, but routed through a different guild — the handler scopes the lookup to the guild, so the
+        // quest isn't found and no cross-guild action (or mis-attributed audit) can occur.
+        var result = await ApproveQuestSubmissionHandler.Handle(
+            new ApproveQuestSubmission(999, quest.Id, MemberId: 10, ReviewerId: 1), c.Db, c.Authz, c.Quests, default);
+
+        Assert.False(result.Ok);
+        Assert.Equal(nameof(QuestResult.NotFound), result.Status);
+        Assert.False(await c.Db.Wallets.AnyAsync(w => w.UserId == 10 && w.Balance != 0));
+    }
+
+    [Fact]
     public async Task Approve_PublishesSettledLifecycleEvent()
     {
         var c = await SeededAsync();

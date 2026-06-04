@@ -55,14 +55,7 @@ else if (State == AccessState.Ready)
                             <th class="role-col">Discord role</th>
                             @foreach (var col in Columns)
                             {
-                                <th class="@(col.Group == "officer" ? "group-col legacy" : "group-col")"
-                                    title="@col.Hint">
-                                    @col.Label
-                                    @if (col.Group == "officer")
-                                    {
-                                        <span class="badge-legacy">legacy</span>
-                                    }
-                                </th>
+                                <th class="group-col" title="@col.Hint">@col.Label</th>
                             }
                         </tr>
                     </thead>
@@ -82,7 +75,7 @@ else if (State == AccessState.Ready)
                                     var on = IsGranted(col.Group, role.RoleId);
                                     // @everyone (role id == guild id) can only be toggled into Participant —
                                     // the synced GuildMember.RoleIds never includes @everyone (Discord treats it
-                                    // as universal), so allowing it for Admin/Officer/etc. would silently grant
+                                    // as universal), so allowing it for Admin/staff tiers would silently grant
                                     // nothing while looking on. The IsAdminAsync hierarchy also makes "everyone
                                     // = admin" never something a real admin actually wants. Lock it down here.
                                     var isEveryone = role.RoleId == GuildId;
@@ -111,14 +104,14 @@ else if (State == AccessState.Ready)
         }
 
         <p class="subtitle matrix-footnote">
-            <b>Participant</b> is the floor — every other mapped role (Admin, Officer, Quests, Economy,
-            Tracking, Events, Auditor) implicitly participates, so a quest manager who can arbitrate a
+            <b>Participant</b> is the floor — every other mapped role (Admin, Quests, Economy,
+            Tracking, Auditor) implicitly participates, so a quest manager who can arbitrate a
             quest can also take one. The Participant column is for non-staff roles you still want to earn
             rewards. With nothing set (or with <code>@@everyone</code> toggled), everyone participates.
             <br/>
             <b>Admin</b> implies every other permission — the guild owner and members with Discord
             <i>Administrator</i> / <i>Manage&nbsp;Server</i> are always admins even without an explicit
-            mapping. <b>Officer</b> is a legacy umbrella (grants Economy + Event Officer).
+            mapping.
             <b>Auditor</b> is read-only — audit log, ledger, participation reports.
         </p>
     </div>
@@ -216,16 +209,14 @@ else if (State == AccessState.Ready)
     private int _ledgerDays;
     private bool _ledgerSaving;
 
-    // The 8 mapping groups, in display order. Officer flagged for legacy styling.
+    // The 7 mapping groups, in display order.
     private static readonly (string Group, string Label, string Hint)[] Columns =
     [
         ("admin",         "Admin",       "Full administrative access."),
-        ("officer",       "Officer",     "Legacy umbrella — grants Economy + Event Officer."),
         ("questmanager",  "Quests",      "Create / review / arbitrate quests."),
         ("economy",       "Economy",     "Mint, adjust, bulk-move currency."),
-        ("tracking",      "Tracking",    "Open / close sessions, configure channels + multipliers."),
+        ("tracking",      "Tracking",    "Sessions, channels + multipliers, event ops (/op)."),
         ("mustercreator", "Muster Creator", "Post musters from a template only (no custom rewards)."),
-        ("event",         "Events",      "Create / close event ops."),
         ("auditor",       "Auditor",     "Read-only access to audit, ledger, participation."),
         ("participant",   "Participant", "Who can earn rewards. Empty = everyone participates."),
     ];
@@ -237,12 +228,10 @@ else if (State == AccessState.Ready)
         _grants = new Dictionary<string, HashSet<ulong>>
         {
             ["admin"]        = m.AdminRoleIds.ToHashSet(),
-            ["officer"]      = m.OfficerRoleIds.ToHashSet(),
             ["questmanager"] = m.QuestManagerRoleIds.ToHashSet(),
             ["economy"]      = m.EconomyManagerRoleIds.ToHashSet(),
             ["tracking"]     = m.TrackingManagerRoleIds.ToHashSet(),
             ["mustercreator"] = m.MusterCreatorRoleIds.ToHashSet(),
-            ["event"]        = m.EventOfficerRoleIds.ToHashSet(),
             ["auditor"]      = m.AuditorRoleIds.ToHashSet(),
             ["participant"]  = m.ParticipantRoleIds.ToHashSet(),
         };
@@ -270,12 +259,10 @@ else if (State == AccessState.Ready)
         var result = group switch
         {
             "admin" => await Config.ToggleAdminRoleAsync(GuildId, roleId),
-            "officer" => await Config.ToggleOfficerRoleAsync(GuildId, roleId),
             "questmanager" => await Config.ToggleQuestManagerRoleAsync(GuildId, roleId),
             "economy" => await Config.ToggleEconomyManagerRoleAsync(GuildId, roleId),
             "tracking" => await Config.ToggleTrackingManagerRoleAsync(GuildId, roleId),
             "mustercreator" => await Config.ToggleMusterCreatorRoleAsync(GuildId, roleId),
-            "event" => await Config.ToggleEventOfficerRoleAsync(GuildId, roleId),
             "auditor" => await Config.ToggleAuditorRoleAsync(GuildId, roleId),
             "participant" => await Config.ToggleParticipantRoleAsync(GuildId, roleId),
             _ => CommandResult.Error("Unknown group."),

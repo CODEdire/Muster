@@ -5,7 +5,7 @@ It records member participation through:
 
 - **Tracking sessions** — bounded windows (manual or bound to a Discord Scheduled Event)
   where **voice presence** and **reaction check-ins** are rewardable.
-- **Missions** — a two-type board: claimable **quests** (submit → officer approve) and
+- **Missions** — a two-type board: claimable **quests** (submit → manager approve) and
   scheduled **event ops** (RSVP / attendance).
 - **Reaction musters** — one-off react-to-check-in messages.
 - **Manual / bulk awards** — for off-platform contributions.

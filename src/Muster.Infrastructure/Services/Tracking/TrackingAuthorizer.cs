@@ -25,7 +25,7 @@ public enum TrackingPermission
 /// <summary>
 /// Resource-based authorization for tracking, mirroring <see cref="ICurrencyAuthorizer"/> and <c>IQuestAuthorizer</c>:
 /// the single place the staff-vs-self rules live so command handlers (before mutating) and any future UI gating can't
-/// drift. Staff = admin OR officer (the "tracking-management tier"). The subject only matters for
+/// drift. Staff = the tracking-management tier (admin OR TrackingManager). The subject only matters for
 /// <see cref="TrackingPermission.SetPrivacy"/>; other actions ignore it.
 /// </summary>
 public interface ITrackingAuthorizer
@@ -40,8 +40,8 @@ public sealed class TrackingAuthorizer(GuildAuthorizationService roles) : ITrack
 {
     public async Task<bool> AuthorizeAsync(GuildActor actor, ulong subjectUserId, TrackingPermission action, CancellationToken ct = default)
     {
-        // TrackingManager = admin-inclusive + legacy OfficerRoleIds alias (back-compat). Replaces the prior
-        // IsOfficerAsync gate so a guild can grant tracking power without granting economy-staff power.
+        // TrackingManager (admin-inclusive) is the tracking-management tier — distinct from economy staff, so a
+        // guild can grant tracking power without granting economy power.
         var isStaff = await roles.IsTrackingManagerAsync(actor.GuildId, actor.UserId, ct);
         return Allows(actor, isStaff, subjectUserId, action);
     }

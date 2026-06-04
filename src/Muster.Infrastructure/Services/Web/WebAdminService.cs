@@ -13,11 +13,9 @@ public record RoleOption(ulong RoleId, string Name);
 public record RoleMappingView(
     IReadOnlyList<RoleOption> AllRoles,
     IReadOnlyList<ulong> AdminRoleIds,
-    IReadOnlyList<ulong> OfficerRoleIds,
     IReadOnlyList<ulong> ParticipantRoleIds,
     IReadOnlyList<ulong> QuestManagerRoleIds,
     IReadOnlyList<ulong> EconomyManagerRoleIds,
-    IReadOnlyList<ulong> EventOfficerRoleIds,
     IReadOnlyList<ulong> TrackingManagerRoleIds,
     IReadOnlyList<ulong> MusterCreatorRoleIds,
     IReadOnlyList<ulong> AuditorRoleIds);
@@ -63,8 +61,8 @@ public class WebAdminService(MusterDbContext db)
     {
         var all = await GetMembersAsync(guildId, ct);
 
-        var guild = await db.FindGuildAsync(guildId, ct);
-        var roleIds = guild?.Settings.ParticipantRoleIds ?? [];
+        var map = await db.RoleMapAsync(guildId, ct);
+        var roleIds = map.Where(kv => kv.Value.HasFlag(GuildRoleTier.Participant)).Select(kv => kv.Key).ToHashSet();
         if (roleIds.Count == 0)
         {
             return all; // open participation
@@ -125,17 +123,17 @@ public class WebAdminService(MusterDbContext db)
             .Select(r => new RoleOption(r.RoleId, r.Name))
             .ToList();
 
-        var guild = await db.FindGuildAsync(guildId, ct);
+        var map = await db.RoleMapAsync(guildId, ct);
+        List<ulong> ids(GuildRoleTier tier) => map.Where(kv => kv.Value.HasFlag(tier)).Select(kv => kv.Key).ToList();
+
         return new RoleMappingView(
             roles,
-            guild?.Settings.AdminRoleIds ?? [],
-            guild?.Settings.OfficerRoleIds ?? [],
-            guild?.Settings.ParticipantRoleIds ?? [],
-            guild?.Settings.QuestManagerRoleIds ?? [],
-            guild?.Settings.EconomyManagerRoleIds ?? [],
-            guild?.Settings.EventOfficerRoleIds ?? [],
-            guild?.Settings.TrackingManagerRoleIds ?? [],
-            guild?.Settings.MusterCreatorRoleIds ?? [],
-            guild?.Settings.AuditorRoleIds ?? []);
+            ids(GuildRoleTier.Admin),
+            ids(GuildRoleTier.Participant),
+            ids(GuildRoleTier.QuestManager),
+            ids(GuildRoleTier.EconomyManager),
+            ids(GuildRoleTier.TrackingManager),
+            ids(GuildRoleTier.MusterCreator),
+            ids(GuildRoleTier.Auditor));
     }
 }

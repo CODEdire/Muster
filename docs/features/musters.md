@@ -58,13 +58,13 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 ## Access & audit
 - **Participant** (has the participant role): sees active musters (card view), checks **in/out** from web or the Discord button, sees the general card info.
 - **Muster Creator**: a participant who can also **create** (from templates, reward-locked) and fully manage the musters **they own** — edit (title/prompt/capacity/auto-close, reward stays template-locked), close, curate roster, remove the card. They can't touch others' musters.
-- **Tracking Manager** (+ Officer/Admin umbrellas): full lifecycle over **all** musters, custom rewards, and **session linking + coin gate**, plus settings/templates.
+- **Tracking Manager** (admin-inclusive): full lifecycle over **all** musters, custom rewards, and **session linking + coin gate**, plus settings/templates.
 - **Session linking, coin-gate, settings, and templates are Tracking-Manager-only** (they affect session economics), even for a creator's own muster.
 - Enforcement is at the command handler (ownership-aware `CanManageMuster`); every action is recorded to the audit log.
 
 ### Permission matrix
 
-| Action | Participant | Creator — own | Creator — others' | Manager / Officer |
+| Action | Participant | Creator — own | Creator — others' | Tracking Manager |
 |---|:---:|:---:|:---:|:---:|
 | See active musters + card info | ✓ | ✓ | ✓ | ✓ |
 | Check **in/out** (self, while Open) | ✓ | ✓ | ✓ | ✓ |
@@ -76,4 +76,4 @@ A "muster" is a button check-in: post a card, members tap **Check In**, you trac
 | Link session + set coin gate | – | – | – | ✓ |
 | Settings / templates | – | – | – | ✓ |
 
-"Own" = the muster's `CreatedBy`. Officer/Admin resolve as Manager-equivalent.
+"Own" = the muster's `CreatedBy`. Admin resolves as Tracking-Manager-equivalent.

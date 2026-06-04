@@ -9,6 +9,7 @@
 @using Muster.Domain.Enums
 @using Muster.Persistence
 @using Muster.Persistence.Queries
+@using Muster.Domain
 @using Muster.Infrastructure.Services.Tracking
 @using Muster.Infrastructure.Services.Membership
 @using Muster.Infrastructure.Services.Musters
@@ -442,8 +443,7 @@ else if (State == AccessState.Ready && _detail is not null)
 
         _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
         _sessionFactor = await sp.GetRequiredService<RewardMultiplierService>().ActiveFactorAsync(GuildId, MultiplierScope.Sessions);
-        // Staff buttons (stop/close, force opt-out, etc.). IsTrackingManagerAsync already covers Admin + the legacy
-        // Officer/EventOfficer umbrellas.
+        // Staff buttons (stop/close, force opt-out, etc.) — the tracking-management tier (admin-inclusive).
         _isStaff = await auth.IsTrackingManagerAsync(GuildId, UserId);
         _detail = await sp.GetRequiredService<ParticipationReadService>().SessionDetailAsync(GuildId, id);
         _musters = _isStaff ? await sp.GetRequiredService<IMusterReadService>().MustersForSessionAsync(GuildId, id) : [];
@@ -543,7 +543,12 @@ else if (State == AccessState.Ready && _detail is not null)
         {
             await using var scope = Scopes.CreateAsyncScope();
             var sp = scope.ServiceProvider;
-            if (await sp.GetRequiredService<TrackingSessionService>().OptOutMemberAsync(GuildId, _sessionGuid, userId))
+            // Re-authorize server-side (self may opt self out; only tracking staff may opt others out) so the action
+            // can't ride a stale UI flag if the actor's role was revoked mid-session. SetPrivacy encodes that rule.
+            var authorized = await sp.GetRequiredService<ITrackingAuthorizer>()
+                .AuthorizeAsync(new GuildActor(GuildId, UserId), userId, TrackingPermission.SetPrivacy);
+            if (authorized
+                && await sp.GetRequiredService<TrackingSessionService>().OptOutMemberAsync(GuildId, _sessionGuid, userId))
             {
                 Message = userId == UserId ? "You've opted out of this session." : "Member opted out of this session.";
             }

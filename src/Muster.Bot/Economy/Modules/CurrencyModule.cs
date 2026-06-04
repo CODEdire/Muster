@@ -153,10 +153,12 @@ public class CurrencyModule(IServiceScopeFactory scopeFactory) : MusterModuleBas
         });
 
     private Task AdjustDispatch(User member, string currency, long delta, string reason, string ok)
+        // Mint/adjust are economy-staff only. The handler (CurrencyAuthorizer) already enforces this; gating at the
+        // command layer too fails fast and keeps these in line with every other mutating command.
         => RunAsync(async (sp, guildId) =>
         {
             var result = await sp.GetRequiredService<IMessageBus>().InvokeAsync<Result>(
                 new AdjustCurrency(guildId, Context.User.Id, currency, member.Id, delta, reason));
             return result.ToCurrencyResult(ok);
-        });
+        }, RequiredRole.EconomyManager);
 }

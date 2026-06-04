@@ -40,9 +40,11 @@ member is admin if ANY of these hold, so a bad role mapping can never lock every
    `GuildRole` snapshot);
 3. they hold a role configured in `GuildSettings.AdminRoleIds`.
 
-Officer additionally includes `OfficerRoleIds`. The same service gates the bot's mutating slash
-commands (via `MusterModuleBase`) and will back web authorization. The role mapping is configured with
-`/config-admin-role` / `/config-officer-role` (the owner can always run these).
+Beyond admin, each tier is a bit in the `GuildRoleMapping` table — one row per Discord role with a
+`GuildRoleTier` bitmask (admin / economy / tracking / quest / auditor / muster-creator / participant).
+A toggle flips one bit on that row (the row is created on first grant, deleted when its last bit clears).
+The same service gates the bot's mutating slash commands (via `MusterModuleBase`) and backs web
+authorization. The role mapping is configured with the `/config-*-role` commands (the owner can always run these).
 
 ## Pages (v1 target)
 

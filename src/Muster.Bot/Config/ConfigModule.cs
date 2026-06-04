@@ -17,11 +17,6 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleAdminRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.adminRole");
 
-    [SlashCommand("config-officer-role", "Toggle whether a Discord role grants officer permissions.")]
-    public Task OfficerRoleAsync(
-        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleOfficerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.officerRole");
-
     [SlashCommand("config-participant-role", "Toggle a role allowed to participate. No roles set = everyone participates.")]
     public Task ParticipantRoleAsync(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
@@ -37,12 +32,7 @@ public class ConfigModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleEconomyManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.economyManagerRole");
 
-    [SlashCommand("config-event-role", "Toggle a role that can create and close event ops.")]
-    public Task EventOfficerRoleAsync(
-        [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
-        => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleEventOfficerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.eventOfficerRole");
-
-    [SlashCommand("config-tracking-role", "Toggle a role that can manage tracking (sessions, channels, multipliers).")]
+    [SlashCommand("config-tracking-role", "Toggle a role that can manage tracking — sessions, channels, multipliers, event ops (/op).")]
     public Task TrackingManagerRoleAsync(
         [SlashCommandParameter(Name = "role", Description = "Role to toggle")] Role role)
         => RunAsync((sp, guildId) => sp.GetRequiredService<ConfigCommandService>().ToggleTrackingManagerRoleAsync(guildId, role.Id), RequiredRole.Admin, "config.trackingManagerRole");

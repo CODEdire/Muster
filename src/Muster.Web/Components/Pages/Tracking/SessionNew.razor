@@ -73,8 +73,8 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // TrackingManager + legacy Officer + Admin (implicit) — opens a tracking session.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    // TrackingManager + Admin (implicit) — opens a tracking session.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager;
 
     [SupplyParameterFromForm(FormName = "session-new")] private SessionInput Input { get; set; } = new();
 

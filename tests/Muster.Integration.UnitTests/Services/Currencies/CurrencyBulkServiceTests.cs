@@ -10,6 +10,7 @@ using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Web;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
+using Muster.IntegrationTests.TestSupport;
 using Xunit;
 
 namespace Muster.IntegrationTests;
@@ -21,17 +22,15 @@ public class CurrencyBulkServiceTests
             .UseInMemoryDatabase($"muster-{Guid.NewGuid()}")
             .Options);
 
-    // Provision a guild where role 800 = officer; seed an officer (10) + two plain members (20, 30) holding role 700.
+    // Provision a guild where role 800 = economy manager; seed a manager (10) + two plain members (20, 30) holding role 700.
     private static async Task<MusterDbContext> SeededAsync()
     {
         var db = NewDb();
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 999);
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.OfficerRoleIds = [800];
-        await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 800, GuildRoleTier.EconomyManager);
 
         var sync = new MemberSyncService(db);
-        await sync.UpsertAsync(1, 10, "officer", null, null, roleIds: [800]);
+        await sync.UpsertAsync(1, 10, "manager", null, null, roleIds: [800]);
         await sync.UpsertAsync(1, 20, "alice", "Alice", null, roleIds: [700]);
         await sync.UpsertAsync(1, 30, "bob", "Bob", null, roleIds: [700]);
         return db;

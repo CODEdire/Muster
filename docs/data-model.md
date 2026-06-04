@@ -9,7 +9,8 @@ snowflake ids are stored as `ulong` (mapped to `decimal(20,0)` on SQL Server).
 | Entity | Purpose |
 | --- | --- |
 | `Guild` | A Discord server (tenant). Owns `GuildSettings` (stored as JSON). |
-| `GuildSettings` | Admin/officer role ids, tracked channels, quest-approval policy. |
+| `GuildSettings` | Ledger retention + quest-approval policy. (Role mappings and tracking settings live in their own tables.) |
+| `GuildRoleMapping` | One row per Discord role → a `GuildRoleTier` bitmask of the app permission tiers it grants (admin / economy / tracking / quest / auditor / muster-creator / participant). Cascade-deleted with the guild. |
 | `DiscordUser` | A Discord user, shared across guilds. |
 | `GuildMember` | A user's membership in a guild; role snapshot, nickname, join date. |
 

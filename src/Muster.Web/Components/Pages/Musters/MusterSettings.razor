@@ -204,7 +204,7 @@ else if (State == AccessState.Ready)
 </style>
 
 @code {
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager;
 
     private SettingsInput Input { get; set; } = new();
     private IReadOnlyList<GuildChannelOptions.ChannelOption> _chat = [];

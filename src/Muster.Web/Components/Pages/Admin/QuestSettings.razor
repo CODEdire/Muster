@@ -244,8 +244,8 @@ else if (State == AccessState.Ready)
 </style>
 
 @code {
-    // QuestManager + legacy Officer + Admin (implicit) — quest workflow config.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.QuestManager | GuildAccessTier.Officer;
+    // QuestManager + Admin (implicit) — quest workflow config.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.QuestManager;
 
     private TierInput Tier { get; set; } = new();
     private ApprovalInput Approval { get; set; } = new();

@@ -25,47 +25,9 @@ public class Guild
 /// <summary>Per-guild configuration. Owned by <see cref="Guild"/> and stored as one JSON document.</summary>
 public class GuildSettings
 {
-    /// <summary>Discord role ids treated as bot admins, in addition to Manage-Guild holders.</summary>
-    public List<ulong> AdminRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids allowed to approve quests / run ops. **Legacy umbrella role** — kept for
-    /// back-compat: holders are treated as both <see cref="EconomyManagerRoleIds"/> and
-    /// <see cref="EventOfficerRoleIds"/> on read paths. New guilds should map the split roles directly.</summary>
-    public List<ulong> OfficerRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids allowed to create guild quests and approve/arbitrate player bounties.</summary>
-    public List<ulong> QuestManagerRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids allowed to mint / adjust / bulk-move currency (POINTS + COIN-class alike) and
-    /// view any member's wallet. Powers the <see cref="Muster.Domain"/> currency authorizer's "staff" path. Holders
-    /// of <see cref="OfficerRoleIds"/> are also treated as economy managers (legacy alias).</summary>
-    public List<ulong> EconomyManagerRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids allowed to create and close event ops (the <c>/op</c> family). Holders of
-    /// <see cref="OfficerRoleIds"/> are also treated as event officers (legacy alias).</summary>
-    public List<ulong> EventOfficerRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids allowed to manage tracking — open/close sessions, configure monitored channels,
-    /// create reward multipliers, force-opt-out members from a session. Powers <c>ITrackingAuthorizer</c>'s "staff"
-    /// path. Holders of <see cref="OfficerRoleIds"/> are also treated as tracking managers (legacy alias).</summary>
-    public List<ulong> TrackingManagerRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids allowed to post musters <b>from a template only</b> (rewards locked to the template
-    /// — no custom points/coins). Tracking managers + admins can also create custom musters. Lets muster creation be
-    /// delegated safely.</summary>
-    public List<ulong> MusterCreatorRoleIds { get; set; } = [];
-
-    /// <summary>Discord role ids granted **read-only** access to audit log, ledger, and participation reports
-    /// (no mutating power). Implied by Admin and any management role; this list adds non-staff observers
-    /// (compliance / treasurer-without-mint roles).</summary>
-    public List<ulong> AuditorRoleIds { get; set; } = [];
-
-    /// <summary>
-    /// Discord role ids whose holders may earn rewards / be tracked. **Empty means everyone
-    /// participates** (the default); set roles to restrict participation to org members and exclude
-    /// guests/newcomers.
-    /// </summary>
-    public List<ulong> ParticipantRoleIds { get; set; } = [];
+    // Role → permission-tier mappings moved to their own table (GuildRoleMapping, one row per role with a
+    // GuildRoleTier bitmask) — see GuildAuthorizationService / ConfigCommandService. A real table so toggles are
+    // single-row writes and roles can be queried/joined, vs the prior per-tier JSON lists on this document.
 
     // Tracking settings (reward rates, AFK guards, session controls, multipliers, privacy) moved to their own
     // table (GuildTrackingSettings) — see GuildTrackingSettingsService. Following the muster table-per-feature split.

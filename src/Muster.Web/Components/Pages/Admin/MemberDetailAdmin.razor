@@ -19,7 +19,7 @@
 
 @if (State == AccessState.Forbidden)
 {
-    <div class="panel glass empty">You need officer or admin access for this server.</div>
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
 }
 else if (State == AccessState.Ready && _summary is null)
 {
@@ -418,8 +418,8 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    // Officer (legacy umbrella) + EconomyManager — page hosts award/adjust which is economy staff work.
-    protected override GuildAccessTier RequiredAccess => GuildAccessTier.Officer | GuildAccessTier.EconomyManager;
+    // EconomyManager — page hosts award/adjust which is economy staff work.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.EconomyManager;
 
     [Parameter] public string UserIdRaw { get; set; } = "";
     private ulong UserIdParsed => ulong.TryParse(UserIdRaw, out var v) ? v : 0;

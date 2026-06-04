@@ -73,6 +73,15 @@ public sealed class CurrencyBulkService(MusterDbContext db, ICurrencyAuthorizer 
             return new BulkQueueResult(false, $"Too many members — limit is {MaxTargets:N0} per batch.");
         }
 
+        // One in-flight bulk job per actor per guild — bounds queue/job flooding (the page polls the running batch
+        // anyway, so a second concurrent job has no UI). The hot path is a circuit click, so this app-level guard,
+        // not the HTTP rate limiter, is what actually throttles it.
+        if (await db.CurrencyBulkBatches.AnyAsync(b => b.GuildId == guildId && b.ActorId == actorId
+                && (b.Status == BulkBatchStatus.Pending || b.Status == BulkBatchStatus.Running), ct))
+        {
+            return new BulkQueueResult(false, "You already have a bulk job in progress — wait for it to finish.");
+        }
+
         var batch = new CurrencyBulkBatch
         {
             Id = Guid.NewGuid(),

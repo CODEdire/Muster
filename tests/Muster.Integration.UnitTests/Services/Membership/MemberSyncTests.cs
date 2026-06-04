@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Domain.Enums;
 using Muster.Persistence;
 using Muster.Infrastructure;
 using Xunit;
 using Muster.Infrastructure.Services.Membership;
+using Muster.IntegrationTests.TestSupport;
 
 namespace Muster.IntegrationTests;
 
@@ -61,30 +63,28 @@ public class MemberSyncTests
     }
 
     [Fact]
-    public async Task Authorization_DerivesAdminAndOfficer_FromRoleMapping()
+    public async Task Authorization_DerivesAdminAndStaff_FromRoleMapping()
     {
         using var db = NewDb();
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null);
 
         // Map app permissions to Discord role ids (not to users directly).
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.AdminRoleIds = [900];
-        guild.Settings.OfficerRoleIds = [800];
-        await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 900, GuildRoleTier.Admin);
+        await db.MapRoleAsync(1, 800, GuildRoleTier.EconomyManager);
 
         var sync = new MemberSyncService(db);
-        await sync.UpsertAsync(1, 10, "admin", null, null, roleIds: [900]);   // has admin role
-        await sync.UpsertAsync(1, 20, "officer", null, null, roleIds: [800]); // has officer role
-        await sync.UpsertAsync(1, 30, "member", null, null, roleIds: [123]);  // no mapped role
+        await sync.UpsertAsync(1, 10, "admin", null, null, roleIds: [900]);  // has admin role
+        await sync.UpsertAsync(1, 20, "econ", null, null, roleIds: [800]);   // has economy-manager role
+        await sync.UpsertAsync(1, 30, "member", null, null, roleIds: [123]); // no mapped role
 
         var auth = new GuildAuthorizationService(db);
 
         Assert.True(await auth.IsAdminAsync(1, 10));
-        Assert.True(await auth.IsOfficerAsync(1, 10));  // admins are implicitly officers
+        Assert.True(await auth.IsAnyStaffAsync(1, 10));  // admins are implicitly staff
         Assert.False(await auth.IsAdminAsync(1, 20));
-        Assert.True(await auth.IsOfficerAsync(1, 20));
+        Assert.True(await auth.IsAnyStaffAsync(1, 20));  // economy manager is staff
         Assert.False(await auth.IsAdminAsync(1, 30));
-        Assert.False(await auth.IsOfficerAsync(1, 30));
+        Assert.False(await auth.IsAnyStaffAsync(1, 30));
     }
 
     [Fact]
@@ -92,9 +92,7 @@ public class MemberSyncTests
     {
         using var db = NewDb();
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null);
-        var guild = await db.Guilds.SingleAsync();
-        guild.Settings.AdminRoleIds = [900];
-        await db.SaveChangesAsync();
+        await db.MapRoleAsync(1, 900, GuildRoleTier.Admin);
 
         var sync = new MemberSyncService(db);
         var auth = new GuildAuthorizationService(db);

@@ -56,6 +56,18 @@ public static class MembershipQueries
     public static Task<List<ulong>> RolePermissionsAsync(this MusterDbContext db, ulong guildId, List<ulong> roleIds, CancellationToken ct = default)
         => db.GuildRoles.Where(r => r.GuildId == guildId && roleIds.Contains(r.RoleId)).Select(r => r.Permissions).ToListAsync(ct);
 
+    /// <summary>The guild's role→tier mappings as a <c>RoleId → GuildRoleTier</c> dictionary. The whole set is a
+    /// handful of rows, so callers load it once and test the bitmask in memory (no bitwise-in-SQL).</summary>
+    public static async Task<Dictionary<ulong, GuildRoleTier>> RoleMapAsync(this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => await db.GuildRoleMappings
+            .Where(m => m.GuildId == guildId)
+            .ToDictionaryAsync(m => m.RoleId, m => m.Tiers, ct);
+
+    /// <summary>The single role→tier mapping row for a (guild, role), or null. For toggles (read-modify-write
+    /// one row).</summary>
+    public static Task<GuildRoleMapping?> FindRoleMappingAsync(this MusterDbContext db, ulong guildId, ulong roleId, CancellationToken ct = default)
+        => db.GuildRoleMappings.FirstOrDefaultAsync(m => m.GuildId == guildId && m.RoleId == roleId, ct);
+
     /// <summary>Find a guild role (tracked).</summary>
     public static Task<GuildRole?> FindRoleAsync(this MusterDbContext db, ulong guildId, ulong roleId, CancellationToken ct = default)
         => db.GuildRoles.FirstOrDefaultAsync(r => r.GuildId == guildId && r.RoleId == roleId, ct);
