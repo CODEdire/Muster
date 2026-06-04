@@ -408,6 +408,119 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("Guilds");
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildMusterSettings", b =>
+                {
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.PrimitiveCollection<string>("AllowedChannelIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("AutoCreateChannel")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AutoCreateGate")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AutoCreateOnSession")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("BoardRetentionHours")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CreatorAutoCheckIn")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("DefaultCoinCurrencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("DefaultCoins")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("DefaultExpiryHours")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DefaultMinCheckIns")
+                        .HasColumnType("int");
+
+                    b.Property<long>("DefaultPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("DefaultResolveMode")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MusterChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.HasKey("GuildId");
+
+                    b.ToTable("GuildMusterSettings");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildTrackingSettings", b =>
+                {
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<int?>("ActivityRetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("BackgroundTrackingOptIn")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("DefaultBackgroundGuards")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DefaultEventGuards")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DefaultSessionGuards")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EndBonusWindowMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MaxSessionHours")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MinTrackedSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinutesPerCoin")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("MultiplierCap")
+                        .HasPrecision(6, 3)
+                        .HasColumnType("decimal(6,3)");
+
+                    b.Property<int>("MultiplierStacking")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("MultiplyPresenceBonuses")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PointsPerVoiceMinute")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SessionCoinCurrencyCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("SessionEndBonus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SessionStartBonus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StartBonusWindowMinutes")
+                        .HasColumnType("int");
+
+                    b.HasKey("GuildId");
+
+                    b.ToTable("GuildTrackingSettings");
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Members.DiscordUser", b =>
                 {
                     b.Property<decimal>("Id")
@@ -445,13 +558,16 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("decimal(20,0)");
 
+                    b.Property<int?>("BackgroundGuards")
+                        .HasColumnType("int");
+
                     b.Property<int>("DailyCapPoints")
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<int>("Guards")
+                    b.Property<int?>("EventGuards")
                         .HasColumnType("int");
 
                     b.Property<int>("Kind")
@@ -484,6 +600,9 @@ namespace Muster.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SessionGuards")
                         .HasColumnType("int");
 
                     b.HasKey("GuildId", "ChannelId");
@@ -543,6 +662,81 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("GuildRoles");
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.MusterSessionLink", b =>
+                {
+                    b.Property<Guid>("MusterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("MusterId", "SessionId");
+
+                    b.HasIndex("SessionId");
+
+                    b.ToTable("MusterSessionLinks");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.MusterTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("CoinCurrencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Coins")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("ExpiryHours")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<int?>("MinCheckIns")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("Points")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Prompt")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("ResolveMode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RetentionHours")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "Enabled");
+
+                    b.ToTable("MusterTemplates");
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionMuster", b =>
                 {
                     b.Property<Guid>("Id")
@@ -555,12 +749,20 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<Guid>("CurrencyId")
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CoinCurrencyId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.PrimitiveCollection<string>("Emojis")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<long>("Coins")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("CreatedBy")
+                        .HasColumnType("decimal(20,0)");
 
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("datetimeoffset");
@@ -568,17 +770,31 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
-                    b.Property<decimal>("MessageId")
-                        .HasColumnType("decimal(20,0)");
+                    b.Property<int?>("MinCheckIns")
+                        .HasColumnType("int");
+
+                    b.Property<long>("Points")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Prompt")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<long>("RewardAmount")
-                        .HasColumnType("bigint");
+                    b.Property<int>("ResolveMode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RetentionHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "Status");
 
                     b.ToTable("ReactionMusters");
                 });
@@ -589,15 +805,14 @@ namespace Muster.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Emoji")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<DateTimeOffset>("CheckedInAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<Guid>("MusterId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset>("ReactedAt")
-                        .HasColumnType("datetimeoffset");
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("UserId")
                         .HasColumnType("decimal(20,0)");
@@ -1155,6 +1370,9 @@ namespace Muster.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("CoinGate")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("EndedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -1191,6 +1409,10 @@ namespace Muster.Persistence.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "ScheduledEventId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 0 AND [ScheduledEventId] IS NOT NULL");
 
                     b.HasIndex("GuildId", "Status");
 
@@ -1469,39 +1691,22 @@ namespace Muster.Persistence.Migrations
                         {
                             b1.Property<decimal>("GuildId");
 
-                            b1.Property<int>("ActivityRetentionDays");
-
                             b1.PrimitiveCollection<string>("AdminRoleIds")
                                 .IsRequired();
-
-                            b1.Property<bool>("ApplyAfkGuardsToSessions");
 
                             b1.PrimitiveCollection<string>("AuditorRoleIds")
                                 .IsRequired();
 
-                            b1.Property<bool>("BackgroundTrackingOptIn");
-
                             b1.PrimitiveCollection<string>("EconomyManagerRoleIds")
                                 .IsRequired();
-
-                            b1.Property<int>("EndBonusWindowMinutes");
 
                             b1.PrimitiveCollection<string>("EventOfficerRoleIds")
                                 .IsRequired();
 
                             b1.Property<int>("LedgerRetentionDays");
 
-                            b1.Property<int>("MaxSessionHours");
-
-                            b1.Property<int>("MinTrackedSeconds");
-
-                            b1.Property<int>("MinutesPerCoin");
-
-                            b1.Property<decimal>("MultiplierCap");
-
-                            b1.Property<int>("MultiplierStacking");
-
-                            b1.Property<bool>("MultiplyPresenceBonuses");
+                            b1.PrimitiveCollection<string>("MusterCreatorRoleIds")
+                                .IsRequired();
 
                             b1.PrimitiveCollection<string>("OfficerRoleIds")
                                 .IsRequired();
@@ -1509,18 +1714,8 @@ namespace Muster.Persistence.Migrations
                             b1.PrimitiveCollection<string>("ParticipantRoleIds")
                                 .IsRequired();
 
-                            b1.Property<int>("PointsPerVoiceMinute");
-
                             b1.PrimitiveCollection<string>("QuestManagerRoleIds")
                                 .IsRequired();
-
-                            b1.Property<string>("SessionCoinCurrencyCode");
-
-                            b1.Property<int>("SessionEndBonus");
-
-                            b1.Property<int>("SessionStartBonus");
-
-                            b1.Property<int>("StartBonusWindowMinutes");
 
                             b1.PrimitiveCollection<string>("TrackingManagerRoleIds")
                                 .IsRequired();
@@ -1606,6 +1801,24 @@ namespace Muster.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildMusterSettings", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
+                        .WithOne()
+                        .HasForeignKey("Muster.Domain.Entities.Guilds.GuildMusterSettings", "GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildTrackingSettings", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
+                        .WithOne()
+                        .HasForeignKey("Muster.Domain.Entities.Guilds.GuildTrackingSettings", "GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Members.GuildMember", b =>
                 {
                     b.HasOne("Muster.Domain.Entities.Guilds.Guild", "Guild")
@@ -1623,6 +1836,17 @@ namespace Muster.Persistence.Migrations
                     b.Navigation("Guild");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Musters.MusterSessionLink", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Musters.ReactionMuster", "Muster")
+                        .WithMany("SessionLinks")
+                        .HasForeignKey("MusterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Muster");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionParticipant", b =>
@@ -1666,6 +1890,8 @@ namespace Muster.Persistence.Migrations
             modelBuilder.Entity("Muster.Domain.Entities.Musters.ReactionMuster", b =>
                 {
                     b.Navigation("Participants");
+
+                    b.Navigation("SessionLinks");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Quests.GuildQuest", b =>

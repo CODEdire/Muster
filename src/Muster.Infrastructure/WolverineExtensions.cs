@@ -1,6 +1,6 @@
 using System.Reflection;
 using Azure.Identity;
-using JasperFx.Resources;
+using JasperFx;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -42,6 +42,9 @@ public static class WolverineExtensions
     /// connection string the AppHost wires through (<c>ConnectionStrings:messaging-management</c>, built
     /// from the emulator's HTTP management endpoint on port 5300).
     /// </summary>
+    /// <remarks>No host auto-provisions the SQL message-store schema (<c>muster.wolverine_*</c>) — see the SQL
+    /// persistence block below. The schema is managed out of band via exported scripts / the JasperFx db-* CLI;
+    /// see <c>docs/deployment.md</c> "Wolverine message-store schema".</remarks>
     public static TBuilder AddMusterMessaging<TBuilder>(this TBuilder builder, string hostName, string connectionName = "musterdb", string messagingConnectionName = "messaging")
         where TBuilder : IHostApplicationBuilder
     {
@@ -105,6 +108,13 @@ public static class WolverineExtensions
             if (!string.IsNullOrWhiteSpace(sqlConnectionString))
             {
                 opts.PersistMessagesWithSqlServer(sqlConnectionString, "muster");
+
+                // NO host auto-provisions the muster.wolverine_* schema. Auto-build on startup made every replica
+                // race the same DDL (and raced EF's migration), hanging deploys on Sch-M lock waits → SqlException
+                // -2. The schema is created/patched explicitly, out of band, via exported SQL scripts and the
+                // JasperFx db-* CLI (db-dump / db-apply / db-assert). See docs/deployment.md "Wolverine
+                // message-store schema". The migration host exposes those commands (RunJasperFxCommands).
+                opts.AutoBuildMessageStorageOnStartup = AutoCreate.None;
             }
 
             // Pick the Service Bus transport: emulator connection string takes priority (local), then live
@@ -149,13 +159,6 @@ public static class WolverineExtensions
                 c.SubscriptionNameForListener(_ => hostName);
             });
         });
-
-        // Let Wolverine create its SQL message-store tables on startup (idempotent). The Service Bus topology
-        // is provisioned by the AppHost, not Wolverine, so this hook is purely the SQL side.
-        if (!string.IsNullOrWhiteSpace(sqlConnectionString))
-        {
-            builder.Services.AddResourceSetupOnStartup();
-        }
 
         return builder;
     }

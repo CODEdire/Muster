@@ -20,17 +20,17 @@ public class WebLinkBuilder(IConfiguration config)
 
     public string? Guild(ulong guildId) => Build($"guilds/{guildId}");
 
-    /// <summary>The participation Sessions page for a guild.</summary>
-    public string? Sessions(ulong guildId) => Build($"guilds/{guildId}/sessions");
+    /// <summary>The participation Sessions page for a guild (Tracking group).</summary>
+    public string? Sessions(ulong guildId) => Build($"guilds/{guildId}/guild/tracking/sessions");
 
     /// <summary>The "create a tracking session" web wizard for a guild.</summary>
-    public string? NewSession(ulong guildId) => Build($"guilds/{guildId}/sessions/new");
+    public string? NewSession(ulong guildId) => Build($"guilds/{guildId}/guild/tracking/sessions/new");
 
     /// <summary>A single session's detail page.</summary>
-    public string? SessionDetail(Guid sessionId) => Build($"sessions/{sessionId}");
+    public string? SessionDetail(ulong guildId, Guid sessionId) => Build($"guilds/{guildId}/guild/tracking/sessions/{sessionId}");
 
     /// <summary>The tracking settings (background channels + policy) page for a guild.</summary>
-    public string? TrackingSettings(ulong guildId) => Build($"guilds/{guildId}/tracking");
+    public string? TrackingSettings(ulong guildId) => Build($"guilds/{guildId}/management/tracking");
 
     /// <summary>The member's personal dashboard.</summary>
     public string? Me() => Build("me");

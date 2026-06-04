@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Web.Components.Shared.Audit.Formatters;
@@ -161,17 +162,29 @@ public class ConfigFormatter : IAuditFormatter
         };
         return new AuditRender(summary, [Section("Tracking settings",
             ("Background opt-in", [new TextToken(p.BackgroundOptIn ? "yes" : "no")]),
-            ("Apply guards to sessions", [new TextToken(p.ApplyGuardsToSessions ? "yes" : "no")]),
+            ("Background guards", [new TextToken(GuardLabel(p.DefaultBackgroundGuards))]),
+            ("Session guards", [new TextToken(GuardLabel(p.DefaultSessionGuards))]),
+            ("Event guards", [new TextToken(GuardLabel(p.DefaultEventGuards))]),
             ("Session coin currency", [new TextToken(p.CoinCurrency ?? "—")]),
             ("Minutes per coin", [new TextToken(p.MinutesPerCoin.ToString())]),
-            ("Max session hours", [new TextToken(p.MaxSessionHours.ToString())]),
-            ("Activity retention (days)", [new TextToken(p.ActivityRetentionDays.ToString())]),
-            ("Min tracked seconds", [new TextToken(p.MinTrackedSeconds.ToString())]),
+            ("Max session hours", [new TextToken(p.MaxSessionHours?.ToString() ?? "server default")]),
+            ("Activity retention (days)", [new TextToken(p.ActivityRetentionDays?.ToString() ?? "server default")]),
+            ("Min tracked seconds", [new TextToken(p.MinTrackedSeconds?.ToString() ?? "server default")]),
             ("Stacking", [new TextToken(p.Stacking.ToString())]),
             ("Cap", [new TextToken(p.Cap?.ToString("0.##") ?? "—")]),
             ("Start bonus", [new TextToken($"{p.StartBonus:0.##}× × {p.StartWindowMinutes}m")]),
             ("End bonus", [new TextToken($"{p.EndBonus:0.##}× × {p.EndWindowMinutes}m")]),
             ("Multiply bonuses", [new TextToken(p.MultiplyBonuses ? "yes" : "no")]))]);
+    }
+
+    /// <summary>Short human label for an AFK-guard set, e.g. "deafened, alone" or "none".</summary>
+    private static string GuardLabel(AfkGuards g)
+    {
+        var parts = new List<string>(3);
+        if (g.Unmuted()) { parts.Add("muted"); }
+        if (g.Undeafened()) { parts.Add("deafened"); }
+        if (g.NotAlone()) { parts.Add("alone"); }
+        return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 
     private static AuditRender RenderTrackChannel(AuditEntryView entry, TrackedChannelPayload? p)

@@ -220,6 +220,12 @@ body::before {
 .btn-warn:hover { filter: brightness(1.08); }
 .btn-danger { background: #dc2626; color: #fff; border-color: transparent; }
 .btn-danger:hover { filter: brightness(1.08); }
+/* Positive primary (e.g. self check-in). */
+.btn-success { background: #16a34a; color: #fff; border-color: transparent; }
+.btn-success:hover { filter: brightness(1.08); }
+/* Quiet destructive: red outline that fills on hover — for removals that aren't the primary destructive action. */
+.btn-danger-ghost { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.btn-danger-ghost:hover { background: var(--danger); color: #fff; border-color: transparent; }
 .btn .material-symbols-outlined { font-size: 1.05rem; }
 
 /* ---- Theme toggle (segmented) ------------------------------------------- */
@@ -341,6 +347,38 @@ label.checkbox {
     gap: 0.6rem;
     cursor: pointer;
 }
+
+/* ---- Markdown editor (Discord-flavored toolbar + preview) ---------------- */
+.md-editor { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+.md-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 60%, var(--border)); }
+.md-toolbar button { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; background: transparent; color: var(--text-muted); border-radius: 6px; cursor: pointer; transition: background 0.12s ease, color 0.12s ease; }
+.md-toolbar button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); }
+.md-toolbar button.active { background: var(--accent); color: #fff; }
+.md-toolbar .material-symbols-outlined { font-size: 1.2rem; }
+.md-toolbar .md-sep { width: 1px; height: 1.3rem; background: var(--border); margin: 0 4px; }
+.md-toolbar .md-spacer { flex: 1; }
+.md-editor .md-textarea { display: block; width: 100%; border: 0; border-radius: 0; background: transparent; padding: 0.6rem 0.7rem; resize: vertical; font: inherit; line-height: 1.5; color: var(--text); }
+.md-editor .md-textarea:focus { outline: none; }
+.md-preview { padding: 0.6rem 0.7rem; min-height: 4.5rem; line-height: 1.5; }
+.md-preview > :first-child { margin-top: 0; }
+.md-preview > :last-child { margin-bottom: 0; }
+.md-preview-empty { color: var(--text-muted); font-style: italic; }
+
+/* ---- .mform: clean stacked field grid for settings/config forms ---------- */
+/* Interactive pages drop the <form> wrapper, so labels would render inline — stack them explicitly.
+   Shared by the muster settings panes and the template add/edit page. */
+.mform { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1.5rem; max-width: 680px; }
+.mform .field { display: flex; flex-direction: column; gap: 0.35rem; margin: 0; }
+.mform .field.span2 { grid-column: 1 / -1; }
+.mform .field > label { color: var(--text); font-size: 0.9rem; font-weight: 600; margin: 0; }
+.mform .field .hint { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
+/* Full width for value inputs/selects, but NOT the checkbox switch (it has a fixed track width). */
+.mform input:not([type="checkbox"]), .mform select, .mform textarea { width: 100%; }
+.mform .suffixed { display: flex; align-items: center; gap: 0.5rem; }
+.mform .suffixed input { width: 7rem; }
+.mform .suffixed span { color: var(--text-muted); font-size: 0.85rem; }
+.mform label.checkbox { font-weight: 600; color: var(--text); cursor: pointer; }
+@media (max-width: 640px) { .mform { grid-template-columns: 1fr; } }
 .message {
     padding: 0.75rem 1rem;
     border-radius: var(--radius-sm);
@@ -393,6 +431,50 @@ label.checkbox {
 .page-head h1 { margin: 0; }
 .page-head .subtitle { color: var(--text-muted); margin: 0.25rem 0 0; }
 .page-head .actions { margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* Breadcrumb-style page title: parent crumbs link out, the last is the current page. */
+.page-breadcrumb { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
+    font-size: 1.6rem; font-weight: 700; line-height: 1.25; margin: 0; }
+.page-breadcrumb a { color: var(--text-muted); }
+.page-breadcrumb a:hover { color: var(--accent); text-decoration: none; }
+.page-breadcrumb .crumb-current { color: inherit; }
+.page-breadcrumb .crumb-sep { color: var(--text-muted); font-weight: 400; }
+
+/* Sub-nav / action toolbar that sits under the breadcrumb. */
+.page-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
+    margin-top: 0.85rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+
+/* ---- Accordion ----------------------------------------------------------- */
+.accordion { display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 1.25rem; }
+.acc-item { overflow: hidden; }   /* .glass supplies the surface, border, radius + blur */
+.acc-header { width: 100%; display: flex; align-items: center; gap: 0.6rem;
+    padding: 1rem 1.25rem; background: none; border: none; cursor: pointer; color: inherit;
+    font-family: inherit; font-size: 1.05rem; font-weight: 600; text-align: left; }
+.acc-header:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.acc-icon { color: var(--text-muted); font-size: 1.2rem; }
+.acc-title { flex: 1; }
+.acc-summary { color: var(--text-muted); font-weight: 400; font-size: 0.85rem; }
+.acc-chevron { color: var(--text-muted); transition: transform 0.15s ease; }
+.acc-item.open .acc-chevron { transform: rotate(180deg); }
+.acc-body { padding: 0 1.25rem 1.25rem; }
+
+/* ---- Scrollbars (themed) ------------------------------------------------- */
+* { scrollbar-width: auto; scrollbar-color: var(--text-muted) transparent; }
+*::-webkit-scrollbar { width: 14px; height: 14px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 999px;
+    border: 3px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---- Save / status pill -------------------------------------------------- */
+.save-pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.75rem;
+    border-radius: 999px; font-size: 0.8rem; font-weight: 600; animation: save-pop 0.15s ease; }
+.save-pill.is-saving { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.save-pill.is-saved { background: color-mix(in srgb, #22c55e 22%, transparent); color: #22c55e; }
+.save-pill.is-error { background: color-mix(in srgb, #ef4444 22%, transparent); color: #ef4444; }
+.save-pill .material-symbols-outlined { font-size: 1rem; }
+@keyframes save-pop { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 /* ---- Card grids ---------------------------------------------------------- */
 .card-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }

@@ -24,10 +24,10 @@ else if (State == AccessState.Forbidden)
 else if (State == AccessState.Ready)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/tracking">← Tracking</a>
+        <a class="back-link" href="@MusterLinks.TrackingSettings(GuildId)">← Tracking</a>
         <h1>Reward multipliers</h1>
         <p class="subtitle">Boost (or dampen) participation rewards during set windows, schedules, or for roles.
-            Stacking &amp; cap are on the <a href="/guilds/@GuildId/tracking">Tracking</a> page.</p>
+            Stacking &amp; cap are on the <a href="@MusterLinks.TrackingSettings(GuildId)">Tracking</a> page.</p>
     </div>
 
     @if (Message is not null)

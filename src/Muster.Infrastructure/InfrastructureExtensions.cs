@@ -18,7 +18,6 @@ using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
 using Muster.Infrastructure.Commands.Membership;
-using Muster.Infrastructure.Commands.Musters;
 using Muster.Infrastructure.Commands.Quests;
 using Muster.Infrastructure.Commands.Events;
 using Muster.Infrastructure.Commands.Seasons;
@@ -46,8 +45,20 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
         builder.Services.AddScoped<IQuestReadService, QuestReadService>();
         builder.Services.AddScoped<MusterService>();
+        builder.Services.AddScoped<Services.Musters.IMusterReadService, Services.Musters.MusterReadService>();
+        builder.Services.AddScoped<Services.Musters.GuildMusterSettingsService>();
+        builder.Services.AddScoped<Services.Musters.MusterTemplateService>();
+        // Platform defaults for a guild's muster settings (AppConfig / appsettings) — seed new rows + fill read-misses.
+        builder.Services.Configure<Domain.Entities.Guilds.GuildMusterSettings>(
+            builder.Configuration.GetSection("GuildDefaults:Musters"));
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
+        builder.Services.AddScoped<Services.Tracking.GuildTrackingSettingsService>();
+        // Platform defaults for a guild's tracking settings (AppConfig / appsettings) — seed new rows + fill read-misses.
+        builder.Services.Configure<Domain.Entities.Guilds.GuildTrackingSettings>(
+            builder.Configuration.GetSection("GuildDefaults:Tracking"));
+        // Platform-wide tracking retention cap (appsettings "Tracking:MaxActivityRetentionDays"; 0 = unlimited).
+        builder.Services.Configure<Services.Tracking.TrackingRetentionOptions>(builder.Configuration.GetSection("Tracking"));
         builder.Services.AddScoped<BackgroundTrackingService>();
         builder.Services.AddScoped<RewardMultiplierService>();
         builder.Services.AddScoped<ParticipationReadService>();
@@ -119,8 +130,6 @@ public static class InfrastructureExtensions
             .AddStandardResilienceHandler();
         builder.Services.AddScoped<Services.Currencies.CurrencyWebhookDispatcher>();
         builder.Services.AddScoped<Services.Currencies.ICurrencyWebhookService, Services.Currencies.CurrencyWebhookService>();
-        // Note: MusterCommandService depends on IMusterPublisher (a Discord/bot concern), so it is
-        // registered by the bot host alongside its IMusterPublisher implementation — not here.
 
         return builder;
     }

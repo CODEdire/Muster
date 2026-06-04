@@ -1,0 +1,12 @@
+{
+  "// note": "Importable App Configuration seed for platform-wide guild defaults. See docs/app-configuration.md. Import with: az appconfig kv import -n <store> --source file --path config/appconfig.defaults.json --format json --separator :",
+  "GuildDefaults": {
+    "Musters": {
+      "BoardRetentionHours": 48,
+      "AutoCreateOnSession": false,
+      "CreatorAutoCheckIn": true,
+      "DefaultExpiryHours": 0,
+      "AutoCreateChannel": "DefaultChannel"
+    }
+  }
+}

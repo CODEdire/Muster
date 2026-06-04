@@ -1,0 +1,58 @@
+@* Reusable accordion. Declare <AccordionPane> children; each renders its own header + collapsible body.
+   SingleOpen makes it one-at-a-time; otherwise any number of panes can be open. A pane's Open parameter sets
+   its initial state. Styling lives in app.css under "Accordion". *@
+<CascadingValue Value="this" IsFixed="true">
+    <div class="accordion">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    /// <summary>When true, opening a pane closes the others (one open at a time). Default false (multi-open).</summary>
+    [Parameter] public bool SingleOpen { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private readonly List<AccordionPane> _panes = [];
+    private readonly HashSet<AccordionPane> _open = [];
+
+    internal bool IsOpen(AccordionPane pane) => _open.Contains(pane);
+
+    internal void Register(AccordionPane pane)
+    {
+        if (_panes.Contains(pane))
+        {
+            return;
+        }
+
+        _panes.Add(pane);
+        // Honor the pane's initial Open state — but in single-open mode keep at most one.
+        if (pane.Open && !(SingleOpen && _open.Count > 0))
+        {
+            _open.Add(pane);
+        }
+
+        StateHasChanged();
+    }
+
+    internal void Unregister(AccordionPane pane)
+    {
+        _panes.Remove(pane);
+        _open.Remove(pane);
+    }
+
+    internal void Toggle(AccordionPane pane)
+    {
+        if (!_open.Remove(pane))
+        {
+            if (SingleOpen)
+            {
+                _open.Clear();
+            }
+
+            _open.Add(pane);
+        }
+
+        StateHasChanged();
+    }
+}

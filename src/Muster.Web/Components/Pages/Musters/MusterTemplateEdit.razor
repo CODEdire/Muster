@@ -1,0 +1,230 @@
+@page "/guilds/{GuildIdRaw}/management/musters/templates/new"
+@page "/guilds/{GuildIdRaw}/management/musters/templates/{TemplateId:guid}/edit"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject MusterTemplateService Templates
+@inject ICurrencyAdminService CurrencyAdmin
+@using Muster.Contracts
+@using Muster.Domain.Entities.Musters
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>@(IsNew ? "New" : "Edit") muster template — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[]
+                {
+                    new("Admin", $"/guilds/{GuildId}/admin"),
+                    new("Muster settings", MusterLinks.MusterSettings(GuildId)),
+                    new("Templates", MusterLinks.MusterTemplates(GuildId)),
+                    new(IsNew ? "New template" : "Edit template"),
+                })"
+                Subtitle="A named reward preset creators pick from. Its values override the guild defaults.">
+        <Toolbar>
+            @if (_t is not null)
+            {
+                <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterTemplates(GuildId)">Cancel</a>
+                <button type="button" class="btn btn-sm" disabled="@_saving" @onclick="SaveAsync">
+                    <span class="material-symbols-outlined">save</span> @(IsNew ? "Create template" : "Save changes")
+                </button>
+            }
+        </Toolbar>
+    </PageHeader>
+
+    @if (_t is null)
+    {
+        <div class="panel glass empty">That template doesn't exist.</div>
+    }
+    else
+    {
+        @if (Message is not null)
+        {
+            <p class="message">@Message</p>
+        }
+
+        <Accordion>
+            <AccordionPane Title="Template" Icon="label" Open="true">
+                <p class="subtitle">How this template is identified in the admin/creator picker — not shown on the card.</p>
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Name</label>
+                        <input @bind="_t.Name" maxlength="100" placeholder="e.g. Tactical Strike Group" />
+                        <p class="hint">What admins/creators pick from the list.</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Description (admin only)</label>
+                        <input @bind="_t.Description" maxlength="300" placeholder="(optional) e.g. Use for weekly fleet ops" />
+                        <p class="hint"><strong>Not shown on the card.</strong> A private note to help pick the right template.</p>
+                    </div>
+                    <div class="field span2">
+                        <label class="checkbox">
+                            <input type="checkbox" @bind="_t.Enabled" />
+                            <span>Enabled</span>
+                        </label>
+                        <p class="hint">Disabled templates stay for history but aren't offered when creating.</p>
+                    </div>
+                </div>
+            </AccordionPane>
+
+            <AccordionPane Title="Card content" Icon="article" Open="true">
+                <p class="subtitle">What members see on the posted muster card. Authors can still override per muster.</p>
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Default card title</label>
+                        <input @bind="_t.Title" maxlength="120" placeholder="(optional)" />
+                        <p class="hint">Heading on the card when the author doesn't set one.</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Default card prompt</label>
+                        <MarkdownEditor @bind-Value="_t.Prompt" Rows="3" MaxLength="500" Placeholder="(optional) what members are checking in for" />
+                        <p class="hint">The card text (Discord markdown supported). Used when the author leaves the prompt blank — lets a creator post in one click.</p>
+                    </div>
+                </div>
+            </AccordionPane>
+
+            <AccordionPane Title="Rewards" Icon="paid" Open="true">
+                <p class="subtitle">Paid at close to everyone on the roster (overrides the guild defaults).</p>
+                <div class="mform">
+                    <div class="field">
+                        <label>Points</label>
+                        <input type="number" min="0" @bind="_t.Points" />
+                        <p class="hint">Participation points per check-in.</p>
+                    </div>
+                    <div class="field">
+                        <label>Coins</label>
+                        <input type="number" min="0" @bind="_t.Coins" />
+                        <p class="hint">Spendable coins per check-in (needs a currency).</p>
+                    </div>
+                    <div class="field span2">
+                        <label>Coin currency</label>
+                        <select @bind="_t.CoinCurrencyId">
+                            <option value="">— none —</option>
+                            @foreach (var c in _coins)
+                            {
+                                <option value="@c.Id">@c.Code — @c.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field span2">
+                        <label>Minimum check-ins to reward</label>
+                        <input type="number" min="0" placeholder="No minimum" @bind="_t.MinCheckIns" />
+                        <p class="hint">If fewer than this check in, nobody is rewarded. Blank = no minimum.</p>
+                    </div>
+                </div>
+            </AccordionPane>
+
+            <AccordionPane Title="Limits & lifecycle" Icon="timer" Open="true">
+                <p class="subtitle">Capacity and timing for musters created from this template.</p>
+                <div class="mform">
+                    <div class="field">
+                        <label>Capacity</label>
+                        <input type="number" min="0" placeholder="Uncapped" @bind="_t.Capacity" />
+                        <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+                    </div>
+                    <div class="field">
+                        <label>Auto-close after</label>
+                        <div class="suffixed"><input type="number" min="0" placeholder="No expiry" @bind="_t.ExpiryHours" /><span>hours</span></div>
+                        <p class="hint">Max active time before the muster auto-closes.</p>
+                    </div>
+                    <div class="field">
+                        <label>Keep terminal cards for</label>
+                        <div class="suffixed"><input type="number" min="0" @bind="_t.RetentionHours" /><span>hours</span></div>
+                        <p class="hint">How long closed cards linger before cleanup.</p>
+                    </div>
+                    <div class="field">
+                        <label>When it auto-closes</label>
+                        <select @bind="_t.ResolveMode">
+                            <option value="">Inherit guild default</option>
+                            <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                            <option value="@MusterResolveMode.Review">Hold for review</option>
+                        </select>
+                        <p class="hint">Review holds the muster pending until an owner/manager approves.</p>
+                    </div>
+                </div>
+            </AccordionPane>
+        </Accordion>
+    }
+}
+
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    [Parameter] public Guid? TemplateId { get; set; }
+
+    private bool IsNew => TemplateId is null;
+
+    private MusterTemplate? _t;
+    private IReadOnlyList<CurrencyView> _coins = [];
+    private bool _saving;
+
+    protected override async Task LoadAsync()
+    {
+        _coins = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+        _t = IsNew
+            ? new MusterTemplate { GuildId = GuildId, Enabled = true, RetentionHours = 48 }
+            : await Templates.GetAsync(GuildId, TemplateId!.Value);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_t is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_t.Name))
+        {
+            Message = "Give the template a name.";
+            return;
+        }
+
+        if (_t.Coins > 0 && _t.CoinCurrencyId is null)
+        {
+            Message = "Pick a coin currency, or set coins to 0.";
+            return;
+        }
+
+        if (_t.Points < 0 || _t.Coins < 0 || _t.RetentionHours < 0 || _t.Capacity is < 0 || _t.ExpiryHours is < 0 || _t.MinCheckIns is < 0)
+        {
+            Message = "Points, coins, capacity, expiry, retention, and minimum can't be negative.";
+            return;
+        }
+
+        if (_t.Capacity is { } cap && _t.MinCheckIns is { } min && min > cap)
+        {
+            Message = "Minimum check-ins can't be more than the capacity.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _t.GuildId = GuildId;
+            if (_t.Coins <= 0) { _t.CoinCurrencyId = null; }
+            if (_t.Capacity is <= 0) { _t.Capacity = null; }
+            if (_t.ExpiryHours is <= 0) { _t.ExpiryHours = null; }
+
+            var saved = await Templates.SaveAsync(_t);
+            if (saved is null)
+            {
+                Message = "Couldn't save that template.";
+                return;
+            }
+
+            await AuditAsync("muster.template", $"{(IsNew ? "create" : "update")}:{saved.Name}");
+            Nav.NavigateTo(MusterLinks.MusterTemplates(GuildId));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

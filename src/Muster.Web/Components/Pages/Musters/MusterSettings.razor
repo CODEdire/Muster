@@ -1,0 +1,383 @@
+@page "/guilds/{GuildIdRaw}/management/musters"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@implements IDisposable
+@inject ConfigCommandService Config
+@inject GuildMusterSettingsService MusterStore
+@inject ICurrencyAdminService CurrencyAdmin
+@inject Muster.Web.GuildChannelOptions Channels
+@using Muster.Contracts
+@using Muster.Infrastructure.Commands.Membership
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Muster settings — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings") })"
+                Subtitle="Defaults for new musters and where their cards post.">
+        <Toolbar>
+            <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterTemplates(GuildId)">
+                <span class="material-symbols-outlined">dashboard_customize</span> Manage templates
+            </a>
+            @if (_save != SaveStatus.None)
+            {
+                <span class="save-pill is-@_save.ToString().ToLowerInvariant()">
+                    <span class="material-symbols-outlined">@(_save switch { SaveStatus.Saving => "sync", SaveStatus.Saved => "check_circle", _ => "error" })</span>
+                    @(_save switch { SaveStatus.Saving => "Saving…", SaveStatus.Saved => "Saved", _ => _saveMsg ?? "Error" })
+                </span>
+            }
+        </Toolbar>
+    </PageHeader>
+
+    <Accordion SingleOpen="true">
+    <AccordionPane Title="Muster defaults" Icon="tune" Open="true" Summary="@DefaultsSummary">
+        <p class="subtitle">Applied to a muster when no template overrides them.</p>
+        <div class="mform">
+            <div class="field span2">
+                <label>Card channel</label>
+                <select @bind="Input.ChannelId" @bind:after="ScheduleSave">
+                    <option value="0">— none (post where the command runs) —</option>
+                    @foreach (var grp in _chat.GroupBy(c => c.Kind))
+                    {
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
+                            {
+                                <option value="@c.Id">@ChannelGlyph(c.Kind)@c.Name</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+                <p class="hint">Where cards post by default. Authors may override per muster.</p>
+            </div>
+            <div class="field">
+                <label>Keep terminal cards for</label>
+                <div class="suffixed"><input type="number" min="0" @bind="Input.RetentionHours" @bind:after="ScheduleSave" /><span>hours</span></div>
+                <p class="hint">How long closed cards linger before cleanup.</p>
+            </div>
+            <div class="field">
+                <label>Auto-close after</label>
+                <div class="suffixed"><input type="number" min="0" placeholder="No expiry" @bind="Input.ExpiryHours" @bind:after="ScheduleSave" /><span>hours</span></div>
+                <p class="hint">Max active time before a muster auto-closes (linked ones lock until the session ends).</p>
+            </div>
+            <div class="field">
+                <label>When a muster auto-closes</label>
+                <select @bind="Input.ResolveMode" @bind:after="ScheduleSave">
+                    <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                    <option value="@MusterResolveMode.Review">Hold for review</option>
+                </select>
+                <p class="hint">Review soft-closes to a pending state so an owner/manager approves before paying.</p>
+            </div>
+            <div class="field">
+                <label>Default points</label>
+                <input type="number" min="0" placeholder="Not assigned" @bind="Input.Points" @bind:after="ScheduleSave" />
+                <p class="hint">Participation points per check-in.</p>
+            </div>
+            <div class="field">
+                <label>Default coins</label>
+                <input type="number" min="0" placeholder="Not assigned" @bind="Input.Coins" @bind:after="ScheduleSave" />
+                <p class="hint">Spendable coins per check-in.</p>
+            </div>
+            <div class="field">
+                <label>Minimum check-ins to reward</label>
+                <input type="number" min="0" placeholder="No minimum" @bind="Input.MinCheckIns" @bind:after="ScheduleSave" />
+                <p class="hint">If fewer than this check in, nobody is rewarded. 0 = no minimum.</p>
+            </div>
+            <div class="field span2">
+                <label>Coin currency</label>
+                <select @bind="Input.CoinCurrencyId" @bind:after="ScheduleSave">
+                    <option value="">— none —</option>
+                    @foreach (var c in _coins)
+                    {
+                        <option value="@c.Id">@c.Code — @c.Name</option>
+                    }
+                </select>
+                <p class="hint">Spendable currency the coin reward is minted in.</p>
+            </div>
+            <div class="field span2">
+                <label class="checkbox">
+                    <input type="checkbox" @bind="Input.CreatorAutoCheckIn" @bind:after="ScheduleSave" />
+                    <span>Check the creator in automatically</span>
+                </label>
+                <p class="hint">Handy when the host is attending too. Authors can override per muster.</p>
+            </div>
+        </div>
+    </AccordionPane>
+
+    <AccordionPane Title="Auto-create on session" Icon="bolt" Summary="@AutoCreateSummary">
+        <p class="subtitle">Opening a tracking session posts + links a check-in muster and gates the session coin. Each session open can override.</p>
+        <div class="mform">
+            <div class="field span2">
+                <label class="checkbox">
+                    <input type="checkbox" @bind="Input.AutoCreate" @bind:after="ScheduleSave" />
+                    <span>Auto-create a check-in muster when a session opens</span>
+                </label>
+            </div>
+            <div class="field span2">
+                <label>Default coin gate</label>
+                <select @bind="Input.Gate" @bind:after="ScheduleSave">
+                    <option value="@SessionCoinGate.Any">Any — in any linked muster</option>
+                    <option value="@SessionCoinGate.All">All — in every linked muster</option>
+                    <option value="@SessionCoinGate.None">None — mint to all attendees</option>
+                </select>
+                <p class="hint">How the session's spendable coin is gated by check-in at close.</p>
+            </div>
+            <div class="field span2">
+                <label>Post the muster in</label>
+                <select @bind="Input.AutoCreateChannel" @bind:after="ScheduleSave">
+                    <option value="@MusterAutoCreateChannel.DefaultChannel">The default muster channel</option>
+                    <option value="@MusterAutoCreateChannel.SessionChannel">The session's own channel</option>
+                </select>
+                <p class="hint">Where an auto-created card posts. The session's channel is used only when the allow-list permits it — otherwise it falls back to the default channel.</p>
+            </div>
+        </div>
+    </AccordionPane>
+
+    <AccordionPane Title="Allowed channels" Icon="tag" Summary="@AllowedSummary">
+        <p class="subtitle">Where musters may post. <strong>Empty (nothing on the right) = any chat channel</strong>; otherwise only those on the right.</p>
+        @if (_chat.Count == 0)
+        {
+            <p class="subtitle warn-text">No channels available — check the bot is in this server and can view channels.</p>
+        }
+        <div class="dual">
+            <div class="dual-col">
+                <span class="dual-label">Available</span>
+                <select multiple size="10" @bind="_availSel">
+                    @foreach (var grp in _chat.Where(c => !_allowed.Contains(c.Id)).GroupBy(c => c.Kind))
+                    {
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
+                            {
+                                <option value="@c.Id">@ChannelGlyph(c.Kind)@c.Name</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+            </div>
+            <div class="dual-mid">
+                <button type="button" class="btn btn-sm" @onclick="MoveToAllowed" title="Allow selected" aria-label="Allow selected">
+                    <span class="material-symbols-outlined">chevron_right</span>
+                </button>
+                <button type="button" class="btn btn-sm" @onclick="MoveToAvailable" title="Remove selected" aria-label="Remove selected">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                </button>
+            </div>
+            <div class="dual-col">
+                <span class="dual-label">Allowed</span>
+                <select multiple size="10" @bind="_allowedSel">
+                    @foreach (var grp in _chat.Where(c => _allowed.Contains(c.Id)).GroupBy(c => c.Kind))
+                    {
+                        <optgroup label="@grp.Key">
+                            @foreach (var c in grp)
+                            {
+                                <option value="@c.Id">@ChannelGlyph(c.Kind)@c.Name</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+            </div>
+        </div>
+    </AccordionPane>
+    </Accordion>
+}
+
+<style>
+    .warn-text { color: #d97706; }
+    .dual { display: flex; gap: 1rem; align-items: stretch; }
+    .dual-col { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
+    .dual-col select { width: 100%; }
+    .dual-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .dual-mid { display: flex; flex-direction: column; gap: 0.6rem; justify-content: center; }
+    .dual-mid .btn { min-width: 3rem; padding: 0.55rem 0.8rem; line-height: 1; }
+    .dual-mid .btn .material-symbols-outlined { font-size: 1.6rem; }
+</style>
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private SettingsInput Input { get; set; } = new();
+    private IReadOnlyList<GuildChannelOptions.ChannelOption> _chat = [];
+    private IReadOnlyList<CurrencyView> _coins = [];
+    private readonly HashSet<ulong> _allowed = [];
+    private string[] _availSel = [];
+    private string[] _allowedSel = [];
+
+    private enum SaveStatus { None, Saving, Saved, Error }
+    private SaveStatus _save = SaveStatus.None;
+    private string? _saveMsg;
+
+    private const int DebounceMs = 600;
+    private const int HideMs = 10_000; // auto-hide the "Saved" pill after ~10s
+    private CancellationTokenSource? _debounce;
+    private CancellationTokenSource? _hide;
+
+    // At-a-glance header hints, recomputed on each render (autosave triggers StateHasChanged).
+    private string DefaultsSummary
+    {
+        get
+        {
+            var parts = new List<string>();
+
+            // Reward first; "no reward" makes plain that a 0/0 muster just tracks check-ins.
+            var reward = new List<string>();
+            if (Input.Points is > 0) { reward.Add($"{Input.Points} pts"); }
+            if (Input.Coins is > 0)
+            {
+                var code = _coins.FirstOrDefault(c => c.Id == Input.CoinCurrencyId)?.Code ?? "coins";
+                reward.Add($"{Input.Coins} {code}");
+            }
+            parts.Add(reward.Count == 0 ? "no reward" : string.Join(" + ", reward));
+
+            if (Input.MinCheckIns is > 0) { parts.Add($"min {Input.MinCheckIns}"); }
+            if (Input.ExpiryHours is > 0) { parts.Add($"auto-close {Input.ExpiryHours}h"); }
+            if (Input.CreatorAutoCheckIn) { parts.Add("self check-in"); }
+
+            return string.Join(" · ", parts);
+        }
+    }
+
+    private string AutoCreateSummary => Input.AutoCreate
+        ? $"On · gate {Input.Gate} · {(Input.AutoCreateChannel == MusterAutoCreateChannel.SessionChannel ? "session channel" : "default channel")}"
+        : "Off";
+
+    private string AllowedSummary => _allowed.Count == 0 ? "Any channel" : $"{_allowed.Count} channel{(_allowed.Count == 1 ? "" : "s")}";
+
+    protected override async Task LoadAsync()
+    {
+        _chat = await Channels.ChatAsync(GuildId);
+        _coins = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+
+        var ms = await MusterStore.GetAsync(GuildId);
+        Input = new SettingsInput
+        {
+            ChannelId = ms.MusterChannelId,
+            RetentionHours = ms.BoardRetentionHours,
+            // 0 is "not assigned" — surface as empty so placeholder shows.
+            Points = ms.DefaultPoints == 0 ? null : ms.DefaultPoints,
+            Coins = ms.DefaultCoins == 0 ? null : ms.DefaultCoins,
+            CoinCurrencyId = ms.DefaultCoinCurrencyId,
+            MinCheckIns = ms.DefaultMinCheckIns,
+            ExpiryHours = ms.DefaultExpiryHours == 0 ? null : ms.DefaultExpiryHours,
+            ResolveMode = ms.DefaultResolveMode,
+            CreatorAutoCheckIn = ms.CreatorAutoCheckIn,
+            AutoCreate = ms.AutoCreateOnSession,
+            Gate = ms.AutoCreateGate,
+            AutoCreateChannel = ms.AutoCreateChannel,
+        };
+        _allowed.Clear();
+        foreach (var id in ms.AllowedChannelIds)
+        {
+            _allowed.Add(id);
+        }
+    }
+
+    private void MoveToAllowed()
+    {
+        foreach (var id in _availSel)
+        {
+            if (ulong.TryParse(id, out var c)) { _allowed.Add(c); }
+        }
+        _availSel = [];
+        ScheduleSave();
+    }
+
+    private void MoveToAvailable()
+    {
+        foreach (var id in _allowedSel)
+        {
+            if (ulong.TryParse(id, out var c)) { _allowed.Remove(c); }
+        }
+        _allowedSel = [];
+        ScheduleSave();
+    }
+
+    // Debounced autosave — every change schedules a save ~600ms out, superseding any pending one.
+    private void ScheduleSave()
+    {
+        _debounce?.Cancel();
+        _hide?.Cancel(); // a new edit cancels a pending "hide the pill"
+        var cts = _debounce = new CancellationTokenSource();
+        _save = SaveStatus.Saving;
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(DebounceMs, cts.Token); }
+            catch (TaskCanceledException) { return; }
+            await SaveAsync();
+            StateHasChanged();
+            ScheduleHide();
+        });
+    }
+
+    // Fade the "Saved" pill after a short delay so it reads as a transient notification, not a permanent badge.
+    private void ScheduleHide()
+    {
+        _hide?.Cancel();
+        var hide = _hide = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(HideMs, hide.Token); }
+            catch (TaskCanceledException) { return; }
+            _save = SaveStatus.None;
+            StateHasChanged();
+        });
+    }
+
+    private async Task SaveAsync()
+    {
+        var allowed = _allowed.ToList();
+        var points = Input.Points ?? 0;
+        var coins = Input.Coins ?? 0;
+        var expiry = Input.ExpiryHours ?? 0;
+        var result = await Config.SetMusterSettingsAsync(
+            GuildId, Input.ChannelId, Input.RetentionHours, Input.AutoCreate, Input.Gate,
+            points, coins, Input.CoinCurrencyId, allowed, Input.CreatorAutoCheckIn, expiry, Input.AutoCreateChannel, Input.MinCheckIns,
+            Input.ResolveMode);
+
+        if (!result.IsError)
+        {
+            await AuditAsync("muster.config",
+                $"channel:{Input.ChannelId} retention:{Input.RetentionHours} expiry:{expiry} min:{Input.MinCheckIns?.ToString() ?? "none"} points:{points} coins:{coins} gate:{Input.Gate} auto:{Input.AutoCreate} autochannel:{Input.AutoCreateChannel} selfcheckin:{Input.CreatorAutoCheckIn} allowed:[{string.Join(",", allowed)}]");
+        }
+        _save = result.IsError ? SaveStatus.Error : SaveStatus.Saved;
+        _saveMsg = result.IsError ? result.Message : null;
+    }
+
+    public void Dispose()
+    {
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+        _hide?.Cancel();
+        _hide?.Dispose();
+    }
+
+    // Voice channels carry chat too; show the speaker glyph, text channels the hash.
+    private static string ChannelGlyph(string kind) => kind == "Voice" ? "🔊 " : "#";
+
+    public class SettingsInput
+    {
+        public ulong ChannelId { get; set; }
+        public int RetentionHours { get; set; } = 48;
+        // null/0 both mean "not assigned"/"no expiry" — placeholder shows.
+        public long? Points { get; set; }
+        public long? Coins { get; set; }
+        public Guid? CoinCurrencyId { get; set; }
+        public int? MinCheckIns { get; set; }
+        public int? ExpiryHours { get; set; }
+        public MusterResolveMode ResolveMode { get; set; } = MusterResolveMode.Pay;
+        public bool CreatorAutoCheckIn { get; set; } = true;
+        public bool AutoCreate { get; set; }
+        public SessionCoinGate Gate { get; set; } = SessionCoinGate.Any;
+        public MusterAutoCreateChannel AutoCreateChannel { get; set; } = MusterAutoCreateChannel.DefaultChannel;
+    }
+}

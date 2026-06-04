@@ -50,6 +50,11 @@ public class GuildSettings
     /// path. Holders of <see cref="OfficerRoleIds"/> are also treated as tracking managers (legacy alias).</summary>
     public List<ulong> TrackingManagerRoleIds { get; set; } = [];
 
+    /// <summary>Discord role ids allowed to post musters <b>from a template only</b> (rewards locked to the template
+    /// — no custom points/coins). Tracking managers + admins can also create custom musters. Lets muster creation be
+    /// delegated safely.</summary>
+    public List<ulong> MusterCreatorRoleIds { get; set; } = [];
+
     /// <summary>Discord role ids granted **read-only** access to audit log, ledger, and participation reports
     /// (no mutating power). Implied by Admin and any management role; this list adds non-staff observers
     /// (compliance / treasurer-without-mint roles).</summary>
@@ -62,66 +67,8 @@ public class GuildSettings
     /// </summary>
     public List<ulong> ParticipantRoleIds { get; set; } = [];
 
-    /// <summary>Points awarded per minute of voice attendance when a tracking session closes.</summary>
-    public int PointsPerVoiceMinute { get; set; } = 1;
-
-    /// <summary>
-    /// Background-plane consent default for members who haven't set their own preference. <c>false</c> (default)
-    /// = opt-out: background tracking is on, members may leave. <c>true</c> = opt-in: members aren't
-    /// background-tracked until they explicitly opt in. Does not affect bounded Sessions.
-    /// </summary>
-    public bool BackgroundTrackingOptIn { get; set; }
-
-    /// <summary>Spendable currency code that a Session mints on close (in addition to POINTS), or null to mint none.</summary>
-    public string? SessionCoinCurrencyCode { get; set; }
-
-    /// <summary>Eligible voice minutes per 1 unit of <see cref="SessionCoinCurrencyCode"/> on session close
-    /// (floored). 0 (default) disables session coin minting.</summary>
-    public int MinutesPerCoin { get; set; }
-
-    /// <summary>When true (default), bounded Sessions honor the same anti-AFK guards as the background plane —
-    /// time accrues only while a member is unmuted and not alone in the channel. When false, sessions count
-    /// raw presence.</summary>
-    public bool ApplyAfkGuardsToSessions { get; set; } = true;
-
-    /// <summary>Auto-close an active session once it has run this many hours (safety net for a session that's
-    /// never stopped — a forgotten manual op, a deleted channel, etc.). 0 = never auto-close.</summary>
-    public int MaxSessionHours { get; set; } = 24;
-
-    /// <summary>How many days of raw <c>ActivityRecord</c> rows to keep before the prune sweep deletes them
-    /// (daily rollups are kept, so stats survive). 0 (default) = keep raw rows forever.</summary>
-    public int ActivityRetentionDays { get; set; }
-
-    /// <summary>Minimum seconds a member must accrue in a session to be kept on its attendance roster — drops
-    /// drive-by join/leaves so they don't clutter the roster or attendee count. 0 (default) = keep everyone.</summary>
-    public int MinTrackedSeconds { get; set; }
-
-    // --- Reward multipliers & presence bonuses (P8) ---
-
-    /// <summary>How overlapping time-window multipliers combine: take the highest active factor (default) or
-    /// multiply them together. The role-multiplier factor always multiplies the resulting time factor.</summary>
-    public Enums.MultiplierStacking MultiplierStacking { get; set; } = Enums.MultiplierStacking.HighestWins;
-
-    /// <summary>Upper clamp on the final effective multiplier (after stacking + role factor). 0 (default) = no cap.</summary>
-    public decimal MultiplierCap { get; set; }
-
-    /// <summary>Flat POINTS bonus awarded on session close to members present at the start (see
-    /// <see cref="StartBonusWindowMinutes"/>). 0 (default) = no start bonus.</summary>
-    public int SessionStartBonus { get; set; }
-
-    /// <summary>Flat POINTS bonus awarded on session close to members present at the end (see
-    /// <see cref="EndBonusWindowMinutes"/>). 0 (default) = no end bonus.</summary>
-    public int SessionEndBonus { get; set; }
-
-    /// <summary>A member qualifies for the start bonus if they joined within this many minutes of the session start.</summary>
-    public int StartBonusWindowMinutes { get; set; } = 5;
-
-    /// <summary>A member qualifies for the end bonus if they were still present within this many minutes of the session end.</summary>
-    public int EndBonusWindowMinutes { get; set; } = 5;
-
-    /// <summary>When true, the active reward multiplier also scales the start/end presence bonuses (start bonus by
-    /// the factor at session start, end bonus by the factor at session end). Default false = flat bonuses.</summary>
-    public bool MultiplyPresenceBonuses { get; set; }
+    // Tracking settings (reward rates, AFK guards, session controls, multipliers, privacy) moved to their own
+    // table (GuildTrackingSettings) — see GuildTrackingSettingsService. Following the muster table-per-feature split.
 
     /// <summary>How many days of detailed ledger history to keep before the prune sweep folds older rows into a
     /// single carry-forward <c>Checkpoint</c> entry per (user, currency, season). Balances are preserved (the sum is
@@ -130,6 +77,8 @@ public class GuildSettings
 
     /// <summary>Quest-board configuration: approval workflow, auto-resolve timeouts, limits, and tier rewards.</summary>
     public QuestSettings Quests { get; set; } = new();
+
+    // Muster settings moved to their own table (GuildMusterSettings) — see GuildMusterSettingsService.
 }
 
 /// <summary>The quest-board slice of a guild's configuration.</summary>

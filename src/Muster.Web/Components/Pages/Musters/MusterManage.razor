@@ -1,0 +1,324 @@
+@page "/guilds/{GuildIdRaw}/guild/musters/manage"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IMusterReadService Reads
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Manage musters — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new("Manage") })"
+                Subtitle="@(_isManager ? "Every muster and its lifecycle." : "Musters you've posted.")">
+        <Toolbar>
+            @if (_isManager)
+            {
+                <a class="btn btn-sm" href="@MusterLinks.MusterTemplates(GuildId)">
+                    <span class="material-symbols-outlined">dashboard_customize</span> Templates
+                </a>
+                <a class="btn btn-sm" href="@MusterLinks.MusterSettings(GuildId)">
+                    <span class="material-symbols-outlined">tune</span> Settings
+                </a>
+            }
+            <a class="btn btn-sm" href="@MusterLinks.MusterNew(GuildId)">
+                <span class="material-symbols-outlined">add</span> New muster
+            </a>
+        </Toolbar>
+    </PageHeader>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_kpis is not null)
+    {
+        <div class="stat-grid">
+            <div class="stat glass">
+                <div class="label">Open</div>
+                <div class="num">@_kpis.Open.ToString("N0")</div>
+                @if (_kpis.Locked > 0)
+                {
+                    <div class="subtitle">+@_kpis.Locked locked</div>
+                }
+            </div>
+            <div class="stat glass">
+                <div class="label">Checked in (open)</div>
+                <div class="num">@_kpis.CheckedInOnOpen.ToString("N0")</div>
+            </div>
+            <div class="stat glass">
+                <div class="label">Linked to sessions</div>
+                <div class="num">@_kpis.Linked.ToString("N0")</div>
+            </div>
+            <div class="stat glass">
+                <div class="label">Total</div>
+                <div class="num">@_kpis.Total.ToString("N0")</div>
+            </div>
+        </div>
+    }
+
+    <div class="panel glass dg-frame dg-fill">
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input type="search" class="dg-search muster-search" placeholder="Search title or prompt…" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" />
+                <div class="dg-pill-row" aria-label="Status filter">
+                    @foreach (var f in _filters)
+                    {
+                        <button type="button" class="dg-pill @(_statusFilter == f.Key ? "active" : null)" @onclick="() => SetFilter(f.Key)">@f.Label</button>
+                    }
+                </div>
+            </div>
+            <div class="dg-actions">
+                <a class="btn btn-sm" href="@MusterLinks.MusterNew(GuildId)">
+                    <span class="material-symbols-outlined">add</span> New muster
+                </a>
+            </div>
+        </div>
+
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick='() => SetSort("name")'>Muster @Ind("name")</th>
+                        <th class="sortable" @onclick='() => SetSort("status")'>Status @Ind("status")</th>
+                        <th class="sortable num" @onclick='() => SetSort("checkedin")'>Checked in @Ind("checkedin")</th>
+                        <th class="num">Reward</th>
+                        <th>Linked</th>
+                        <th class="sortable" @onclick='() => SetSort("created")'>Created @Ind("created")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_list is null)
+                    {
+                        <tr class="dg-empty"><td colspan="7">Loading…</td></tr>
+                    }
+                    else if (Filtered.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="7">@(_list.Count == 0 ? "No musters yet — post one to get started." : "No musters match your filter.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var m in Paged)
+                        {
+                            <tr>
+                                <td><a href="@MusterLinks.MusterDetail(GuildId, m.Id)">@m.Display</a></td>
+                                <td>@StatusLabel(m)</td>
+                                <td class="num">
+                                    @m.CheckedIn@(m.Capacity is { } c ? $" / {c}" : "")
+                                    @if (m.MinCheckIns is { } min && min > 0)
+                                    {
+                                        <span class="muster-min" title="Minimum @min to reward">@(m.CheckedIn >= min ? "✅" : "⚠️") @min</span>
+                                    }
+                                </td>
+                                <td class="num">@RewardLabel(m.Points, m.Coins, m.CoinCode)</td>
+                                <td>
+                                    @if (m.Sessions.Count == 1)
+                                    {
+                                        <a href="@MusterLinks.SessionDetail(GuildId, m.Sessions[0].SessionId)">@m.Sessions[0].Name</a>
+                                    }
+                                    else if (m.Sessions.Count > 1)
+                                    {
+                                        <a href="@MusterLinks.MusterDetail(GuildId, m.Id)">@m.Sessions.Count sessions</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="muster-min">—</span>
+                                    }
+                                </td>
+                                <td><LocalTime Value="m.CreatedAt" /></td>
+                                <td class="dg-actions-col">
+                                    <a class="icon-btn" title="View" href="@MusterLinks.MusterDetail(GuildId, m.Id)"><span class="material-symbols-outlined">visibility</span></a>
+                                    @if (CanManage(m) && m.Status == MusterStatus.Open)
+                                    {
+                                        <a class="icon-btn" title="Edit" href="@MusterLinks.MusterEdit(GuildId, m.Id)"><span class="material-symbols-outlined">edit</span></a>
+                                        <button type="button" class="icon-btn" title="Lock for review" disabled="@_busy" @onclick="() => LockAsync(m.Id)"><span class="material-symbols-outlined">rule</span></button>
+                                    }
+                                    @* Linked musters pay + close with their session — no manual close from the grid. *@
+                                    @if (CanManage(m) && m.Sessions.Count == 0 && m.Status is MusterStatus.Open or MusterStatus.Locked)
+                                    {
+                                        <button type="button" class="icon-btn" title="@(m.Status == MusterStatus.Locked ? "Approve & pay" : "Close & pay")" disabled="@_busy" @onclick="() => CloseAsync(m.Id)"><span class="material-symbols-outlined">paid</span></button>
+                                    }
+                                    @if (CanManage(m) && m.Status == MusterStatus.Locked && m.Sessions.Count == 0)
+                                    {
+                                        <button type="button" class="icon-btn danger" title="Discard" disabled="@_busy" @onclick="() => DiscardAsync(m.Id)"><span class="material-symbols-outlined">block</span></button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dg-footer">
+            <div class="dg-footer-left">
+                <div class="dg-pagesize">
+                    Rows
+                    <select class="dg-select" value="@_pageSize" @onchange="OnPageSize">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+                <span class="dg-tz">@(Filtered.Count) of @(_list?.Count ?? 0) muster@(_list?.Count == 1 ? "" : "s")</span>
+            </div>
+            <div class="dg-pager">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurrentPage <= 1)" @onclick="Prev">← Prev</button>
+                <span>Page @CurrentPage of @TotalPages</span>
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurrentPage >= TotalPages)" @onclick="Next">Next →</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .muster-search { min-width: 18rem; }
+    .muster-min { color: var(--text-muted); font-size: 0.82rem; margin-left: 0.4rem; }
+</style>
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
+
+    private IReadOnlyList<MusterListItem>? _list;
+    private MusterKpis? _kpis;
+    private bool _isManager;
+    private bool _busy;
+
+    private string _search = "";
+    private string _statusFilter = "all";
+    private string _sortKey = "created";
+    private bool _descending = true;
+    private int _page = 1;
+    private int _pageSize = 25;
+
+    private static readonly (string Key, string Label)[] _filters =
+        [("all", "All"), ("open", "Open"), ("locked", "Locked"), ("closed", "Closed")];
+
+    protected override async Task LoadAsync()
+    {
+        _isManager = await Auth.IsTrackingManagerAsync(GuildId, UserId);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var all = await Reads.ListAsync(GuildId, includeClosed: true);
+        // Managers manage everything; a template-only creator manages only the musters they own.
+        _list = _isManager ? all : all.Where(m => m.CreatedBy == UserId).ToList();
+        _kpis = _isManager ? await Reads.GetKpisAsync(GuildId) : null;
+    }
+
+    private bool CanManage(MusterListItem m) => _isManager || m.CreatedBy == UserId;
+
+    private IReadOnlyList<MusterListItem> Filtered
+    {
+        get
+        {
+            if (_list is null)
+            {
+                return [];
+            }
+
+            IEnumerable<MusterListItem> q = _list;
+
+            q = _statusFilter switch
+            {
+                "open" => q.Where(m => m.Status == MusterStatus.Open),
+                "locked" => q.Where(m => m.Status == MusterStatus.Locked),
+                "closed" => q.Where(m => m.Status is MusterStatus.Closed or MusterStatus.Expired or MusterStatus.Cancelled),
+                _ => q,
+            };
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(m => m.Display.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+
+            Func<MusterListItem, IComparable> key = _sortKey switch
+            {
+                "name" => m => m.Display,
+                "status" => m => (int)m.Status,
+                "checkedin" => m => m.CheckedIn,
+                _ => m => m.CreatedAt,
+            };
+
+            q = _descending ? q.OrderByDescending(key).ThenByDescending(m => m.CreatedAt)
+                            : q.OrderBy(key).ThenByDescending(m => m.CreatedAt);
+            return q.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
+    private int CurrentPage => Math.Clamp(_page, 1, TotalPages);
+    private IReadOnlyList<MusterListItem> Paged => Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize).ToList();
+
+    private void SetFilter(string key) { _statusFilter = key; _page = 1; }
+    private void ResetPage() => _page = 1;
+    private void OnPageSize(ChangeEventArgs e) { _pageSize = int.TryParse(e.Value as string, out var v) ? v : 25; _page = 1; }
+    private void Prev() => _page = CurrentPage - 1;
+    private void Next() => _page = CurrentPage + 1;
+
+    private void SetSort(string column)
+    {
+        // Default direction: descending for created/checked-in (most first), ascending for name/status.
+        _descending = _sortKey == column ? !_descending : column is "created" or "checkedin";
+        _sortKey = column;
+        _page = 1;
+    }
+
+    private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    private Task CloseAsync(Guid musterId) => ActAsync(new CloseMuster(GuildId, UserId, musterId), "Done.");
+    private Task LockAsync(Guid musterId) => ActAsync(new LockMuster(GuildId, UserId, musterId), "Locked for review.");
+    private Task DiscardAsync(Guid musterId) => ActAsync(new CancelMuster(GuildId, UserId, musterId), "Muster discarded.");
+
+    private async Task ActAsync(IGuildCommand command, string okMessage)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Bus.InvokeAsync<Result>(command);
+            Message = result.Ok ? okMessage : MusterStatusText.Friendly(result.Status);
+        }
+        finally
+        {
+            _busy = false;
+            await ReloadAsync();
+        }
+    }
+
+    private static string RewardLabel(long points, long coins, string? coinCode)
+    {
+        var parts = new List<string>();
+        if (points > 0) { parts.Add($"{points} pts"); }
+        if (coins > 0) { parts.Add($"{coins} {coinCode ?? "coins"}"); }
+        return parts.Count == 0 ? "—" : string.Join(" + ", parts);
+    }
+
+    private static string StatusLabel(MusterListItem m) => m.Status switch
+    {
+        MusterStatus.Open => "🟢 Open",
+        MusterStatus.Locked => m.Sessions.Count > 0 ? "🔒 Locked" : "🔍 Pending review",
+        MusterStatus.Closed => "✅ Closed",
+        MusterStatus.Expired => "⌛ Expired",
+        MusterStatus.Cancelled => "🚫 Cancelled",
+        _ => m.Status.ToString(),
+    };
+}

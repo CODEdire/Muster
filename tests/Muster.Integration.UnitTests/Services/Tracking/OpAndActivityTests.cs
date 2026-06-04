@@ -1,12 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Enums;
 using Muster.Infrastructure;
 using Muster.Infrastructure.Commands;
 using Xunit;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Events;
 using Muster.Infrastructure.Services.Tracking;
@@ -101,6 +104,56 @@ public class OpAndActivityTests
     }
 
     [Fact]
+    public async Task AutoCreateMuster_PostsToSessionChannel_OnlyWhenAllowed()
+    {
+        using var db = await SeededAsync();
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var auth = new GuildAuthorizationService(db);
+        var musters = new MusterService(db, awards, auth);
+        var store = new GuildMusterSettingsService(db, Microsoft.Extensions.Options.Options.Create(new GuildMusterSettings()));
+        var sut = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters, store);
+
+        // Auto-create on; post into the session's channel; default = 700; only 500 is allow-listed.
+        db.GuildMusterSettings.Add(new GuildMusterSettings
+        {
+            GuildId = 1, AutoCreateOnSession = true,
+            AutoCreateChannel = MusterAutoCreateChannel.SessionChannel,
+            MusterChannelId = 700, AllowedChannelIds = [500],
+        });
+        await db.SaveChangesAsync();
+
+        // Session in an allowed channel → muster posts there.
+        await sut.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
+        var inAllowed = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(500ul, inAllowed.ChannelId);
+
+        // Session in a non-allowed channel → falls back to the default channel.
+        await sut.OpenManualAsync(1, voiceChannelId: 999, openedBy: 5);
+        var notAllowed = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(700ul, notAllowed.ChannelId);
+    }
+
+    [Fact]
+    public async Task AutoCreateMuster_NoDefaultChannel_FallsBackToSessionChannel()
+    {
+        using var db = await SeededAsync();
+        var awards = new CurrencyService(db, new RecordingMessageBus());
+        var auth = new GuildAuthorizationService(db);
+        var musters = new MusterService(db, awards, auth);
+        var store = new GuildMusterSettingsService(db, Microsoft.Extensions.Options.Options.Create(new GuildMusterSettings()));
+        var sut = new TrackingSessionService(db, awards, auth, new RewardMultiplierService(db), new RecordingMessageBus(), musters, store);
+
+        // Auto-create on, DefaultChannel mode, but NO default muster channel + no allow-list.
+        db.GuildMusterSettings.Add(new GuildMusterSettings { GuildId = 1, AutoCreateOnSession = true });
+        await db.SaveChangesAsync();
+
+        // The auto-created muster falls back to the session's own voice channel so a card still posts.
+        await sut.OpenManualAsync(1, voiceChannelId: 555, openedBy: 5);
+        var muster = await db.ReactionMusters.OrderByDescending(m => m.CreatedAt).FirstAsync();
+        Assert.Equal(555ul, muster.ChannelId);
+    }
+
+    [Fact]
     public async Task MessageActivity_RecordsRollup_AndDedupes()
     {
         using var db = await SeededAsync();
@@ -129,12 +182,12 @@ public class OpAndActivityTests
         using var db = await SeededAsync();
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.SessionCoinCurrencyCode = "COIN";
-        guild.Settings.MinutesPerCoin = 30;
-        guild.Settings.ApplyAfkGuardsToSessions = false; // single-user accrual test
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(1, t =>
+        {
+            t.SessionCoinCurrencyCode = "COIN";
+            t.MinutesPerCoin = 30;
+            t.DefaultSessionGuards = AfkGuards.None; // single-user accrual test
+        });
 
         var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var now = DateTimeOffset.UtcNow;
@@ -152,11 +205,12 @@ public class OpAndActivityTests
         using var db = await SeededAsync();
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.SessionCoinCurrencyCode = "COIN";
-        guild.Settings.MinutesPerCoin = 30;
-        guild.Settings.ApplyAfkGuardsToSessions = false;
-        guild.Settings = guild.Settings;
+        await db.SeedTrackingAsync(1, t =>
+        {
+            t.SessionCoinCurrencyCode = "COIN";
+            t.MinutesPerCoin = 30;
+            t.DefaultSessionGuards = AfkGuards.None;
+        });
         var now = DateTimeOffset.UtcNow;
         db.RewardMultipliers.Add(new RewardMultiplier
         {
@@ -178,12 +232,12 @@ public class OpAndActivityTests
     public async Task SessionClose_AwardsStartAndEndPresenceBonuses()
     {
         using var db = await SeededAsync();
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.ApplyAfkGuardsToSessions = false;
-        guild.Settings.SessionStartBonus = 50;
-        guild.Settings.SessionEndBonus = 25;
-        guild.Settings = guild.Settings;
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(1, t =>
+        {
+            t.DefaultSessionGuards = AfkGuards.None;
+            t.SessionStartBonus = 50;
+            t.SessionEndBonus = 25;
+        });
 
         var sut = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var now = DateTimeOffset.UtcNow;
@@ -211,7 +265,7 @@ public class OpAndActivityTests
         Assert.True((await sut.SetSessionCoinAsync(1, "NS", 30)).IsError);
         Assert.False((await sut.SetSessionCoinAsync(1, "SP", 30)).IsError);
 
-        var settings = (await db.FindGuildAsync(1))!.Settings;
+        var settings = await db.GetTrackingSettingsAsync(1);
         Assert.Equal("SP", settings.SessionCoinCurrencyCode);
         Assert.Equal(30, settings.MinutesPerCoin);
     }
@@ -279,9 +333,7 @@ public class OpAndActivityTests
     public async Task PruneOldRecords_DeletesBeyondRetention_KeepsRecent()
     {
         using var db = await SeededAsync();
-        var guild = await db.FindGuildAsync(1);
-        guild!.Settings.ActivityRetentionDays = 30;
-        guild.Settings = guild.Settings;
+        await db.SeedTrackingAsync(1, t => t.ActivityRetentionDays = 30);
         var now = DateTimeOffset.UtcNow;
         db.ActivityRecords.Add(new ActivityRecord { GuildId = 1, ChannelId = 100, UserId = 10, Type = ActivityType.Message, Timestamp = now.AddDays(-40), SourceMessageId = 1 });
         db.ActivityRecords.Add(new ActivityRecord { GuildId = 1, ChannelId = 100, UserId = 10, Type = ActivityType.Message, Timestamp = now.AddDays(-1), SourceMessageId = 2 });

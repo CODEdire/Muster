@@ -1,6 +1,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Muster.Domain;
+using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Persistence;
 namespace Muster.Infrastructure.Commands.Tracking;
@@ -15,7 +16,8 @@ public class TrackingCommandService(TrackingSessionService sessions, ITrackingAu
 {
     public async Task<CommandResult<Guid>> StartAsync(
         ulong guildId, ulong actorId, ulong voiceChannelId, string name, string? channelName,
-        bool requireUnmuted, bool requireUndeafened, bool requireNotAlone, CancellationToken ct = default)
+        bool? requireUnmuted = null, bool? requireUndeafened = null, bool? requireNotAlone = null,
+        bool? createMuster = null, CancellationToken ct = default)
     {
         if (!await authorizer.AuthorizeAsync(new GuildActor(guildId, actorId), 0, TrackingPermission.ManageSessions, ct))
         {
@@ -24,12 +26,14 @@ public class TrackingCommandService(TrackingSessionService sessions, ITrackingAu
 
         var cleanName = string.IsNullOrWhiteSpace(name) ? "Manual session" : name.Trim();
         var session = await sessions.OpenManualAsync(
-            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireUndeafened, requireNotAlone, ct);
+            guildId, voiceChannelId, actorId, cleanName, channelName, requireUnmuted, requireUndeafened, requireNotAlone,
+            createMuster: createMuster, ct: ct);
 
+        // Report the resolved guards (a null override fell back to the channel/guild default).
         var skips = new List<string>();
-        if (requireUnmuted) skips.Add("muted");
-        if (requireUndeafened) skips.Add("deafened");
-        if (requireNotAlone) skips.Add("alone");
+        if (session.Guards.Unmuted()) skips.Add("muted");
+        if (session.Guards.Undeafened()) skips.Add("deafened");
+        if (session.Guards.NotAlone()) skips.Add("alone");
         var guards = skips.Count == 0 ? "counting all presence" : "skipping " + string.Join("/", skips) + " members";
 
         return CommandResult<Guid>.Ok(session.Id,

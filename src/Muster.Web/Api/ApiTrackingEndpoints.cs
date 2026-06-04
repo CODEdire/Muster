@@ -36,24 +36,47 @@ public static class ApiTrackingEndpoints
     public static async Task<IResult> Leaderboard(ulong guildId, ParticipationReadService participation, int top = 25)
         => Results.Ok(await participation.VoiceLeaderboardAsync(guildId, top <= 0 ? 25 : Math.Min(top, 100)));
 
-    /// <summary>Currently-active sessions (paged).</summary>
+    /// <summary>Currently-active sessions (paged). Exposes per-member attendance, so it's auditor-tier (matches the
+    /// web Sessions page + the events stream), not scope-only.</summary>
     [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions/active")]
-    [RequireApiScope("read:tracking")]
-    public static async Task<IResult> ActiveSessions(ulong guildId, ParticipationReadService participation, int page = 1, int pageSize = 25)
-        => Results.Ok(await participation.ActiveSessionsPageAsync(guildId, null, "started", desc: true, Page(page), Size(pageSize)));
-
-    /// <summary>Closed session history (paged, newest first).</summary>
-    [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions")]
-    [RequireApiScope("read:tracking")]
-    public static async Task<IResult> SessionHistory(ulong guildId, ParticipationReadService participation, int page = 1, int pageSize = 25)
-        => Results.Ok(await participation.RecentSessionsPageAsync(guildId, null, "ended", desc: true, Page(page), Size(pageSize)));
-
-    /// <summary>One session with its attendance roster. The presence-event stream is not inlined here (it can be
-    /// large) — fetch it from the <c>/events</c> endpoint.</summary>
-    [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}")]
-    [RequireApiScope("read:tracking")]
-    public static async Task<IResult> SessionDetail(ulong guildId, Guid sessionId, ParticipationReadService participation)
+    [RequireApiScope("read:tracking", requireActor: true)]
+    public static async Task<IResult> ActiveSessions(
+        ulong guildId, HttpContext http, ParticipationReadService participation, GuildAuthorizationService roles, int page = 1, int pageSize = 25)
     {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
+        return Results.Ok(await participation.ActiveSessionsPageAsync(guildId, null, "started", desc: true, Page(page), Size(pageSize)));
+    }
+
+    /// <summary>Closed session history (paged, newest first). Auditor-tier (per-member attendance).</summary>
+    [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions")]
+    [RequireApiScope("read:tracking", requireActor: true)]
+    public static async Task<IResult> SessionHistory(
+        ulong guildId, HttpContext http, ParticipationReadService participation, GuildAuthorizationService roles, int page = 1, int pageSize = 25)
+    {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
+        return Results.Ok(await participation.RecentSessionsPageAsync(guildId, null, "ended", desc: true, Page(page), Size(pageSize)));
+    }
+
+    /// <summary>One session with its attendance roster. Auditor-tier (member identities + minutes). The presence-event
+    /// stream is not inlined here (it can be large) — fetch it from the <c>/events</c> endpoint.</summary>
+    [WolverineGet("/api/v1/guilds/{guildId}/tracking/sessions/{sessionId}")]
+    [RequireApiScope("read:tracking", requireActor: true)]
+    public static async Task<IResult> SessionDetail(
+        ulong guildId, Guid sessionId, HttpContext http, ParticipationReadService participation, GuildAuthorizationService roles)
+    {
+        if (await ApiReadGuards.RequireAuditorAsync(http, guildId, roles) is { } forbid)
+        {
+            return forbid;
+        }
+
         var detail = await participation.SessionDetailAsync(guildId, sessionId, includeEvents: false);
         return detail is null ? Results.NotFound(new { error = "session_not_found" }) : Results.Ok(detail);
     }
@@ -95,7 +118,10 @@ public static class ApiTrackingEndpoints
         => Results.Ok((await db.ListTrackedChannelsAsync(guildId)).Select(c => new
         {
             c.ChannelId, c.Name, Kind = c.Kind.ToString(), Mode = c.Mode.ToString(),
-            c.PointsPerMinute, c.PointsPerMessage, c.DailyCapPoints, Guards = c.Guards.ToString(), c.DeletedAt,
+            c.PointsPerMinute, c.PointsPerMessage, c.DailyCapPoints,
+            // Per-lane guard overrides; null = inherit the guild default for that lane.
+            BackgroundGuards = c.BackgroundGuards?.ToString(), SessionGuards = c.SessionGuards?.ToString(), EventGuards = c.EventGuards?.ToString(),
+            c.DeletedAt,
         }));
 
     /// <summary>The guild's reward multipliers.</summary>

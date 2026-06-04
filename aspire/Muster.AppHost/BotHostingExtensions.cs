@@ -1,5 +1,9 @@
 using Aspire.Hosting.Azure;
 using Azure.Provisioning.AppContainers;
+using Microsoft.Extensions.Configuration;
+using Muster.AppHost.Core;
+using Muster.AppHost.Options;
+using Muster.AppHost.PlatformExtensions;
 
 namespace Muster.AppHost;
 
@@ -25,42 +29,12 @@ internal static class BotHostingExtensions
     public const string ResourceName = "bot";
 
     public static IResourceBuilder<ProjectResource> AddMusterBot(
-        this IDistributedApplicationBuilder builder,
-        IResourceBuilder<AzureSqlDatabaseResource> db,
-        IResourceBuilder<AzureServiceBusResource> messaging,
-        IResourceBuilder<ParameterResource> discordToken,
-        IResourceBuilder<ProjectResource> migrations,
-        IResourceBuilder<AzureKeyVaultResource>? keyVault,
-        IResourceBuilder<AzureAppConfigurationResource>? appConfig,
-        IResourceBuilder<AzureBlobStorageContainerResource> dpKeys,
-        IResourceBuilder<AzureApplicationInsightsResource>? appInsights,
-        EndpointReference? webBaseUrl = null)
+        this IDistributedApplicationBuilder builder, MusterPlatform platform, EndpointReference? webBaseUrl = null)
     {
+        // All shared infra + RBAC role assignments wired by WithMusterPlatform — see PlatformWiringExtensions.
         var bot = builder.AddProject<Projects.Muster_Bot>(ResourceName)
-            .WithReference(db)
-            .WithMusterMessaging(messaging)
-            .WithReference(dpKeys)
-            .WithEnvironment("Discord__Token", discordToken)
-            // Data Protection wiring — both URIs are read by Infrastructure.AddMusterConnectorProtection
-            // to decide between Azure DP (Blob + KV wrap) and the local SQL fallback.
-            .WithEnvironment("DataProtection__WrapKeyName", KeyVaultConstants.DataProtectionWrapKeyName)
-            .WithEnvironment("DataProtection__Container", StorageConstants.DataProtectionContainerName)
-            .WaitForCompletion(migrations);
-
-        if (keyVault is not null)
-        {
-            bot.WithReference(keyVault);
-        }
-        if (appConfig is not null)
-        {
-            bot.WithReference(appConfig);
-        }
-        // App Insights ref publishes APPLICATIONINSIGHTS_CONNECTION_STRING which UseAzureMonitor() in
-        // ServiceDefaults picks up. Null in run mode → telemetry stays on the Aspire Dashboard via OTLP.
-        if (appInsights is not null)
-        {
-            bot.WithReference(appInsights);
-        }
+            .WithMusterPlatform(platform)
+            .WithEnvironment("Discord__Token", platform.DiscordToken);
 
         if (webBaseUrl is not null)
         {
@@ -68,22 +42,25 @@ internal static class BotHostingExtensions
             bot.WithEnvironment("Web__BaseUrl", webBaseUrl);
         }
 
+        // CPU/memory/grace from config (appsettings / user-secrets). Replica count is NOT configurable.
+        var cfg = builder.Configuration.GetSection(nameof(BotContainerOptions)).Get<BotContainerOptions>() ?? new();
+
         if (builder.ExecutionContext.IsPublishMode)
         {
             bot.PublishAsAzureContainerApp((_, app) =>
             {
                 var container = app.Template.Containers[0].Value!;
-                container.Resources.Cpu = 0.25;
-                container.Resources.Memory = "0.5Gi";
+                container.Resources.Cpu = cfg.Cpu;
+                container.Resources.Memory = cfg.Memory;
 
                 // Gateway singleton — second replica's identify gets rejected by Discord; also racy on
-                // currency awards / quest board renders during overlap. Pinned at 1 forever.
+                // currency awards / quest board renders during overlap. Pinned at 1 forever (NOT configurable).
                 app.Template.Scale.MinReplicas = 1;
                 app.Template.Scale.MaxReplicas = 1;
 
-                // 60s grace lets the longest in-flight handler (Discord REST quest-board update,
-                // Wolverine handler) finish before SIGKILL.
-                app.Template.TerminationGracePeriodSeconds = 60;
+                // Grace lets the longest in-flight handler (Discord REST quest-board update, Wolverine
+                // handler) finish before SIGKILL.
+                app.Template.TerminationGracePeriodSeconds = cfg.TerminationGracePeriodSeconds;
 
                 // Single revision: new replica spins up, identifies, Discord boots old session,
                 // brief no-event window, new replica takes over.

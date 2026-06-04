@@ -102,9 +102,13 @@
             {
                 new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
                 new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-                new("Sessions", "schedule", $"/guilds/{_guildId}/sessions", "/sessions"),
-                new("Musters", "groups", null, "/musters"),
+                new("Sessions", "schedule", $"/guilds/{_guildId}/guild/tracking/sessions", "/guild/tracking/sessions"),
             };
+            // Musters are participant-facing — only show the entry to members who can take part.
+            if (_isParticipant)
+            {
+                guild.Add(new("Musters", "groups", $"/guilds/{_guildId}/guild/musters", "/guild/musters"));
+            }
             if (_isAdmin)
             {
                 guild.Add(new("Guild points", "trophy", $"/guilds/{_guildId}/guild-points", "/guild-points"));
@@ -137,11 +141,12 @@
     [
         new("Home", "home", $"/guilds/{_guildId}", "$"),
         new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-        new("Sessions", "schedule", $"/guilds/{_guildId}/sessions", "/sessions"),
+        new("Sessions", "schedule", $"/guilds/{_guildId}/guild/tracking/sessions", "/guild/tracking/sessions"),
         new("You", "person", $"/guilds/{_guildId}/me", "/me"),
     ];
 
     private bool _isAdmin;
+    private bool _isParticipant;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -172,6 +177,9 @@
             _guildName = g.Name;
             _isAdmin = g.IsAdmin;
             _initials = Initials(g.Name);
+
+            var auth = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Membership.GuildAuthorizationService>();
+            _isParticipant = await auth.IsParticipantAsync(_guildId, userId.Value);
         }
 
         var profile = await web.GetUserProfileAsync(userId.Value);

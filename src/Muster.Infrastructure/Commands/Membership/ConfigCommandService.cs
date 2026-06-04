@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Muster.Contracts;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Musters;
+using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.Infrastructure.Commands.Membership;
 
@@ -16,6 +20,7 @@ public enum RoleKind
     EconomyManager,
     EventOfficer,
     TrackingManager,
+    MusterCreator,
     Auditor,
 }
 
@@ -28,7 +33,9 @@ public record LedgerRetentionChange(int OldDays, int NewDays);
 /// The guild owner can always run these even before any role is mapped, so the server can be
 /// configured without being locked out.
 /// </summary>
-public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention)
+// musterSettings is always supplied by DI; the null-forgiving default keeps the many ConfigCommandService test
+// constructions (which don't touch the muster setters) from each needing to build one.
+public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention, GuildMusterSettingsService musterSettings = null!, IOptions<TrackingRetentionOptions> trackingRetention = null!)
 {
     /// <summary>Set how many days of detailed ledger history this guild keeps before the prune sweep compacts older
     /// rows into carry-forward checkpoints (0 = inherit the platform default / keep forever). Validated against the
@@ -66,19 +73,30 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             $"Ledger retention set to {chosen} — effective window: {window}.");
     }
 
+    /// <summary>Load (or seed from entity defaults) the guild's <see cref="GuildTrackingSettings"/> row, apply
+    /// <paramref name="mutate"/>, and save. Returns false when the guild doesn't exist yet (no row to attach).</summary>
+    private async Task<bool> UpsertTrackingAsync(ulong guildId, Action<GuildTrackingSettings> mutate, CancellationToken ct)
+    {
+        var row = await db.GuildTrackingSettings.FindAsync([guildId], ct);
+        if (row is null)
+        {
+            if (await db.FindGuildAsync(guildId, ct) is null) { return false; }
+            row = new GuildTrackingSettings { GuildId = guildId };
+            db.GuildTrackingSettings.Add(row);
+        }
+
+        mutate(row);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     /// <summary>Set the guild's background-tracking consent default: opt-in (members must opt in) vs opt-out (on by default).</summary>
     public async Task<CommandResult> SetBackgroundOptInAsync(ulong guildId, bool optIn, CancellationToken ct = default)
     {
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        if (!await UpsertTrackingAsync(guildId, t => t.BackgroundTrackingOptIn = optIn, ct))
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
-
-        var settings = guild.Settings;
-        settings.BackgroundTrackingOptIn = optIn;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
 
         return CommandResult.Ok(optIn
             ? "Background tracking is now **opt-in** — members aren't passively tracked until they run `/track-privacy` and opt in."
@@ -101,15 +119,11 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         }
 
         var code = string.IsNullOrWhiteSpace(currencyCode) ? null : currencyCode.Trim().ToUpperInvariant();
-        var settings = guild.Settings;
 
         // Disable when no currency or no rate.
         if (code is null || minutesPerCoin == 0)
         {
-            settings.SessionCoinCurrencyCode = null;
-            settings.MinutesPerCoin = 0;
-            guild.Settings = settings;
-            await db.SaveChangesAsync(ct);
+            await UpsertTrackingAsync(guildId, t => { t.SessionCoinCurrencyCode = null; t.MinutesPerCoin = 0; }, ct);
             return CommandResult.Ok("Session coin minting is **off**.");
         }
 
@@ -124,135 +138,122 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error($"`{code}` isn't a spendable currency — pick a spendable one for session payouts.");
         }
 
-        settings.SessionCoinCurrencyCode = code;
-        settings.MinutesPerCoin = minutesPerCoin;
-        guild.Settings = settings;
-        await db.SaveChangesAsync(ct);
+        await UpsertTrackingAsync(guildId, t => { t.SessionCoinCurrencyCode = code; t.MinutesPerCoin = minutesPerCoin; }, ct);
 
         return CommandResult.Ok($"Sessions will mint **1 {code}** per **{minutesPerCoin}** eligible minute(s) on close.");
     }
 
-    /// <summary>Toggle whether bounded Sessions honor anti-AFK guards (pause muted/alone time) by default.</summary>
-    public async Task<CommandResult> SetApplyGuardsToSessionsAsync(ulong guildId, bool apply, CancellationToken ct = default)
+    /// <summary>Set the guild's default anti-AFK guards per tracking lane (background / manual session / scheduled
+    /// event). A null lane is left unchanged. These are the baseline a monitored channel (and a manual session open)
+    /// may override.</summary>
+    public async Task<CommandResult> SetDefaultGuardsAsync(
+        ulong guildId, AfkGuards? background = null, AfkGuards? session = null, AfkGuards? events = null,
+        CancellationToken ct = default)
     {
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        var ok = await UpsertTrackingAsync(guildId, t =>
         {
-            return CommandResult.Error("This server isn't set up yet.");
-        }
+            if (background is { } bg) { t.DefaultBackgroundGuards = bg; }
+            if (session is { } se) { t.DefaultSessionGuards = se; }
+            if (events is { } ev) { t.DefaultEventGuards = ev; }
+        }, ct);
 
-        var settings = guild.Settings;
-        settings.ApplyAfkGuardsToSessions = apply;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
-
-        return CommandResult.Ok(apply
-            ? "New sessions will pause reward time while a member is muted or alone (per-session override still applies)."
-            : "New sessions will count all presence by default.");
+        return ok ? CommandResult.Ok("Default tracking guards updated.") : CommandResult.Error("This server isn't set up yet.");
     }
 
-    /// <summary>Set the auto-close cap (hours) for a never-stopped session (0 = never auto-close).</summary>
-    public async Task<CommandResult> SetMaxSessionHoursAsync(ulong guildId, int hours, CancellationToken ct = default)
+    /// <summary>Set the auto-close cap (hours) for a never-stopped session. 0 = never auto-close; null = inherit the
+    /// server default.</summary>
+    public async Task<CommandResult> SetMaxSessionHoursAsync(ulong guildId, int? hours, CancellationToken ct = default)
     {
-        if (hours < 0)
+        if (hours is < 0)
         {
             return CommandResult.Error("Max session hours can't be negative (0 = never auto-close).");
         }
 
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        if (!await UpsertTrackingAsync(guildId, t => t.MaxSessionHours = hours, ct))
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var settings = guild.Settings;
-        settings.MaxSessionHours = hours;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
-
-        return CommandResult.Ok(hours == 0
-            ? "Sessions never auto-close (stop them manually)."
-            : $"Sessions auto-close after {hours} hour(s).");
+        return CommandResult.Ok(hours is null
+            ? "Max session hours uses the server default."
+            : hours == 0
+                ? "Sessions never auto-close (stop them manually)."
+                : $"Sessions auto-close after {hours} hour(s).");
     }
 
-    /// <summary>Set the minimum seconds a member must accrue in a session to stay on its roster (0 = keep everyone).</summary>
-    public async Task<CommandResult> SetMinTrackedSecondsAsync(ulong guildId, int seconds, CancellationToken ct = default)
+    /// <summary>Set the minimum seconds a member must accrue in a session to stay on its roster. 0 = keep everyone;
+    /// null = inherit the server default.</summary>
+    public async Task<CommandResult> SetMinTrackedSecondsAsync(ulong guildId, int? seconds, CancellationToken ct = default)
     {
-        if (seconds < 0)
+        if (seconds is < 0)
         {
             return CommandResult.Error("Minimum tracked seconds can't be negative (0 = keep everyone).");
         }
 
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        if (!await UpsertTrackingAsync(guildId, t => t.MinTrackedSeconds = seconds, ct))
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var settings = guild.Settings;
-        settings.MinTrackedSeconds = seconds;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
-
-        return CommandResult.Ok(seconds == 0
-            ? "Drive-by filtering off — every attendee is kept."
-            : $"Members who accrue under {seconds}s in a session are dropped from its roster.");
+        return CommandResult.Ok(seconds is null
+            ? "Minimum tracked seconds uses the server default."
+            : seconds == 0
+                ? "Drive-by filtering off — every attendee is kept."
+                : $"Members who accrue under {seconds}s in a session are dropped from its roster.");
     }
 
-    /// <summary>Set how many days of raw activity records to keep (0 = keep forever). Rollups are always kept.</summary>
-    public async Task<CommandResult> SetActivityRetentionAsync(ulong guildId, int days, CancellationToken ct = default)
+    /// <summary>Set how many days of raw activity records to keep. 0 = keep forever; null = inherit the server
+    /// default. Capped by the platform maximum (<c>Tracking:MaxActivityRetentionDays</c>) when one is configured.</summary>
+    public async Task<CommandResult> SetActivityRetentionAsync(ulong guildId, int? days, CancellationToken ct = default)
     {
-        if (days < 0)
+        if (days is < 0)
         {
             return CommandResult.Error("Retention days can't be negative (0 = keep forever).");
         }
 
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        // Platform ceiling: 0 = no limit. A guild can't keep raw activity longer than the configured maximum.
+        var cap = trackingRetention?.Value.MaxActivityRetentionDays ?? 0;
+        if (days is { } d && cap > 0 && d > cap)
+        {
+            return CommandResult.Error($"The platform maximum activity retention is {cap} day(s).");
+        }
+
+        if (!await UpsertTrackingAsync(guildId, t => t.ActivityRetentionDays = days, ct))
         {
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var settings = guild.Settings;
-        settings.ActivityRetentionDays = days;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
-
-        return CommandResult.Ok(days == 0
-            ? "Raw activity records are kept indefinitely (rollups always persist)."
-            : $"Raw activity records older than {days} day(s) will be pruned (rollups kept).");
+        return CommandResult.Ok(days is null
+            ? "Activity retention uses the server default."
+            : days == 0
+                ? "Raw activity records are kept indefinitely (rollups always persist)."
+                : $"Raw activity records older than {days} day(s) will be pruned (rollups kept).");
     }
 
     /// <summary>Set the reward-multiplier stacking policy + global cap and the session start/end presence bonuses
-    /// (amounts, qualifying-window minutes, and whether the active multiplier scales them).</summary>
+    /// (amounts, qualifying-window minutes, and whether the active multiplier scales them). Cap null = inherit default.</summary>
     public async Task<CommandResult> SetMultiplierSettingsAsync(
-        ulong guildId, MultiplierStacking stacking, decimal cap,
+        ulong guildId, MultiplierStacking stacking, decimal? cap,
         int startBonus, int endBonus, int startWindowMinutes, int endWindowMinutes, bool multiplyBonuses,
         CancellationToken ct = default)
     {
-        if (cap < 0m || startBonus < 0 || endBonus < 0 || startWindowMinutes < 0 || endWindowMinutes < 0)
+        if (cap is < 0m || startBonus < 0 || endBonus < 0 || startWindowMinutes < 0 || endWindowMinutes < 0)
         {
             return CommandResult.Error("Cap, bonuses, and windows can't be negative (0 = off / no cap).");
         }
 
-        var guild = await db.FindGuildAsync(guildId, ct);
-        if (guild is null)
+        var ok = await UpsertTrackingAsync(guildId, t =>
         {
-            return CommandResult.Error("This server isn't set up yet.");
-        }
+            t.MultiplierStacking = stacking;
+            t.MultiplierCap = cap;
+            t.SessionStartBonus = startBonus;
+            t.SessionEndBonus = endBonus;
+            t.StartBonusWindowMinutes = startWindowMinutes;
+            t.EndBonusWindowMinutes = endWindowMinutes;
+            t.MultiplyPresenceBonuses = multiplyBonuses;
+        }, ct);
 
-        var settings = guild.Settings;
-        settings.MultiplierStacking = stacking;
-        settings.MultiplierCap = cap;
-        settings.SessionStartBonus = startBonus;
-        settings.SessionEndBonus = endBonus;
-        settings.StartBonusWindowMinutes = startWindowMinutes;
-        settings.EndBonusWindowMinutes = endWindowMinutes;
-        settings.MultiplyPresenceBonuses = multiplyBonuses;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-        await db.SaveChangesAsync(ct);
-
-        return CommandResult.Ok("Multiplier & bonus settings updated.");
+        return ok ? CommandResult.Ok("Multiplier & bonus settings updated.") : CommandResult.Error("This server isn't set up yet.");
     }
 
     public Task<CommandResult> ToggleAdminRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
@@ -276,6 +277,9 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     public Task<CommandResult> ToggleTrackingManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.TrackingManager, ct);
 
+    public Task<CommandResult> ToggleMusterCreatorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, RoleKind.MusterCreator, ct);
+
     public Task<CommandResult> ToggleAuditorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, RoleKind.Auditor, ct);
 
@@ -297,6 +301,63 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
 
         await db.SaveChangesAsync(ct);
         return CommandResult.Ok("Quest approval settings updated.");
+    }
+
+    /// <summary>Configure all guild muster settings in one save: card channel, terminal-card retention, auto-create
+    /// on session + its gate mode, the global reward defaults (points/coins/coin currency), and the optional
+    /// allow-list of channels musters may post to (empty = any chat-capable channel).</summary>
+    public async Task<CommandResult> SetMusterSettingsAsync(
+        ulong guildId, ulong channelId, int retentionHours, bool autoCreate, SessionCoinGate autoCreateGate,
+        long defaultPoints, long defaultCoins, Guid? defaultCoinCurrencyId,
+        IReadOnlyList<ulong>? allowedChannelIds = null, bool creatorAutoCheckIn = true, int defaultExpiryHours = 0,
+        MusterAutoCreateChannel autoCreateChannel = MusterAutoCreateChannel.DefaultChannel, int? defaultMinCheckIns = null,
+        MusterResolveMode defaultResolveMode = MusterResolveMode.Pay,
+        CancellationToken ct = default)
+    {
+        var guild = await db.FindGuildAsync(guildId, ct);
+        if (guild is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (retentionHours < 0 || defaultPoints < 0 || defaultCoins < 0 || defaultExpiryHours < 0 || defaultMinCheckIns is < 0)
+        {
+            return CommandResult.Error("Retention, expiry, points, coins, and minimum check-ins can't be negative.");
+        }
+
+        // A default coin reward needs a spendable currency that belongs to this guild.
+        if (defaultCoins > 0 && (defaultCoinCurrencyId is not { } cc
+            || !await db.Currencies.AnyAsync(c => c.Id == cc && c.GuildId == guildId && c.IsSpendable, ct)))
+        {
+            return CommandResult.Error("Pick a spendable currency for the default coin reward.");
+        }
+
+        var allowed = (allowedChannelIds ?? []).Where(c => c != 0).Distinct().ToList();
+
+        // A configured default channel must itself be on the allow-list (when one is set), or musters couldn't post there.
+        if (channelId != 0 && allowed.Count > 0 && !allowed.Contains(channelId))
+        {
+            return CommandResult.Error("The default channel must be one of the allowed channels.");
+        }
+
+        await musterSettings.UpsertAsync(guildId, s =>
+        {
+            s.MusterChannelId = channelId;
+            s.BoardRetentionHours = retentionHours;
+            s.AllowedChannelIds = allowed;
+            s.AutoCreateOnSession = autoCreate;
+            s.AutoCreateGate = autoCreateGate;
+            s.AutoCreateChannel = autoCreateChannel;
+            s.CreatorAutoCheckIn = creatorAutoCheckIn;
+            s.DefaultExpiryHours = defaultExpiryHours;
+            s.DefaultResolveMode = defaultResolveMode;
+            s.DefaultMinCheckIns = defaultMinCheckIns;
+            s.DefaultPoints = defaultPoints;
+            s.DefaultCoins = defaultCoins;
+            s.DefaultCoinCurrencyId = defaultCoins > 0 ? defaultCoinCurrencyId : null;
+        }, ct);
+
+        return CommandResult.Ok("Muster settings updated.");
     }
 
     /// <summary>Point the public quest board at a channel (0 clears it, leaving the board pull-only).</summary>
@@ -348,6 +409,50 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
         var pubPart = q.QuestChannelId == 0 ? "Public board off (pull-only)" : $"Public board → <#{q.QuestChannelId}>";
         var modPart = q.QuestModChannelId == 0 ? "no mod channel" : $"mod states → <#{q.QuestModChannelId}>";
         return CommandResult.Ok($"{pubPart}; {modPart}; completed cards linger {q.BoardRetentionHours}h.");
+    }
+
+    /// <summary>Set whether opening a tracking session auto-creates + links a check-in muster (gating the session
+    /// coin). A per-session override still applies at open time.</summary>
+    public async Task<CommandResult> SetAutoCreateMusterAsync(ulong guildId, bool enabled, CancellationToken ct = default)
+    {
+        if (await db.FindGuildAsync(guildId, ct) is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        await musterSettings.UpsertAsync(guildId, s => s.AutoCreateOnSession = enabled, ct);
+
+        return CommandResult.Ok(enabled
+            ? "New sessions will auto-post a check-in muster and gate their coin on it (mode Any)."
+            : "Sessions won't auto-create a muster (link one manually to gate a session's coin).");
+    }
+
+    /// <summary>Point the muster card board at a channel (0 clears it, so musters post to the channel they're
+    /// created from). <paramref name="retentionHours"/> null = leave the linger window unchanged.</summary>
+    public async Task<CommandResult> SetMusterChannelAsync(ulong guildId, ulong channelId, int? retentionHours = null, CancellationToken ct = default)
+    {
+        if (await db.FindGuildAsync(guildId, ct) is null)
+        {
+            return CommandResult.Error("This server isn't set up yet.");
+        }
+
+        if (retentionHours is < 0)
+        {
+            return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as terminal).");
+        }
+
+        var saved = await musterSettings.UpsertAsync(guildId, s =>
+        {
+            s.MusterChannelId = channelId;
+            if (retentionHours is { } hours)
+            {
+                s.BoardRetentionHours = hours;
+            }
+        }, ct);
+
+        return CommandResult.Ok(channelId == 0
+            ? "Musters will post to the channel they're created from."
+            : $"Muster cards will post to <#{channelId}> (terminal cards linger {saved.BoardRetentionHours}h).");
     }
 
     /// <summary>Configure anti-staleness auto-resolve timeouts and per-player quest limits.</summary>
@@ -458,6 +563,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             RoleKind.EconomyManager => guild.Settings.EconomyManagerRoleIds,
             RoleKind.EventOfficer => guild.Settings.EventOfficerRoleIds,
             RoleKind.TrackingManager => guild.Settings.TrackingManagerRoleIds,
+            RoleKind.MusterCreator => guild.Settings.MusterCreatorRoleIds,
             RoleKind.Auditor => guild.Settings.AuditorRoleIds,
             _ => guild.Settings.ParticipantRoleIds,
         };
@@ -478,6 +584,7 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             case RoleKind.EconomyManager: guild.Settings.EconomyManagerRoleIds = updated; break;
             case RoleKind.EventOfficer: guild.Settings.EventOfficerRoleIds = updated; break;
             case RoleKind.TrackingManager: guild.Settings.TrackingManagerRoleIds = updated; break;
+            case RoleKind.MusterCreator: guild.Settings.MusterCreatorRoleIds = updated; break;
             case RoleKind.Auditor: guild.Settings.AuditorRoleIds = updated; break;
             default: guild.Settings.ParticipantRoleIds = updated; break;
         }

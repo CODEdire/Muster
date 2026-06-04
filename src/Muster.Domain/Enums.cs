@@ -392,3 +392,23 @@ public enum ConnectorBodyFormat
     /// <summary>Form (<c>application/x-www-form-urlencoded</c>) — the body template is <c>a=$userId&amp;b=$amount</c>.</summary>
     Form = 1,
 }
+
+/// <summary>Lifecycle of a reaction muster (check-in post).</summary>
+public enum MusterStatus
+{
+    Open = 0,      // accepting check-ins
+    Closed = 1,    // manually closed by staff
+    Expired = 2,   // passed its ExpiresAt
+    Cancelled = 3, // abandoned (e.g. its Discord message was deleted)
+
+    /// <summary>Soft-closed: a <b>linked</b> muster hit its max active time, so it stops taking check-ins but is NOT
+    /// terminal — it still pays at session close. The card stays (button disabled) until the session ends and closes it.</summary>
+    Locked = 4,
+}
+
+/// <summary>How a muster check-in was recorded.</summary>
+public enum MusterParticipantSource
+{
+    Button = 0, // a member clicked the Check-In button
+    Admin = 1,  // staff added the member by hand (web/command)
+}

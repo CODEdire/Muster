@@ -1,8 +1,22 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Guilds;
 
 namespace Muster.Persistence.Configurations;
+
+public class GuildTrackingSettingsConfiguration : IEntityTypeConfiguration<GuildTrackingSettings>
+{
+    public void Configure(EntityTypeBuilder<GuildTrackingSettings> e)
+    {
+        // 1:1 with Guild, keyed + FK on GuildId (delete the guild → delete its tracking settings).
+        e.HasKey(x => x.GuildId);
+        e.Property(x => x.GuildId).ValueGeneratedNever();
+        e.HasOne<Guild>().WithOne().HasForeignKey<GuildTrackingSettings>(x => x.GuildId).OnDelete(DeleteBehavior.Cascade);
+        e.Property(x => x.MultiplierCap).HasPrecision(6, 3);
+        e.Property(x => x.SessionCoinCurrencyCode).HasMaxLength(16);
+    }
+}
 
 public class TrackingSessionConfiguration : IEntityTypeConfiguration<TrackingSession>
 {

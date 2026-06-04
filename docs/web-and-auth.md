@@ -56,6 +56,24 @@ commands (via `MusterModuleBase`) and will back web authorization. The role mapp
 - Member detail (wallets across currencies); audit log
 - API client management
 
+## Page organization & route convention
+
+Pages are grouped **by feature**, not by access tier: `Components/Pages/<Feature>/<Page>.razor`
+(e.g. `Components/Pages/Musters/`). Admin-vs-member subfolders can come later within a feature.
+
+Routes mirror the **sidebar nav group** they belong to:
+
+```
+/guilds/{id}/<nav-group>/<feature>[/<sub>]
+```
+
+- **Guild** group (primary/operational): `/guilds/{id}/guild/musters`, `/guilds/{id}/guild/musters/{musterId}`
+- **Management** group (admin/config): `/guilds/{id}/management/musters` (settings),
+  `/guilds/{id}/management/musters/templates` (+ `/new`, `/{templateId}/edit`)
+
+Centralize the templates in `MusterLinks` (one builder per route) so a move is a one-file change.
+Musters are the first feature on this scheme; others migrate incrementally.
+
 ## Security notes
 
 - Antiforgery is enabled for all form posts (`UseAntiforgery`).

@@ -3,6 +3,24 @@
 Muster deploys to **Azure Container Apps** using **Bicep generated from the Aspire
 AppHost** via `azd`, driven by an **Azure DevOps** pipeline connected to GitHub.
 
+## First-deploy bootstrap checklist (per environment)
+
+Some resources can't be fully provisioned by the AppHost — passwordless data-plane grants, schema the IaC
+tooling doesn't model, and cross-RG/cross-tenant grants. These are **one-time per environment** (and stable
+across redeploys). On a brand-new environment, after the first `aspire deploy`, work this list:
+
+| # | Step | Why it's manual | Details |
+|---|------|-----------------|---------|
+| 1 | **SQL identity grants** — create the web/bot/migrations DB users + roles | Server bound `AsExisting`, so Aspire skips its auto-grant script | [Passwordless SQL](#passwordless-sql-entra) |
+| 2 | **Wolverine message-store schema** — `db-apply` the `muster.wolverine_*` tables | Auto-provisioning removed (lock contention); managed out of band | [Wolverine message-store schema](#wolverine-message-store-schema) |
+| 3 | **Data Protection wrap key** — `az keyvault key create muster-dp-wrap` | Neither Aspire nor Azure.Provisioning models a KV *key* resource | [Create the wrap key](#create-the-wrap-key-one-time-per-environment) |
+| 4 | **Shared ACR pull grant** — `AcrPull` for the env MI on the shared registry | Registry is cross-RG; the grant can't be inlined in the env module | [Shared ACR pull grant](#shared-acr-pull-grant-entra) |
+| 5 | **Custom domain cert** (optional) — bind the managed TLS cert | Azure issues the cert only after the hostname is live + DNS validates | [Custom domain + SSL](#custom-domain--ssl-for-the-web) |
+
+After steps 1–4, restart the web + bot revisions so they pick up the grants/keys. Each step's section explains
+the propagation/stale-principal gotchas (notably: if you redeploy the managed identities, data-plane grants made
+against the old principal go stale — re-run the relevant grant).
+
 ## Azure resources
 
 | Resource | Purpose |
@@ -37,9 +55,15 @@ Sizing + scale rules are encoded in code, not folklore — see
   per-env runtime boundary matters more than the small overhead of one extra environment.
 - **Azure Container Registry (ACR)** — **shared registry in a shared "platform" resource group**.
   Image storage is naturally cross-product; each Container Apps Environment binds to it via Aspire's
-  `AddAzureContainerRegistry(...).AsExisting(...)` (wired in
-  [`ContainerRegistryExtensions`](../aspire/Muster.AppHost/ContainerRegistryExtensions.cs)). Aspire
-  emits the `AcrPull` role assignment for each environment's identity automatically.
+  `AddAzureContainerRegistry(...).PublishAsExisting(name, rg)` (wired in
+  [`ContainerRegistryExtensions`](../aspire/Muster.AppHost/PlatformExtensions/ContainerRegistryExtensions.cs)).
+  Because the registry lives in a **different resource group** from the deploy, the environment's `AcrPull`
+  grant **cannot** be emitted automatically: a `roleAssignment` can't be scoped to a cross-RG resource from
+  the environment module (Bicep `BCP139`). `AddContainerEnvironment` therefore strips Aspire's inline grant
+  when the registry is existing, and the `AcrPull` for the environment's managed identity is a **one-time
+  out-of-band step** — see [Shared ACR pull grant](#shared-acr-pull-grant-entra) below. (For a per-env
+  registry — `ContainerRegistryOptions:UseExisting=false` — the registry is in the deploy RG and the inline
+  grant is kept, so no manual step is needed.)
 
 User-secret parameters for the shared ACR (per AppHost environment):
 
@@ -55,33 +79,51 @@ environment that holds both the Muster-specific secrets and the platform ACR ref
 ## Custom domain + SSL for the web
 
 Container Apps gives every app a free `*.<env>.<region>.azurecontainerapps.io` hostname with a managed
-HTTPS cert out of the box. For a custom domain (e.g. `app.musterbot.com`):
+HTTPS cert out of the box. A custom domain (e.g. `app.musterbot.com`) is **wired in the AppHost** and driven
+by [`WebCustomDomainOptions`](../aspire/Muster.AppHost/Options/WebCustomDomainOptions.cs) — no manual
+`az containerapp hostname` steps and no out-of-band drift. [`WebHostingExtensions`](../aspire/Muster.AppHost/WebHostingExtensions.cs)
+passes the hostname + managed-cert name to Aspire's `ConfigureCustomDomain(...)` helper, which emits the
+ingress `customDomains` entry and (once a cert name is set) the managed-cert binding.
+
+The hostname is config (`WebCustomDomainOptions:Domain`). The **certificate name is a prompted parameter**
+(`webCustomDomainCertificateName`) — Azure issues the managed cert only **after** the domain's ownership +
+CNAME validate, which can't happen until the hostname is already live on the app, so the cert name isn't known
+at first-deploy time. Binding is therefore **two-phase**:
+
+**Phase 1 — bind the hostname unbound.** Set the domain:
+
+```jsonc
+// appsettings.Production.json (or user-secrets / App Configuration)
+"WebCustomDomainOptions": { "Domain": "app.musterbot.com" }
+```
+
+Deploy (`aspire deploy`). When prompted for **`webCustomDomainCertificateName`, leave it blank** and continue —
+the hostname binds with `bindingType: 'Disabled'` (no TLS yet), which is what lets DNS validation proceed.
+
+**Phase 2 — DNS, issue cert, bind TLS.**
 
 1. **DNS** — at your registrar, create a CNAME `app.musterbot.com → <env-default-domain>`. For an apex
    (`musterbot.com`), use an `A` record to the env's static IP + a `TXT` record (`asuid.<domain>` carrying
    the app's verification id from `az containerapp show ... --query "properties.customDomainVerificationId"`).
-2. **Verify + add the hostname**:
+2. **Issue the free managed certificate** (Azure-issued via ACME, auto-renewed) once DNS resolves:
    ```bash
-   az containerapp hostname add \
-     --hostname app.musterbot.com \
-     --name muster-web --resource-group <env-rg>
+   az containerapp env certificate create \
+     --name <env-name> --resource-group <env-rg> \
+     --hostname app.musterbot.com --validation-method CNAME
    ```
-3. **Bind a managed cert** (free, Azure-issued via ACME, auto-renewed):
+   (`--validation-method` is `CNAME` for subdomains, `TXT`/`HTTP` for apex.) Note the **certificate name** it
+   creates (`az containerapp env certificate list -n <env-name> -g <env-rg> -o table`).
+3. **Bind TLS** — `aspire deploy` again and **enter the cert name at the `webCustomDomainCertificateName`
+   prompt**. That flips `bindingType` to `SniEnabled` and attaches the cert; subsequent deploys preserve it.
+   For CI / non-interactive deploys, supply the name via config instead of the prompt:
    ```bash
-   az containerapp hostname bind \
-     --hostname app.musterbot.com \
-     --environment <env-name> \
-     --name muster-web --resource-group <env-rg> \
-     --validation-method CNAME
+   dotnet user-secrets set "Parameters:webCustomDomainCertificateName" "<managed-cert-name>"
+   # or set the same as a pipeline variable / App Configuration key
    ```
-   (`--validation-method` is `CNAME` for subdomains, `TXT` or `HTTP` for apex — depends on your DNS shape.)
-4. **Optional — front with Azure Front Door / Application Gateway** for WAF, multi-region, or anycast.
-   The Container App stays the origin; Front Door terminates TLS at the edge.
 
-Aspire's `PublishAsAzureContainerApp(...)` callback can declare the hostname in `app.Configuration.Ingress.CustomDomains`,
-but managed-cert binding requires the DNS verification step to be live first — so the standard pattern
-is: declare the cert/hostname desired state out-of-band (Bicep or the az commands above), do the bind
-**once per environment** as a manual pipeline step.
+**Optional — front with Azure Front Door / Application Gateway** for WAF, multi-region, or anycast. The
+Container App stays the origin; Front Door terminates TLS at the edge (and you can skip the per-app managed
+cert entirely, letting Front Door own the public cert).
 
 ## Passwordless SQL (Entra)
 
@@ -130,38 +172,78 @@ You'll see three identities (bot, web, migrations). Note the **Name** of each.
 **3. Connect to the database as an Entra admin** (you, or whoever owns the SQL server's Entra admin role).
 Easiest is Azure Portal → SQL Database → Query editor, signing in with your Entra account.
 
-**4. Run this T-SQL once per identity**:
+**4. Run the grant script** — [`aspire/Muster.AppHost/sql/grant-managed-identities.sql`](../aspire/Muster.AppHost/sql/grant-managed-identities.sql).
+Open it, paste the three managed-identity names from step 2 into the `@identities` list at the top, and run it
+against the **application database** (not `master`). It creates each contained user `FROM EXTERNAL PROVIDER`,
+grants `CONNECT`, and adds it to `db_owner`. The script is **idempotent** (guards `CREATE USER` with a
+`sys.database_principals` check and the role add with `IS_ROLEMEMBER`), so it's safe to re-run and safe to
+drop into a CI bootstrap step.
 
-```sql
--- Web app: full read/write
-CREATE USER [<web-mi-name>] FROM EXTERNAL PROVIDER;
-ALTER ROLE db_datareader  ADD MEMBER [<web-mi-name>];
-ALTER ROLE db_datawriter  ADD MEMBER [<web-mi-name>];
-
--- Bot: same as web
-CREATE USER [<bot-mi-name>] FROM EXTERNAL PROVIDER;
-ALTER ROLE db_datareader  ADD MEMBER [<bot-mi-name>];
-ALTER ROLE db_datawriter  ADD MEMBER [<bot-mi-name>];
-
--- Migration job: needs DDL rights
-CREATE USER [<migrations-mi-name>] FROM EXTERNAL PROVIDER;
-ALTER ROLE db_owner       ADD MEMBER [<migrations-mi-name>];
-```
-
-`db_owner` on the migration MI is the simplest path; tighten to `db_ddladmin` + targeted GRANTs if you
-want least-privilege.
+All three identities get `db_owner` (full DDL + DML) for simplicity — the migration job needs DDL, and web/bot
+run under the same role. For least privilege instead, give web/bot `db_datareader` + `db_datawriter` and keep
+only migrations at `db_owner` (or `db_ddladmin` + targeted GRANTs); edit the role line in the script per-identity.
 
 **5. Re-deploy / restart Container Apps**. They pick up the SQL grant on the next connection — no app
 config change needed.
-
-**Idempotent re-runs**: `CREATE USER` fails if the user already exists; wrap in
-`IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '<mi-name>')` if you script it for CI.
 
 ### Local development
 
 Local `dotnet run` uses a SQL Server container (Aspire `RunAsContainer` — see PersistenceExtensions).
 No Entra setup; the container handles its own auth and the Aspire-generated connection string carries
 everything.
+
+## Shared ACR pull grant (Entra)
+
+The Container Apps Environment pulls images with its **own user-assigned managed identity** (`muster_env_mi`),
+created by `WithAzureContainerRegistry(...)`. When the registry is the shared, cross-RG ACR, that identity's
+`AcrPull` role can't be authored by the deploy (cross-RG `roleAssignment` → Bicep `BCP139`), so it's a manual
+one-shot per environment — the registry equivalent of [Passwordless SQL](#passwordless-sql-entra).
+
+### Why this is a manual one-shot for us
+
+`AddContainerEnvironment` strips Aspire's inline `AcrPull` grant whenever `ContainerRegistryOptions:UseExisting`
+is `true` (see [`ContainerRegistryExtensions`](../aspire/Muster.AppHost/PlatformExtensions/ContainerRegistryExtensions.cs)).
+The environment identity, the `registries` block, and image-pull config are all still emitted — only the grant
+is deferred. The identity's name is `muster_env_mi-<uniqueString(rg.id)>`, which is **stable across redeploys**
+in the same resource group, so the grant is done once and persists.
+
+### Setup runbook (per environment)
+
+**1. Deploy once** so the environment identity exists (the apps will report `ImagePullBackOff` until step 3 —
+expected on the very first deploy):
+
+```bash
+aspire deploy
+```
+
+**2. Grant the environment identity `AcrPull` on the shared registry** (run by someone with `Owner` /
+`User Access Administrator` on the shared platform RG):
+
+```bash
+# Environment MI principalId (from the deploy RG)
+ENV_MI_PRINCIPAL=$(az identity list -g <env-rg> \
+  --query "[?starts_with(name,'muster_env_mi')].principalId | [0]" -o tsv)
+
+# Shared registry resource id (from the shared platform RG)
+ACR_ID=$(az acr show -n <shared-acr-name> -g <shared-platform-rg> --query id -o tsv)
+
+az role assignment create \
+  --assignee-object-id "$ENV_MI_PRINCIPAL" \
+  --assignee-principal-type ServicePrincipal \
+  --role AcrPull \
+  --scope "$ACR_ID"
+```
+
+**3. Restart the container apps** (or re-run `aspire deploy`) so the new revisions pull successfully:
+
+```bash
+az containerapp revision restart -n muster-web        -g <env-rg> --revision <latest>
+az containerapp revision restart -n muster-bot        -g <env-rg> --revision <latest>
+# migrations is a Job — it pulls on the next execution
+```
+
+**Idempotent re-runs**: `az role assignment create` is a no-op if the assignment already exists (it returns the
+existing one), so this is safe to fold into a CI bootstrap step.
 
 ## Migration job orchestration
 
@@ -224,6 +306,59 @@ App; only the runtime shape (job vs app) differs.
 The job exits non-zero → step 2 above fails → pipeline aborts before step 3. The previous
 bot/web revisions stay serving traffic — no half-deployed state. Re-run the pipeline after fixing
 the migration (the bootstrap is idempotent: `Database.MigrateAsync` is a no-op when up-to-date).
+
+## Wolverine message-store schema
+
+There are **two** schemas in the application database, managed by **two different** mechanisms:
+
+| Schema | Owns | Managed by |
+|--------|------|------------|
+| `dbo.*` (app tables) | domain data | EF Core migrations — applied by the migration job's default run (`Database.MigrateAsync`) |
+| `muster.wolverine_*` (durable inbox/outbox) | Wolverine message store | **exported SQL scripts / the JasperFx `db-*` CLI — applied out of band** (this section) |
+
+### Why no auto-provisioning
+
+Wolverine can build its store schema on startup (`AutoBuildMessageStorageOnStartup`), but we set it to
+**`AutoCreate.None` on every host** (`WolverineExtensions.AddMusterMessaging`). On a fresh database, multiple
+replicas (web + bot) auto-building the same `muster.*` objects concurrently — and racing EF's migration — block
+on schema-modification (`Sch-M`) locks and **hang the deploy** (`SqlException` error `-2`, "Execution Timeout
+Expired"). Explicit, single-threaded, reviewed schema changes avoid that entirely. This follows Wolverine's own
+guidance: [Managing the message store → Exporting SQL scripts](https://wolverinefx.net/guide/durability/managing.html#exporting-sql-scripts).
+
+### The `db-*` CLI (exposed by the migration host)
+
+`Muster.MigrationService` registers Wolverine and routes any `db-*` argument to JasperFx
+(`host.RunJasperFxCommands(args)`), so it doubles as the schema tool:
+
+```bash
+cd src/Muster.MigrationService
+
+# Export the message-store DDL to a script (review-able, commit-able)
+dotnet run -- db-dump ../../aspire/Muster.AppHost/sql/wolverine-store.sql
+
+# Show what would change against the current target database (uses ConnectionStrings:musterdb)
+dotnet run -- db-assert        # exits non-zero if the DB is out of sync — good CI gate
+dotnet run -- db-patch         # write a patch script for the outstanding delta only
+
+# Apply outstanding changes directly to the target database
+dotnet run -- db-apply
+```
+
+> The connection used is `ConnectionStrings:musterdb` from the host's config — for a non-local target set it
+> (user-secrets / env / `Parameters:*`) before running, and ensure your identity has DDL rights on that DB.
+
+### Production workflow (per environment, on first deploy + on Wolverine version bumps)
+
+1. **Export & review** — run `db-dump` against a dev DB, commit the script. Wolverine's store schema only
+   changes when the Wolverine package itself changes, so this is rare.
+2. **Apply once** — with DDL rights on the target DB, either run the committed script directly
+   (`sqlcmd -G -d MusterBot -i wolverine-store.sql`) **or** run `db-apply` (it diffs + patches, idempotent).
+   Do this **once per environment**, with nothing else provisioning — single-threaded, no `Sch-M` contention.
+3. **Verify** — `db-assert` post-deploy (optionally as a CI gate) confirms the live DB matches the model.
+
+Because no app auto-provisions, web/bot assume the `muster.wolverine_*` tables already exist — apply step 2
+**before** they start (it's the message-store analogue of the [Passwordless SQL](#passwordless-sql-entra) and
+[Shared ACR pull grant](#shared-acr-pull-grant-entra) one-time steps).
 
 ## Telemetry: Aspire Dashboard (run) vs App Insights (publish)
 
@@ -296,9 +431,40 @@ connector secrets at rest in SQL) splits storage from at-rest protection:
 name + container name are present (publish mode), it uses the Azure path; otherwise it falls back to
 the EF-backed `PersistKeysToDbContext<MusterDbContext>()` so local dev stays SQL-only.
 
+#### Create the wrap key (one-time per environment)
+
+The AppHost provisions the Key Vault and grants web/bot **Key Vault Crypto User** (wrap/unwrap), but it does
+**not** create the `muster-dp-wrap` key itself — neither Aspire nor Azure.Provisioning models a Key Vault *key*
+resource (only secrets), and Crypto User cannot create keys. So the key is a manual bootstrap step, like the
+[passwordless SQL grant](#passwordless-sql-entra). Without it, web/bot fail at startup trying to wrap the key
+ring against a key that doesn't exist.
+
+```bash
+# Name MUST be muster-dp-wrap (matches DataProtection:WrapKeyName, set by the AppHost).
+az keyvault key create \
+  --vault-name <kv-name> \
+  --name muster-dp-wrap \
+  --kty RSA --size 2048 \
+  --ops wrapKey unwrapKey
+```
+
+The operator running this needs **Key Vault Crypto Officer** on the vault (RBAC vaults — Crypto *User* can
+wrap/unwrap but not create). Grant it temporarily if needed:
+```bash
+az role assignment create --assignee <you> --role "Key Vault Crypto Officer" --scope <kv-resource-id>
+```
+Then restart the web + bot revisions so they pick up the now-existing key.
+
 **No migration** from the previous SQL-backed key ring — we cut over fresh for v0.5. Existing
 connector secrets in lower environments are re-entered after the cutover. (See `docs/persistence.md`
 "v1 fresh-schema baseline" — DP keys are part of that cutover.)
+
+**Expected after any key-ring cutover**: clients holding a cookie protected by a now-absent key log
+`CryptographicException: The key {…} was not found in the key ring` (e.g. antiforgery). This is **non-fatal** —
+the antiforgery path (`GetCookieTokenDoesNotThrow`) swallows it and re-issues a token against the current ring,
+so it self-heals on the next request (a cookie clear fixes it immediately). It should only affect cookies minted
+*before* the cutover. If **new** sessions throw it, the ring isn't persisting — verify `keys.xml` exists in the
+`dpkeys` container and that all web replicas share it (blob + KV wrap), rather than each minting an ephemeral key.
 
 **Cost** — KV operations for DP are tiny: a wrap on each new ring entry (default rotation is every
 90 days) + an unwrap per host startup. Single-digit dollars-per-year per environment. Storage cost

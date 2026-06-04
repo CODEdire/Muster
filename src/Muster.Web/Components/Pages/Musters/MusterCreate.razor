@@ -1,0 +1,256 @@
+@page "/guilds/{GuildIdRaw}/guild/musters/new"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject GuildMusterSettingsService MusterStore
+@inject MusterTemplateService TemplateSvc
+@inject ICurrencyAdminService CurrencyAdmin
+@inject Muster.Web.GuildChannelOptions Channels
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Entities.Musters
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>New muster — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters", MusterLinks.Musters(GuildId)), new("New muster") })"
+                Subtitle="Post a check-in card members tap to join; you track who's in.">
+        <Toolbar>
+            <a class="btn btn-sm btn-ghost" href="@MusterLinks.Musters(GuildId)">Cancel</a>
+            <button type="button" class="btn btn-sm" disabled="@_posting" @onclick="PostAsync">
+                <span class="material-symbols-outlined">send</span> Post muster
+            </button>
+        </Toolbar>
+    </PageHeader>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (Session is not null)
+    {
+        <p class="subtitle"><span class="material-symbols-outlined" style="vertical-align:-4px">link</span> This muster will be linked to the session it was created from (coin gate defaults to Any).</p>
+    }
+
+    @if (!_isManager && _templates.Count == 0)
+    {
+        <div class="panel glass empty">No templates available yet — ask an admin to create one before posting.</div>
+    }
+    else
+    {
+        <Accordion>
+            <AccordionPane Title="Card content" Icon="article" Open="true">
+                <p class="subtitle">What members see on the posted card. Discord markdown supported.</p>
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Prompt@(_templateHasPrompt ? " (optional — template provides one)" : "")</label>
+                        <MarkdownEditor @bind-Value="_prompt" Rows="3" MaxLength="2000"
+                                        Placeholder="@(_templateHasPrompt ? "Leave blank to use the template's prompt" : "What members are checking in for")" />
+                    </div>
+                    <div class="field span2">
+                        <label>Title</label>
+                        <input @bind="_title" maxlength="100" placeholder="(optional) heading shown above the prompt" />
+                    </div>
+                    <div class="field span2">
+                        <label>Channel</label>
+                        <select @bind="_channelId">
+                            <option value="0">Server default@(_defaultChannelId == 0 ? " — none set, no Discord card" : "")</option>
+                            @foreach (var grp in _channels.GroupBy(c => c.Kind))
+                            {
+                                <optgroup label="@grp.Key">
+                                    @foreach (var c in grp)
+                                    {
+                                        <option value="@c.Id">@(c.Kind == "Voice" ? "🔊 " : "#")@c.Name</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                        <p class="hint">Where the card posts. With no channel and no server default, the muster is tracked here but no Discord card is posted.</p>
+                    </div>
+                </div>
+            </AccordionPane>
+
+            <AccordionPane Title="Reward" Icon="paid" Open="true">
+                <p class="subtitle">A template's preset, or — for managers — custom values. Paid at close.</p>
+                <div class="mform">
+                    <div class="field span2">
+                        <label>Template</label>
+                        <select @bind="_templateId">
+                            @if (_isManager)
+                            {
+                                <option value="">— Custom rewards —</option>
+                            }
+                            @foreach (var t in _templates)
+                            {
+                                <option value="@t.Id">@t.Name</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_isManager && string.IsNullOrEmpty(_templateId))
+                    {
+                        <div class="field">
+                            <label>Points</label>
+                            <input type="number" min="0" @bind="_points" />
+                        </div>
+                        <div class="field">
+                            <label>Coins</label>
+                            <input type="number" min="0" @bind="_coins" />
+                        </div>
+                        <div class="field span2">
+                            <label>Coin currency</label>
+                            <select @bind="_coinCurrencyId">
+                                <option value="">— none —</option>
+                                @foreach (var c in _coinCurrencies)
+                                {
+                                    <option value="@c.Id">@c.Code — @c.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field span2">
+                            <label>Minimum check-ins to reward</label>
+                            <input type="number" min="0" placeholder="No minimum" @bind="_minCheckIns" />
+                            <p class="hint">If fewer than this check in, nobody is rewarded.</p>
+                        </div>
+                    }
+                </div>
+            </AccordionPane>
+
+            <AccordionPane Title="Options" Icon="tune" Open="true">
+                <div class="mform">
+                    <div class="field">
+                        <label>Capacity</label>
+                        <input type="number" min="1" placeholder="Uncapped" @bind="_capacity" />
+                        <p class="hint">Hard cap on check-ins (ignored when linked to a session).</p>
+                    </div>
+                    <div class="field">
+                        <label>Auto-close after</label>
+                        <div class="suffixed"><input type="number" min="0" placeholder="Guild default" @bind="_expiresHours" /><span>hours</span></div>
+                    </div>
+                    <div class="field">
+                        <label>When it auto-closes</label>
+                        <select @bind="_resolveMode">
+                            <option value="">Default</option>
+                            <option value="@MusterResolveMode.Pay">Pay out immediately</option>
+                            <option value="@MusterResolveMode.Review">Hold for review</option>
+                        </select>
+                    </div>
+                    <div class="field span2">
+                        <label class="checkbox">
+                            <input type="checkbox" @bind="_checkMeIn" />
+                            <span>Check me in</span>
+                        </label>
+                    </div>
+                </div>
+            </AccordionPane>
+        </Accordion>
+    }
+}
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.MusterCreator | GuildAccessTier.Officer;
+
+    /// <summary>Pre-link the new muster to this session (set from the session detail's "New muster" action).</summary>
+    [SupplyParameterFromQuery(Name = "session")] public Guid? Session { get; set; }
+
+    private bool _posting;
+    private bool _isManager;
+    private MusterResolveMode? _resolveMode;
+
+    private string _prompt = "";
+    private string _title = "";
+    private int _points;
+    private int _coins;
+    private string _coinCurrencyId = "";
+    private string _templateId = "";
+    private int? _capacity;
+    private int? _minCheckIns;
+    private int _expiresHours;
+    private bool _checkMeIn = true;
+    private ulong _channelId;
+    private ulong _defaultChannelId;
+    private IReadOnlyList<GuildChannelOptions.ChannelOption> _channels = [];
+    private IReadOnlyList<MusterTemplate> _templates = [];
+    private IReadOnlyList<CurrencyView> _coinCurrencies = [];
+
+    protected override async Task LoadAsync()
+    {
+        _isManager = await Auth.IsTrackingManagerAsync(GuildId, UserId);
+
+        var ms = await MusterStore.GetAsync(GuildId);
+        _defaultChannelId = ms.MusterChannelId;
+        _checkMeIn = ms.CreatorAutoCheckIn;
+
+        var chat = await Channels.ChatAsync(GuildId);
+        _channels = ms.AllowedChannelIds.Count == 0 ? chat : chat.Where(c => ms.AllowedChannelIds.Contains(c.Id)).ToList();
+
+        _templates = await TemplateSvc.ListAsync(GuildId, includeDisabled: false);
+        _coinCurrencies = _isManager ? (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList() : [];
+
+        // Creators (non-managers) can't free-hand rewards — default to the first template.
+        if (!_isManager)
+        {
+            _templateId = _templates.FirstOrDefault()?.Id.ToString() ?? "";
+        }
+    }
+
+    // A selected template can supply the prompt, so the field is only required when posting without one.
+    private bool _templateHasPrompt =>
+        Guid.TryParse(_templateId, out var tg) && !string.IsNullOrWhiteSpace(_templates.FirstOrDefault(t => t.Id == tg)?.Prompt);
+
+    private async Task PostAsync()
+    {
+        if (_posting)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_prompt) && !_templateHasPrompt)
+        {
+            Message = "Enter a prompt (or pick a template that has one).";
+            return;
+        }
+
+        _posting = true;
+        try
+        {
+            DateTimeOffset? expires = _expiresHours > 0 ? DateTimeOffset.UtcNow.AddHours(_expiresHours) : null;
+            Guid? templateId = Guid.TryParse(_templateId, out var tg) ? tg : null;
+            var custom = _isManager && templateId is null; // manager picked "— Custom rewards —"
+
+            var command = new CreateMuster(GuildId, UserId, _channelId,
+                string.IsNullOrWhiteSpace(_title) ? null : _title.Trim(),
+                _prompt.Trim(),
+                TemplateId: templateId,
+                Points: custom ? _points : null,
+                Coins: custom ? _coins : null,
+                CoinCurrencyId: custom && Guid.TryParse(_coinCurrencyId, out var cg) ? cg : null,
+                Capacity: _capacity > 0 ? _capacity : null, ExpiresAt: expires, SessionId: Session,
+                CheckInCreator: _checkMeIn,
+                MinCheckIns: custom ? _minCheckIns : null,
+                ResolveMode: _resolveMode);
+
+            var result = await Bus.InvokeAsync<Result<Guid>>(command);
+            if (result.Ok)
+            {
+                Nav.NavigateTo(MusterLinks.MusterDetail(GuildId, result.Value));
+                return;
+            }
+
+            Message = MusterStatusText.Friendly(result.Status);
+        }
+        finally
+        {
+            _posting = false;
+        }
+    }
+}

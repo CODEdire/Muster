@@ -34,6 +34,10 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<EventAttendee> EventAttendees => Set<EventAttendee>();
     public DbSet<ReactionMuster> ReactionMusters => Set<ReactionMuster>();
     public DbSet<ReactionParticipant> ReactionParticipants => Set<ReactionParticipant>();
+    public DbSet<MusterSessionLink> MusterSessionLinks => Set<MusterSessionLink>();
+    public DbSet<GuildMusterSettings> GuildMusterSettings => Set<GuildMusterSettings>();
+    public DbSet<GuildTrackingSettings> GuildTrackingSettings => Set<GuildTrackingSettings>();
+    public DbSet<MusterTemplate> MusterTemplates => Set<MusterTemplate>();
 
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Currency> Currencies => Set<Currency>();
@@ -57,6 +61,15 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
         if (Database.IsSqlServer())
         {
             b.Entity<GuildQuest>().Property(x => x.RowVersion).IsRowVersion();
+
+            // At most one ACTIVE session may be bound to a given scheduled event — a DB-level guard against the
+            // check-then-act race in EnsureForScheduledEventAsync (two near-simultaneous "event started" deliveries).
+            // Filtered to active, event-bound rows so closed sessions and manual (null event) sessions are unaffected.
+            // SQL-Server-only (filter syntax is provider-specific; tests' in-memory provider can't honor the filter).
+            b.Entity<TrackingSession>()
+                .HasIndex(x => new { x.GuildId, x.ScheduledEventId })
+                .HasFilter("[Status] = 0 AND [ScheduledEventId] IS NOT NULL")
+                .IsUnique();
         }
     }
 }

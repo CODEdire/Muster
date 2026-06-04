@@ -505,7 +505,7 @@ public class ParticipationReadService(MusterDbContext db)
             })
             .ToList();
 
-        var rate = (await db.FindGuildAsync(guildId, ct))?.Settings.PointsPerVoiceMinute ?? TrackingSessionService.DefaultPointsPerMinute;
+        var rate = (await db.GetTrackingSettingsAsync(guildId, ct)).PointsPerVoiceMinute;
 
         string NameOf(ulong id) => users.TryGetValue(id, out var u) ? (u.GlobalName ?? u.Username ?? $"User {id}") : $"User {id}";
         IReadOnlyList<SessionPresenceEventRow> events = includeEvents

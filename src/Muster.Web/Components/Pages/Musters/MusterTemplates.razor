@@ -1,0 +1,235 @@
+@page "/guilds/{GuildIdRaw}/management/musters/templates"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject MusterTemplateService Templates
+@inject ICurrencyAdminService CurrencyAdmin
+@using Muster.Domain.Entities.Musters
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Muster templates — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Muster settings", MusterLinks.MusterSettings(GuildId)), new("Templates") })"
+                Subtitle="Named reward presets creators pick from. A Muster Creator can only post from a template; managers can also override." />
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    <div class="panel glass dg-frame dg-fill">
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input type="search" class="dg-search tpl-search" placeholder="Search name or description…" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" />
+                <div class="dg-pill-row" aria-label="Status filter">
+                    @foreach (var f in _filters)
+                    {
+                        <button type="button" class="dg-pill @(_enabledFilter == f.Key ? "active" : null)" @onclick="() => SetFilter(f.Key)">@f.Label</button>
+                    }
+                </div>
+            </div>
+            <div class="dg-actions">
+                <a class="btn btn-sm" href="@MusterLinks.MusterTemplateNew(GuildId)">
+                    <span class="material-symbols-outlined">add</span> New template
+                </a>
+            </div>
+        </div>
+
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick='() => SetSort("name")'>Name @Ind("name")</th>
+                        <th class="sortable num" @onclick='() => SetSort("points")'>Points @Ind("points")</th>
+                        <th class="sortable num" @onclick='() => SetSort("coins")'>Coins @Ind("coins")</th>
+                        <th class="sortable num" @onclick='() => SetSort("capacity")'>Capacity @Ind("capacity")</th>
+                        <th class="sortable num" @onclick='() => SetSort("min")'>Min @Ind("min")</th>
+                        <th class="sortable num" @onclick='() => SetSort("expiry")'>Auto-close @Ind("expiry")</th>
+                        <th class="sortable num" @onclick='() => SetSort("retention")'>Keep @Ind("retention")</th>
+                        <th class="sortable" @onclick='() => SetSort("enabled")'>Enabled @Ind("enabled")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_list is null)
+                    {
+                        <tr class="dg-empty"><td colspan="9">Loading…</td></tr>
+                    }
+                    else if (Filtered.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="9">@(_list.Count == 0 ? "No templates yet — create one to get started." : "No templates match your filter.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var t in Paged)
+                        {
+                            <tr>
+                                <td>
+                                    <a href="@MusterLinks.MusterTemplateEdit(GuildId, t.Id)">@t.Name</a>
+                                    @if (!string.IsNullOrWhiteSpace(t.Description))
+                                    {
+                                        <div class="subtitle dg-sub">@t.Description</div>
+                                    }
+                                </td>
+                                <td class="num">@(t.Points > 0 ? t.Points.ToString("N0") : "—")</td>
+                                <td class="num">@(t.Coins > 0 ? $"{t.Coins:N0} {CoinCode(t.CoinCurrencyId)}" : "—")</td>
+                                <td class="num">@(t.Capacity is { } cap ? cap.ToString("N0") : "—")</td>
+                                <td class="num">@(t.MinCheckIns is { } min ? min.ToString("N0") : "—")</td>
+                                <td class="num">@(t.ExpiryHours is { } ex ? $"{ex}h" : "—")</td>
+                                <td class="num">@(t.RetentionHours)h</td>
+                                <td>@(t.Enabled ? "✓" : "—")</td>
+                                <td class="dg-actions-col">
+                                    <a class="icon-btn" title="Edit" href="@MusterLinks.MusterTemplateEdit(GuildId, t.Id)"><span class="material-symbols-outlined">edit</span></a>
+                                    <button type="button" class="icon-btn danger" title="Delete" disabled="@_busy" @onclick="() => Delete(t)"><span class="material-symbols-outlined">delete</span></button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dg-footer">
+            <div class="dg-footer-left">
+                <div class="dg-pagesize">
+                    Rows
+                    <select class="dg-select" value="@_pageSize" @onchange="OnPageSize">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+                <span class="dg-tz">@(Filtered.Count) of @(_list?.Count ?? 0) template@(_list?.Count == 1 ? "" : "s")</span>
+            </div>
+            <div class="dg-pager">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurrentPage <= 1)" @onclick="Prev">← Prev</button>
+                <span>Page @CurrentPage of @TotalPages</span>
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurrentPage >= TotalPages)" @onclick="Next">Next →</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .dg-sub { margin: 0.15rem 0 0; font-size: 0.78rem; }
+    .tpl-search { min-width: 20rem; }
+</style>
+
+@code {
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private IReadOnlyList<MusterTemplate>? _list;
+    private IReadOnlyList<CurrencyView> _coins = [];
+    private bool _busy;
+
+    private string _search = "";
+    private string _enabledFilter = "all";
+    private string _sortKey = "name";
+    private bool _descending;
+    private int _page = 1;
+    private int _pageSize = 25;
+
+    private static readonly (string Key, string Label)[] _filters =
+        [("all", "All"), ("enabled", "Enabled"), ("disabled", "Disabled")];
+
+    protected override async Task LoadAsync()
+    {
+        _list = await Templates.ListAsync(GuildId);
+        _coins = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
+    }
+
+    // In-memory filter + sort — the template set is small (a handful per guild).
+    private IReadOnlyList<MusterTemplate> Filtered
+    {
+        get
+        {
+            if (_list is null)
+            {
+                return [];
+            }
+
+            IEnumerable<MusterTemplate> q = _list;
+
+            if (_enabledFilter == "enabled") { q = q.Where(t => t.Enabled); }
+            else if (_enabledFilter == "disabled") { q = q.Where(t => !t.Enabled); }
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(t => (t.Name?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                              || (t.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            Func<MusterTemplate, IComparable> key = _sortKey switch
+            {
+                "points" => t => t.Points,
+                "coins" => t => t.Coins,
+                "capacity" => t => t.Capacity ?? -1,
+                "min" => t => t.MinCheckIns ?? -1,
+                "expiry" => t => t.ExpiryHours ?? -1,
+                "retention" => t => t.RetentionHours,
+                "enabled" => t => t.Enabled ? 1 : 0,
+                _ => t => t.Name ?? "",
+            };
+
+            q = _descending ? q.OrderByDescending(key).ThenBy(t => t.Name) : q.OrderBy(key).ThenBy(t => t.Name);
+            return q.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
+
+    // Clamped so filtering/deleting down past the last page still lands on a valid page.
+    private int CurrentPage => Math.Clamp(_page, 1, TotalPages);
+
+    private IReadOnlyList<MusterTemplate> Paged
+        => Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize).ToList();
+
+    private void SetFilter(string key) { _enabledFilter = key; _page = 1; }
+
+    private void ResetPage() => _page = 1;
+
+    private void OnPageSize(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value as string, out var v) ? v : 25;
+        _page = 1;
+    }
+
+    private void Prev() => _page = CurrentPage - 1;
+    private void Next() => _page = CurrentPage + 1;
+
+    private void SetSort(string column)
+    {
+        _descending = _sortKey == column ? !_descending : false;
+        _sortKey = column;
+        _page = 1;
+    }
+
+    private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    private string CoinCode(Guid? id) => _coins.FirstOrDefault(c => c.Id == id)?.Code ?? "coins";
+
+    private async Task Delete(MusterTemplate t)
+    {
+        _busy = true;
+        try
+        {
+            await Templates.DeleteAsync(GuildId, t.Id);
+            await AuditAsync("muster.template", $"delete:{t.Name}");
+            Message = $"Deleted “{t.Name}”.";
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

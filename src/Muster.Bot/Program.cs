@@ -28,7 +28,12 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("appcon
     // The Microsoft.Extensions.Configuration.AzureAppConfiguration extension with the same name on
     // IConfigurationBuilder expects a literal "Endpoint=...;Id=...;Secret=..." connection string and
     // throws "Invalid connection string format" when handed an Aspire connection NAME like "appconfig".
-    builder.AddAzureAppConfiguration("appconfig");
+    //
+    // ConfigureKeyVault wires Key Vault reference resolution: an App Configuration key-value can be a
+    // reference to a Key Vault secret which the provider resolves at load time using the workload's managed
+    // identity (Key Vault Secrets User granted by WithReference(kv) on this project in the AppHost).
+    builder.AddAzureAppConfiguration("appconfig", configureOptions: options =>
+        options.ConfigureKeyVault(kv => kv.SetCredential(new Azure.Identity.DefaultAzureCredential())));
 }
 
 builder.AddMusterInfrastructure();
@@ -79,7 +84,7 @@ builder
     .AddQuestingFeature()
     .AddEconomyFeature()
     .AddTrackingFeature()
-    //.AddMustersFeature()
+    .AddMustersFeature()
     .AddMembershipFeature()
     .AddConfigFeature()
     .AddSeasonsFeature()
@@ -97,7 +102,7 @@ host.AddSlashCommand("ping", "Check that Muster is responding.", () => "Pong!");
 host.UseQuestingModule()
     .UseEconomyModule()
     .UseTrackingModule()
-    //.UseMustersModule()
+    .UseMustersModule()
     .UseMembershipModule()
     .UseConfigModule()
     .UseSeasonsModule()

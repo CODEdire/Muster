@@ -19,6 +19,7 @@ public record RoleMappingView(
     IReadOnlyList<ulong> EconomyManagerRoleIds,
     IReadOnlyList<ulong> EventOfficerRoleIds,
     IReadOnlyList<ulong> TrackingManagerRoleIds,
+    IReadOnlyList<ulong> MusterCreatorRoleIds,
     IReadOnlyList<ulong> AuditorRoleIds);
 
 /// <summary>Read models backing the web admin consoles (member pickers, approval queue, role mapping).</summary>
@@ -54,6 +55,28 @@ public class WebAdminService(MusterDbContext db)
         }
 
         return options.OrderBy(o => o.DisplayName).ToList();
+    }
+
+    /// <summary>Members eligible to be a muster participant — those holding a configured participant role (or every
+    /// member when participation is open, i.e. no participant roles set). For the muster roster's add-member picker.</summary>
+    public async Task<IReadOnlyList<MemberOption>> GetParticipantMembersAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var all = await GetMembersAsync(guildId, ct);
+
+        var guild = await db.FindGuildAsync(guildId, ct);
+        var roleIds = guild?.Settings.ParticipantRoleIds ?? [];
+        if (roleIds.Count == 0)
+        {
+            return all; // open participation
+        }
+
+        var members = await db.ListMembersAsync(guildId, ct);
+        var eligible = members
+            .Where(m => m.RoleIds.Any(r => roleIds.Contains(r)))
+            .Select(m => m.UserId)
+            .ToHashSet();
+
+        return all.Where(o => eligible.Contains(o.UserId)).ToList();
     }
 
     /// <summary>Current ledger retention setting for the guild (0 = inherit platform default).</summary>
@@ -112,6 +135,7 @@ public class WebAdminService(MusterDbContext db)
             guild?.Settings.EconomyManagerRoleIds ?? [],
             guild?.Settings.EventOfficerRoleIds ?? [],
             guild?.Settings.TrackingManagerRoleIds ?? [],
+            guild?.Settings.MusterCreatorRoleIds ?? [],
             guild?.Settings.AuditorRoleIds ?? []);
     }
 }

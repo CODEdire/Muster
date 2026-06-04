@@ -105,6 +105,11 @@ provisions the topic + subscription on next boot.
   - Sets `opts.ServiceName = hostName` (drives the conventional subscription name).
   - Always enables `UseEntityFrameworkCoreTransactions` so Wolverine inlines the `DbContext` into handler codegen.
   - If `ConnectionStrings:musterdb` is set: `PersistMessagesWithSqlServer(connStr, "muster")` (durable outbox/inbox).
+  - **Schema ownership**: **no host auto-provisions** the `muster.wolverine_*` tables —
+    `AutoBuildMessageStorageOnStartup = AutoCreate.None` everywhere. Auto-building from multiple replicas (and
+    racing EF's migration) lock-contended on `Sch-M` and hung deploys (`SqlException` -2). The message-store
+    schema is managed **out of band** via exported SQL scripts / the JasperFx `db-*` CLI exposed by the migration
+    host — see [deployment.md "Wolverine message-store schema"](deployment.md#wolverine-message-store-schema).
   - Picks the transport — emulator connection string takes priority, then live namespace + `DefaultAzureCredential`,
     else stays in-memory.
   - If `ConnectionStrings:messaging-management` is set (emulator only — the AppHost wires it from the

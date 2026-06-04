@@ -1,0 +1,982 @@
+@page "/guilds/{GuildIdRaw}/management/tracking"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@implements IDisposable
+@inject ConfigCommandService Config
+@inject TrackedChannelCommandService Channels
+@inject Muster.Infrastructure.Services.Currencies.ICurrencyReadService Reader
+@inject WebAdminService AdminRead
+@inject Muster.Infrastructure.Services.Tracking.GuildTrackingSettingsService TrackingStore
+@inject Microsoft.Extensions.Options.IOptions<GuildTrackingSettings> TrackingDefaults
+@inject Microsoft.Extensions.Options.IOptions<Muster.Infrastructure.Services.Tracking.TrackingRetentionOptions> TrackingRetention
+@using Muster.Domain.Entities
+@using Muster.Domain.Entities.Guilds
+@using Muster.Domain.Entities.Members
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Membership
+@using Muster.Infrastructure.Commands.Tracking
+
+<PageTitle>Tracking settings — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Tracking settings") })"
+                Subtitle="Reward rates, anti-AFK guards, privacy defaults, and the channels Muster watches.">
+        <Toolbar>
+            @if (_save != SaveStatus.None)
+            {
+                <span class="save-pill is-@_save.ToString().ToLowerInvariant()">
+                    <span class="material-symbols-outlined">@(_save switch { SaveStatus.Saving => "sync", SaveStatus.Saved => "check_circle", _ => "error" })</span>
+                    @(_save switch { SaveStatus.Saving => "Saving…", SaveStatus.Saved => "Saved", _ => _saveMsg ?? "Error" })
+                </span>
+            }
+        </Toolbar>
+    </PageHeader>
+
+    <Accordion SingleOpen="true">
+    <AccordionPane Title="Session payout" Icon="paid" Open="true" Summary="@PayoutSummary">
+        <p class="subtitle">What a tracked voice session pays out when it closes.</p>
+        <div class="mform">
+            <div class="field">
+                <label>Payout currency</label>
+                <select @bind="Settings.CoinCurrency" @bind:after="ScheduleSave">
+                    <option value="">— none (POINTS only) —</option>
+                    @foreach (var c in _spendable)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </select>
+                <p class="hint">Spendable currency minted on session close.</p>
+            </div>
+            <div class="field">
+                <label>Minutes per coin</label>
+                <input type="number" min="0" @bind="Settings.MinutesPerCoin" @bind:after="ScheduleSave" />
+                <p class="hint">0 = no coin on session close.</p>
+            </div>
+
+            <div class="field">
+                <label>Session start bonus</label>
+                <input type="number" min="0" @bind="Settings.StartBonus" @bind:after="ScheduleSave" />
+                <p class="hint">Flat POINTS for being there at start (0 = off).</p>
+            </div>
+            <div class="field">
+                <label>Start window (min)</label>
+                <input type="number" min="0" @bind="Settings.StartWindow" @bind:after="ScheduleSave" />
+                <p class="hint">Joined within N min of start qualifies.</p>
+            </div>
+
+            <div class="field">
+                <label>Session end bonus</label>
+                <input type="number" min="0" @bind="Settings.EndBonus" @bind:after="ScheduleSave" />
+                <p class="hint">Flat POINTS for staying to the end (0 = off).</p>
+            </div>
+            <div class="field">
+                <label>End window (min)</label>
+                <input type="number" min="0" @bind="Settings.EndWindow" @bind:after="ScheduleSave" />
+                <p class="hint">Present within N min of end qualifies.</p>
+            </div>
+
+            <div class="field span2">
+                <label class="checkbox">
+                    <input type="checkbox" @bind="Settings.MultiplyBonuses" @bind:after="ScheduleSave" />
+                    <span>Scale presence bonuses by the active multiplier</span>
+                </label>
+            </div>
+        </div>
+    </AccordionPane>
+
+    <AccordionPane Title="Session controls" Icon="tune" Summary="@ControlsSummary">
+        <p class="subtitle">Limits applied to new tracking sessions, and the default anti-AFK guards per lane.
+            Leave a limit blank to use the server default.</p>
+        <div class="mform">
+            <div class="field">
+                <label>Max session hours</label>
+                <input type="number" min="0" placeholder="@($"server default ({DefMaxSessionHours})")" @bind="Settings.MaxSessionHours" @bind:after="ScheduleSave" />
+                <p class="hint">Auto-close a never-stopped session. 0 = off; blank = server default.</p>
+            </div>
+            <div class="field">
+                <label>Min session seconds</label>
+                <input type="number" min="0" placeholder="@($"server default ({DefMinTrackedSeconds})")" @bind="Settings.MinTrackedSeconds" @bind:after="ScheduleSave" />
+                <p class="hint">Drop drive-by attendees under this. 0 = keep all; blank = server default.</p>
+            </div>
+            <div class="field span2">
+                <label>Activity retention (days)</label>
+                <input type="number" min="0" max="@(MaxActivityRetention > 0 ? MaxActivityRetention : (int?)null)"
+                       placeholder="@($"server default ({DefActivityRetentionDays})")" @bind="Settings.ActivityRetentionDays" @bind:after="ScheduleSave" />
+                <p class="hint">
+                    Prune raw records; rollups kept. 0 = forever; blank = server default.
+                    @if (MaxActivityRetention > 0) { <text>Platform maximum: <strong>@MaxActivityRetention</strong> day(s).</text> }
+                </p>
+            </div>
+        </div>
+
+        <fieldset class="field-group guard-matrix">
+            <legend>Default AFK guards</legend>
+            <p class="hint">A ticked guard pauses reward time while that state is true. These are the baseline — a monitored
+                channel can override any lane, and a manual session can override at open. (Muted = present but can't speak.)</p>
+            <table class="guard-grid">
+                <thead>
+                    <tr><th>Lane</th><th>Muted</th><th>Deafened</th><th>Alone</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">Background</th>
+                        <td><input type="checkbox" @bind="Settings.BgMuted" @bind:after="ScheduleSave" /></td>
+                        <td><input type="checkbox" @bind="Settings.BgDeafened" @bind:after="ScheduleSave" /></td>
+                        <td><input type="checkbox" @bind="Settings.BgAlone" @bind:after="ScheduleSave" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Manual session</th>
+                        <td><input type="checkbox" @bind="Settings.SeMuted" @bind:after="ScheduleSave" /></td>
+                        <td><input type="checkbox" @bind="Settings.SeDeafened" @bind:after="ScheduleSave" /></td>
+                        <td><input type="checkbox" @bind="Settings.SeAlone" @bind:after="ScheduleSave" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Scheduled event</th>
+                        <td><input type="checkbox" @bind="Settings.EvMuted" @bind:after="ScheduleSave" /></td>
+                        <td><input type="checkbox" @bind="Settings.EvDeafened" @bind:after="ScheduleSave" /></td>
+                        <td><input type="checkbox" @bind="Settings.EvAlone" @bind:after="ScheduleSave" /></td>
+                    </tr>
+                </tbody>
+            </table>
+        </fieldset>
+    </AccordionPane>
+
+    <AccordionPane Title="Multipliers" Icon="bolt" Summary="@MultiplierSummary">
+        <p class="subtitle">How overlapping reward windows combine.</p>
+        <div class="mform">
+            <div class="field">
+                <label>Stacking</label>
+                <select @bind="Settings.Stacking" @bind:after="ScheduleSave">
+                    <option value="@MultiplierStacking.HighestWins">Highest wins</option>
+                    <option value="@MultiplierStacking.Multiplicative">Multiplicative</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Maximum multiplier (×)</label>
+                <input type="number" step="0.1" min="0" placeholder="@($"server default ({DefMultiplierCap:0.##})")" @bind="Settings.Cap" @bind:after="ScheduleSave" />
+                <p class="hint">Clamps the highest effective reward multiplier. 0 = uncapped; blank = server default.</p>
+            </div>
+        </div>
+        <p class="subtitle">Manage reward windows on the <a href="@($"/guilds/{GuildId}/multipliers")">Reward windows</a> page (Admin → Economy).</p>
+    </AccordionPane>
+
+    <AccordionPane Title="Privacy" Icon="lock" Summary="@PrivacySummary">
+        <div class="mform">
+            <div class="field span2">
+                <label class="checkbox">
+                    <input type="checkbox" @bind="Settings.BackgroundOptIn" @bind:after="ScheduleSave" />
+                    <span>Background tracking is opt-in</span>
+                </label>
+                <p class="hint">Members must opt in via <code>/track-privacy</code> before background voice time counts.</p>
+            </div>
+        </div>
+        <p class="subtitle warn-text">
+            <span class="material-symbols-outlined">gavel</span>
+            You are responsible for telling your members that background voice/text tracking is active and for complying
+            with the privacy laws and regulations that apply in your jurisdiction. Muster does not provide legal advice.
+        </p>
+    </AccordionPane>
+
+    <AccordionPane Title="Monitored channels" Icon="tag" Summary="@ChannelsSummary">
+        @{
+            var all = FilteredSorted();
+            var totalPages = Math.Max(1, (int)Math.Ceiling(all.Count / (double)ChanPageSize));
+            var pg = Math.Min(_chanPage, totalPages);
+            var pageRows = all.Skip((pg - 1) * ChanPageSize).Take(ChanPageSize).ToList();
+        }
+
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input type="search" class="dg-search" placeholder="Search channel…" @bind="_chanSearch" @bind:event="oninput" @bind:after="ResetPage" />
+                <select class="dg-select" @bind="_chanKind" @bind:after="ResetPage">
+                    <option value="">All kinds</option>
+                    <option value="voice">🔊 Voice</option>
+                    <option value="text">💬 Text</option>
+                </select>
+            </div>
+            <div class="dg-actions">
+                <button type="button" class="btn btn-sm" @onclick="() => _showAdd = !_showAdd">
+                    <span class="material-symbols-outlined">add_circle</span> @(_showAdd ? "Close" : "Add channel")
+                </button>
+            </div>
+        </div>
+
+        @if (Message is not null)
+        {
+            <p class="message dg-message">@Message</p>
+        }
+
+        @if (_showAdd)
+        {
+            <div class="panel glass add-channel">
+                <h3>Add channel</h3>
+                @if (_voice.Count > 0 || _text.Count > 0)
+                {
+                    <div class="mform">
+                        <div class="field span2">
+                            <label>Channel</label>
+                            <select @bind="AddChannel.ChannelId" @bind:after="OnChannelPicked">
+                                <option value="">— select —</option>
+                                @if (_voice.Count > 0)
+                                {
+                                    <optgroup label="🔊 Voice">
+                                        @foreach (var c in _voice) { <option value="@c.ChannelId">@c.Name</option> }
+                                    </optgroup>
+                                }
+                                @if (_text.Count > 0)
+                                {
+                                    <optgroup label="💬 Text">
+                                        @foreach (var c in _text) { <option value="@c.ChannelId">#@c.Name</option> }
+                                    </optgroup>
+                                }
+                            </select>
+                            <p class="hint">Kind is detected automatically. New voice channels inherit the server-default guards.</p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="mform">
+                        <div class="field">
+                            <label>Channel id</label>
+                            <input type="text" @bind="AddChannel.ChannelId" />
+                            <p class="hint">No synced channels — enter an id.</p>
+                        </div>
+                        <div class="field">
+                            <label>Kind</label>
+                            <select @bind="AddChannel.Kind">
+                                <option value="voice">Voice (reward by minute)</option>
+                                <option value="text">Text (stats)</option>
+                            </select>
+                        </div>
+                    </div>
+                }
+
+                @if (IsVoiceChannel)
+                {
+                    <div class="mform">
+                        <div class="field">
+                            <label>Points per minute</label>
+                            <input type="number" min="0" @bind="AddChannel.PointsPerMinute" />
+                        </div>
+                        <div class="field">
+                            <label>Daily cap</label>
+                            <input type="number" min="0" @bind="AddChannel.DailyCap" />
+                            <p class="hint">0 = uncapped.</p>
+                        </div>
+                    </div>
+                    <p class="hint">Per-lane guards start at the server defaults — set them after adding via the row's Configure.</p>
+                }
+                else if (IsTextChannel)
+                {
+                    <div class="mform">
+                        <div class="field">
+                            <label>Points per message</label>
+                            <input type="number" min="0" @bind="AddChannel.PointsPerMessage" />
+                            <p class="hint">0 = stats only.</p>
+                        </div>
+                        <div class="field">
+                            <label>Messages per point</label>
+                            <input type="number" min="1" @bind="AddChannel.MessagesPerPoint" />
+                        </div>
+                        <div class="field">
+                            <label>Cooldown (s)</label>
+                            <input type="number" min="0" @bind="AddChannel.CooldownSeconds" />
+                            <p class="hint">Anti-burst.</p>
+                        </div>
+                        <div class="field">
+                            <label>Daily cap</label>
+                            <input type="number" min="0" @bind="AddChannel.DailyCap" />
+                            <p class="hint">0 = uncapped.</p>
+                        </div>
+                    </div>
+                }
+
+                <div class="btn-row">
+                    <button type="button" @onclick="AddChannelAsync" disabled="@_addSaving">@(_addSaving ? "Saving…" : "Add channel")</button>
+                    <button type="button" class="btn btn-ghost" @onclick="() => _showAdd = false">Cancel</button>
+                </div>
+            </div>
+        }
+
+        <div class="dg-scroll">
+            <table class="dg-table tracked-channels">
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick='() => SetChanSort("kind")'>Kind @ChanInd("kind")</th>
+                        <th class="sortable" @onclick='() => SetChanSort("name")'>Channel @ChanInd("name")</th>
+                        <th class="sortable" @onclick='() => SetChanSort("mode")'>Mode @ChanInd("mode")</th>
+                        <th>Rate</th>
+                        <th>Guards (B / S / E)</th>
+                        <th class="dg-actions-col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (pageRows.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="6">@(_channels.Count == 0 ? "No channels monitored yet — add one above (or use /track-voice / /track-text in Discord)." : "No channels match these filters.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var c in pageRows)
+                        {
+                            var isVoice = c.Kind == GuildChannelKind.Voice;
+                            <tr class="@(c.DeletedAt is not null ? "deleted" : "")">
+                                <td>@(isVoice ? "🔊 Voice" : "💬 Text")</td>
+                                <td>
+                                    @ChannelLabel(c.ChannelId, c.Name)
+                                    @if (c.DeletedAt is not null) { <span class="warn-badge">deleted</span> }
+                                </td>
+                                <td>@c.Mode</td>
+                                <td>
+                                    @(isVoice ? $"{c.PointsPerMinute}/min" : $"{c.PointsPerMessage}/msg")
+                                    @if (c.DailyCapPoints > 0) { <span class="subtitle">cap @c.DailyCapPoints/day</span> }
+                                </td>
+                                <td>
+                                    @if (isVoice)
+                                    {
+                                        <span class="guard-summary">
+                                            <span title="Background">@LaneSummary(c.BackgroundGuards)</span>
+                                            <span title="Manual session">@LaneSummary(c.SessionGuards)</span>
+                                            <span title="Scheduled event">@LaneSummary(c.EventGuards)</span>
+                                        </span>
+                                    }
+                                    else { <span class="subtitle">—</span> }
+                                </td>
+                                <td class="dg-actions-col row-actions">
+                                    <button type="button" class="btn btn-ghost btn-sm" @onclick="() => ToggleEdit(c)">
+                                        @(_edit?.ChannelId == c.ChannelId ? "Close" : "Configure")
+                                    </button>
+                                    <button type="button" class="btn btn-danger btn-sm"
+                                            @onclick="() => RemoveChannelAsync(c.ChannelId)"
+                                            disabled="@(_busyChannelId == c.ChannelId)">
+                                        @(_busyChannelId == c.ChannelId ? "…" : "Stop tracking")
+                                    </button>
+                                </td>
+                            </tr>
+                            @if (_edit?.ChannelId == c.ChannelId)
+                            {
+                                <tr class="edit-row">
+                                    <td colspan="6">
+                                        <div class="channel-editor">
+                                            @if (_edit.IsVoice)
+                                            {
+                                                <div class="mform">
+                                                    <div class="field">
+                                                        <label>Points per minute</label>
+                                                        <input type="number" min="0" @bind="_edit.PointsPerMinute" />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>Daily cap</label>
+                                                        <input type="number" min="0" @bind="_edit.DailyCap" />
+                                                        <p class="hint">0 = uncapped.</p>
+                                                    </div>
+                                                </div>
+
+                                                <fieldset class="field-group guard-matrix">
+                                                    <legend>Per-lane guards</legend>
+                                                    <p class="hint">Tick a guard to override this lane; tick <em>Use default</em> to inherit the server default above.</p>
+                                                    <table class="guard-grid">
+                                                        <thead>
+                                                            <tr><th>Lane</th><th>Use default</th><th>Muted</th><th>Deafened</th><th>Alone</th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @GuardLaneRow("Background", _edit.Background)
+                                                            @GuardLaneRow("Manual session", _edit.Session)
+                                                            @GuardLaneRow("Scheduled event", _edit.Event)
+                                                        </tbody>
+                                                    </table>
+                                                </fieldset>
+                                            }
+                                            else
+                                            {
+                                                <div class="mform">
+                                                    <div class="field">
+                                                        <label>Points per message</label>
+                                                        <input type="number" min="0" @bind="_edit.PointsPerMessage" />
+                                                        <p class="hint">0 = stats only.</p>
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>Messages per point</label>
+                                                        <input type="number" min="1" @bind="_edit.MessagesPerPoint" />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>Cooldown (s)</label>
+                                                        <input type="number" min="0" @bind="_edit.CooldownSeconds" />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>Daily cap</label>
+                                                        <input type="number" min="0" @bind="_edit.DailyCap" />
+                                                        <p class="hint">0 = uncapped.</p>
+                                                    </div>
+                                                </div>
+                                            }
+
+                                            <div class="btn-row">
+                                                <button type="button" @onclick="SaveChannelAsync" disabled="@_addSaving">@(_addSaving ? "Saving…" : "Save changes")</button>
+                                                @if (_edit.IsVoice)
+                                                {
+                                                    <button type="button" class="btn btn-ghost" @onclick="ResetGuardsToDefault">Reset guards to server default</button>
+                                                }
+                                                <button type="button" class="btn btn-ghost" @onclick="() => _edit = null">Cancel</button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dg-footer">
+            <span class="dg-tz">@all.Count channel@(all.Count == 1 ? "" : "s")</span>
+            <div class="dg-pager">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(pg <= 1)" @onclick="() => _chanPage = pg - 1">← Prev</button>
+                <span>Page @pg of @totalPages</span>
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@(pg >= totalPages)" @onclick="() => _chanPage = pg + 1">Next →</button>
+            </div>
+        </div>
+    </AccordionPane>
+    </Accordion>
+}
+
+<style>
+    .add-channel { margin: 0.75rem 0 1rem; padding: 1rem; }
+    .add-channel h3 { margin: 0 0 0.6rem; font-size: 1rem; }
+
+    .field-group {
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 0.5rem;
+        padding: 0.85rem 1rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .field-group.guard-matrix { margin-top: 1.5rem; }
+    .field-group legend {
+        padding: 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
+        letter-spacing: 0.05em; color: var(--text-muted);
+    }
+
+    .guard-grid { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+    .guard-grid th, .guard-grid td { padding: 0.3rem 0.6rem; text-align: center; }
+    .guard-grid thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+    .guard-grid tbody th { text-align: left; font-weight: 500; }
+
+    .channel-editor { padding: 0.6rem 0.4rem; }
+    .tracked-channels tr.edit-row > td { background: rgba(255,255,255,0.03); }
+    .guard-summary { display: inline-flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.78rem; }
+    .guard-summary > span { padding: 0.05rem 0.4rem; background: rgba(255,255,255,0.06); border-radius: 0.25rem; }
+
+    .tracked-channels .row-actions { white-space: nowrap; text-align: right; }
+    .tracked-channels .row-actions .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; margin-left: 0.35rem; }
+    .tracked-channels tr.deleted { opacity: 0.55; }
+    .warn-text { color: #d97706; display: flex; gap: 0.4rem; align-items: flex-start; }
+    .warn-text .material-symbols-outlined { font-size: 1.1rem; }
+    .warn-badge {
+        display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.4rem;
+        font-size: 0.7rem; background: rgba(217,119,6,0.2); color: #d97706; border-radius: 0.25rem;
+    }
+</style>
+
+@code {
+    // TrackingManager + legacy Officer + Admin (implicit) — channel/session config.
+    protected override GuildAccessTier RequiredAccess => GuildAccessTier.TrackingManager | GuildAccessTier.Officer;
+
+    private SettingsInput Settings { get; set; } = new();
+    private AddChannelInput AddChannel { get; set; } = new();
+    private ChannelEdit? _edit;   // the channel row currently expanded for editing
+
+    private IReadOnlyList<CurrencyInfo> _spendable = [];
+    private IReadOnlyList<GuildChannel> _channels = [];
+    private IReadOnlyList<GuildChannel> _voice = [];
+    private IReadOnlyList<GuildChannel> _text = [];
+    private Dictionary<ulong, GuildChannel> _syncedById = new();
+
+    private bool _addSaving;
+    private bool _showAdd;
+    private ulong? _busyChannelId;
+
+    // Channel grid (client-side filter/sort/page over the small monitored set).
+    private string? _chanSearch;
+    private string _chanKind = "";
+    private string _chanSort = "kind";
+    private bool _chanDesc;
+    private int _chanPage = 1;
+    private const int ChanPageSize = 10;
+
+    // Debounced autosave for the settings panes (mirrors Muster settings). Channel edits keep explicit buttons.
+    private enum SaveStatus { None, Saving, Saved, Error }
+    private SaveStatus _save = SaveStatus.None;
+    private string? _saveMsg;
+
+    private const int DebounceMs = 600;
+    private const int HideMs = 10_000;
+    private CancellationTokenSource? _debounce;
+    private CancellationTokenSource? _hide;
+
+    // Server-default placeholders (IOptions GuildDefaults:Tracking → fallbacks).
+    private int DefMaxSessionHours => TrackingDefaults.Value.EffectiveMaxSessionHours();
+    private int DefMinTrackedSeconds => TrackingDefaults.Value.EffectiveMinTrackedSeconds();
+    private int DefActivityRetentionDays => TrackingDefaults.Value.EffectiveActivityRetentionDays();
+    private decimal DefMultiplierCap => TrackingDefaults.Value.EffectiveMultiplierCap();
+    private int MaxActivityRetention => TrackingRetention.Value.MaxActivityRetentionDays;
+
+    private string PayoutSummary
+    {
+        get
+        {
+            var parts = new List<string>
+            {
+                Settings.MinutesPerCoin > 0 && !string.IsNullOrEmpty(Settings.CoinCurrency)
+                    ? $"{Settings.CoinCurrency} every {Settings.MinutesPerCoin}m" : "POINTS only",
+            };
+            var bonus = new List<string>();
+            if (Settings.StartBonus > 0) { bonus.Add($"+{Settings.StartBonus} start"); }
+            if (Settings.EndBonus > 0) { bonus.Add($"+{Settings.EndBonus} end"); }
+            if (bonus.Count > 0) { parts.Add(string.Join(" / ", bonus)); }
+            return string.Join(" · ", parts);
+        }
+    }
+
+    private string ControlsSummary
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Settings.MaxSessionHours is > 0) { parts.Add($"max {Settings.MaxSessionHours}h"); }
+            if (Settings.ActivityRetentionDays is > 0) { parts.Add($"keep {Settings.ActivityRetentionDays}d"); }
+            parts.Add($"guards S:{GuardLabel(SessionGuardsInput())}");
+            return string.Join(" · ", parts);
+        }
+    }
+
+    private string MultiplierSummary =>
+        (Settings.Stacking == MultiplierStacking.Multiplicative ? "Multiplicative" : "Highest wins")
+        + (Settings.Cap is > 0 ? $" · cap {Settings.Cap.Value.ToString("0.##")}×" : "");
+
+    private string PrivacySummary => Settings.BackgroundOptIn ? "Opt-in" : "Automatic";
+
+    private string ChannelsSummary
+    {
+        get
+        {
+            var live = _channels.Count(c => c.DeletedAt is null);
+            return live == 0 ? "None" : $"{live} monitored";
+        }
+    }
+
+    // Compact label for a channel lane: "default" when inheriting, else the tripped guards (or "none").
+    private string LaneSummary(AfkGuards? over) => over is null ? "default" : GuardLabel(over.Value);
+
+    private static string GuardLabel(AfkGuards g)
+    {
+        var parts = new List<string>(3);
+        if (g.Unmuted()) { parts.Add("muted"); }
+        if (g.Undeafened()) { parts.Add("deafened"); }
+        if (g.NotAlone()) { parts.Add("alone"); }
+        return parts.Count == 0 ? "none" : string.Join(",", parts);
+    }
+
+    private AfkGuards BackgroundGuardsInput() => AfkGuardsExtensions.Compose(Settings.BgMuted, Settings.BgDeafened, Settings.BgAlone);
+    private AfkGuards SessionGuardsInput() => AfkGuardsExtensions.Compose(Settings.SeMuted, Settings.SeDeafened, Settings.SeAlone);
+    private AfkGuards EventGuardsInput() => AfkGuardsExtensions.Compose(Settings.EvMuted, Settings.EvDeafened, Settings.EvAlone);
+
+    protected override async Task LoadAsync()
+    {
+        _spendable = (await Reader.GetCurrenciesAsync(GuildId)).Where(c => c.Spendable).ToList();
+        _channels = await AdminRead.GetTrackedChannelsAsync(GuildId);
+        _voice = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Voice);
+        _text = await AdminRead.GetChannelsByKindAsync(GuildId, GuildChannelKind.Text);
+        _syncedById = _voice.Concat(_text).ToDictionary(c => c.ChannelId);
+
+        var s = await TrackingStore.GetAsync(GuildId);
+        Settings = new SettingsInput
+        {
+            BackgroundOptIn = s.BackgroundTrackingOptIn,
+            CoinCurrency = s.SessionCoinCurrencyCode,
+            MinutesPerCoin = s.MinutesPerCoin,
+            MaxSessionHours = s.MaxSessionHours,
+            ActivityRetentionDays = s.ActivityRetentionDays,
+            MinTrackedSeconds = s.MinTrackedSeconds,
+            Stacking = s.MultiplierStacking,
+            Cap = s.MultiplierCap,
+            StartBonus = s.SessionStartBonus,
+            EndBonus = s.SessionEndBonus,
+            StartWindow = s.StartBonusWindowMinutes,
+            EndWindow = s.EndBonusWindowMinutes,
+            MultiplyBonuses = s.MultiplyPresenceBonuses,
+            BgMuted = s.DefaultBackgroundGuards.Unmuted(), BgDeafened = s.DefaultBackgroundGuards.Undeafened(), BgAlone = s.DefaultBackgroundGuards.NotAlone(),
+            SeMuted = s.DefaultSessionGuards.Unmuted(), SeDeafened = s.DefaultSessionGuards.Undeafened(), SeAlone = s.DefaultSessionGuards.NotAlone(),
+            EvMuted = s.DefaultEventGuards.Unmuted(), EvDeafened = s.DefaultEventGuards.Undeafened(), EvAlone = s.DefaultEventGuards.NotAlone(),
+        };
+    }
+
+    private void ScheduleSave()
+    {
+        _debounce?.Cancel();
+        _hide?.Cancel();
+        var cts = _debounce = new CancellationTokenSource();
+        _save = SaveStatus.Saving;
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(DebounceMs, cts.Token); }
+            catch (TaskCanceledException) { return; }
+            await SaveSettingsAsync();
+            StateHasChanged();
+            ScheduleHide();
+        });
+    }
+
+    private void ScheduleHide()
+    {
+        _hide?.Cancel();
+        var hide = _hide = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(HideMs, hide.Token); }
+            catch (TaskCanceledException) { return; }
+            _save = SaveStatus.None;
+            StateHasChanged();
+        });
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        try
+        {
+            await Config.SetBackgroundOptInAsync(GuildId, Settings.BackgroundOptIn);
+            await Config.SetMaxSessionHoursAsync(GuildId, Settings.MaxSessionHours);
+            await Config.SetMinTrackedSecondsAsync(GuildId, Settings.MinTrackedSeconds);
+            await Config.SetDefaultGuardsAsync(GuildId, BackgroundGuardsInput(), SessionGuardsInput(), EventGuardsInput());
+            var retention = await Config.SetActivityRetentionAsync(GuildId, Settings.ActivityRetentionDays);
+            var coin = await Config.SetSessionCoinAsync(GuildId, Settings.CoinCurrency, Settings.MinutesPerCoin);
+            await Config.SetMultiplierSettingsAsync(GuildId, Settings.Stacking, Settings.Cap,
+                Settings.StartBonus, Settings.EndBonus, Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses);
+
+            await Audit.RecordTrackingSettingsAsync(GuildId, UserId, new TrackingSettingsPayload(
+                Settings.BackgroundOptIn,
+                BackgroundGuardsInput(), SessionGuardsInput(), EventGuardsInput(),
+                Settings.CoinCurrency, Settings.MinutesPerCoin, Settings.MaxSessionHours,
+                Settings.ActivityRetentionDays, Settings.MinTrackedSeconds,
+                Settings.Stacking, Settings.Cap,
+                Settings.StartBonus, Settings.EndBonus,
+                Settings.StartWindow, Settings.EndWindow, Settings.MultiplyBonuses));
+
+            // Surface a validation error (e.g. activity retention over the platform max, or a bad coin currency).
+            var err = new[] { retention, coin }.FirstOrDefault(r => r.IsError);
+            _save = err is not null ? SaveStatus.Error : SaveStatus.Saved;
+            _saveMsg = err?.Message;
+        }
+        catch (Exception ex)
+        {
+            _save = SaveStatus.Error;
+            _saveMsg = ex.Message;
+        }
+    }
+
+    // ---- Monitored-channel grid + management. ----
+
+    private void ResetPage() => _chanPage = 1;
+
+    private void SetChanSort(string col)
+    {
+        if (_chanSort == col) { _chanDesc = !_chanDesc; }
+        else { _chanSort = col; _chanDesc = false; }
+        _chanPage = 1;
+    }
+
+    private string ChanInd(string col) => _chanSort == col ? (_chanDesc ? "▼" : "▲") : "";
+
+    private IReadOnlyList<GuildChannel> FilteredSorted()
+    {
+        IEnumerable<GuildChannel> q = _channels;
+        if (!string.IsNullOrWhiteSpace(_chanSearch))
+        {
+            var term = _chanSearch.Trim();
+            q = q.Where(c => ChannelLabel(c.ChannelId, c.Name).Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+        if (_chanKind == "voice") { q = q.Where(c => c.Kind == GuildChannelKind.Voice); }
+        else if (_chanKind == "text") { q = q.Where(c => c.Kind == GuildChannelKind.Text); }
+
+        Func<GuildChannel, object> key = _chanSort switch
+        {
+            "name" => c => ChannelLabel(c.ChannelId, c.Name),
+            "mode" => c => c.Mode.ToString(),
+            _ => c => c.Kind.ToString(),
+        };
+        q = _chanDesc ? q.OrderByDescending(key) : q.OrderBy(key);
+        return q.ToList();
+    }
+
+    private bool IsVoiceChannel => ResolveKind() == GuildChannelKind.Voice;
+    private bool IsTextChannel => ResolveKind() == GuildChannelKind.Text;
+
+    private GuildChannelKind? ResolveKind()
+    {
+        if (ulong.TryParse(AddChannel.ChannelId, out var id) && _syncedById.TryGetValue(id, out var c))
+        {
+            return c.Kind;
+        }
+        if (_voice.Count == 0 && _text.Count == 0 && !string.IsNullOrEmpty(AddChannel.ChannelId))
+        {
+            return AddChannel.Kind == "text" ? GuildChannelKind.Text : GuildChannelKind.Voice;
+        }
+        return null;
+    }
+
+    private string ChannelLabel(ulong channelId, string? storedName)
+    {
+        if (_syncedById.TryGetValue(channelId, out var c) && !string.IsNullOrWhiteSpace(c.Name))
+        {
+            return (c.Kind == GuildChannelKind.Text ? "#" : "") + c.Name;
+        }
+        return string.IsNullOrWhiteSpace(storedName) ? $"#{channelId}" : storedName!;
+    }
+
+    private void OnChannelPicked() => StateHasChanged();
+
+    // Per-lane editor row. No disabled inputs: ticking a guard clears "use default"; ticking "use default" clears guards.
+    private RenderFragment GuardLaneRow(string label, GuardLaneEdit lane) => @<tr>
+        <th scope="row">@label</th>
+        <td><input type="checkbox" checked="@lane.Inherit" @onchange="e => SetLaneInherit(lane, (bool)e.Value!)" /></td>
+        <td><input type="checkbox" checked="@lane.Muted" @onchange="e => SetLaneGuard(lane, g => g.Muted = (bool)e.Value!)" /></td>
+        <td><input type="checkbox" checked="@lane.Deafened" @onchange="e => SetLaneGuard(lane, g => g.Deafened = (bool)e.Value!)" /></td>
+        <td><input type="checkbox" checked="@lane.Alone" @onchange="e => SetLaneGuard(lane, g => g.Alone = (bool)e.Value!)" /></td>
+    </tr>;
+
+    private static void SetLaneInherit(GuardLaneEdit lane, bool inherit)
+    {
+        lane.Inherit = inherit;
+        if (inherit) { lane.Muted = lane.Deafened = lane.Alone = false; } // checking default clears the explicit guards
+    }
+
+    private static void SetLaneGuard(GuardLaneEdit lane, Action<GuardLaneEdit> set)
+    {
+        set(lane);
+        lane.Inherit = false; // toggling any guard means this lane is an explicit override, not inheriting
+    }
+
+    private void ToggleEdit(GuildChannel c)
+    {
+        if (_edit?.ChannelId == c.ChannelId) { _edit = null; return; }
+        _edit = new ChannelEdit
+        {
+            ChannelId = c.ChannelId,
+            IsVoice = c.Kind == GuildChannelKind.Voice,
+            PointsPerMinute = c.PointsPerMinute,
+            DailyCap = c.DailyCapPoints,
+            PointsPerMessage = c.PointsPerMessage,
+            MessagesPerPoint = c.MessagesPerPoint,
+            CooldownSeconds = c.MessageCooldownSeconds,
+            Background = GuardLaneEdit.From(c.BackgroundGuards),
+            Session = GuardLaneEdit.From(c.SessionGuards),
+            Event = GuardLaneEdit.From(c.EventGuards),
+        };
+        Message = null;
+    }
+
+    private void ResetGuardsToDefault()
+    {
+        if (_edit is null) { return; }
+        SetLaneInherit(_edit.Background, true);
+        SetLaneInherit(_edit.Session, true);
+        SetLaneInherit(_edit.Event, true);
+    }
+
+    private async Task SaveChannelAsync()
+    {
+        if (_edit is null) { return; }
+        _addSaving = true;
+        StateHasChanged();
+        try
+        {
+            _syncedById.TryGetValue(_edit.ChannelId, out var synced);
+            var name = synced?.Name;
+
+            if (_edit.IsVoice)
+            {
+                // Rate/cap (also writes a background-guard value, immediately superseded by SetGuardsAsync below).
+                var bg = _edit.Background.ToGuards();
+                var seed = bg ?? AfkGuards.Undeafened | AfkGuards.NotAlone;
+                await Channels.SetVoiceAsync(GuildId, UserId, _edit.ChannelId, _edit.PointsPerMinute, _edit.DailyCap,
+                    seed.Unmuted(), seed.Undeafened(), seed.NotAlone(), channelName: name);
+
+                var result = await Channels.SetGuardsAsync(GuildId, UserId, _edit.ChannelId,
+                    bg, _edit.Session.ToGuards(), _edit.Event.ToGuards());
+                Message = result.Message;
+            }
+            else
+            {
+                var result = await Channels.SetTextAsync(GuildId, UserId, _edit.ChannelId,
+                    _edit.PointsPerMessage, _edit.MessagesPerPoint, _edit.CooldownSeconds, _edit.DailyCap, channelName: name);
+                Message = result.Message;
+            }
+
+            _edit = null;
+            await LoadAsync();
+        }
+        finally
+        {
+            _addSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddChannelAsync()
+    {
+        if (!ulong.TryParse(AddChannel.ChannelId, out var channelId) || channelId == 0)
+        {
+            Message = "Enter a valid channel id.";
+            return;
+        }
+
+        _addSaving = true;
+        StateHasChanged();
+        try
+        {
+            _syncedById.TryGetValue(channelId, out var synced);
+            var isText = synced is not null ? synced.Kind == GuildChannelKind.Text : AddChannel.Kind == "text";
+            var name = synced?.Name;
+
+            CommandResult result;
+            if (isText)
+            {
+                result = await Channels.SetTextAsync(GuildId, UserId, channelId, AddChannel.PointsPerMessage, AddChannel.MessagesPerPoint, AddChannel.CooldownSeconds, AddChannel.DailyCap, channelName: name);
+            }
+            else
+            {
+                // New voice channel inherits the server-default guards: add it, then clear the background override
+                // SetVoiceAsync wrote so the channel starts on "inherit" for every lane.
+                var d = AfkGuards.Undeafened | AfkGuards.NotAlone;
+                result = await Channels.SetVoiceAsync(GuildId, UserId, channelId, AddChannel.PointsPerMinute, AddChannel.DailyCap,
+                    d.Unmuted(), d.Undeafened(), d.NotAlone(), channelName: name);
+                if (!result.IsError)
+                {
+                    await Channels.SetGuardsAsync(GuildId, UserId, channelId, null, null, null);
+                }
+            }
+
+            if (!result.IsError)
+            {
+                var kind = isText ? GuildChannelKind.Text : GuildChannelKind.Voice;
+                await Audit.RecordTrackChannelAsync(GuildId, UserId, channelId, name, kind, TrackedChannelMode.Reward);
+                _showAdd = false;
+            }
+
+            Message = result.Message;
+            AddChannel = new AddChannelInput();
+            await LoadAsync();
+        }
+        finally
+        {
+            _addSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RemoveChannelAsync(ulong channelId)
+    {
+        _busyChannelId = channelId;
+        StateHasChanged();
+        try
+        {
+            _syncedById.TryGetValue(channelId, out var synced);
+            var result = await Channels.RemoveAsync(GuildId, UserId, channelId);
+            if (!result.IsError)
+            {
+                await Audit.RecordUntrackChannelAsync(GuildId, UserId, channelId, synced?.Name);
+            }
+            if (_edit?.ChannelId == channelId) { _edit = null; }
+            Message = result.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busyChannelId = null;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+        _hide?.Cancel();
+        _hide?.Dispose();
+    }
+
+    public class SettingsInput
+    {
+        public bool BackgroundOptIn { get; set; }
+        public string? CoinCurrency { get; set; }
+        public int MinutesPerCoin { get; set; }
+        public int? MaxSessionHours { get; set; }
+        public int? ActivityRetentionDays { get; set; }
+        public int? MinTrackedSeconds { get; set; }
+        public MultiplierStacking Stacking { get; set; }
+        public decimal? Cap { get; set; }
+        public int StartBonus { get; set; }
+        public int EndBonus { get; set; }
+        public int StartWindow { get; set; } = 5;
+        public int EndWindow { get; set; } = 5;
+        public bool MultiplyBonuses { get; set; }
+
+        // Guild default guards, decomposed per lane (Bg = background, Se = manual session, Ev = scheduled event).
+        public bool BgMuted { get; set; } public bool BgDeafened { get; set; } public bool BgAlone { get; set; }
+        public bool SeMuted { get; set; } public bool SeDeafened { get; set; } public bool SeAlone { get; set; }
+        public bool EvMuted { get; set; } public bool EvDeafened { get; set; } public bool EvAlone { get; set; }
+    }
+
+    public class AddChannelInput
+    {
+        public string? ChannelId { get; set; }
+        public string Kind { get; set; } = "voice";
+        public int PointsPerMinute { get; set; } = 1;
+        public int DailyCap { get; set; }
+        public int PointsPerMessage { get; set; }
+        public int MessagesPerPoint { get; set; } = 1;
+        public int CooldownSeconds { get; set; }
+    }
+
+    public class ChannelEdit
+    {
+        public ulong ChannelId { get; set; }
+        public bool IsVoice { get; set; }
+        public int PointsPerMinute { get; set; }
+        public int DailyCap { get; set; }
+        public int PointsPerMessage { get; set; }
+        public int MessagesPerPoint { get; set; }
+        public int CooldownSeconds { get; set; }
+        public GuardLaneEdit Background { get; set; } = new();
+        public GuardLaneEdit Session { get; set; } = new();
+        public GuardLaneEdit Event { get; set; } = new();
+    }
+
+    public class GuardLaneEdit
+    {
+        public bool Inherit { get; set; } = true;
+        public bool Muted { get; set; }
+        public bool Deafened { get; set; }
+        public bool Alone { get; set; }
+
+        public static GuardLaneEdit From(AfkGuards? g) => g is null
+            ? new GuardLaneEdit { Inherit = true }
+            : new GuardLaneEdit { Inherit = false, Muted = g.Value.Unmuted(), Deafened = g.Value.Undeafened(), Alone = g.Value.NotAlone() };
+
+        public AfkGuards? ToGuards() => Inherit ? null : AfkGuardsExtensions.Compose(Muted, Deafened, Alone);
+    }
+}

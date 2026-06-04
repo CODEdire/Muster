@@ -1,0 +1,87 @@
+@* A themed Discord-markdown editor: a toolbar that inserts Discord syntax into a plain textarea (so @bind keeps
+   working), plus a live preview rendered with the same sanitizer the web uses. Two-way bind via @bind-Value. *@
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="md-editor">
+    <div class="md-toolbar" role="toolbar" aria-label="Formatting">
+        <button type="button" title="Bold" @onclick='() => Apply("bold")'><span class="material-symbols-outlined">format_bold</span></button>
+        <button type="button" title="Italic" @onclick='() => Apply("italic")'><span class="material-symbols-outlined">format_italic</span></button>
+        <button type="button" title="Underline" @onclick='() => Apply("underline")'><span class="material-symbols-outlined">format_underlined</span></button>
+        <button type="button" title="Strikethrough" @onclick='() => Apply("strike")'><span class="material-symbols-outlined">strikethrough_s</span></button>
+        <button type="button" title="Spoiler" @onclick='() => Apply("spoiler")'><span class="material-symbols-outlined">visibility_off</span></button>
+        <span class="md-sep"></span>
+        <button type="button" title="Inline code" @onclick='() => Apply("code")'><span class="material-symbols-outlined">code</span></button>
+        <button type="button" title="Code block" @onclick='() => Apply("codeblock")'><span class="material-symbols-outlined">data_object</span></button>
+        <button type="button" title="Quote" @onclick='() => Apply("quote")'><span class="material-symbols-outlined">format_quote</span></button>
+        <button type="button" title="Bulleted list" @onclick='() => Apply("bullet")'><span class="material-symbols-outlined">format_list_bulleted</span></button>
+        <button type="button" title="Numbered list" @onclick='() => Apply("number")'><span class="material-symbols-outlined">format_list_numbered</span></button>
+        <button type="button" title="Link" @onclick='() => Apply("link")'><span class="material-symbols-outlined">link</span></button>
+        <span class="md-spacer"></span>
+        <button type="button" class="@(_preview ? "active" : null)" title="@(_preview ? "Edit" : "Preview")" @onclick="() => _preview = !_preview">
+            <span class="material-symbols-outlined">@(_preview ? "edit" : "visibility")</span>
+        </button>
+    </div>
+
+    @if (_preview)
+    {
+        <div class="md-preview">
+            @if (string.IsNullOrWhiteSpace(Value))
+            {
+                <span class="md-preview-empty">Nothing to preview.</span>
+            }
+            else
+            {
+                @Muster.Web.DiscordMarkdown.ToHtml(Value)
+            }
+        </div>
+    }
+    else
+    {
+        <textarea @ref="_ta" class="md-textarea" rows="@Rows" maxlength="@MaxLength"
+                  placeholder="@Placeholder" value="@Value" @oninput="OnInput"></textarea>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public int Rows { get; set; } = 4;
+    [Parameter] public int MaxLength { get; set; } = 2000;
+    [Parameter] public string? Placeholder { get; set; }
+
+    private ElementReference _ta;
+    private IJSObjectReference? _module;
+    private bool _preview;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/markdown-editor.js");
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value as string;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task Apply(string kind)
+    {
+        if (_module is null || _preview)
+        {
+            return;
+        }
+
+        // JS wraps the selection and dispatches an 'input' event, which routes back through OnInput.
+        await _module.InvokeVoidAsync("apply", _ta, kind);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); } catch (JSDisconnectedException) { }
+        }
+    }
+}

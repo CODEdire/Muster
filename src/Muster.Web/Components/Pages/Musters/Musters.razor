@@ -1,0 +1,190 @@
+@page "/guilds/{GuildIdRaw}/guild/musters"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IMusterReadService Reads
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Membership
+@using Muster.Infrastructure.Services.Musters
+
+<PageTitle>Musters — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">Musters are open to participants of this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Musters") })"
+                Subtitle="Active check-ins — tap to join. Rewards are granted when the muster closes.">
+        <Toolbar>
+            @if (_isStaff)
+            {
+                <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterManage(GuildId)">
+                    <span class="material-symbols-outlined">grid_view</span> Manage
+                </a>
+                <a class="btn btn-sm" href="@MusterLinks.MusterNew(GuildId)">
+                    <span class="material-symbols-outlined">add</span> New muster
+                </a>
+            }
+        </Toolbar>
+    </PageHeader>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_cards is null)
+    {
+        <div class="panel glass empty">Loading…</div>
+    }
+    else if (_cards.Count == 0)
+    {
+        <div class="panel glass empty">No active musters right now.</div>
+    }
+    else
+    {
+        <div class="muster-cards">
+            @foreach (var m in _cards)
+            {
+                <div class="muster-card panel glass @(m.YouCheckedIn ? "is-in" : null)">
+                    <div class="mc-head">
+                        <span class="mc-status mc-@(m.Status.ToString().ToLowerInvariant())">@StatusLabel(m)</span>
+                        @if (m.YouCheckedIn)
+                        {
+                            <span class="mc-youin"><span class="material-symbols-outlined">task_alt</span> You're in</span>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(m.Title))
+                    {
+                        <h3 class="mc-title">@m.Title</h3>
+                    }
+                    <div class="mc-prompt">@Muster.Web.DiscordMarkdown.ToHtml(m.Prompt)</div>
+
+                    <div class="mc-meta">
+                        <span title="Checked in"><span class="material-symbols-outlined">group</span> @m.CheckedIn@(m.Capacity is { } c ? $" / {c}" : "")</span>
+                        @if (RewardText(m) is { Length: > 0 } reward)
+                        {
+                            <span title="Reward"><span class="material-symbols-outlined">paid</span> @reward</span>
+                        }
+                        @if (m.MinCheckIns is { } min && min > 0)
+                        {
+                            <span title="Minimum to reward" class="@(m.CheckedIn >= min ? "mc-ok" : "mc-warn")">
+                                <span class="material-symbols-outlined">@(m.CheckedIn >= min ? "check_circle" : "pending")</span> @m.CheckedIn/@min
+                            </span>
+                        }
+                        @if (m.Sessions.Count == 1)
+                        {
+                            <a href="@MusterLinks.SessionDetail(GuildId, m.Sessions[0].SessionId)" title="Linked session"><span class="material-symbols-outlined">link</span> @m.Sessions[0].Name</a>
+                        }
+                    </div>
+
+                    <div class="mc-actions">
+                        @if (m.Status == MusterStatus.Open && !m.YouCheckedIn)
+                        {
+                            <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="() => CheckInAsync(m.Id)">
+                                <span class="material-symbols-outlined">how_to_reg</span> Check in
+                            </button>
+                        }
+                        else if (m.Status == MusterStatus.Open && m.YouCheckedIn)
+                        {
+                            <button type="button" class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="() => CheckOutAsync(m.Id)">
+                                <span class="material-symbols-outlined">logout</span> Check out
+                            </button>
+                        }
+                        @if (_isStaff)
+                        {
+                            <a class="btn btn-sm btn-ghost" href="@MusterLinks.MusterDetail(GuildId, m.Id)">Details</a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+<style>
+    .muster-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .muster-card { display: flex; flex-direction: column; gap: 0.6rem; padding: 1rem 1.1rem; }
+    .muster-card.is-in { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+    .mc-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .mc-status { font-size: 0.78rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 18%, transparent); }
+    .mc-status.mc-open { background: color-mix(in srgb, #22c55e 22%, transparent); color: #22c55e; }
+    .mc-status.mc-locked { background: color-mix(in srgb, #f59e0b 22%, transparent); color: #f59e0b; }
+    .mc-youin { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; color: var(--accent); }
+    .mc-youin .material-symbols-outlined { font-size: 1.05rem; }
+    .mc-title { margin: 0; font-size: 1.05rem; }
+    .mc-prompt { color: var(--text); line-height: 1.45; font-size: 0.92rem; max-height: 7.5rem; overflow: hidden; }
+    .mc-prompt > :first-child { margin-top: 0; }
+    .mc-meta { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; color: var(--text-muted); font-size: 0.82rem; margin-top: auto; }
+    .mc-meta span, .mc-meta a { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .mc-meta .material-symbols-outlined { font-size: 1.05rem; }
+    .mc-meta .mc-ok { color: #22c55e; }
+    .mc-meta .mc-warn { color: #f59e0b; }
+    .mc-actions { display: flex; gap: 0.5rem; align-items: center; }
+</style>
+
+@code {
+    private bool _isStaff;
+    private bool _busy;
+    private IReadOnlyList<MusterCard>? _cards;
+
+    // Participants (and staff, who are implicitly participants) may view + check in.
+    protected override Task<bool> IsAuthorizedAsync(ulong guildId, ulong userId)
+        => Auth.IsParticipantAsync(guildId, userId);
+
+    protected override async Task LoadAsync()
+    {
+        _isStaff = await Auth.IsMusterCreatorAsync(GuildId, UserId); // creator or manager
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync() => _cards = await Reads.ActiveCardsAsync(GuildId, UserId);
+
+    private static string RewardText(MusterCard m)
+    {
+        var parts = new List<string>();
+        if (m.Points > 0) { parts.Add($"{m.Points} pts"); }
+        if (m.Coins > 0) { parts.Add($"{m.Coins} {m.CoinCode ?? "coins"}"); }
+        return string.Join(" + ", parts);
+    }
+
+    private static string StatusLabel(MusterCard m) => m.Status switch
+    {
+        MusterStatus.Open => "Open",
+        MusterStatus.Locked => m.Sessions.Count > 0 ? "Locked" : "In review",
+        _ => m.Status.ToString(),
+    };
+
+    private async Task CheckInAsync(Guid musterId) => await ActAsync(new CheckInMuster(GuildId, UserId, musterId), "Checked in.");
+    private async Task CheckOutAsync(Guid musterId) => await ActAsync(new CheckOutMuster(GuildId, UserId, musterId), "Checked out.");
+
+    private async Task ActAsync(IGuildCommand command, string okMessage)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Bus.InvokeAsync<Result>(command);
+            Message = result.Ok ? okMessage : MusterStatusText.Friendly(result.Status);
+        }
+        finally
+        {
+            _busy = false;
+            await ReloadAsync();
+        }
+    }
+}

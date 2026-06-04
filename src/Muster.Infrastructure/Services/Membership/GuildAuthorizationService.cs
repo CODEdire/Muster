@@ -79,9 +79,10 @@ public class GuildAuthorizationService(MusterDbContext db)
             guild.Settings.OfficerRoleIds.Contains(r));
     }
 
-    /// <summary>Tracking staff — open/close sessions, configure monitored channels + reward multipliers,
-    /// force-opt-out members. Admin bypass; legacy <see cref="GuildSettings.OfficerRoleIds"/> also grants this
-    /// (back-compat).</summary>
+    /// <summary>Tracking staff — open/close sessions + ops, configure monitored channels + reward multipliers,
+    /// run musters, force-opt-out members. Admin bypass; the legacy <see cref="GuildSettings.OfficerRoleIds"/> and
+    /// <see cref="GuildSettings.EventOfficerRoleIds"/> umbrellas also grant it. (Event Officer was merged into
+    /// Tracking Manager — its role list is kept as a back-compat alias so existing mappings keep working.)</summary>
     public async Task<bool> IsTrackingManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
         if (await IsAdminAsync(guildId, userId, ct))
@@ -98,14 +99,21 @@ public class GuildAuthorizationService(MusterDbContext db)
 
         return member.RoleIds.Any(r =>
             guild.Settings.TrackingManagerRoleIds.Contains(r) ||
+            guild.Settings.EventOfficerRoleIds.Contains(r) ||
             guild.Settings.OfficerRoleIds.Contains(r));
     }
 
-    /// <summary>Event-ops staff — may create / close <c>/op</c> entries. Admin bypass; legacy
-    /// <see cref="GuildSettings.OfficerRoleIds"/> also grants this (back-compat).</summary>
-    public async Task<bool> IsEventOfficerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    /// <summary>Event-ops staff. <b>Merged into Tracking Manager</b> — this is now an alias so the <c>/op</c> family
+    /// and any EventOfficer-gated surface accept the same holders as tracking. Kept as a method for call-site
+    /// stability.</summary>
+    public Task<bool> IsEventOfficerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+        => IsTrackingManagerAsync(guildId, userId, ct);
+
+    /// <summary>May post musters from a template. Tracking managers (and admins) implicitly qualify — and they can
+    /// additionally create custom musters; <see cref="GuildSettings.MusterCreatorRoleIds"/> holders are template-only.</summary>
+    public async Task<bool> IsMusterCreatorAsync(ulong guildId, ulong userId, CancellationToken ct = default)
     {
-        if (await IsAdminAsync(guildId, userId, ct))
+        if (await IsTrackingManagerAsync(guildId, userId, ct))
         {
             return true;
         }
@@ -117,9 +125,22 @@ public class GuildAuthorizationService(MusterDbContext db)
             return false;
         }
 
-        return member.RoleIds.Any(r =>
-            guild.Settings.EventOfficerRoleIds.Contains(r) ||
-            guild.Settings.OfficerRoleIds.Contains(r));
+        return member.RoleIds.Any(r => guild.Settings.MusterCreatorRoleIds.Contains(r));
+    }
+
+    /// <summary>Whether <paramref name="userId"/> may manage the lifecycle of a specific muster (close, edit, curate
+    /// roster, remove card). A Tracking Manager (and the legacy Officer/Admin umbrellas it absorbs) may manage <i>any</i>
+    /// muster; a template-only Muster Creator may manage only the ones they <paramref name="createdBy"/> own. Session
+    /// linking + coin-gate are deliberately NOT covered here — those stay Tracking-Manager-only (they affect session
+    /// economics).</summary>
+    public async Task<bool> CanManageMusterAsync(ulong guildId, ulong userId, ulong createdBy, CancellationToken ct = default)
+    {
+        if (await IsTrackingManagerAsync(guildId, userId, ct))
+        {
+            return true;
+        }
+
+        return createdBy == userId && await IsMusterCreatorAsync(guildId, userId, ct);
     }
 
     /// <summary>Read-only observer — audit log, ledger, participation. Implied by any mutating role

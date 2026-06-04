@@ -37,6 +37,9 @@ public enum GuildAccessTier
     /// but pages must still list it so an explicit-auditor-only viewer can reach the page.</summary>
     Auditor          = 1 << 5,
 
+    /// <summary>May post musters from a template (template-only self-service). Tracking managers imply it.</summary>
+    MusterCreator    = 1 << 6,
+
     /// <summary>Any staff tier — use on landing pages that link out to role-specific sub-areas (admin nav).</summary>
     AnyStaff         = Officer | EconomyManager | EventOfficer | TrackingManager | QuestManager | Auditor,
 }
@@ -67,6 +70,7 @@ public static class GuildAccessAuthorizer
         if (required.HasFlag(GuildAccessTier.Officer)         && await roles.IsOfficerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.EconomyManager)  && await roles.IsEconomyManagerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.TrackingManager) && await roles.IsTrackingManagerAsync(guildId, userId, ct)) return true;
+        if (required.HasFlag(GuildAccessTier.MusterCreator)    && await roles.IsMusterCreatorAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.QuestManager)    && await roles.IsQuestManagerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.EventOfficer)    && await roles.IsEventOfficerAsync(guildId, userId, ct)) return true;
         if (required.HasFlag(GuildAccessTier.Auditor)         && await roles.IsAuditorAsync(guildId, userId, ct)) return true;

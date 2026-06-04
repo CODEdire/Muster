@@ -55,9 +55,11 @@ public class MessagingAndSeasonTests
     {
         using var db = await SeededAsync();
         var guild = await db.Guilds.SingleAsync();
-        guild.Settings.PointsPerVoiceMinute = 3;
-        guild.Settings.ApplyAfkGuardsToSessions = false; // single-user accrual test
-        await db.SaveChangesAsync();
+        await db.SeedTrackingAsync(guild.Id, t =>
+        {
+            t.PointsPerVoiceMinute = 3;
+            t.DefaultSessionGuards = Muster.Domain.Enums.AfkGuards.None; // single-user accrual test
+        });
 
         var sessions = new TrackingSessionService(db, new CurrencyService(db, new RecordingMessageBus()), new GuildAuthorizationService(db), new RewardMultiplierService(db), new RecordingMessageBus());
         var session = await sessions.OpenManualAsync(1, voiceChannelId: 500, openedBy: 5);
