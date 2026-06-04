@@ -178,6 +178,24 @@ builder.Services.AddRateLimiter(options =>
     {
         if (!http.Request.Path.StartsWithSegments("/api/v1"))
         {
+            // Authenticated web mutations (SSR form posts) — bound per signed-in user so one session can't flood
+            // mutation endpoints or the background-job queue. Interactive Blazor clicks ride the /_blazor circuit
+            // (not individual HTTP requests), so those are throttled at the action level instead (e.g. one active
+            // bulk job per actor in CurrencyBulkService).
+            if (HttpMethods.IsPost(http.Request.Method)
+                && !http.Request.Path.StartsWithSegments("/_blazor")
+                && http.User.GetDiscordUserId() is { } webUserId)
+            {
+                return RateLimitPartition.GetSlidingWindowLimiter("ui:" + webUserId, _ => new SlidingWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    SegmentsPerWindow = 6,
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                });
+            }
+
             return RateLimitPartition.GetNoLimiter("non-api");
         }
 
@@ -227,7 +245,13 @@ app.UseRateLimiter();
 // Discord OAuth login / logout. Only allow local return URLs (avoid open redirects).
 app.MapGet("/account/login", (HttpContext http, string? returnUrl) =>
 {
-    var target = !string.IsNullOrEmpty(returnUrl) && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//")
+    // Local-only return URL (avoid open redirects). Reject backslashes too: browsers normalise '\' to '/', so
+    // "/\evil.com" would resolve protocol-relative to evil.com despite passing the single-slash check.
+    var target = !string.IsNullOrEmpty(returnUrl)
+            && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
+            && returnUrl.StartsWith('/')
+            && !returnUrl.StartsWith("//")
+            && !returnUrl.Contains('\\')
         ? returnUrl
         : "/guilds";
 

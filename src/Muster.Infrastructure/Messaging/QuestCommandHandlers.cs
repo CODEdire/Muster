@@ -21,7 +21,7 @@ public static class ApproveQuestSubmissionHandler
     public static async Task<Result> Handle(
         ApproveQuestSubmission command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -43,7 +43,7 @@ public static class RejectQuestSubmissionHandler
     public static async Task<Result> Handle(
         RejectQuestSubmission command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -64,7 +64,7 @@ public static class ReopenQuestRejectionHandler
     public static async Task<Result> Handle(
         ReopenQuestRejection command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -85,7 +85,7 @@ public static class ClaimQuestHandler
     public static async Task<Result> Handle(
         ClaimQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -114,7 +114,7 @@ public static class SubmitQuestHandler
     public static async Task<Result> Handle(
         SubmitQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -218,7 +218,7 @@ public static class CancelQuestHandler
     public static async Task<Result> Handle(
         CancelQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -241,7 +241,7 @@ public static class ConfirmQuestHandler
     public static async Task<Result> Handle(
         ConfirmQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -262,7 +262,7 @@ public static class DisputeQuestHandler
     public static async Task<Result> Handle(
         DisputeQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -283,7 +283,7 @@ public static class ArbitrateQuestHandler
     public static async Task<Result> Handle(
         ArbitrateQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -304,7 +304,7 @@ public static class RequestQuestRevisionHandler
     public static async Task<Result> Handle(
         RequestQuestRevision command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -325,7 +325,7 @@ public static class AcceptQuestIntakeHandler
     public static async Task<Result> Handle(
         AcceptQuestIntake command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -351,7 +351,7 @@ public static class RejectQuestIntakeHandler
     public static async Task<Result> Handle(
         RejectQuestIntake command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -372,7 +372,7 @@ public static class FinalizeQuestHandler
     public static async Task<Result> Handle(
         FinalizeQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -395,7 +395,7 @@ public static class ReleaseQuestClaimHandler
     public static async Task<Result> Handle(
         ReleaseQuestClaim command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
@@ -418,7 +418,7 @@ public static class EditQuestHandler
     public static async Task<Result> Handle(
         EditQuest command, MusterDbContext db, IQuestAuthorizer authorizer, IQuestService quests, CancellationToken ct)
     {
-        var quest = await db.FindQuestAsync(command.QuestId, ct);
+        var quest = await db.FindQuestInGuildAsync(command.GuildId, command.QuestId, ct);
         if (quest is null)
         {
             return Result.Fail(nameof(QuestResult.NotFound));
