@@ -1,5 +1,7 @@
 using Aspire.Hosting.Azure;
 using Azure.Provisioning.AppContainers;
+using Muster.AppHost.Core;
+using Muster.AppHost.PlatformExtensions;
 
 namespace Muster.AppHost;
 
@@ -22,22 +24,23 @@ internal static class MigrationsExtensions
     /// <c>WaitForCompletion(...)</c>.</summary>
     public const string ResourceName = "migrations";
 
-    /// <summary>Adds the migration service project, wires it to the database, and in publish-mode flips it
-    /// from "Container App" to "Container App Job" so it runs to completion instead of being restarted.</summary>
-    public static IResourceBuilder<ProjectResource> AddMusterMigrations(
-        this IDistributedApplicationBuilder builder,
-        IResourceBuilder<AzureSqlDatabaseResource> db,
-        IResourceBuilder<AzureApplicationInsightsResource>? appInsights = null)
+    /// <summary>Platform step: adds the migration service project, wires it to the database (must be added first)
+    /// + App Insights, and in publish-mode flips it from "Container App" to "Container App Job" so it runs to
+    /// completion instead of being restarted.</summary>
+    public static MusterPlatformBuilder AddMigrations(this MusterPlatformBuilder p)
     {
+        var builder = p.Inner;
+        var db = p.Database ?? throw new InvalidOperationException("Call AddPersistence() before AddMigrations().");
+
         var migrations = builder.AddProject<Projects.Muster_MigrationService>(ResourceName)
             .WithReference(db)
             .WaitFor(db);
 
         // App Insights ref in publish so the migration job's telemetry (EF Core migrations, SQL traces,
         // exit code) lands in the same workspace as web/bot. Null in run mode → Aspire Dashboard via OTLP.
-        if (appInsights is not null)
+        if (p.ApplicationInsights is not null)
         {
-            migrations.WithReference(appInsights);
+            migrations.WithMusterApplicationInsights(p.ApplicationInsights);
         }
 
         if (builder.ExecutionContext.IsPublishMode)
@@ -55,6 +58,7 @@ internal static class MigrationsExtensions
 #pragma warning restore ASPIREAZURE002
         }
 
-        return migrations;
+        p.Migrations = migrations;
+        return p;
     }
 }

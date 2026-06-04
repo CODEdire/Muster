@@ -1,6 +1,10 @@
+using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
-using Azure.Core;
 using Azure.Provisioning.AppContainers;
+using Microsoft.Extensions.Configuration;
+using Muster.AppHost.Core;
+using Muster.AppHost.Options;
+using Muster.AppHost.PlatformExtensions;
 
 namespace Muster.AppHost;
 
@@ -22,90 +26,83 @@ internal static class WebHostingExtensions
     public const string ResourceName = "web";
 
     public static IResourceBuilder<ProjectResource> AddMusterWeb(
-        this IDistributedApplicationBuilder builder,
-        IResourceBuilder<AzureSqlDatabaseResource> db,
-        IResourceBuilder<AzureServiceBusResource> messaging,
-        IResourceBuilder<ParameterResource> discordToken,
-        IResourceBuilder<ParameterResource> discordClientId,
-        IResourceBuilder<ParameterResource> discordClientSecret,
-        IResourceBuilder<ProjectResource> migrations,
-        IResourceBuilder<AzureKeyVaultResource>? keyVault,
-        IResourceBuilder<AzureAppConfigurationResource>? appConfig,
-        IResourceBuilder<AzureBlobStorageContainerResource> dpKeys,
-        IResourceBuilder<AzureApplicationInsightsResource>? appInsights)
+        this IDistributedApplicationBuilder builder, MusterPlatform platform)
     {
+        // All shared infra (SQL, Service Bus, Data Protection, Key Vault, App Config, App Insights, migration gate)
+        // + their RBAC role assignments are wired by WithMusterPlatform — see PlatformWiringExtensions.
         var web = builder.AddProject<Projects.Muster_Web>(ResourceName)
-            .WithReference(db)
-            .WithMusterMessaging(messaging)
-            .WithReference(dpKeys)
-            .WithEnvironment("Discord__ClientId", discordClientId)
-            .WithEnvironment("Discord__ClientSecret", discordClientSecret)
+            .WithMusterPlatform(platform)
+            .WithEnvironment("Discord__ClientId", platform.DiscordClientId)
+            .WithEnvironment("Discord__ClientSecret", platform.DiscordClientSecret)
             // Bot token lets the web settings page list a guild's channels (quest-board channel picker)
             // via Discord REST — no channel table, fetched live.
-            .WithEnvironment("Discord__Token", discordToken)
-            // Data Protection wiring — both URIs are read by Infrastructure.AddMusterConnectorProtection
-            // to decide between Azure DP (Blob + KV wrap) and the local SQL fallback.
-            .WithEnvironment("DataProtection__WrapKeyName", KeyVaultConstants.DataProtectionWrapKeyName)
-            .WithEnvironment("DataProtection__Container", StorageConstants.DataProtectionContainerName)
-            .WithExternalHttpEndpoints()
-            .WaitForCompletion(migrations);
+            .WithEnvironment("Discord__Token", platform.DiscordToken)
+            .WithExternalHttpEndpoints();
 
-        // KV + AppConfig are publish-only (null in run mode). WithReference grants the workload identity
-        // the right RBAC role + publishes ConnectionStrings:kv / ConnectionStrings:appconfig.
-        if (keyVault is not null)
+        // Azure SignalR backplane (web-only; bot has no circuit). Publish only — null in run mode keeps the
+        // local circuit in-process. Grants the SignalR App Server role + publishes ConnectionStrings:signalr.
+        if (platform.SignalR is not null)
         {
-            web.WithReference(keyVault);
-        }
-        if (appConfig is not null)
-        {
-            web.WithReference(appConfig);
-        }
-        // App Insights ref publishes APPLICATIONINSIGHTS_CONNECTION_STRING which UseAzureMonitor() in
-        // ServiceDefaults picks up. Null in run mode → telemetry stays on the Aspire Dashboard via OTLP.
-        if (appInsights is not null)
-        {
-            web.WithReference(appInsights);
+            web.WithMusterSignalR(platform.SignalR);
         }
 
-        // Optional custom domain — read from azd env vars (set via `azd env set webCustomDomain ...`).
-        // Both must be set together: the hostname AND the resource id of an already-issued managed cert
-        // on the CA Environment. Bootstrap pattern: first deploy omits the binding, you add the hostname
-        // + cert via Portal, then copy the cert resource id into azd env vars so subsequent `azd up`
-        // runs preserve the binding (without this, every redeploy strips the manually-added domain).
+        // Optional custom domain + managed TLS. Skipped entirely when no Domain is configured; the app keeps its
+        // default *.azurecontainerapps.io host. Wired via Aspire's ConfigureCustomDomain helper (below), which
+        // takes two parameter resources: the hostname and the managed-cert NAME.
         //
-        // Read via Environment.GetEnvironmentVariable directly — azd injects its .env entries as process
-        // env vars when launching the AppHost, but builder.Configuration's resolution can miss them
-        // depending on prefix/casing rules. The env-var API is the path azd guarantees.
-        var customDomain = Environment.GetEnvironmentVariable("webCustomDomain");
-        var customDomainCertId = Environment.GetEnvironmentVariable("webCustomDomainCertId");
-        var hasCustomDomain = !string.IsNullOrWhiteSpace(customDomain)
-                              && !string.IsNullOrWhiteSpace(customDomainCertId);
+        // The HOSTNAME is Options-driven (WebCustomDomainOptions:Domain) — known up front. The CERT NAME is a
+        // PROMPTED parameter, because it isn't known until the managed cert is issued, which can't happen until
+        // the first deploy puts the hostname live so DNS can validate. Two-phase bootstrap (see deployment.md):
+        //   1. First deploy: leave the cert-name prompt BLANK → hostname binds unbound (bindingType Disabled).
+        //   2. Issue the managed cert, then deploy again and enter its name → TLS attaches (SniEnabled).
+        // CI / non-interactive deploys supply the value via config key `Parameters:webCustomDomainCertificateName`
+        // (AddParameter reads that first and only prompts when it's absent).
+        var domainCfg = builder.Configuration.GetSection(nameof(WebCustomDomainOptions)).Get<WebCustomDomainOptions>();
+        IResourceBuilder<ParameterResource>? customDomainParam = null;
+        IResourceBuilder<ParameterResource>? certificateNameParam = null;
+        if (builder.ExecutionContext.IsPublishMode && !string.IsNullOrWhiteSpace(domainCfg?.Domain))
+        {
+            customDomainParam = builder.AddParameter("webCustomDomain", domainCfg.Domain);
+            certificateNameParam = builder.AddParameter("webCustomDomainCertificateName");
+        }
 
-        // Diagnostic — visible in `azd up` console + Aspire dashboard so you can confirm the binding
-        // is being emitted (or NOT, and why). Strip once the wiring is proven stable.
-        Console.WriteLine($"[muster-web] custom domain: " +
-            (hasCustomDomain ? $"BINDING '{customDomain}' to cert '{customDomainCertId![..Math.Min(80, customDomainCertId.Length)]}…'"
-                             : $"SKIPPED (webCustomDomain='{customDomain}', webCustomDomainCertId set: {!string.IsNullOrEmpty(customDomainCertId)})"));
+        // Container sizing + autoscale from config (appsettings / user-secrets / App Configuration).
+        var cfg = builder.Configuration.GetSection(nameof(WebContainerOptions)).Get<WebContainerOptions>() ?? new();
 
         if (builder.ExecutionContext.IsPublishMode)
         {
             web.PublishAsAzureContainerApp((_, app) =>
             {
                 var container = app.Template.Containers[0].Value!;
-                container.Resources.Cpu = 0.5;
-                container.Resources.Memory = "1.0Gi";
+                container.Resources.Cpu = cfg.Cpu;
+                container.Resources.Memory = cfg.Memory;
 
-                // Keep one warm replica so Blazor InteractiveServer circuits don't drop to zero;
-                // scale up on traffic. Raise MaxReplicas as load grows.
-                app.Template.Scale.MinReplicas = 1;
-                app.Template.Scale.MaxReplicas = 1;
+                // MinReplicas keeps warm replicas so Blazor circuits don't drop to zero; MaxReplicas caps scale-out.
+                app.Template.Scale.MinReplicas = cfg.MinReplicas;
+                app.Template.Scale.MaxReplicas = cfg.MaxReplicas;
 
-                // 30s drain — HTTP requests + Blazor circuit disconnects + Wolverine outbox flush.
-                app.Template.TerminationGracePeriodSeconds = 30;
+                // Drain window — HTTP requests + Blazor circuit disconnects + Wolverine outbox flush.
+                app.Template.TerminationGracePeriodSeconds = cfg.TerminationGracePeriodSeconds;
 
                 // Single-revision mode: new revision replaces old atomically once readiness passes.
                 // Switch to Multiple if you ever want canary % splits on web.
                 app.Configuration.ActiveRevisionsMode = ContainerAppActiveRevisionsMode.Single;
+
+                // Scale-out (MaxReplicas > 1) is only correct for Blazor Server with BOTH the Azure SignalR backplane
+                // (wired above) AND ingress session affinity — the circuit's component state still lives on one
+                // replica, so a client must keep landing on the replica that owns its circuit. The HTTP rule is what
+                // actually triggers scaling (without a rule ACA stays at MinReplicas).
+                if (cfg.MaxReplicas > 1)
+                {
+                    app.Configuration.Ingress.StickySessionsAffinity = StickySessionAffinity.Sticky;
+
+                    if (cfg.HttpScaleConcurrentRequests > 0)
+                    {
+                        var httpRule = new ContainerAppScaleRule { Name = "http-concurrency", Http = new ContainerAppHttpScaleRule() };
+                        httpRule.Http.Metadata.Add("concurrentRequests", cfg.HttpScaleConcurrentRequests.ToString());
+                        app.Template.Scale.Rules.Add(httpRule);
+                    }
+                }
 
                 // ACA probes against the container's ingress target port — paths come from
                 // ServiceDefaults.MapDefaultEndpoints. Startup covers ASP.NET warmup, Liveness restarts
@@ -168,17 +165,16 @@ internal static class WebHostingExtensions
                     SuccessThreshold = 1,
                 });
 
-                // Custom domain binding — only when both azd env vars are set. Keeps the hostname +
-                // managed cert reference declared in the Aspire model so subsequent `azd up` runs
-                // preserve them instead of stripping the manually-added Portal binding.
-                if (hasCustomDomain)
+                // Custom domain — declared in the Aspire model so every deploy preserves the binding instead of
+                // stripping a manually-added one. ConfigureCustomDomain emits the ingress customDomain + (once
+                // CertificateName is set) the managed-cert binding. Empty cert name = hostname bound unbound,
+                // which is the intended first-deploy state while DNS validation completes.
+                if (customDomainParam is not null && certificateNameParam is not null)
                 {
-                    app.Configuration.Ingress.CustomDomains.Add(new ContainerAppCustomDomain
-                    {
-                        Name = customDomain!,
-                        CertificateId = new ResourceIdentifier(customDomainCertId!),
-                        BindingType = ContainerAppCustomDomainBindingType.SniEnabled,
-                    });
+#pragma warning disable ASPIREACADOMAINS001 // ConfigureCustomDomain is [Experimental] in Aspire 13.3.5;
+                    // when it stabilises the suppression drops out, the call stays identical.
+                    app.ConfigureCustomDomain(customDomainParam, certificateNameParam);
+#pragma warning restore ASPIREACADOMAINS001
                 }
             });
         }

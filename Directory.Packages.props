@@ -13,6 +13,7 @@
     <PackageVersion Include="Aspire.Hosting.Azure.ServiceBus" Version="13.3.5" />
     <PackageVersion Include="Aspire.Hosting.Azure.Storage" Version="13.3.5" />
     <PackageVersion Include="Aspire.Hosting.Azure.ApplicationInsights" Version="13.3.5" />
+    <PackageVersion Include="Aspire.Hosting.Azure.SignalR" Version="13.3.5" />
     <!-- Aspire client integrations: pull secrets from KV + dynamic config from AC + DP key blob client. -->
     <PackageVersion Include="Aspire.Azure.Security.KeyVault" Version="13.3.5" />
     <PackageVersion Include="Aspire.Microsoft.Extensions.Configuration.AzureAppConfiguration" Version="13.3.5" />

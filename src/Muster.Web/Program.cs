@@ -31,7 +31,14 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("appcon
     // The Microsoft.Extensions.Configuration.AzureAppConfiguration extension with the same name on
     // IConfigurationBuilder expects a literal "Endpoint=...;Id=...;Secret=..." connection string and
     // throws "Invalid connection string format" when handed an Aspire connection NAME like "appconfig".
-    builder.AddAzureAppConfiguration("appconfig");
+    //
+    // ConfigureKeyVault wires Key Vault reference resolution: an App Configuration key-value can be a
+    // reference to a Key Vault secret (stored as a {"uri":"https://…/secrets/…"} value) which the provider
+    // resolves at load time using the workload's managed identity. The Key Vault Secrets User role is granted
+    // by WithReference(kv) on this project in the AppHost, so DefaultAzureCredential picks it up in Azure
+    // (and falls back to dev creds locally — though this block only runs when the appconfig source exists).
+    builder.AddAzureAppConfiguration("appconfig", configureOptions: options =>
+        options.ConfigureKeyVault(kv => kv.SetCredential(new Azure.Identity.DefaultAzureCredential())));
 }
 
 builder.AddMusterInfrastructure();
@@ -46,14 +53,18 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
 
-// The interactive circuit runs over SignalR. In production we offload it to a pre-provisioned Azure SignalR
-// Service (set "Azure:SignalR:ConnectionString" — Key Vault in Azure), which the SDK reads by default; this is
-// also what makes scale-out safe (the in-process circuit hub is single-instance). UAT/local has no connection
-// string, so the circuit stays in-process — no Azure dependency needed to run.
+// The interactive circuit runs over SignalR. In publish we offload it to Azure SignalR (provisioned by the
+// AppHost — see SignalRExtensions), which makes scale-out safe (the in-process circuit hub is single-instance).
+// UAT/local has no connection string, so the circuit stays in-process — no Azure dependency needed to run.
 var signalR = builder.Services.AddSignalR();
-if (!string.IsNullOrWhiteSpace(builder.Configuration["Azure:SignalR:ConnectionString"]))
+// Connection comes from the Aspire-provisioned Azure SignalR resource (ConnectionStrings:signalr, published by
+// WithMusterSignalR in the AppHost) in publish; a manually-set Azure:SignalR:ConnectionString (e.g. a KV secret)
+// is honored as a fallback. Absent both (local), the circuit stays in-process — no Azure dependency.
+var signalRConnection = builder.Configuration.GetConnectionString("signalr")
+    ?? builder.Configuration["Azure:SignalR:ConnectionString"];
+if (!string.IsNullOrWhiteSpace(signalRConnection))
 {
-    signalR.AddAzureSignalR();
+    signalR.AddAzureSignalR(options => options.ConnectionString = signalRConnection);
 }
 
 // Channel-picker options from the synced GuildChannel roster (no live Discord call).
