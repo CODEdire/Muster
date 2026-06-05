@@ -1371,6 +1371,7 @@ img.avatar-sm { object-fit: cover; }
 .audit-outcome-success { color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); }
 .audit-outcome-denied  { color: #f59e0b; background: rgba(245, 158, 11, 0.18); }
 .audit-outcome-failed  { color: var(--danger); background: rgba(248, 113, 113, 0.18); }
+.audit-outcome-warning { color: #eab308; background: rgba(234, 179, 8, 0.16); }
 
 /* Correlation link inline with the action — a small chip the admin can click to drill in. */
 .audit-corr {

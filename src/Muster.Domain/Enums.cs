@@ -368,6 +368,9 @@ public enum AuditOutcome
     Success = 0,
     Denied = 1,
     Failed = 2,
+    /// <summary>The action succeeded but is noteworthy and may warrant review (e.g. an anomalous balance drift
+    /// corrected during reconciliation). Distinct from <see cref="Failed"/> so it doesn't read as an error.</summary>
+    Warning = 3,
 }
 
 /// <summary>How a currency's balance authority is split with external systems.</summary>
