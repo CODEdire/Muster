@@ -12,6 +12,9 @@
     <Project Path="src/Muster.MigrationService/Muster.MigrationService.csproj" />
     <Project Path="src/Muster.Web/Muster.Web.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Muster.CruorMock/Muster.CruorMock.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Muster.Bot.UnitTests/Muster.Bot.UnitTests.csproj" />
     <Project Path="tests/Muster.Domain.UnitTests/Muster.Domain.UnitTests.csproj" />

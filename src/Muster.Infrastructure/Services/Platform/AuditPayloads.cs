@@ -46,6 +46,20 @@ public record CurrencySpendPayload(string CurrencyCode, ulong UserId, long Amoun
 /// <summary>Background balance sync triggered for one External/Hybrid currency.</summary>
 public record CurrencySyncAllPayload(string CurrencyCode);
 
+/// <summary>An outbound connector call mirrored a movement to the external economy. <see cref="Kind"/> is
+/// <c>add</c> (credit) or <c>remove</c> (debit); <see cref="Status"/> is the HTTP status the target returned.
+/// Pairs with the ledger entry for the same movement (ledger = balance, this = the API call).</summary>
+public record CurrencyConnectorPushPayload(string CurrencyCode, ulong UserId, long Amount, string Kind, int Status);
+
+/// <summary>One periodic reconcile sweep over an External/Hybrid currency: how many wallets were due, reconciled,
+/// and failed. Emitted once per currency per sweep run (not per member) to keep the trail readable.</summary>
+public record CurrencySyncSweepPayload(string CurrencyCode, int Candidates, int Synced, int Failed);
+
+/// <summary>A reconcile applied an unusually large correction (|delta| ≥ threshold) — a signal of external
+/// tampering or an integration bug, surfaced for an auditor even though the per-member reconcile is otherwise
+/// ledger-only.</summary>
+public record CurrencyDriftAnomalyPayload(string CurrencyCode, ulong UserId, long Delta, long ExternalBalance);
+
 /// <summary>The connector setup for a currency (URL + auth shape) was saved.</summary>
 public record CurrencyConnectorPayload(string CurrencyCode, CurrencyMode Mode);
 

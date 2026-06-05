@@ -73,6 +73,10 @@ public static class AuditActions
         public static readonly AuditAction Update = new("currency.update", AuditCategory.Currency, "Definition");
         public static readonly AuditAction SyncAll = new("currency.syncAll", AuditCategory.Currency, "Sync");
         public static readonly AuditAction Connector = new("currency.connector", AuditCategory.Currency, "Connector");
+        // External connector activity (outbound add/remove call, periodic sweep summary, anomalous drift on reconcile).
+        public static readonly AuditAction ConnectorPush = new("currency.connectorPush", AuditCategory.Currency, "Connector");
+        public static readonly AuditAction SyncSweep = new("currency.syncSweep", AuditCategory.Currency, "Sync");
+        public static readonly AuditAction DriftAnomaly = new("currency.driftAnomaly", AuditCategory.Currency, "Sync");
         public static readonly AuditAction BulkQueue = new("currency.bulkQueue", AuditCategory.Currency, "Bulk");
         public static readonly AuditAction WebhookCreate = new("currency.webhookCreate", AuditCategory.Currency, "Webhook");
         public static readonly AuditAction WebhookToggle = new("currency.webhookToggle", AuditCategory.Currency, "Webhook");

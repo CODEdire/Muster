@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Local-only test double for the external Cruor currency/auction platform. Built into a container
+         and run by the AppHost in run mode only (see CruorMockExtensions) — never published to production. -->
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Muster.CruorMock</RootNamespace>
+    <!-- Not an Aspire-deployable service: keep it out of any container-publish discovery. -->
+    <IsAspireProjectResource>false</IsAspireProjectResource>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+
+</Project>
