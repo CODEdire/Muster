@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Muster.Bot.Platform.Telemetry;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Connectors;
+using Muster.Infrastructure.Services.Platform;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 
@@ -48,6 +49,7 @@ public class CurrencyBalanceSyncScheduler(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MusterDbContext>();
         var sync = scope.ServiceProvider.GetRequiredService<CurrencyConnectorSyncService>();
+        var audit = scope.ServiceProvider.GetRequiredService<AuditService>();
         var now = DateTimeOffset.UtcNow;
 
         foreach (var guild in await db.ListActiveGuildsAsync(ct))
@@ -69,7 +71,13 @@ public class CurrencyBalanceSyncScheduler(
                 var due = await db.ListWalletsNeedingSyncAsync(guild.Id, currency.Id, cutoff, ct);
                 if (due.Count > 0)
                 {
-                    await sync.SyncCurrencyAsync(guild.Id, currency.Id, PerMemberDelay, due, ct);
+                    var stats = await sync.SyncCurrencyAsync(guild.Id, currency.Id, PerMemberDelay, due, ct);
+
+                    // One summary row per currency per run (system actor) — per-member drift stays ledger-only.
+                    await audit.RecordAsync(
+                        guild.Id, 0, AuditActions.Currency.SyncSweep,
+                        new CurrencySyncSweepPayload(currency.Code, stats.Candidates, stats.Synced, stats.Failed),
+                        origin: AuditOrigin.Connector, ct: ct);
                 }
             }
         }

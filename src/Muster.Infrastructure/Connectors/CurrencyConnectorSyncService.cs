@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Platform;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 
@@ -15,10 +16,18 @@ namespace Muster.Infrastructure.Connectors;
 /// Used post-credit/debit, by the dashboard's on-visit/Sync action, by the admin "sync all", and by the sweep.
 /// </summary>
 public sealed class CurrencyConnectorSyncService(
-    MusterDbContext db, ICurrencyConnectorClient client, ICurrencyService awards, ILogger<CurrencyConnectorSyncService> logger)
+    MusterDbContext db, ICurrencyConnectorClient client, ICurrencyService awards,
+    ILogger<CurrencyConnectorSyncService> logger, AuditService? audit = null)
 {
     /// <summary>The fixed throttle for dashboard on-visit syncs (a member landing on their wallets).</summary>
     public static readonly TimeSpan DashboardThrottle = TimeSpan.FromMinutes(5);
+
+    /// <summary>A reconcile correction at or above this magnitude is audited as an anomaly (the per-member reconcile
+    /// is otherwise ledger-only). Large unexplained drift = possible external tampering or integration bug.</summary>
+    public const long DriftAnomalyThreshold = 1000;
+
+    /// <summary>Outcome counts for one currency's reconcile pass — drives the sweep-summary audit.</summary>
+    public readonly record struct CurrencySyncStats(int Candidates, int Synced, int Failed);
 
     /// <summary>Reconcile one member. <paramref name="knownBalance"/> short-circuits the GetBalance call when a
     /// credit/debit already returned the resulting balance. Returns the external balance, or null if unavailable.</summary>
@@ -56,6 +65,15 @@ public sealed class CurrencyConnectorSyncService(
         if (delta != 0)
         {
             await awards.AwardAsync(guildId, userId, currencyId, delta, CurrencyLedgerSource.Connector, sourceId: null, "External balance reconcile", ct);
+
+            // Per-member reconcile is ledger-only by design, but flag an anomalously large correction for an auditor.
+            if (audit is not null && Math.Abs(delta) >= DriftAnomalyThreshold)
+            {
+                await audit.RecordAsync(
+                    guildId, CurrencyService.EscrowAccountUserId, AuditActions.Currency.DriftAnomaly,
+                    new CurrencyDriftAnomalyPayload(currency.Code, userId, delta, external.Value),
+                    origin: AuditOrigin.Connector, outcome: AuditOutcome.Warning, targetUserId: userId, ct: ct);
+            }
         }
 
         // Stamp the sync time (the award above created/updated the wallet when delta != 0).
@@ -113,11 +131,12 @@ public sealed class CurrencyConnectorSyncService(
     }
 
     /// <summary>Reconcile every member holding a wallet for the currency, pacing calls by <paramref name="delay"/>
-    /// (the external API is rate-limited and this can be slow for large guilds). Returns how many were synced.</summary>
-    public async Task<int> SyncCurrencyAsync(ulong guildId, Guid currencyId, TimeSpan delay, IReadOnlyList<ulong>? userIds = null, CancellationToken ct = default)
+    /// (the external API is rate-limited and this can be slow for large guilds). Returns per-member outcome counts.</summary>
+    public async Task<CurrencySyncStats> SyncCurrencyAsync(ulong guildId, Guid currencyId, TimeSpan delay, IReadOnlyList<ulong>? userIds = null, CancellationToken ct = default)
     {
         var members = userIds ?? await db.ListWalletUserIdsAsync(guildId, currencyId, ct);
         var synced = 0;
+        var failed = 0;
         foreach (var userId in members)
         {
             ct.ThrowIfCancellationRequested();
@@ -130,6 +149,7 @@ public sealed class CurrencyConnectorSyncService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                failed++;
                 logger.LogWarning(ex, "Balance sync failed for user {UserId} (currency {CurrencyId})", userId, currencyId);
             }
 
@@ -139,7 +159,7 @@ public sealed class CurrencyConnectorSyncService(
             }
         }
 
-        logger.LogInformation("Synced {Count} member balance(s) for currency {CurrencyId}.", synced, currencyId);
-        return synced;
+        logger.LogInformation("Synced {Count} member balance(s) for currency {CurrencyId} ({Failed} failed).", synced, currencyId, failed);
+        return new CurrencySyncStats(members.Count, synced, failed);
     }
 }

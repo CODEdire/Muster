@@ -5,6 +5,7 @@ using Muster.Persistence.Queries;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Connectors;
+using Muster.Infrastructure.Services.Platform;
 using Wolverine;
 
 namespace Muster.Infrastructure.Services.Currencies;
@@ -36,7 +37,9 @@ public record CurrencyOperationResult(CurrencyOperationStatus Status, long Balan
 /// currencies skip the check since the external system owns the balance and Muster's ledger is a shadow/audit
 /// trail. External-currency escrow (an API/webhook hold) will later layer onto the same model via the outbox.
 /// </summary>
-public class CurrencyService(MusterDbContext db, IMessageBus bus, ICurrencyConnectorClient? connector = null) : ICurrencyService
+public class CurrencyService(
+    MusterDbContext db, IMessageBus bus,
+    ICurrencyConnectorClient? connector = null, AuditService? audit = null) : ICurrencyService
 {
     /// <summary>Sentinel user id representing the guild's escrow/house account.</summary>
     public const ulong EscrowAccountUserId = 0;
@@ -383,6 +386,14 @@ public class CurrencyService(MusterDbContext db, IMessageBus bus, ICurrencyConne
             throw new ConnectorException(
                 $"External {kind} for {currency.Code} failed: {result.Error ?? "unknown error"}. Operation aborted.");
         }
+
+        // Audit the outbound add/remove call itself (the ledger entry records the balance; this records the
+        // integration call). Enlisted in the same unit of work so it commits with the ledger leg — and shares the
+        // ambient correlation id with the command audit that drove it. GetBalance/probe reads are not audited.
+        audit?.Enlist(
+            currency.GuildId, EscrowAccountUserId, AuditActions.Currency.ConnectorPush,
+            new CurrencyConnectorPushPayload(currency.Code, userId, amount, amount > 0 ? "add" : "remove", result.StatusCode),
+            origin: AuditOrigin.Connector, targetUserId: userId);
     }
 
     private async Task<Currency> PointsAsync(ulong guildId, CancellationToken ct)

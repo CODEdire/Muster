@@ -110,6 +110,28 @@ public class AuditService(MusterDbContext db, IAuditOriginProvider origins)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Add an audit row to the current unit of work <b>without saving</b>, so it commits atomically with
+    /// the caller's transaction (e.g. the ledger leg of a movement). Use when the audit must share the movement's
+    /// fate — if the movement rolls back, so should its audit. For standalone auditing use <see cref="RecordAsync"/>.</summary>
+    public void Enlist<T>(
+        ulong guildId, ulong actorUserId, AuditAction action, T payload,
+        AuditOrigin? origin = null, AuditOutcome outcome = AuditOutcome.Success,
+        ulong? targetUserId = null, string? correlationId = null)
+    {
+        db.AuditLogs.Add(new AuditLog
+        {
+            GuildId = guildId,
+            ActorUserId = actorUserId,
+            TargetUserId = targetUserId,
+            Action = action.Key,
+            Details = JsonSerializer.Serialize(payload, _payloadJson),
+            Origin = origin ?? origins.Default,
+            Outcome = outcome,
+            CorrelationId = correlationId ?? AmbientCorrelationId(),
+            OccurredAt = DateTimeOffset.UtcNow,
+        });
+    }
+
     /// <summary>Strongly-typed action + plain-text details. Recommended path for new call sites.</summary>
     public Task RecordAsync(
         ulong guildId, ulong actorUserId, AuditAction action, string? details = null,
