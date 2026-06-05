@@ -48,4 +48,8 @@ var webBaseUrl = webTunnel?.GetEndpoint(web, "https") ?? web.GetEndpoint("https"
 // min=max=1 because the gateway protocol is a singleton — see docs/deployment.md "Bot drain").
 builder.AddMusterBot(platform, webBaseUrl);
 
+// Cruor mock: local-only test double for the external currency/auction platform the connector pushes to.
+// Built from tools/cruor-mock and run as a container in run mode only — no-op in publish (never deployed).
+builder.AddMusterCruorMock();
+
 builder.Build().Run();

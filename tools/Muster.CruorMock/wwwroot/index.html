@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cruor Mock</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #14161a; color: #e6e6e6; }
+    header { padding: 12px 20px; background: #1d2026; border-bottom: 1px solid #2c313a;
+             display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; color: #c9a227; }
+    header .key { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 20px; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    .card { background: #1d2026; border: 1px solid #2c313a; border-radius: 8px; padding: 14px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #8a93a2;
+               margin: 0 0 10px; }
+    input, button, select { font: inherit; padding: 6px 8px; border-radius: 6px;
+            border: 1px solid #3a414d; background: #11131a; color: #e6e6e6; }
+    button { background: #c9a227; color: #14161a; border: none; cursor: pointer; font-weight: 600; }
+    button.ghost { background: #2a2f39; color: #e6e6e6; }
+    button:hover { opacity: .9; }
+    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    .row input { flex: 1; min-width: 70px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #262b34; }
+    th { color: #8a93a2; font-weight: 600; }
+    .pos { color: #5fd38d; } .neg { color: #ef6b6b; }
+    .pill { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #2a2f39; }
+    .pill.active { background: #1d4d2b; color: #8be0a4; }
+    .pill.awarded { background: #4d3a1d; color: #e0c48b; }
+    .pill.unscheduled { background: #33384200; border: 1px solid #3a414d; color: #8a93a2; }
+    .muted { color: #6b7280; }
+    #toast { position: fixed; bottom: 16px; right: 16px; background: #2a2f39; padding: 8px 14px;
+             border-radius: 6px; border: 1px solid #3a414d; opacity: 0; transition: opacity .2s; }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚱ Cruor Mock</h1>
+    <span class="muted">external currency test platform</span>
+    <div class="key">
+      <label class="muted" for="apikey">x-api-key</label>
+      <input id="apikey" value="test-key" size="14" />
+      <button class="ghost" onclick="refreshAll()">⟳ Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Add / Adjust Cruor (signed +/-)</h2>
+      <div class="row">
+        <input id="c_member" type="number" placeholder="member_id" />
+        <input id="c_name" placeholder="display_name" />
+        <input id="c_amount" type="number" placeholder="amount (+/-)" />
+        <button onclick="addCruor()">Apply</button>
+      </div>
+      <div class="row">
+        <input id="b_user" type="number" placeholder="user_id" />
+        <button class="ghost" onclick="getBalance()">Get balance</button>
+        <span id="b_result" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Balances</h2>
+      <table><thead><tr><th>member</th><th>name</th><th>balance</th></tr></thead>
+        <tbody id="balances"><tr><td colspan="3" class="muted">—</td></tr></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Add Item</h2>
+      <div class="row">
+        <input id="i_name" placeholder="name" />
+        <input id="i_desc" placeholder="description" />
+        <input id="i_qty" type="number" placeholder="qty" value="1" />
+        <input id="i_holder" type="number" placeholder="holder_id" />
+        <button onclick="addItem()">Add item</button>
+      </div>
+      <table><thead><tr><th>id</th><th>name</th><th>qty</th><th>holder</th></tr></thead>
+        <tbody id="items"><tr><td colspan="4" class="muted">—</td></tr></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Auctions</h2>
+      <div class="row">
+        <input id="a_name" placeholder="name" />
+        <input id="a_item" type="number" placeholder="item_id" />
+        <button onclick="addAuction()">Create</button>
+      </div>
+      <div class="row">
+        <input id="s_id" type="number" placeholder="auction_id" />
+        <input id="s_dur" type="number" placeholder="minutes" value="60" />
+        <button class="ghost" onclick="startAuction()">Start</button>
+        <button class="ghost" onclick="closeAuction()">Close</button>
+      </div>
+      <table><thead><tr><th>id</th><th>name</th><th>item</th><th>status</th><th>winner</th></tr></thead>
+        <tbody id="auctions"><tr><td colspan="5" class="muted">—</td></tr></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Place Bid</h2>
+      <div class="row">
+        <input id="bid_user" type="number" placeholder="user_id" />
+        <input id="bid_auction" type="number" placeholder="auction_id" />
+        <input id="bid_amount" type="number" placeholder="amount" />
+        <button onclick="placeBid()">Bid</button>
+      </div>
+      <div class="row">
+        <input id="bids_auction" type="number" placeholder="auction_id" />
+        <button class="ghost" onclick="loadBids()">View bids</button>
+      </div>
+      <table><thead><tr><th>user</th><th>amount</th><th>placed</th></tr></thead>
+        <tbody id="bids"><tr><td colspan="3" class="muted">—</td></tr></tbody></table>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+
+  <script>
+    const key = () => document.getElementById("apikey").value;
+    const $ = (id) => document.getElementById(id);
+
+    function toast(msg, ok = true) {
+      const t = $("toast");
+      t.textContent = msg;
+      t.style.borderColor = ok ? "#3a414d" : "#ef6b6b";
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2500);
+    }
+
+    async function api(method, path, body) {
+      const opts = { method, headers: { "x-api-key": key() } };
+      if (body !== undefined) {
+        opts.headers["content-type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      return data;
+    }
+
+    async function addCruor() {
+      try {
+        const r = await api("POST", "/currency/add-cruor", {
+          member_id: $("c_member").value.trim(),   // string: snowflakes exceed JS number precision
+          display_name: $("c_name").value,
+          cruor_amount: +$("c_amount").value,
+        });
+        toast(`balance ${$("c_member").value} = ${r.balance}`);
+        refreshAll();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function getBalance() {
+      try {
+        const r = await api("GET", `/currency/balance/${$("b_user").value.trim()}`);
+        $("b_result").textContent = `balance = ${r.balance}`;
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function addItem() {
+      try {
+        await api("POST", "/auctions/add-item", {
+          name: $("i_name").value, description: $("i_desc").value,
+          quantity: +$("i_qty").value, holder_id: $("i_holder").value.trim(),
+        });
+        toast("item added"); refreshAll();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function addAuction() {
+      try {
+        await api("POST", "/auctions/add-auction", {
+          name: $("a_name").value, description: $("a_name").value, item_id: +$("a_item").value,
+        });
+        toast("auction created"); refreshAll();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function startAuction() {
+      try {
+        await api("POST", "/auctions/start-auction", {
+          auction_id: +$("s_id").value, duration_minutes: +$("s_dur").value,
+        });
+        toast("auction started"); refreshAll();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function closeAuction() {
+      try {
+        const r = await api("POST", "/auctions/close-auction", { auction_id: +$("s_id").value });
+        toast(r.awarded_to ? `awarded to ${r.awarded_to} @ ${r.winning_bid}` : "closed (no bids)");
+        refreshAll();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function placeBid() {
+      try {
+        await api("POST", "/auctions/place-bid", {
+          user_id: $("bid_user").value.trim(), auction_id: +$("bid_auction").value, amount: +$("bid_amount").value,
+        });
+        toast("bid placed"); loadBids();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    async function loadBids() {
+      try {
+        const id = +($("bids_auction").value || $("bid_auction").value);
+        const bids = await api("GET", `/auctions/${id}/bids`);
+        $("bids").innerHTML = bids.length
+          ? bids.map(b => `<tr><td>${b.user_id}</td><td>${b.amount}</td><td class="muted">${b.placed_at.slice(11,19)}</td></tr>`).join("")
+          : `<tr><td colspan="3" class="muted">no bids</td></tr>`;
+      } catch (e) { toast(e.message, false); }
+    }
+
+    // Balances/bids have no list endpoint server-side; we keep a client-side roster
+    // server-side persisted list, so it survives a page refresh (and snowflake ids stay intact as strings).
+    async function refreshBalances() {
+      const rows = await api("GET", "/currency/balances");
+      $("balances").innerHTML = rows.length
+        ? rows.map(r => `<tr><td>${r.member_id}</td><td class="muted">${r.display_name || '—'}</td>`
+            + `<td class="${r.balance < 0 ? 'neg' : 'pos'}">${r.balance}</td></tr>`).join("")
+        : `<tr><td colspan="3" class="muted">add cruor to populate</td></tr>`;
+    }
+
+    async function refreshAll() {
+      try {
+        const items = await api("GET", "/auctions/items");
+        $("items").innerHTML = items.length
+          ? items.map(i => `<tr><td>${i.id}</td><td>${i.name}</td><td>${i.quantity}</td><td>${i.holder_id}</td></tr>`).join("")
+          : `<tr><td colspan="4" class="muted">no items</td></tr>`;
+
+        const [active, awarded, unsched] = await Promise.all([
+          api("GET", "/auctions/active"), api("GET", "/auctions/awarded"), api("GET", "/auctions/unscheduled"),
+        ]);
+        const all = [...active, ...awarded, ...unsched].sort((a, b) => a.id - b.id);
+        $("auctions").innerHTML = all.length
+          ? all.map(a => `<tr><td>${a.id}</td><td>${a.name}</td><td>${a.item_id}</td>
+              <td><span class="pill ${a.status}">${a.status}</span></td>
+              <td>${a.awarded_to ? `${a.awarded_to} @ ${a.winning_bid}` : '<span class="muted">—</span>'}</td></tr>`).join("")
+          : `<tr><td colspan="5" class="muted">no auctions</td></tr>`;
+
+        await refreshBalances();
+      } catch (e) { toast(e.message, false); }
+    }
+
+    document.addEventListener("DOMContentLoaded", refreshAll);
+  </script>
+</body>
+</html>

@@ -47,7 +47,7 @@ public interface ICurrencyAdminService
 /// COIN for bounties/loot) are created and tuned here.
 /// </summary>
 public partial class CurrencyAdminService(
-    MusterDbContext db, IConnectorSecretProtector? secrets = null, CurrencyConnectorClient? client = null) : ICurrencyAdminService
+    MusterDbContext db, IConnectorSecretProtector? secrets = null, ICurrencyConnectorClient? client = null) : ICurrencyAdminService
 {
     public const string PointsCode = CurrencyCodes.PointsCode;
 

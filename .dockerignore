@@ -1,0 +1,9 @@
+# Build context for tools/Muster.CruorMock/Dockerfile is the repo root, so this root-level .dockerignore
+# is the one Docker honors. Keep host build artifacts out of the image: a Windows-restored obj/ leaks an
+# absolute Visual Studio NuGet fallback path into the Linux container build and breaks `dotnet publish`.
+**/bin/
+**/obj/
+**/.vs/
+.git/
+.github/
+**/*.user
