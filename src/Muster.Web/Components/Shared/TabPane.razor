@@ -4,7 +4,14 @@
 
 @if (Parent.IsActive(Id))
 {
-    @ChildContent
+    @if (Padded)
+    {
+        <div class="tabpane-pad">@ChildContent</div>
+    }
+    else
+    {
+        @ChildContent
+    }
 }
 
 @code {
@@ -18,6 +25,10 @@
 
     /// <summary>Optional Material Symbols icon name shown before the label.</summary>
     [Parameter] public string? Icon { get; set; }
+
+    /// <summary>When true, the pane body gets the standard content padding (and scrolls in fill mode). Use for
+    /// form/section content; leave false for datagrid panes whose <c>.dg-*</c> elements pad themselves edge-to-edge.</summary>
+    [Parameter] public bool Padded { get; set; }
 
     /// <summary>The pane body, rendered only when this pane is active.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }

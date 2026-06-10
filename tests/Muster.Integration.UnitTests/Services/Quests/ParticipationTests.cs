@@ -28,7 +28,7 @@ public class ParticipationTests
     private static async Task<(MusterDbContext db, Currency points)> SeededAsync(ulong guildId = 1)
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(guildId, "G", null);
+        await new GuildProvisioningService(db).EnsureGuildAsync(guildId, "G", null, seedDefaults: false);
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
         return (db, points);
     }

@@ -98,6 +98,17 @@ public class GuildAuthorizationService(MusterDbContext db)
         => await IsAdminAsync(guildId, userId, ct)
             || await HasMappedTierAsync(guildId, userId, GuildRoleTier.QuestManager, ct);
 
+    /// <summary>Shop managers moderate listings + ratings, arbitrate order disputes, and manage shop categories.
+    /// Admins are implicitly shop managers.</summary>
+    public async Task<bool> IsShopManagerAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+        => await IsAdminAsync(guildId, userId, ct)
+            || await HasMappedTierAsync(guildId, userId, GuildRoleTier.ShopManager, ct);
+
+    /// <summary>Shop creators may open stores and list/sell items. Shop managers (and admins) implicitly qualify.</summary>
+    public async Task<bool> IsShopCreatorAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+        => await IsShopManagerAsync(guildId, userId, ct)
+            || await HasMappedTierAsync(guildId, userId, GuildRoleTier.ShopCreator, ct);
+
     /// <summary>
     /// Whether the member may earn rewards / be tracked. Participant is the <i>floor</i> of the role
     /// hierarchy — anyone with a mapped staff role (Quest Manager / Economy Manager / Tracking Manager /
@@ -135,7 +146,8 @@ public class GuildAuthorizationService(MusterDbContext db)
         // Staff implies participant (saves toggling every staff role's Participant column too); else the member
         // must hold a Participant-mapped role directly.
         const GuildRoleTier qualifying = GuildRoleTier.Participant | GuildRoleTier.QuestManager
-            | GuildRoleTier.EconomyManager | GuildRoleTier.TrackingManager | GuildRoleTier.Auditor;
+            | GuildRoleTier.EconomyManager | GuildRoleTier.TrackingManager | GuildRoleTier.Auditor
+            | GuildRoleTier.ShopCreator | GuildRoleTier.ShopManager;
         return member.RoleIds.Any(r => map.TryGetValue(r, out var t) && (t & qualifying) != 0);
     }
 

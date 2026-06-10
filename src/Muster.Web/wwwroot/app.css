@@ -48,6 +48,13 @@ img { max-width: 100%; }
     --radius-sm: 10px;
     --border: rgba(15, 39, 71, 0.12);
     --danger: #dc2626;
+
+    /* Content cards (shop/listing tiles): a calmer, near-opaque surface so a grid of them reads as distinct
+       objects against the textured background — vs the translucent .glass used for page-level panels. */
+    --card-bg: rgba(255, 255, 255, 0.92);
+    --card-border: rgba(15, 39, 71, 0.10);
+    --card-shadow: 0 1px 2px rgba(31, 73, 145, 0.06), 0 6px 16px rgba(31, 73, 145, 0.10);
+    --card-shadow-hover: 0 4px 10px rgba(31, 73, 145, 0.12), 0 14px 30px rgba(31, 73, 145, 0.18);
 }
 
 /* ---- Design tokens: DARK (deep blue) ------------------------------------- */
@@ -74,6 +81,11 @@ img { max-width: 100%; }
         linear-gradient(160deg, #06122b 0%, #0b1f48 55%, #0a1838 100%);
 
     --border: rgba(159, 179, 212, 0.20);
+
+    --card-bg: rgba(30, 52, 96, 0.92);
+    --card-border: rgba(150, 185, 255, 0.16);
+    --card-shadow: 0 1px 2px rgba(0, 8, 28, 0.40), 0 8px 20px rgba(0, 8, 28, 0.45);
+    --card-shadow-hover: 0 4px 10px rgba(0, 8, 28, 0.50), 0 16px 34px rgba(0, 8, 28, 0.62);
 }
 
 /* System mode (no explicit data-theme) follows the OS dark preference. */
@@ -95,6 +107,11 @@ img { max-width: 100%; }
             radial-gradient(70% 60% at 75% 95%, rgba(14, 35, 80, 0.8) 0%, rgba(14, 35, 80, 0) 60%),
             linear-gradient(180deg, #07142e 0%, #0d2148 100%);
         --border: rgba(159, 179, 212, 0.18);
+
+        --card-bg: rgba(26, 46, 88, 0.92);
+        --card-border: rgba(150, 185, 255, 0.15);
+        --card-shadow: 0 1px 2px rgba(0, 8, 28, 0.40), 0 8px 20px rgba(0, 8, 28, 0.45);
+        --card-shadow-hover: 0 4px 10px rgba(0, 8, 28, 0.50), 0 16px 34px rgba(0, 8, 28, 0.62);
     }
 }
 
@@ -846,6 +863,210 @@ table.leaderboard th a { color: var(--text-muted); }
     grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
 }
 
+/* ---- Shop / listing tiles ------------------------------------------------ */
+/* Opaque card surface (vs translucent .glass) so a dense grid stays legible over the textured background. */
+.shop-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+
+.shop-tile {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    box-shadow: var(--card-shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.shop-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--card-shadow-hover);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border));
+}
+/* Media area: the whole product image (contain) over a blurred copy of itself — never cropped. The item link
+   covers the media; store/category chips overlay a scrim at the bottom (siblings, so no nested anchors). */
+.shop-tile-media-wrap { position: relative; aspect-ratio: 1 / 1; background: var(--surface); overflow: hidden; }
+.shop-tile-thumb { position: absolute; inset: 0; display: block; }
+.shop-tile-thumb .tile-bg {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    filter: blur(20px) brightness(0.7); transform: scale(1.15);
+}
+.shop-tile-thumb .tile-fg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.shop-tile-media-wrap.placeholder .shop-tile-thumb {
+    display: flex; align-items: center; justify-content: center; color: var(--text-muted);
+}
+.shop-tile-media-wrap.placeholder .shop-tile-thumb .material-symbols-outlined { font-size: 2.2rem; opacity: 0.5; }
+.shop-tile-overlay {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 1.3rem 0.5rem 0.45rem; display: flex; gap: 0.3rem; flex-wrap: wrap; align-items: center;
+    background: linear-gradient(to top, rgba(3, 7, 16, 0.82), rgba(3, 7, 16, 0.3) 55%, transparent);
+    pointer-events: none;
+}
+.tile-ochip {
+    font-size: 0.68rem; line-height: 1; border-radius: 6px; padding: 0 8px; height: 22px; pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 0.25rem; background: rgba(255, 255, 255, 0.16);
+    color: #eaf1fb; text-decoration: none; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+    box-sizing: border-box; vertical-align: middle;
+}
+.tile-ochip.store { background: rgba(96, 165, 250, 0.34); color: #dbeafe; }
+.tile-ochip.store:hover { background: rgba(96, 165, 250, 0.5); }
+.tile-ochip .material-symbols-outlined { font-size: 0.95rem; line-height: 1; flex: 0 0 auto; }
+.shop-tile-body { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.65rem 0.8rem 0.8rem; flex: 1; }
+.shop-tile-body h3 { margin: 0; font-size: 1.02rem; line-height: 1.25; }
+.shop-tile-head { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.shop-tile-logo { width: 40px; height: 40px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
+.shop-tile-logo.placeholder {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface); font-weight: 700; color: var(--text);
+}
+.shop-tile-meta { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: auto; }
+.shop-price { font-weight: 700; white-space: nowrap; color: #b45309; }
+:root[data-theme="dark"] .shop-price { color: #fdba74; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .shop-price { color: #fdba74; } }
+.shop-tile .muted { color: var(--text-muted); font-size: 0.85rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Item-tile corner badges (featured / new) + featured accent + stock. */
+.shop-tile-badges { position: absolute; top: 0.5rem; left: 0.5rem; display: flex; gap: 0.3rem; z-index: 4; }
+.shop-badge {
+    font-size: 0.66rem; font-weight: 700; letter-spacing: 0.03em; border-radius: 6px; padding: 2px 7px;
+    display: inline-flex; align-items: center; gap: 0.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+}
+.shop-badge.feat { background: rgba(246, 196, 83, 0.94); color: #1c1407; }
+.shop-badge.new  { background: rgba(59, 130, 246, 0.94); color: #fff; }
+.shop-badge .material-symbols-outlined { font-size: 0.85rem; line-height: 1; }
+.hero-dot { opacity: 0.5; }
+
+/* Active-filter summary chips (shop grids). */
+.filter-summary { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0.1rem 0 0.65rem; }
+.filter-chip { display: inline-flex; align-items: center; gap: 0.3rem; }
+.filter-chip-x { border: none; background: none; color: inherit; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; }
+.filter-chip-x:hover { color: var(--danger); }
+
+/* Shop quick-view item modal. Centered card on desktop; full-screen sheet on mobile. */
+.shop-modal-backdrop {
+    position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center;
+    padding: 1.5rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(3px);
+}
+.shop-modal {
+    position: relative; width: min(840px, 100%); max-height: 90vh; overflow: hidden;
+    display: grid; grid-template-columns: minmax(0, 330px) 1fr;
+    background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+/* Single-column compact dialog (quick-create form). */
+.shop-modal.sm { grid-template-columns: 1fr; width: min(440px, 100%); }
+.shop-modal.sm .shop-modal-body { gap: 0.7rem; }
+.shop-modal.sm h2 { margin: 0; font-size: 1.15rem; }
+.shop-modal-img { background: var(--surface); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.shop-modal-img img { width: 100%; height: 100%; object-fit: cover; }
+.shop-modal-img.placeholder .material-symbols-outlined { font-size: 3rem; opacity: 0.4; }
+.shop-modal-body { padding: 1.1rem 1.3rem 1.3rem; overflow: auto; display: flex; flex-direction: column; gap: 0.55rem; }
+.shop-modal-close {
+    position: absolute; top: 0.6rem; right: 0.6rem; z-index: 2;
+    width: 32px; height: 32px; padding: 0; border: none; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45); color: #fff; border-radius: 50%;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.shop-modal-close:hover { background: rgba(0, 0, 0, 0.65); }
+.shop-modal-close .material-symbols-outlined { font-size: 1.2rem; }
+/* On the imageless compact dialog a black disc looks alien — use the site's ghost-icon treatment. */
+.shop-modal.sm .shop-modal-close { background: var(--surface); color: var(--text-muted); border: 1px solid var(--card-border); }
+.shop-modal.sm .shop-modal-close:hover { background: var(--card-border); color: var(--text); }
+@media (max-width: 640px) {
+    .shop-modal-backdrop { padding: 0; }
+    .shop-modal {
+        grid-template-columns: 1fr; grid-template-rows: auto 1fr;
+        width: 100%; height: 100%; max-height: 100%; border-radius: 0; border: none;
+    }
+    .shop-modal-img { max-height: 36vh; }
+}
+
+/* Discord-style shop card (Shops tab): banner + overlapping logo + type chip + description + featured strip. */
+.shop-store-card {
+    position: relative;
+    display: flex; flex-direction: column; overflow: visible;
+    background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+    box-shadow: var(--card-shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.shop-store-card:hover {
+    transform: translateY(-3px); box-shadow: var(--card-shadow-hover);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border));
+}
+/* Full-bleed banner (edge to edge, cover) like a Discord profile/store header. */
+.ssc-banner { position: relative; display: block; height: 132px; background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; }
+.ssc-banner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ssc-banner.placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.ssc-banner.placeholder .material-symbols-outlined { font-size: 2rem; opacity: 0.5; }
+.ssc-body { position: relative; flex: 1; display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem 0.9rem 0.9rem; border-radius: 0 0 var(--radius) var(--radius); }
+/* Rating badge overlaid on the banner's top-right corner. */
+.ssc-rating {
+    position: absolute; top: 0.55rem; right: 0.6rem; z-index: 5;
+    font-size: 0.72rem; font-weight: 600; border-radius: 6px; padding: 2px 8px; white-space: nowrap;
+    background: rgba(0, 0, 0, 0.55); color: #fff; backdrop-filter: blur(3px);
+}
+
+/* Click-to-expand: the banner header collapses out and the body shows the full description + every featured
+   row in place (no overlay, no bleed-through). Swapping the ~132px banner for the extra content keeps the
+   card's height roughly stable, so siblings in the grid row barely shift. */
+/* Standardized card height: every card reserves the same footprint (banner + body, or in the expanded state a
+   full-height body) so the grid stays even and expanding never shrinks a card. Tuned to fit a header + a few
+   description lines + a 5-row featured block + footer. */
+/* Fixed (not min) height so collapsed and expanded are byte-for-byte the same footprint — collapsed content is
+   always bounded (clamped description + 2 featured rows), expanded fills the same box with internal scroll. */
+.shop-store-card { height: 25rem; overflow: hidden; }
+/* Expanded: keep icon/title, drop the banner; the featured block holds its natural size (5 rows is the standard),
+   and the description flexes to fill whatever height remains, scrolling if it overflows. */
+.shop-store-card.expanded .ssc-body { border-radius: var(--radius); }
+.shop-store-card.expanded .ssc-desc.ssc-desc-full { flex: 1 1 auto; height: auto; max-height: none; min-height: 2.7rem; overflow-y: auto; }
+.shop-store-card.expanded .ssc-featured { flex: 0 0 auto; }
+/* Collapsed long descriptions still get the un-clamped scroll treatment when shown full elsewhere. */
+.ssc-desc.ssc-desc-full { height: auto; max-height: 8rem; overflow-y: auto; }
+.ssc-expand {
+    align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    background: none; border: none; cursor: pointer; padding: 0.1rem 0;
+    font-size: 0.78rem; font-weight: 600; color: var(--accent);
+}
+.ssc-expand:hover { text-decoration: underline; }
+.ssc-expand .material-symbols-outlined { font-size: 1.05rem; }
+.ssc-logo {
+    width: 52px; height: 52px; flex: 0 0 auto; border-radius: 11px;
+    border: 2px solid var(--card-bg); object-fit: cover; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+/* Header row below the banner: logo left; title (line 1) + type (line 2) beside it; rating pinned top-right. */
+.ssc-head { display: flex; align-items: flex-start; gap: 0.7rem; min-width: 0; }
+.ssc-headtext { flex: 1; min-width: 0; }
+.ssc-head h3 {
+    margin: 0; font-size: 1.1rem; line-height: 1.2; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ssc-meta { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; margin-top: 0.25rem; }
+.chip-type { background: rgba(20, 184, 166, 0.16); color: #0c7d70; }
+:root[data-theme="dark"] .chip-type { color: #7ff0df; }
+.chip-type .material-symbols-outlined { font-size: 0.9rem; vertical-align: -2px; }
+/* Compact markdown preview: render emphasis/lists but reserve a fixed ~2-line slot so cards stay comparable. */
+.ssc-desc { color: var(--text-muted); font-size: 0.85rem; margin: 0; height: 2.7rem; overflow: hidden; }
+.ssc-more { color: var(--text-muted); font-size: 0.78rem; }
+.ssc-desc > :is(p, ul, ol, h1, h2, h3, h4, blockquote) { margin: 0; }
+.ssc-desc ul, .ssc-desc ol { padding-left: 1.1rem; }
+.ssc-desc :is(strong, b) { color: var(--text); }
+.ssc-featured { border-top: 1px solid var(--card-border); padding-top: 0.45rem; }
+.ssc-featured .lbl {
+    font-size: 0.64rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.25rem;
+}
+.ssc-featured .lbl .material-symbols-outlined { font-size: 0.85rem; }
+.ssc-frow { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.84rem; padding: 1px 0; }
+.ssc-frow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ssc-foot { display: flex; align-items: center; gap: 0.45rem; margin-top: auto; color: var(--text-muted); font-size: 0.78rem; flex-wrap: wrap; }
+.shop-tile.is-featured { border-color: rgba(246, 196, 83, 0.5); }
+.shop-stock { color: #0f9d6b; font-size: 0.74rem; }
+:root[data-theme="dark"] .shop-stock { color: #6ee7b7; }
+.shop-stock.out { color: var(--danger); }
+
 .quest-card {
     display: flex;
     flex-direction: column;
@@ -1196,6 +1417,15 @@ img.avatar-sm { object-fit: cover; }
    with all four corners rounded. Strips the panel's own padding so dg-toolbar/footer borders span edge-to-edge. */
 .dg-frame { padding: 0; overflow: hidden; margin-bottom: 1rem; display: flex; flex-direction: column; min-height: 0; }
 .dg-frame .dg-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Make a standalone datagrid fill the viewport height (full-frame pages like shop disputes). */
+.dg-fill { min-height: 68vh; }
+
+/* Shop settings master switch — a plain on/off row above the toolbar (no card frame). */
+.shop-master-switch { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 0.25rem 0 0.9rem; }
+.shop-master-switch .checkbox { font-size: 1.02rem; }
+.shop-master-switch .checkbox:has(input:disabled) { opacity: 0.65; }
+/* Disabled toolbar link (manage categories / store types while the shop is off). */
+.btn.is-disabled { pointer-events: none; opacity: 0.5; }
 
 /* ---- Reusable tab frame (TabFrame.razor) --------------------------------- */
 /* Folder tabs sit on top of a bordered frame and overlap its top border, so the active tab reads as the
@@ -1244,6 +1474,10 @@ img.avatar-sm { object-fit: cover; }
 }
 
 .tabframe-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+
+/* Standard content padding for form/section panes (TabPane Padded="true"). Datagrid panes stay flush and let
+   their .dg-* children pad edge-to-edge. In fill mode this wrapper is the scroll container. */
+.tabpane-pad { padding: 1.25rem 1.4rem; flex: 1 1 auto; min-height: 0; overflow: auto; }
 
 /* ---- Sessions datagrid content (inside the tab frame) -------------------- */
 

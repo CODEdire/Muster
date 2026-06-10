@@ -289,6 +289,8 @@ public enum CurrencyLedgerSource
     Adjustment = 7, // staff balance correction (mint/adjust outside the connector loop)
     Checkpoint = 8, // carry-forward opening balance written when pruning history (sum of the pruned rows)
     Background = 9, // always-on per-channel participation (voice presence / activity outside a bounded session)
+    Shop = 10,      // shop order escrow legs (buyer hold, seller payout, buyer refund)
+    ShopFee = 11,   // shop commission burned to the sink account on settlement
 }
 
 public enum AppRole
@@ -332,10 +334,39 @@ public enum GuildRoleTier : short
     /// <summary>Create guild quests, approve/arbitrate player bounties.</summary>
     QuestManager    = 1 << 10, // 1024
 
+    /// <summary>Open stores and list/sell items in the player marketplace. Implied by <see cref="ShopManager"/>.</summary>
+    ShopCreator     = 1 << 11, // 2048
+
+    /// <summary>Moderate shop listings + ratings, arbitrate order disputes, manage shop categories. Implies
+    /// <see cref="ShopCreator"/>.</summary>
+    ShopManager     = 1 << 12, // 4096
+
     // --- Top: full access (bit 14; bit 15 is the signed-short sign bit, left unused) ---
 
     /// <summary>Full administrative access — implies every other tier.</summary>
     Admin           = 1 << 14, // 16384
+}
+
+/// <summary>Resource-based actions an actor may perform against a shop store / listing / order, checked by
+/// <c>IShopAuthorizer</c>. Selling actions require the <see cref="GuildRoleTier.ShopCreator"/> tier; moderation +
+/// arbitration require <see cref="GuildRoleTier.ShopManager"/>; buying actions only require participation.</summary>
+public enum ShopPermission
+{
+    ViewStore,
+    ManageStore,
+    CreateListing,
+    EditListing,
+    CancelListing,
+    Purchase,
+    MakeOffer,
+    RespondOffer,
+    MarkDelivered,
+    Confirm,
+    Dispute,
+    Arbitrate,
+    Rate,
+    ManageCategories,
+    ModerateRating,
 }
 
 /// <summary>Lifecycle of a queued bulk currency adjustment (staff mint/adjust applied to many members async).</summary>

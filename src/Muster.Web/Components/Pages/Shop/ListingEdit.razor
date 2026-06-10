@@ -1,0 +1,215 @@
+@page "/guilds/{GuildIdRaw}/shop/listing/{ListingId:guid}/edit"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@inject Microsoft.Extensions.Options.IOptions<ShopImageOptions> ImgOpt
+@using Microsoft.AspNetCore.Components.Forms
+@using Muster.Contracts
+@using Muster.Domain.Entities.Shops
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>Edit listing — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    @if (!_shopGate.IsEnabled)
+    {
+        <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+    }
+    else if (_view is null)
+    {
+        <div class="panel glass empty">That item couldn't be found.</div>
+    }
+    else
+    {
+        <PageHeader Crumbs="@Crumbs" Subtitle="Adjust this listing's details.">
+            <Toolbar>
+                <a class="btn btn-sm btn-ghost" href="@CancelHref">Cancel</a>
+                <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="SaveAsync">
+                    <span class="material-symbols-outlined">save</span> Save
+                </button>
+            </Toolbar>
+        </PageHeader>
+
+        @if (Message is not null)
+        {
+            <div class="notice" role="status"><span class="material-symbols-outlined notice-icon">info</span><span class="notice-text">@Message</span></div>
+        }
+
+        <div class="panel glass">
+            <div class="mform">
+                <div class="field span2">
+                    <label>Name</label>
+                    <input @bind="_name" maxlength="120" />
+                </div>
+                <div class="field span2">
+                    <label>Description</label>
+                    <MarkdownEditor @bind-Value="_description" Rows="4" MaxLength="2000"
+                                    Placeholder="Describe the item. Supports Discord markdown." />
+                </div>
+                <div class="field">
+                    <label>Price</label>
+                    <input type="number" min="1" @bind="_price" />
+                </div>
+                <div class="field">
+                    <label>Quantity</label>
+                    <input type="number" min="1" @bind="_quantity" />
+                </div>
+                <div class="field span2">
+                    <label>Category</label>
+                    <select @bind="_categoryId">
+                        <option value="">None</option>
+                        @foreach (var cat in _categories)
+                        {
+                            <option value="@cat.Id">@(ShopIcons.Emoji(cat.Icon) is { } e ? e + " " : "")@cat.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field span2">
+                    <label>Tags</label>
+                    <TagsEditor @bind-Tags="_tags" MaxTags="8" />
+                </div>
+                <div class="field span2"><label class="checkbox"><input type="checkbox" @bind="_acceptsOffers" /> Accept price offers on this listing</label></div>
+                @if (_imagesAvailable)
+                {
+                    <div class="field span2">
+                        <label>Image</label>
+                        @if (_imageKey is not null)
+                        {
+                            <img src="/shop-image/@_imageKey" alt="" style="display:block;max-height:160px;max-width:100%;width:auto;height:auto;object-fit:contain;border-radius:8px;margin-bottom:.4rem" />
+                            <button type="button" class="btn btn-sm btn-ghost" @onclick="() => _imageKey = null"><span class="material-symbols-outlined">delete</span> Remove image</button>
+                        }
+                        <InputFile OnChange="OnImageSelectedAsync" accept="image/*" />
+                        @if (_uploading) { <span class="hint">Uploading…</span> }
+                        @if (_imageError is { } err) { <span class="hint" style="color:var(--danger)">@err</span> }
+                        <span class="hint">@ImgOpt.Value.Describe(ShopImageKind.Listing)</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid ListingId { get; set; }
+
+    private ShopListingEditView? _view;
+    private FeatureVerdict _shopGate;
+    private string? _name, _description;
+    private List<string> _tags = [];
+    private string? _categoryId;
+    private long _price;
+    private int _quantity = 1;
+    private bool _acceptsOffers = true;
+    private IReadOnlyList<ShopCategory> _categories = [];
+    private ShopStoreDetail? _store;
+    private string? _imageKey;
+    private bool _imagesAvailable, _uploading, _busy;
+    private string? _imageError;
+
+    private const long ReadCeiling = 20 * 1024 * 1024;
+
+    // Editing is reached from the store management screen, so Cancel/Save return there (not the storefront preview).
+    private string CancelHref => _store is { } s
+        ? $"/guilds/{GuildId}/shop/stores/{s.Id}"
+        : $"/guilds/{GuildId}/shop";
+
+    private PageHeader.Crumb[] Crumbs => _store is null
+        ? [new("Shops", $"/guilds/{GuildId}/shop?tab=shops"), new("Edit listing")]
+        : [new("Shops", $"/guilds/{GuildId}/shop?tab=shops"),
+           new(_store.Name, $"/guilds/{GuildId}/shop/store/{_store.Slug}"), new(_name ?? "Listing")];
+
+    protected override async Task LoadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+            .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        if (!_shopGate.IsEnabled) { return; }
+
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _categories = await reads.GetCategoriesAsync(GuildId);
+        _view = await reads.GetForEditAsync(GuildId, ListingId);
+        _imagesAvailable = scope.ServiceProvider.GetService<IShopImageService>() is not NoOpShopImageService and not null;
+        if (_view is not null)
+        {
+            _name = _view.Name;
+            _description = _view.Description;
+            _price = _view.Price;
+            _quantity = _view.Quantity;
+            _acceptsOffers = _view.AcceptsOffers;
+            _categoryId = _view.CategoryId?.ToString();
+            _tags = _view.Tags.ToList();
+            _imageKey = _view.ImageKey;
+            _store = await reads.GetStoreAsync(GuildId, _view.StoreId);
+        }
+    }
+
+    private async Task OnImageSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _imageError = null;
+        _uploading = true;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(ReadCeiling);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            await using var scope = Scopes.CreateAsyncScope();
+            var images = scope.ServiceProvider.GetRequiredService<IShopImageService>();
+            var (result, key) = await images.UploadAsync(ms, ms.Length, e.File.ContentType, ShopImageKind.Listing);
+            if (result == ShopImageUploadResult.Ok) { _imageKey = key; }
+            else
+            {
+                _imageError = result switch
+                {
+                    ShopImageUploadResult.TooLarge => $"Image is too large (max {ImgOpt.Value.MaxImageBytes / (1024d * 1024d):0.#} MB).",
+                    ShopImageUploadResult.TooLargeDimensions => $"Image dimensions are too large ({ImgOpt.Value.Describe(ShopImageKind.Listing)}).",
+                    ShopImageUploadResult.UnsupportedType => "Unsupported image type.",
+                    _ => "Couldn't read that image.",
+                };
+            }
+        }
+        catch { _imageError = "Upload failed."; }
+        finally { _uploading = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_name))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            Guid? categoryId = Guid.TryParse(_categoryId, out var cid) ? cid : null;
+
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            var result = await bus.InvokeAsync<Result>(new EditListing(
+                GuildId, UserId, ListingId, _name!.Trim(), _description, _price, categoryId, _quantity,
+                ImageKey: _imageKey ?? string.Empty, ThumbKey: _imageKey ?? string.Empty, Tags: _tags, AcceptsOffers: _acceptsOffers));
+
+            if (result.Ok)
+            {
+                Nav.NavigateTo(CancelHref);
+                return;
+            }
+
+            Message = result.ToCommandResult("").Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

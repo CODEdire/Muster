@@ -30,7 +30,7 @@ public class QuestCommandFlowTests
     private static async Task<Ctx> SeededAsync(Action<QuestSettings>? configure = null)
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(Guild, "G", null, ownerId: Master); // owner ⇒ GuildMaster
+        await new GuildProvisioningService(db).EnsureGuildAsync(Guild, "G", null, ownerId: Master, seedDefaults: false); // owner ⇒ GuildMaster
         var guild = await db.Guilds.SingleAsync();
         configure?.Invoke(guild.Settings.Quests);
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = Guild, Code = "COIN", Name = "Coin", IsSpendable = true };

@@ -1,0 +1,432 @@
+@page "/guilds/{GuildIdRaw}/shop/store/{Slug}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@using Muster.Contracts
+@using Muster.Domain.Entities.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>@(_front?.Name ?? "Storefront") — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    @if (!_shopGate.IsEnabled)
+    {
+        <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+    }
+    else if (_front is null)
+    {
+        <div class="panel glass empty">That storefront doesn't exist. <a href="/guilds/@GuildId/shop">Back to the shop</a>.</div>
+    }
+    else
+    {
+        <PageHeader Crumbs="@Crumbs" />
+
+        @if (_front.BannerImageKey is { } bk)
+        {
+            @* Edge-fade hero: the banner is the masthead. Cover-fills the frame; left/right edges dissolve into the
+               page (var(--bg-base)) so wide viewports never show a hard crop; a scrim — optionally tinted with the
+               store's accent — carries the identity overlaid bottom-left. *@
+            <div class="store-hero full-bleed" style="position:relative;height:clamp(160px,20vw,280px);border-radius:14px;overflow:hidden;margin-bottom:.5rem;background:var(--bg-base)">
+                @* Banner shown at full height, left-anchored, never side-cropped — it scales to its max size for the
+                   hero, then its right edge fades into the page (mask) so wide viewports blend instead of crop. *@
+                <img src="/shop-image/@bk" alt="@(_front.Name) banner" style="position:absolute;left:0;top:0;height:100%;width:auto;display:block;object-fit:cover;-webkit-mask-image:linear-gradient(to right,#000 72%,transparent);mask-image:linear-gradient(to right,#000 72%,transparent)" />
+                <div aria-hidden="true" style="position:absolute;inset:0;@ScrimStyle(_front.AccentColor)"></div>
+                <div style="position:absolute;left:1.1rem;right:1.1rem;bottom:.85rem;display:flex;align-items:flex-end;gap:.75rem">
+                    @if (_front.LogoImageKey is { } lk)
+                    {
+                        <img src="/shop-image/@lk" alt="" style="width:52px;height:52px;border-radius:12px;object-fit:cover;box-shadow:0 2px 12px rgba(0,0,0,.6)" />
+                    }
+                    else if (ShopIcons.Material(_front.StoreTypeIcon) is { } mi)
+                    {
+                        <span class="material-symbols-outlined" style="font-size:30px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:rgba(0,0,0,.4);color:#fff">@mi</span>
+                    }
+                    <div>
+                        <h1 style="margin:0;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.7)">@_front.Name</h1>
+                        <p style="margin:2px 0 0;color:rgba(255,255,255,.88);font-size:.92rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">@HeroMetaInner</p>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* No banner — clean identity row, no empty hero box. *@
+            <div class="page-head full-bleed" style="@(_front.AccentColor is { } c ? $"border-left:4px solid {c};padding-left:.75rem" : null)">
+                <div style="display:flex;align-items:center;gap:.75rem">
+                    @if (_front.LogoImageKey is { } lk)
+                    {
+                        <img src="/shop-image/@lk" alt="" style="width:56px;height:56px;border-radius:12px;object-fit:cover" />
+                    }
+                    else if (ShopIcons.Material(_front.StoreTypeIcon) is { } mi)
+                    {
+                        <span class="material-symbols-outlined" style="font-size:34px;width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--surface)">@mi</span>
+                    }
+                    <div>
+                        <h1 style="margin:0">@_front.Name</h1>
+                        <p class="subtitle" style="margin:0;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">@HeroMetaInner</p>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (_canManage)
+        {
+            <div style="display:flex;justify-content:flex-start;gap:.5rem;flex-wrap:wrap;align-items:center;padding:.6rem 0 .85rem;border-top:1px solid var(--border)">
+                <a class="btn btn-sm" href="/guilds/@GuildId/shop/stores/@_front.Id/new"><span class="material-symbols-outlined">add</span> New listing</a>
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/orders?tab=sales&store=@_front.Id"><span class="material-symbols-outlined">sell</span> Sales</a>
+                @if (_isManager)
+                {
+                    <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/orders?tab=disputes&store=@_front.Id"><span class="material-symbols-outlined">gavel</span> Disputes</a>
+                }
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/stores/@_front.Id"><span class="material-symbols-outlined">edit</span> Edit shop</a>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_front.Description))
+        {
+            <div class="panel glass markdown">@Muster.Web.DiscordMarkdown.ToHtml(_front.Description)</div>
+        }
+
+
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input type="search" class="dg-search" placeholder="Search items…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+                <select class="dg-select" value="@(Cat ?? "")" @onchange="OnCategory">
+                    <option value="">All categories</option>
+                    @foreach (var c in _categories)
+                    {
+                        <option value="@c.Id">@(ShopIcons.Emoji(c.Icon) is { } e ? e + " " : "")@c.Name</option>
+                    }
+                </select>
+                @if (_currencies.Count > 1)
+                {
+                    <select class="dg-select" value="@(Cur ?? "")" @onchange="OnCurrency">
+                        <option value="">Any currency</option>
+                        @foreach (var c in _currencies) { <option value="@c.Id">@c.Code</option> }
+                    </select>
+                }
+                <input type="number" class="dg-search" style="max-width:5.5rem" min="0" placeholder="min" @bind="_minBox" @bind:event="oninput" @bind:after="DebouncedPriceAsync" />
+                <input type="number" class="dg-search" style="max-width:5.5rem" min="0" placeholder="max" @bind="_maxBox" @bind:event="oninput" @bind:after="DebouncedPriceAsync" />
+                <input type="search" class="dg-search" style="max-width:8rem" placeholder="#tag" @bind="_tagBox" @bind:event="oninput" @bind:after="DebouncedTagAsync" />
+                <label class="chip" style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer"><input type="checkbox" checked="@Stock" @onchange="OnStock" /> In stock</label>
+                <select class="dg-select" value="@CurSort" @onchange="OnSort">
+                    <option value="">Featured · newest</option>
+                    <option value="price-asc">Price · low → high</option>
+                    <option value="price-desc">Price · high → low</option>
+                    <option value="stock">Most stock</option>
+                    <option value="name">Name · A → Z</option>
+                </select>
+            </div>
+        </div>
+
+        @if (HasFilters)
+        {
+            <div class="filter-summary">
+                @if (Cat is { Length: > 0 } && CategoryName(Cat) is { } catName) { @FilterChip(catName, () => Go(("cat", null), ("page", null))) }
+                @if (!string.IsNullOrEmpty(Q)) { @FilterChip($"\"{Q}\"", () => Go(("q", null), ("page", null))) }
+                @if (!string.IsNullOrEmpty(Tag)) { @FilterChip($"#{Tag}", () => Go(("tag", null), ("page", null))) }
+                @if (Cur is { Length: > 0 } && CurrencyCode(Cur) is { } curCode) { @FilterChip(curCode, () => Go(("cur", null), ("page", null))) }
+                @if (Min is not null || Max is not null) { @FilterChip(PriceRangeLabel(Min, Max), () => Go(("min", null), ("max", null), ("page", null))) }
+                @if (Stock) { @FilterChip("In stock", () => Go(("stock", null), ("page", null))) }
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearFilters">Clear all</button>
+            </div>
+        }
+
+        @if (_items is null || _items.Items.Count == 0)
+        {
+            <div class="panel glass empty">@(_items is null ? "Loading…" : "No items match.")</div>
+        }
+        else
+        {
+            <div class="shop-grid">
+                @foreach (var l in _items.Items)
+                {
+                    <article class="shop-tile @(l.Featured ? "is-featured" : "")">
+                        <div class="shop-tile-media-wrap @(l.ThumbKey is null ? "placeholder" : "")">
+                            <a class="shop-tile-thumb" href="@StoreItemUrl(l.Id)" aria-label="@l.Name">
+                                @if (l.ThumbKey is { } tk)
+                                {
+                                    <img class="tile-bg" src="/shop-image/@tk" alt="" aria-hidden="true" loading="lazy" />
+                                    <img class="tile-fg" src="/shop-image/@tk" alt="@l.Name" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <span class="material-symbols-outlined">image</span>
+                                }
+                            </a>
+                            @if (l.Featured || l.IsNew)
+                            {
+                                <span class="shop-tile-badges">
+                                    @if (l.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
+                                    @if (l.IsNew) { <span class="shop-badge new">NEW</span> }
+                                </span>
+                            }
+                            @if (l.CategoryName is { } cn)
+                            {
+                                <div class="shop-tile-overlay">
+                                    <span class="tile-ochip">@if (ShopIcons.Material(l.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined">@cmi</span> } @cn</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="shop-tile-body">
+                            <h3><a class="qc-title" href="@StoreItemUrl(l.Id)">@l.Name</a></h3>
+                            <span class="shop-stock@(l.Quantity <= 0 ? " out" : "")">@StockLabel(l.Quantity)</span>
+                            <div class="shop-tile-meta">
+                                <span class="shop-price">@l.Price @l.CurrencyCode</span>
+                                <a class="qc-details" href="@StoreItemUrl(l.Id)">Details →</a>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <div class="dg-footer">
+                <div class="dg-pager">
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurPage <= 1)" @onclick='() => Go(("page", (CurPage - 1).ToString()))'>← Prev</button>
+                    <span>Page @CurPage of @Math.Max(_items.TotalPages, 1) · @_items.Total item@(_items.Total == 1 ? "" : "s")</span>
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(CurPage >= _items.TotalPages)" @onclick='() => Go(("page", (CurPage + 1).ToString()))'>Next →</button>
+                </div>
+            </div>
+        }
+
+        @if (ItemId is { } iid)
+        {
+            <ShopItemModal GuildId="GuildId" ItemId="iid" UserId="UserId" OnClose="CloseItem" OnChanged="OnItemChangedAsync" />
+        }
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    [SupplyParameterFromQuery(Name = "item")] private string? Item { get; set; }
+    [SupplyParameterFromQuery(Name = "cat")] private string? Cat { get; set; }
+    [SupplyParameterFromQuery(Name = "sort")] private string? Sort { get; set; }
+    [SupplyParameterFromQuery(Name = "q")] private string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] private int Page { get; set; }
+    [SupplyParameterFromQuery(Name = "tag")] private string? Tag { get; set; }
+    [SupplyParameterFromQuery(Name = "min")] private int? Min { get; set; }
+    [SupplyParameterFromQuery(Name = "max")] private int? Max { get; set; }
+    [SupplyParameterFromQuery(Name = "stock")] private bool Stock { get; set; }
+    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
+
+    private const int PageSize = 24;
+
+    private ShopStorefront? _front;
+    private bool _canManage, _isManager;
+    private FeatureVerdict _shopGate;
+    private ShopBoardPage? _items;
+    private IReadOnlyList<ShopCategory> _categories = [];
+    private IReadOnlyList<ShopCurrencyChoice> _currencies = [];
+    private string? _searchBox, _tagBox, _minBox, _maxBox, _itemsKey;
+
+    private Guid? ItemId => Guid.TryParse(Item, out var g) ? g : null;
+    private string CurSort => Sort is "price-asc" or "price-desc" or "name" or "stock" ? Sort : "";
+    private int CurPage => Page < 1 ? 1 : Page;
+
+    private string StoreItemUrl(Guid id) => BuildStoreUrl(("item", id.ToString()));
+    private void CloseItem() => Go(("item", null));
+    private void OnCategory(ChangeEventArgs e) => Go(("cat", e.Value as string is { Length: > 0 } v ? v : null), ("page", null));
+    private void OnSort(ChangeEventArgs e) => Go(("sort", NullIfEmpty(e.Value as string)), ("page", null));
+    private void OnCurrency(ChangeEventArgs e) => Go(("cur", e.Value as string is { Length: > 0 } v ? v : null), ("page", null));
+    private void OnStock(ChangeEventArgs e) => Go(("stock", e.Value is true ? "true" : null), ("page", null));
+    private void ApplySearch() => Go(("q", NullIfEmpty(_searchBox)), ("page", null));
+
+    private const int SearchDebounceMs = 350;
+    private CancellationTokenSource? _searchDebounce, _tagDebounce, _priceDebounce;
+
+    private async Task DebouncedSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        var cts = _searchDebounce = new CancellationTokenSource();
+        try { await Task.Delay(SearchDebounceMs, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        if (!cts.IsCancellationRequested) { ApplySearch(); }
+    }
+
+    private async Task DebouncedTagAsync()
+    {
+        _tagDebounce?.Cancel();
+        var cts = _tagDebounce = new CancellationTokenSource();
+        try { await Task.Delay(SearchDebounceMs, cts.Token); } catch (TaskCanceledException) { return; }
+        if (!cts.IsCancellationRequested) { Go(("tag", NullIfEmpty(_tagBox?.TrimStart('#'))), ("page", null)); }
+    }
+
+    private async Task DebouncedPriceAsync()
+    {
+        _priceDebounce?.Cancel();
+        var cts = _priceDebounce = new CancellationTokenSource();
+        try { await Task.Delay(SearchDebounceMs, cts.Token); } catch (TaskCanceledException) { return; }
+        if (!cts.IsCancellationRequested) { Go(("min", ParsePositive(_minBox)), ("max", ParsePositive(_maxBox)), ("page", null)); }
+    }
+
+    private bool HasFilters => !string.IsNullOrEmpty(Cat) || !string.IsNullOrEmpty(Tag) || !string.IsNullOrEmpty(Q)
+        || Min is not null || Max is not null || !string.IsNullOrEmpty(Cur) || Stock;
+    private void ClearFilters() => Go(("cat", null), ("tag", null), ("q", null), ("min", null), ("max", null), ("cur", null), ("stock", null), ("page", null));
+    private string? CategoryName(string? id) => Guid.TryParse(id, out var g) ? _categories.FirstOrDefault(c => c.Id == g)?.Name : null;
+    private string? CurrencyCode(string? id) => Guid.TryParse(id, out var g) ? _currencies.FirstOrDefault(c => c.Id == g)?.Code : null;
+    private static string PriceRangeLabel(int? min, int? max) => (min, max) switch
+    {
+        (not null, not null) => $"{min}–{max}",
+        (not null, null) => $"≥ {min}",
+        (null, not null) => $"≤ {max}",
+        _ => "price",
+    };
+    private static string? ParsePositive(string? s) => int.TryParse(s, out var n) && n > 0 ? n.ToString() : null;
+
+    private RenderFragment FilterChip(string text, Action onClear) => @<text>
+        <span class="chip filter-chip">@text <button type="button" class="filter-chip-x" title="Remove" @onclick="onClear">×</button></span>
+    </text>;
+
+    public void Dispose()
+    {
+        _searchDebounce?.Cancel(); _searchDebounce?.Dispose();
+        _tagDebounce?.Cancel(); _tagDebounce?.Dispose();
+        _priceDebounce?.Cancel(); _priceDebounce?.Dispose();
+    }
+    private async Task OnItemChangedAsync() { await LoadAsync(); await ReloadItemsAsync(); StateHasChanged(); }
+
+    private string BuildStoreUrl(params (string Key, string? Value)[] overrides)
+    {
+        var q = new Dictionary<string, string?>
+        {
+            ["cat"] = Cat,
+            ["sort"] = NullIfEmpty(CurSort),
+            ["q"] = NullIfEmpty(Q),
+            ["page"] = CurPage == 1 ? null : CurPage.ToString(),
+            ["tag"] = NullIfEmpty(Tag),
+            ["min"] = Min?.ToString(),
+            ["max"] = Max?.ToString(),
+            ["stock"] = Stock ? "true" : null,
+            ["cur"] = NullIfEmpty(Cur),
+            ["item"] = NullIfEmpty(Item),
+        };
+        foreach (var (k, v) in overrides) { q[k] = v; }
+        var query = string.Join("&", q.Where(kv => !string.IsNullOrEmpty(kv.Value)).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value!)}"));
+        return $"/guilds/{GuildId}/shop/store/{Slug}{(query.Length > 0 ? "?" + query : "")}";
+    }
+
+    private void Go(params (string Key, string? Value)[] overrides)
+        => Nav.NavigateTo(BuildStoreUrl(overrides), forceLoad: false, replace: true);
+
+    private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
+
+    private PageHeader.Crumb[] Crumbs => _front is null ? [] :
+    [
+        new("Shops", $"/guilds/{GuildId}/shop?tab=shops"),
+        new(_front.Name),
+    ];
+
+    // Owner UserChip + type (with its icon) + closed + rating — shared by the banner hero and the no-banner row.
+    private RenderFragment HeroMetaInner => @<text>
+        <UserChip Name="@_front!.OwnerName" AvatarUrl="@_front.OwnerAvatarUrl" Prefix="by " />
+        @if (_front.StoreTypeName is { } tn)
+        {
+            <span class="hero-dot">·</span>
+            <span style="display:inline-flex;align-items:center;gap:.25rem">
+                @if (ShopIcons.Material(_front.StoreTypeIcon) is { } mi)
+                {
+                    <span class="material-symbols-outlined" style="font-size:1.05em">@mi</span>
+                }
+                @tn
+            </span>
+        }
+        @if (_front.Closed)
+        {
+            <span class="hero-dot">·</span><span>closed</span>
+        }
+        @if (_front.SellerRatingCount > 0)
+        {
+            <span class="hero-dot">·</span><span>★ @_front.SellerRatingAvg.ToString("0.0") (@_front.SellerRatingCount)</span>
+        }
+    </text>;
+
+    private static string StockLabel(int q) => q <= 0 ? "Out of stock" : q <= 20 ? $"{q} left" : "In stock";
+
+    // Base colour shown behind a transparent banner.
+    private static string BannerBg(string? accent)
+        => !string.IsNullOrWhiteSpace(accent) && accent.StartsWith('#') ? accent! : "var(--surface)";
+
+    // Bottom scrim behind the overlaid identity. A neutral legibility gradient always applies; when the store has
+    // an accent colour it washes up underneath it (per-store tint) without hurting title contrast.
+    private static string ScrimStyle(string? accent)
+    {
+        const string legibility = "linear-gradient(to top, rgba(6,10,16,.86) 2%, rgba(6,10,16,.40) 40%, transparent 66%)";
+        return !string.IsNullOrWhiteSpace(accent) && accent.StartsWith('#') && accent.TrimStart('#').Length == 6
+            ? $"background:{legibility}, linear-gradient(to top, {accent}b3 0%, {accent}26 38%, transparent 62%)"
+            : $"background:{legibility}";
+    }
+
+    protected override async Task LoadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+            .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        if (!_shopGate.IsEnabled)
+        {
+            return; // shop off for this guild — render the gated state, skip loading the storefront
+        }
+
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _front = await reads.GetStorefrontAsync(GuildId, Slug);
+        if (_front is null)
+        {
+            return;
+        }
+
+        _categories = await reads.GetCategoriesAsync(GuildId);
+        _currencies = await reads.GetSpendableCurrenciesAsync(GuildId);
+
+        // Owner (with the creator tier) or a shop manager may add listings / edit the shop (moderation).
+        _isManager = await Auth.IsShopManagerAsync(GuildId, UserId);
+        _canManage = _isManager || (_front.OwnerId == UserId && await Auth.IsShopCreatorAsync(GuildId, UserId));
+    }
+
+    // Items reload when the filter/sort/search/page query changes (keyed); opening the item modal doesn't refetch.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State != AccessState.Ready || _front is null)
+        {
+            return;
+        }
+
+        _searchBox = Q;
+        _tagBox = Tag;
+        _minBox = Min?.ToString();
+        _maxBox = Max?.ToString();
+        var key = $"{Cat}|{CurSort}|{Q}|{CurPage}|{Tag}|{Min}|{Max}|{Stock}|{Cur}";
+        if (key != _itemsKey)
+        {
+            _itemsKey = key;
+            await ReloadItemsAsync();
+        }
+    }
+
+    private async Task ReloadItemsAsync()
+    {
+        if (_front is null)
+        {
+            return;
+        }
+
+        var (sort, desc) = CurSort switch
+        {
+            "price-asc" => ("price", false),
+            "price-desc" => ("price", true),
+            "name" => ("name", false),
+            "stock" => ("stock", true),
+            _ => ("created", true),
+        };
+        Guid? cat = Guid.TryParse(Cat, out var c) ? c : null;
+        Guid? cur = Guid.TryParse(Cur, out var cg) ? cg : null;
+        await using var scope = Scopes.CreateAsyncScope();
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _items = await reads.GetMarketAsync(GuildId, cat, NullIfEmpty(Tag), NullIfEmpty(Q), sort, desc, CurPage, PageSize,
+            storeId: _front.Id, minPrice: Min, maxPrice: Max, inStockOnly: Stock, currencyId: cur);
+    }
+}

@@ -33,6 +33,7 @@ internal sealed class MusterPlatformBuilder(IDistributedApplicationBuilder build
     public IResourceBuilder<AzureAppConfigurationResource>? AppConfiguration { get; internal set; }
     public IResourceBuilder<AzureStorageResource>? Storage { get; internal set; }
     public IResourceBuilder<AzureBlobStorageContainerResource>? DataProtectionKeys { get; internal set; }
+    public IResourceBuilder<AzureBlobStorageContainerResource>? ShopImages { get; internal set; }
     public IResourceBuilder<AzureApplicationInsightsResource>? ApplicationInsights { get; internal set; }
     public IResourceBuilder<AzureSignalRResource>? SignalR { get; internal set; }
     public IResourceBuilder<ProjectResource>? Migrations { get; internal set; }
@@ -58,6 +59,7 @@ internal sealed class MusterPlatformBuilder(IDistributedApplicationBuilder build
         Messaging = Required(Messaging, "AddMessaging"),
         Storage = Required(Storage, "AddStorage"),
         DataProtectionKeys = Required(DataProtectionKeys, "AddStorage"),
+        ShopImages = Required(ShopImages, "AddStorage"),
         Migrations = Required(Migrations, "AddMigrations"),
         KeyVault = KeyVault,
         AppConfiguration = AppConfiguration,

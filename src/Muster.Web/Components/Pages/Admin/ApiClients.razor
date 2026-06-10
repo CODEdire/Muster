@@ -73,6 +73,8 @@ else if (State == AccessState.Ready)
             <label><InputCheckbox @bind-Value="Input.WriteQuests" /> write:quests</label>
             <label><InputCheckbox @bind-Value="Input.ReadTracking" /> read:tracking</label>
             <label><InputCheckbox @bind-Value="Input.WriteTracking" /> write:tracking</label>
+            <label><InputCheckbox @bind-Value="Input.ReadShop" /> read:shop</label>
+            <label><InputCheckbox @bind-Value="Input.WriteShop" /> write:shop</label>
             <label>Acts as (Discord user id) <InputText @bind-Value="Input.ActsAsUserId" placeholder="e.g. a bot or service account" />
                 <span class="subtitle">Quest writes run as this user with <em>their</em> guild roles — bind a GuildMaster for manager actions, a member for claim/submit. Leave blank for read/currency-only keys.</span>
             </label>
@@ -129,6 +131,8 @@ else if (State == AccessState.Ready)
         if (Input.WriteQuests) scopes.Add("write:quests");
         if (Input.ReadTracking) scopes.Add("read:tracking");
         if (Input.WriteTracking) scopes.Add("write:tracking");
+        if (Input.ReadShop) scopes.Add("read:shop");
+        if (Input.WriteShop) scopes.Add("write:shop");
 
         if (!string.IsNullOrWhiteSpace(Input.ActsAsUserId) && !ulong.TryParse(Input.ActsAsUserId, out _))
         {
@@ -181,6 +185,8 @@ else if (State == AccessState.Ready)
         public bool WriteQuests { get; set; }
         public bool ReadTracking { get; set; }
         public bool WriteTracking { get; set; }
+        public bool ReadShop { get; set; }
+        public bool WriteShop { get; set; }
         public string? ActsAsUserId { get; set; }
     }
 

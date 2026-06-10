@@ -39,7 +39,7 @@ public class LedgerPruneTests
     private static async Task<(MusterDbContext db, Guid coinId)> SeededAsync()
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
+        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1, seedDefaults: false);
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();

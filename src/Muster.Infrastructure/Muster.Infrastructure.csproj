@@ -18,6 +18,7 @@
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" />
     <PackageReference Include="Aspire.Azure.Security.KeyVault" />
     <PackageReference Include="Aspire.Microsoft.Extensions.Configuration.AzureAppConfiguration" />
+    <PackageReference Include="Microsoft.FeatureManagement" />
     <PackageReference Include="Aspire.Azure.Storage.Blobs" />
     <PackageReference Include="WolverineFx" />
     <PackageReference Include="WolverineFx.RuntimeCompilation" />

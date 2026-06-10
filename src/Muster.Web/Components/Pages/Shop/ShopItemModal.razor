@@ -1,0 +1,246 @@
+@* Quick-view item modal — the shop's item detail surface (modal-only). Loads its own detail, handles Buy/Offer
+   and (for the seller/manager) Feature/Unfeature/Withdraw/Take-down. Opened by a parent via the ?item= query so
+   it's deep-linkable; closing/back removes the param. Full-screen sheet on mobile (see app.css .shop-modal). *@
+@inject IServiceScopeFactory Scopes
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
+@using Muster.Contracts
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<div class="shop-modal-backdrop" @onclick="CloseAsync">
+    <div class="shop-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+        <button type="button" class="icon-btn shop-modal-close" title="Close" @onclick="CloseAsync"><span class="material-symbols-outlined">close</span></button>
+
+        @if (_listing is null)
+        {
+            <div class="shop-modal-img placeholder"><span class="material-symbols-outlined">hourglass_empty</span></div>
+            <div class="shop-modal-body"><p class="subtitle">@(_loaded ? "That item couldn't be found." : "Loading…")</p></div>
+        }
+        else
+        {
+            <div class="shop-modal-img @(_listing.ImageKey is null ? "placeholder" : "")">
+                @if (_listing.ImageKey is { } ik)
+                {
+                    <img src="/shop-image/@ik" alt="@_listing.Name" />
+                }
+                else
+                {
+                    <span class="material-symbols-outlined">image</span>
+                }
+            </div>
+
+            <div class="shop-modal-body">
+                <div class="qc-chips">
+                    @if (_listing.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
+                    <a class="chip chip-quest" href="/guilds/@GuildId/shop/store/@_listing.StoreSlug">@_listing.StoreName</a>
+                    @if (_listing.CategoryName is { } cn)
+                    {
+                        <span class="chip">@if (ShopIcons.Material(_listing.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined" style="vertical-align:-3px;font-size:.95rem">@cmi</span> } @cn</span>
+                    }
+                </div>
+
+                <h2 style="margin:.1rem 0 0">@_listing.Name</h2>
+                <UserChip Name="@_listing.SellerName" AvatarUrl="@_listing.SellerAvatarUrl" Prefix="by " />
+
+                <p class="qc-reward reward-coin" style="font-size:1.5rem;margin:.2rem 0">@_listing.Price @_listing.CurrencyCode</p>
+                <span class="shop-stock@(_listing.Quantity <= 0 ? " out" : "")">@StockLabel(_listing.Quantity)</span>
+
+                @if (!string.IsNullOrWhiteSpace(_listing.Description))
+                {
+                    <div class="markdown">@((MarkupString)Muster.Web.DiscordMarkdown.ToHtml(_listing.Description))</div>
+                }
+
+                @if (_listing.Tags.Count > 0)
+                {
+                    <div class="qc-chips">
+                        @foreach (var t in _listing.Tags)
+                        {
+                            <a class="chip" href="/guilds/@GuildId/shop?tab=listings&ltag=@Uri.EscapeDataString(t)">#@t</a>
+                        }
+                    </div>
+                }
+
+                @if (_listing.Status == ShopListingStatus.Cancelled && _listing.Moderated)
+                {
+                    <div class="notice" role="status" style="border-color:var(--danger)">
+                        <span class="material-symbols-outlined notice-icon">gavel</span>
+                        <span class="notice-text">This listing was taken down by a moderator.@(_listing.DelistReason is { } r ? $" Reason: {r}" : "")</span>
+                    </div>
+                }
+
+                @if (_message is { } msg)
+                {
+                    <div class="notice" role="status"><span class="material-symbols-outlined notice-icon">info</span><span class="notice-text">@msg</span></div>
+                }
+
+                <div class="action-bar">
+                    <div class="action-right">
+                        @if (_isSeller)
+                        {
+                            <a class="btn btn-sm" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span> Edit</a>
+                            @if (_listing.Status == ShopListingStatus.Active && !_listing.Featured)
+                            {
+                                <button class="btn btn-sm" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span> Feature</button>
+                            }
+                            else if (_listing.Featured)
+                            {
+                                <button class="btn btn-ghost btn-sm" disabled="@_acting" @onclick="UnfeatureAsync" title="Stop featuring (fee not refunded)"><span class="material-symbols-outlined">star_border</span> Unfeature</button>
+                            }
+                            <button class="btn btn-sm danger" disabled="@_acting" @onclick="CancelAsync"><span class="material-symbols-outlined">delete</span> Withdraw</button>
+                        }
+                        else if (_listing.Status == ShopListingStatus.Active)
+                        {
+                            <button class="btn btn-sm" disabled="@_acting" @onclick="BuyAsync"><span class="material-symbols-outlined">shopping_cart</span> Buy · @_listing.Price @_listing.CurrencyCode</button>
+                            @if (_listing.OffersOpen)
+                            {
+                                <input type="number" min="1" placeholder="your price" @bind="_offerAmount" style="max-width:8rem" />
+                                <button class="btn btn-ghost btn-sm" disabled="@(_acting || _offerAmount <= 0)" @onclick="MakeOfferAsync"><span class="material-symbols-outlined">gavel</span> Make offer</button>
+                            }
+                        }
+                        else
+                        {
+                            <span class="subtitle">@_listing.Status</span>
+                        }
+                        @if (_isManager && !_isSeller && _listing.Status == ShopListingStatus.Active)
+                        {
+                            <button class="btn btn-ghost btn-sm danger" disabled="@_acting" @onclick="TakeDownAsync" title="Take down (moderation)"><span class="material-symbols-outlined">gavel</span> Take down</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ulong GuildId { get; set; }
+    [Parameter, EditorRequired] public Guid ItemId { get; set; }
+    [Parameter, EditorRequired] public ulong UserId { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>Raised after an action that changes the listing (withdraw/feature/take-down) so the parent reloads.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private ShopListingDetail? _listing;
+    private bool _isSeller, _isManager, _acting, _loaded;
+    private long _offerAmount;
+    private string? _message;
+    private Guid _loadedId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ItemId != _loadedId)
+        {
+            _loadedId = ItemId;
+            _message = null;
+            _offerAmount = 0;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loaded = false;
+        await using var scope = Scopes.CreateAsyncScope();
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _listing = await reads.GetListingDetailAsync(GuildId, ItemId);
+        _loaded = true;
+        if (_listing is not null)
+        {
+            _isSeller = _listing.SellerId == UserId;
+            _isManager = await scope.ServiceProvider
+                .GetRequiredService<Muster.Infrastructure.Services.Membership.GuildAuthorizationService>()
+                .IsShopManagerAsync(GuildId, UserId);
+        }
+    }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+
+    private async Task<T?> RunAsync<T>(Func<Wolverine.IMessageBus, Task<T>> action) where T : class
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>());
+    }
+
+    private async Task BuyAsync()
+    {
+        if (_acting) { return; }
+        _acting = true;
+        try
+        {
+            var result = await RunAsync(bus => bus.InvokeAsync<Result<Guid>>(new PurchaseListing(GuildId, UserId, ItemId)));
+            _message = result!.Ok
+                ? "Purchased — funds are held in escrow until you confirm receipt. See My orders."
+                : ((Result)result).ToCommandResult("").Message;
+        }
+        finally { _acting = false; await ReloadAsync(); await OnChanged.InvokeAsync(); }
+    }
+
+    private async Task MakeOfferAsync()
+    {
+        if (_acting || _offerAmount <= 0) { return; }
+        _acting = true;
+        try
+        {
+            var result = await RunAsync(bus => bus.InvokeAsync<Result<Guid>>(new MakeOffer(GuildId, UserId, ItemId, _offerAmount)));
+            _message = result!.Ok
+                ? "Offer sent — funds are held until the seller responds. See My orders."
+                : ((Result)result).ToCommandResult("").Message;
+            if (result.Ok) { _offerAmount = 0; }
+        }
+        finally { _acting = false; await ReloadAsync(); }
+    }
+
+    private async Task FeatureAsync()
+    {
+        if (_acting) { return; }
+        _acting = true;
+        try
+        {
+            var result = await RunAsync(bus => bus.InvokeAsync<Result>(new FeatureListing(GuildId, UserId, ItemId)));
+            _message = result!.ToCommandResult("Listing featured — promoted in the shop channel.").Message;
+        }
+        finally { _acting = false; await ReloadAsync(); await OnChanged.InvokeAsync(); }
+    }
+
+    private async Task UnfeatureAsync()
+    {
+        if (_acting) { return; }
+        _acting = true;
+        try
+        {
+            var result = await RunAsync(bus => bus.InvokeAsync<Result>(new UnfeatureListing(GuildId, UserId, ItemId)));
+            _message = result!.ToCommandResult("Listing un-featured (fee not refunded).").Message;
+        }
+        finally { _acting = false; await ReloadAsync(); await OnChanged.InvokeAsync(); }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (_acting || !await JS.InvokeAsync<bool>("confirm", new object?[] { "Withdraw this listing?" })) { return; }
+        _acting = true;
+        try
+        {
+            var result = await RunAsync(bus => bus.InvokeAsync<Result>(new CancelListing(GuildId, UserId, ItemId)));
+            _message = result!.ToCommandResult("Listing withdrawn.").Message;
+        }
+        finally { _acting = false; await ReloadAsync(); await OnChanged.InvokeAsync(); }
+    }
+
+    private async Task TakeDownAsync()
+    {
+        if (_acting) { return; }
+        var reason = await JS.InvokeAsync<string?>("prompt", new object?[] { "Reason for taking this listing down (shown to the seller):" });
+        if (reason is null) { return; }
+        _acting = true;
+        try
+        {
+            var result = await RunAsync(bus => bus.InvokeAsync<Result>(new CancelListing(GuildId, UserId, ItemId, reason)));
+            _message = result!.ToCommandResult("Listing taken down.").Message;
+        }
+        finally { _acting = false; await ReloadAsync(); await OnChanged.InvokeAsync(); }
+    }
+
+    private static string StockLabel(int q) => q <= 0 ? "Out of stock" : q <= 20 ? $"{q} left" : "In stock";
+}

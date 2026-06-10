@@ -26,6 +26,9 @@ else
     /// <summary>Optional muted prefix before the name, e.g. "by ".</summary>
     [Parameter] public string? Prefix { get; set; }
 
+    /// <summary>Optional Discord @username handle, shown muted under the display name (only when it differs).</summary>
+    [Parameter] public string? Handle { get; set; }
+
     /// <summary>Optional href — when set, the chip is a link. Build with <c>MusterLinks</c> to keep route
     /// templates in one place. Null/empty = plain span.</summary>
     [Parameter] public string? Href { get; set; }
@@ -34,6 +37,11 @@ else
 
     private RenderFragment ChipBody => __builder =>
     {
+        // "by " (or any prefix) reads before the avatar + name.
+        if (!string.IsNullOrEmpty(Prefix))
+        {
+            <span class="sub">@Prefix</span>
+        }
         if (!string.IsNullOrEmpty(AvatarUrl))
         {
             <img class="avatar-sm" src="@AvatarUrl" alt="" loading="lazy" />
@@ -43,11 +51,14 @@ else
             <span class="avatar-sm">@Initial</span>
         }
         <span class="user-chip-name">
-            @if (!string.IsNullOrEmpty(Prefix))
-            {
-                <span class="sub">@Prefix</span>
-            }
             <b>@Name</b>
+            @if (ShowHandle)
+            {
+                <span class="sub" style="display:block">@($"@{Handle}")</span>
+            }
         </span>
     };
+
+    private bool ShowHandle => !string.IsNullOrWhiteSpace(Handle)
+        && !string.Equals(Handle, Name, StringComparison.OrdinalIgnoreCase);
 }

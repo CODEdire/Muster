@@ -399,6 +399,9 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("OwnerId")
                         .HasColumnType("decimal(20,0)");
 
+                    b.Property<int>("SeedVersion")
+                        .HasColumnType("int");
+
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -456,6 +459,95 @@ namespace Muster.Persistence.Migrations
                     b.HasKey("GuildId");
 
                     b.ToTable("GuildMusterSettings");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildShopSettings", b =>
+                {
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.PrimitiveCollection<string>("AllowedCurrencyIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CommissionBps")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryConfirmTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DisputeTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FeaturedDurationHours")
+                        .HasColumnType("int");
+
+                    b.Property<long>("FeaturedListingFee")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ListingCooldownMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ListingDefaultExpiryDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxActiveListingsPerSeller")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxFeaturedPerStore")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxOpenOffersPerBuyer")
+                        .HasColumnType("int");
+
+                    b.Property<long>("MaxPrice")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("MaxStoresPerSeller")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxTagsPerListing")
+                        .HasColumnType("int");
+
+                    b.Property<long>("MinPrice")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("OfferExpiryHours")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("OffersEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PlayerMarketEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PlayerTagsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RatingWindowHours")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RatingsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireCategory")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("ShopChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<decimal>("ShopModChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<bool>("TwoStepDelivery")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("UndeliveredTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.HasKey("GuildId");
+
+                    b.ToTable("GuildShopSettings");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildTrackingSettings", b =>
@@ -1088,6 +1180,391 @@ namespace Muster.Persistence.Migrations
                     b.HasIndex("QuestId", "UserId");
 
                     b.ToTable("QuestParticipants");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Ratings.Rating", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("Context")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<bool>("Hidden")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Moderated")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("RaterId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateTimeOffset?>("RevealedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Stars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("SubjectId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Context", "SourceId");
+
+                    b.HasIndex("Context", "SourceId", "RaterId")
+                        .IsUnique();
+
+                    b.HasIndex("GuildId", "Context", "SubjectId", "Role");
+
+                    b.ToTable("Ratings");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CommissionBpsOverride")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int>("Sort")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("ShopCategories");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopListing", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AcceptsOffers")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CurrencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DelistReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("DelistedBy")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("FeaturedUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("ImageKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<long>("Price")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<decimal>("SellerId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StatusChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ThumbKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("GuildId", "SellerId");
+
+                    b.HasIndex("GuildId", "Status");
+
+                    b.ToTable("ShopListings");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopListingTag", b =>
+                {
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Tag")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.HasKey("ListingId", "Tag");
+
+                    b.HasIndex("Tag");
+
+                    b.ToTable("ShopListingTags");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("BuyerId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CurrencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisputeEvidenceKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisputeReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal?>("DisputedBy")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<long>("FeeAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("FromOffer")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("ItemNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OfferId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("OfferProposedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OfferRound")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("RatingWindowClosesAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("RatingsClosed")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("ResolvedBy")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<decimal>("SellerId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<DateTimeOffset?>("SettledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StatusChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListingId");
+
+                    b.HasIndex("GuildId", "BuyerId");
+
+                    b.HasIndex("GuildId", "SellerId");
+
+                    b.HasIndex("GuildId", "Status");
+
+                    b.ToTable("ShopOrders");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopStore", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AccentColor")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("BannerImageKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("Closed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("LogoImageKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<decimal>("OwnerId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid?>("StoreTypeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreTypeId");
+
+                    b.HasIndex("GuildId", "OwnerId");
+
+                    b.HasIndex("GuildId", "Slug")
+                        .IsUnique();
+
+                    b.ToTable("ShopStores");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopStoreType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Sort")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("ShopStoreTypes");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Tracking.ActivityRecord", b =>
@@ -1799,6 +2276,15 @@ namespace Muster.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildShopSettings", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
+                        .WithOne()
+                        .HasForeignKey("Muster.Domain.Entities.Guilds.GuildShopSettings", "GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildTrackingSettings", b =>
                 {
                     b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
@@ -1871,6 +2357,72 @@ namespace Muster.Persistence.Migrations
                     b.Navigation("Quest");
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopCategory", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Guild");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopListing", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Shops.ShopStore", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopListingTag", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Shops.ShopListing", "Listing")
+                        .WithMany("Tags")
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Listing");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopOrder", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Shops.ShopListing", "Listing")
+                        .WithMany()
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Listing");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopStore", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Guild");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopStoreType", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Guild");
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Tracking.VoiceAttendance", b =>
                 {
                     b.HasOne("Muster.Domain.Entities.Tracking.TrackingSession", "TrackingSession")
@@ -1897,6 +2449,11 @@ namespace Muster.Persistence.Migrations
             modelBuilder.Entity("Muster.Domain.Entities.Quests.GuildQuest", b =>
                 {
                     b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopListing", b =>
+                {
+                    b.Navigation("Tags");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Tracking.TrackingSession", b =>

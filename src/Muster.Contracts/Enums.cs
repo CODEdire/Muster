@@ -81,3 +81,119 @@ public enum QuestLifecycleMoment
     Reopened,
     Rejected, // appended (not reordered) — the SQL queue serialises this enum by ordinal
 }
+
+// --- Shop / player marketplace ---
+
+/// <summary>Lifecycle of a shop listing (a sell offer for an in-game item).</summary>
+public enum ShopListingStatus
+{
+    /// <summary>Saved but not yet published to the board.</summary>
+    Draft = 0,
+    /// <summary>Live and purchasable.</summary>
+    Active = 1,
+    /// <summary>Out of stock — every unit sold (stackable listings).</summary>
+    SoldOut = 2,
+    /// <summary>Withdrawn by the seller (or a moderator takedown).</summary>
+    Cancelled = 3,
+    /// <summary>Passed its expiry without selling out.</summary>
+    Expired = 4,
+}
+
+/// <summary>Lifecycle of a shop order — the buyer's escrowed purchase, settled on confirmation.</summary>
+public enum ShopOrderStatus
+{
+    /// <summary>Paid into escrow; awaiting the buyer's receipt confirmation.</summary>
+    PendingDelivery = 0,
+    /// <summary>Seller marked the item handed over (two-step delivery); buyer-confirm clock running.</summary>
+    Delivered = 1,
+    /// <summary>Buyer confirmed (or auto-settled): escrow paid out to the seller, commission burned.</summary>
+    Settled = 2,
+    /// <summary>Either party raised a dispute; awaiting a shop manager's arbitration.</summary>
+    Disputed = 3,
+    /// <summary>Escrow refunded to the buyer after a dispute resolution / timeout.</summary>
+    Refunded = 4,
+    /// <summary>Seller cancelled the pending order; escrow refunded to the buyer (no fee).</summary>
+    Cancelled = 5,
+    /// <summary>A buyer's price offer: funds are held (binding) awaiting the seller's accept/decline.</summary>
+    OfferPending = 6,
+    /// <summary>The offer was declined / withdrawn / expired — funds refunded to the buyer.</summary>
+    OfferDeclined = 7,
+}
+
+/// <summary>Lifecycle of a price offer / counteroffer on a listing.</summary>
+public enum ShopOfferStatus
+{
+    /// <summary>Standing offer awaiting the other party's response.</summary>
+    Proposed = 0,
+    /// <summary>Superseded by a counter from the other party.</summary>
+    Countered = 1,
+    /// <summary>Accepted — converted into an order.</summary>
+    Accepted = 2,
+    /// <summary>Declined by the responder.</summary>
+    Rejected = 3,
+    /// <summary>Pulled by the proposer before a response.</summary>
+    Withdrawn = 4,
+    /// <summary>Lapsed past its expiry without a response.</summary>
+    Expired = 5,
+}
+
+/// <summary>Which side proposed an offer. Buyer-proposed offers escrow funds at proposal time (binding).</summary>
+public enum ShopOfferParty
+{
+    Buyer = 0,
+    Seller = 1,
+}
+
+/// <summary>What a shop rating is about. Kept deliberately generic so a future reputation layer can reuse it
+/// across features (e.g. quest worker/poster ratings). Superseded by the generic <see cref="RatingContext"/> +
+/// <see cref="RatingRole"/> model; retained only for source compatibility.</summary>
+public enum ShopRatingSubject
+{
+    Store = 0,
+    Seller = 1,
+    Buyer = 2,
+}
+
+// --- Reputation / ratings (generic across features) ---
+
+/// <summary>The feature a reputation rating came out of. The rating row carries this + the feature's row id
+/// (<c>SourceId</c>) so one reputation table serves the shop now and quests later without per-feature joins.</summary>
+public enum RatingContext
+{
+    /// <summary>A shop order (<c>SourceId</c> = the order id). Buyer rates the seller, seller rates the buyer.</summary>
+    ShopOrder = 0,
+
+    /// <summary>A quest (<c>SourceId</c> = the quest/participant id). Reserved — wired in a later pass.</summary>
+    Quest = 1,
+}
+
+/// <summary>The rated party's role in the transaction, denormalized onto the rating so aggregates ("seller
+/// reputation", "buyer reputation") never touch the feature tables. Provider = the one who delivers (seller /
+/// quest worker); Consumer = the one who pays/poses (buyer / quest poster).</summary>
+public enum RatingRole
+{
+    Provider = 0,
+    Consumer = 1,
+}
+
+/// <summary>A point in a shop listing/order's lifecycle worth notifying someone about (Discord DM/post, API).</summary>
+public enum ShopLifecycleMoment
+{
+    Listed,
+    OfferMade,
+    OfferCountered,
+    OfferAccepted,
+    OfferRejected,
+    Purchased,
+    Delivered,
+    Confirmed,
+    Settled,
+    Disputed,
+    Arbitrated,
+    Refunded,
+    Cancelled,
+    Expired,
+    Rated,
+    Featured,
+    Unfeatured,
+}

@@ -37,6 +37,9 @@ internal static class WebHostingExtensions
             // Bot token lets the web settings page list a guild's channels (quest-board channel picker)
             // via Discord REST — no channel table, fetched live.
             .WithEnvironment("Discord__Token", platform.DiscordToken)
+            // Shop listing/storefront images live in the shopimages blob container — publishes
+            // ConnectionStrings:shopimages (account-wide blob RBAC is granted by WithMusterDataProtection).
+            .WithReference(platform.ShopImages)
             .WithExternalHttpEndpoints();
 
         // Azure SignalR backplane (web-only; bot has no circuit). Publish only — null in run mode keeps the

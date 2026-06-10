@@ -18,6 +18,10 @@ internal sealed record MusterPlatform
     public required IResourceBuilder<AzureServiceBusResource> Messaging { get; init; }
     public required IResourceBuilder<AzureStorageResource> Storage { get; init; }
     public required IResourceBuilder<AzureBlobStorageContainerResource> DataProtectionKeys { get; init; }
+
+    /// <summary>Blob container for shop listing/storefront images (web-only consumer).</summary>
+    public required IResourceBuilder<AzureBlobStorageContainerResource> ShopImages { get; init; }
+
     public required IResourceBuilder<ProjectResource> Migrations { get; init; }
 
     public IResourceBuilder<AzureKeyVaultResource>? KeyVault { get; init; }

@@ -19,7 +19,7 @@ public class CurrencyAdminTests
     private static async Task<MusterDbContext> SeededAsync()
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
+        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1, seedDefaults: false);
         return db;
     }
 

@@ -20,7 +20,7 @@ public class ApiAndCurrencyTests
     private static async Task<MusterDbContext> SeededAsync(ulong guildId = 1)
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(guildId, "G", null, ownerId: 1);
+        await new GuildProvisioningService(db).EnsureGuildAsync(guildId, "G", null, ownerId: 1, seedDefaults: false);
         return db;
     }
 

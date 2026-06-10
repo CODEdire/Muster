@@ -1,0 +1,41 @@
+@page "/guilds/{GuildIdRaw}/shop/listing/{ListingId:guid}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Infrastructure.Services.Shops
+
+@* Item detail is modal-only. This route is the canonical id-based listing permalink — its sole job is to resolve a
+   bare listing id to its store and redirect to the storefront with the item modal open. In-app pages link straight
+   to /shop/store/{slug}?item={id}; this exists for external/Discord deep links that only carry the id (and so stay
+   valid even if the store's slug later changes). *@
+<PageTitle>Item — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && _notFound)
+{
+    <div class="panel glass empty">That item couldn't be found. <a href="/guilds/@GuildId/shop">Back to the shop</a>.</div>
+}
+
+@code {
+    [Parameter] public Guid ListingId { get; set; }
+
+    private bool _notFound;
+
+    protected override async Task LoadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        var listing = await reads.GetListingDetailAsync(GuildId, ListingId);
+        if (listing is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        Nav.NavigateTo($"/guilds/{GuildId}/shop/store/{listing.StoreSlug}?item={ListingId}", forceLoad: false, replace: true);
+    }
+}

@@ -1,0 +1,507 @@
+@page "/guilds/{GuildIdRaw}/shop/orders"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Contracts
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>Orders — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    @if (Message is not null)
+    {
+        <div class="notice" role="status">
+            <span class="material-symbols-outlined notice-icon">info</span>
+            <span class="notice-text">@Message</span>
+            <button type="button" class="icon-btn notice-close" title="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+        </div>
+    }
+
+    @if (StoreId is not null)
+    {
+        <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Shop", $"/guilds/{GuildId}/shop"), new(_filterStoreName ?? "Shop", _filterStoreSlug is { } sl ? $"/guilds/{GuildId}/shop/store/{sl}" : null), new("Orders") })"
+                    Subtitle="This store's orders.">
+            <Toolbar>
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/orders?tab=@_activeTab">
+                    <span class="material-symbols-outlined">close</span> Clear shop filter
+                </a>
+            </Toolbar>
+        </PageHeader>
+    }
+    else
+    {
+        <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Shop", $"/guilds/{GuildId}/shop"), new("Orders") })"
+                    Subtitle="Your purchases and, if you sell, your store's sales." />
+    }
+
+    @if (!_shopGate.CanEnable)
+    {
+        @* Platform kill-switch / plan block hides orders entirely. A guild that merely switched the market off
+           (CanEnable, but not Enabled) still gets the tabs, so in-flight orders can be confirmed / disputed. *@
+        <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+    }
+    else
+    {
+    <TabFrame @bind-ActiveId="_activeTab">
+        <TabPane Id="purchases" Label="Purchases" Icon="shopping_bag">
+            @OrderTable(_purchases, buyerView: true)
+        </TabPane>
+        <TabPane Id="sales" Label="Sales" Icon="sell">
+            @OrderTable(_sales, buyerView: false)
+        </TabPane>
+        <TabPane Id="offers" Label="@(_offers.Count > 0 ? $"Offers ({_offers.Count})" : "Offers")" Icon="local_offer">
+            @OffersTable()
+        </TabPane>
+        @if (_isManager)
+        {
+            <TabPane Id="disputes" Label="Disputes" Icon="gavel">
+                @DisputeTable()
+            </TabPane>
+        }
+    </TabFrame>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "tab")] private string? Tab { get; set; }
+    [SupplyParameterFromQuery(Name = "store")] private string? Store { get; set; }
+
+    private Guid? StoreId => Guid.TryParse(Store, out var g) ? g : null;
+
+    private IReadOnlyList<ShopOrderRow> _purchases = [];
+    private IReadOnlyList<ShopOrderRow> _sales = [];
+    private IReadOnlyList<ShopOrderRow> _disputes = [];
+    private List<ShopOrderRow> _offers = [];
+    private bool _isManager;
+    private FeatureVerdict _shopGate;
+    private string _activeTab = "purchases";
+    private string? _filterStoreName, _filterStoreSlug;
+    private string? _key;
+    private bool _busy;
+    private string _zoneId = Muster.Infrastructure.Services.Platform.TimeZoneService.Utc;
+
+    // Shared client-side filter/sort/paging state (per-member lists are small, so we page in-memory).
+    private const int PageSize = 10;
+    private string? _q, _minBox, _maxBox;
+    private string _statusFilter = "", _sort = "", _fCategory = "", _fStore = "", _fPerson = "";
+    private DateOnly? _from, _to;
+    private int _page = 1;
+
+    private void ResetPage() => _page = 1;
+
+    private bool HasFilters => !string.IsNullOrWhiteSpace(_q) || _statusFilter.Length > 0 || _fCategory.Length > 0
+        || _fStore.Length > 0 || _fPerson.Length > 0 || !string.IsNullOrWhiteSpace(_minBox) || !string.IsNullOrWhiteSpace(_maxBox)
+        || _from is not null || _to is not null;
+
+    private void ClearFilters()
+    {
+        _q = _minBox = _maxBox = null;
+        _from = _to = null;
+        _statusFilter = _fCategory = _fStore = _fPerson = "";
+        _page = 1;
+    }
+
+    private static IEnumerable<string> DistinctCategories(IReadOnlyList<ShopOrderRow> o)
+        => o.Where(x => x.CategoryName is { Length: > 0 }).Select(x => x.CategoryName!).Distinct().OrderBy(x => x);
+    private static IEnumerable<string> DistinctStores(IReadOnlyList<ShopOrderRow> o)
+        => o.Where(x => x.StoreName is { Length: > 0 }).Select(x => x.StoreName!).Distinct().OrderBy(x => x);
+    private static IEnumerable<string> DistinctPeople(IReadOnlyList<ShopOrderRow> o, bool buyerView)
+        => o.Select(x => buyerView ? x.SellerName : x.BuyerName).Where(n => !string.IsNullOrEmpty(n)).Distinct().OrderBy(x => x);
+    private static IEnumerable<string> DistinctBothParties(IReadOnlyList<ShopOrderRow> o)
+        => o.SelectMany(x => new[] { x.BuyerName, x.SellerName }).Where(n => !string.IsNullOrEmpty(n)).Distinct().OrderBy(x => x);
+
+    // Data + tab seed live here (keyed on tab/store) so the page reloads when the shop filter or deep-linked
+    // tab changes; tab clicks afterwards are client-side via @bind-ActiveId.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State != AccessState.Ready)
+        {
+            return;
+        }
+
+        var key = $"{Tab}|{Store}";
+        if (key != _key)
+        {
+            _key = key;
+            _page = 1;
+            _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
+            await ReloadAsync();
+            // Disputes is manager-only; fall back to purchases if a non-manager deep-links to it.
+            _activeTab = Tab switch
+            {
+                "sales" => "sales",
+                "offers" => "offers",
+                "disputes" when _isManager => "disputes",
+                _ => "purchases",
+            };
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+            .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        if (!_shopGate.CanEnable)
+        {
+            _purchases = _sales = _disputes = []; _offers = [];
+            return; // platform/plan block — render the gated state, load nothing
+        }
+
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _isManager = await Auth.IsShopManagerAsync(GuildId, UserId);
+        _purchases = await reads.GetPurchasesAsync(GuildId, UserId, StoreId);
+        _sales = await reads.GetSalesAsync(GuildId, UserId, StoreId);
+        _disputes = _isManager ? await reads.GetDisputesAsync(GuildId, StoreId) : [];
+        // Offers I'm party to (made as a buyer or received as a seller), consolidated for the Offers tab.
+        _offers = _purchases.Concat(_sales).Where(o => o.Status == ShopOrderStatus.OfferPending).DistinctBy(o => o.Id).ToList();
+        if (StoreId is { } sid)
+        {
+            var store = await reads.GetStoreAsync(GuildId, sid);
+            _filterStoreName = store?.Name;
+            _filterStoreSlug = store?.Slug;
+        }
+        else { _filterStoreName = _filterStoreSlug = null; }
+    }
+
+    private List<ShopOrderRow> Filtered(IReadOnlyList<ShopOrderRow> orders, bool buyerView, bool disputeView = false)
+    {
+        IEnumerable<ShopOrderRow> q = orders;
+        if (!string.IsNullOrWhiteSpace(_q))
+        {
+            var term = _q.Trim();
+            q = q.Where(o => o.ItemName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || o.BuyerName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || o.SellerName.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!disputeView && _statusFilter.Length > 0 && Enum.TryParse<ShopOrderStatus>(_statusFilter, out var st))
+        {
+            q = q.Where(o => o.Status == st);
+        }
+
+        if (_fCategory.Length > 0) { q = q.Where(o => o.CategoryName == _fCategory); }
+        if (_fStore.Length > 0) { q = q.Where(o => o.StoreName == _fStore); }
+        if (_fPerson.Length > 0)
+        {
+            q = disputeView
+                ? q.Where(o => o.BuyerName == _fPerson || o.SellerName == _fPerson)
+                : q.Where(o => (buyerView ? o.SellerName : o.BuyerName) == _fPerson);
+        }
+        if (long.TryParse(_minBox, out var min)) { q = q.Where(o => o.Amount >= min); }
+        if (long.TryParse(_maxBox, out var max)) { q = q.Where(o => o.Amount <= max); }
+        if (_from is { } from) { q = q.Where(o => DateOnly.FromDateTime(o.CreatedAt.UtcDateTime) >= from); }
+        if (_to is { } to) { q = q.Where(o => DateOnly.FromDateTime(o.CreatedAt.UtcDateTime) <= to); }
+
+        q = _sort switch
+        {
+            "old" => q.OrderBy(o => o.CreatedAt),
+            "amount-desc" => q.OrderByDescending(o => o.Amount),
+            "amount-asc" => q.OrderBy(o => o.Amount),
+            "name" => q.OrderBy(o => o.ItemName),
+            _ => q.OrderByDescending(o => o.CreatedAt),
+        };
+        return q.ToList();
+    }
+
+    private int TotalPages(List<ShopOrderRow> filtered) => Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)PageSize));
+    private int ClampedPage(List<ShopOrderRow> filtered) => Math.Min(_page, TotalPages(filtered));
+    private List<ShopOrderRow> PageRows(List<ShopOrderRow> filtered) => filtered.Skip((ClampedPage(filtered) - 1) * PageSize).Take(PageSize).ToList();
+
+    private void PrevPage() { if (_page > 1) { _page--; } }
+    private void NextPage() => _page++;
+
+    // Shared filter toolbar. `disputeView` hides the status filter and widens the person filter to either party.
+    private RenderFragment FilterBar(IReadOnlyList<ShopOrderRow> rows, bool buyerView, bool disputeView) => @<text>
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input type="search" class="dg-search" placeholder="Search…" @bind="_q" @bind:event="oninput" @bind:after="ResetPage" />
+                <select class="dg-select" @bind="_fCategory" @bind:after="ResetPage">
+                    <option value="">All categories</option>
+                    @foreach (var c in DistinctCategories(rows)) { <option value="@c">@c</option> }
+                </select>
+                @if (StoreId is null)
+                {
+                    <select class="dg-select" @bind="_fStore" @bind:after="ResetPage">
+                        <option value="">All shops</option>
+                        @foreach (var s in DistinctStores(rows)) { <option value="@s">@s</option> }
+                    </select>
+                }
+                <select class="dg-select" @bind="_fPerson" @bind:after="ResetPage">
+                    <option value="">@(disputeView ? "Any buyer/seller" : buyerView ? "Any seller" : "Any buyer")</option>
+                    @foreach (var p in (disputeView ? DistinctBothParties(rows) : DistinctPeople(rows, buyerView))) { <option value="@p">@p</option> }
+                </select>
+                @if (!disputeView)
+                {
+                    <select class="dg-select" @bind="_statusFilter" @bind:after="ResetPage">
+                        <option value="">All statuses</option>
+                        @foreach (var s in Enum.GetValues<ShopOrderStatus>()) { <option value="@s">@s</option> }
+                    </select>
+                }
+                <input type="number" class="dg-search" style="max-width:5.5rem" min="0" placeholder="min" @bind="_minBox" @bind:event="oninput" @bind:after="ResetPage" />
+                <input type="number" class="dg-search" style="max-width:5.5rem" min="0" placeholder="max" @bind="_maxBox" @bind:event="oninput" @bind:after="ResetPage" />
+                <input type="date" class="dg-select" title="From date" @bind="_from" @bind:after="ResetPage" />
+                <input type="date" class="dg-select" title="To date" @bind="_to" @bind:after="ResetPage" />
+                <select class="dg-select" @bind="_sort" @bind:after="ResetPage">
+                    <option value="">Newest</option>
+                    <option value="old">Oldest</option>
+                    <option value="amount-desc">Amount · high → low</option>
+                    <option value="amount-asc">Amount · low → high</option>
+                    <option value="name">Item · A → Z</option>
+                </select>
+                @if (HasFilters)
+                {
+                    <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearFilters">Clear</button>
+                }
+            </div>
+        </div>
+    </text>;
+
+    private RenderFragment Pager(List<ShopOrderRow> filtered) => @<text>
+        @if (TotalPages(filtered) > 1)
+        {
+            <div class="dg-footer">
+                <div class="dg-pager">
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(ClampedPage(filtered) <= 1)" @onclick="PrevPage">← Prev</button>
+                    <span>Page @ClampedPage(filtered) of @TotalPages(filtered) · @filtered.Count</span>
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(ClampedPage(filtered) >= TotalPages(filtered))" @onclick="NextPage">Next →</button>
+                </div>
+            </div>
+        }
+    </text>;
+
+    private RenderFragment OrderTable(IReadOnlyList<ShopOrderRow> orders, bool buyerView) => @<text>
+        @FilterBar(orders, buyerView, disputeView: false)
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Item</th><th>Category</th>@if (StoreId is null) { <th>Store</th> }<th class="num">Amount</th><th>@(buyerView ? "Seller" : "Buyer")</th><th>Ordered</th><th>Status</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @if (PageRows(Filtered(orders, buyerView)).Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="@(StoreId is null ? 8 : 7)">@(orders.Count == 0 ? (buyerView ? "You haven't bought anything yet." : "No sales yet.") : "No orders match your filters.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var o in PageRows(Filtered(orders, buyerView)))
+                        {
+                            <tr>
+                                <td>
+                                    <span style="display:inline-flex;align-items:center;gap:.5rem">
+                                        @ItemIcon(o)
+                                        <a href="/guilds/@GuildId/shop/orders/@o.Id">@o.ItemName</a>
+                                    </span>
+                                </td>
+                                <td>@CategoryCell(o)</td>
+                                @if (StoreId is null) { <td>@StoreCell(o)</td> }
+                                <td class="num">@o.Amount @o.CurrencyCode</td>
+                                <td>
+                                    @if (buyerView)
+                                    {
+                                        <UserChip Name="@o.SellerName" AvatarUrl="@o.SellerAvatarUrl" />
+                                    }
+                                    else
+                                    {
+                                        <UserChip Name="@o.BuyerName" AvatarUrl="@o.BuyerAvatarUrl" />
+                                    }
+                                </td>
+                                <td><LocalTime Value="o.CreatedAt" Zone="@_zoneId" /></td>
+                                <td><span class="status-dot @StatusDot(o.Status)"></span>@o.Status</td>
+                                <td class="dg-actions-col">
+                                    <div class="dg-row-actions">
+                                        @if (buyerView && IsPending(o.Status))
+                                        {
+                                            <button type="button" class="icon-btn success" title="Confirm receipt" disabled="@_busy" @onclick="() => ConfirmAsync(o.Id)"><span class="material-symbols-outlined">check_circle</span></button>
+                                        }
+                                        @if (!buyerView && IsPending(o.Status))
+                                        {
+                                            <button type="button" class="icon-btn danger" title="Cancel &amp; refund" disabled="@_busy" @onclick="() => CancelAsync(o.Id, o.ItemName)"><span class="material-symbols-outlined">undo</span></button>
+                                        }
+                                        @if (o.Status == ShopOrderStatus.OfferPending)
+                                        {
+                                            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/orders/@o.Id">
+                                                @(YourTurn(o, buyerView) ? "Respond →" : "View →")
+                                            </a>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        @Pager(Filtered(orders, buyerView))
+    </text>;
+
+    private RenderFragment DisputeTable() => @<text>
+        @FilterBar(_disputes, buyerView: false, disputeView: true)
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Item</th><th>Category</th>@if (StoreId is null) { <th>Store</th> }<th class="num">Amount</th><th>Buyer</th><th>Seller</th><th>Raised</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @if (PageRows(Filtered(_disputes, false, disputeView: true)).Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="@(StoreId is null ? 8 : 7)">@(_disputes.Count == 0 ? "No open disputes. 🎉" : "No disputes match your filters.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var o in PageRows(Filtered(_disputes, false, disputeView: true)))
+                        {
+                            <tr>
+                                <td>
+                                    <span style="display:inline-flex;align-items:center;gap:.5rem">
+                                        @ItemIcon(o)
+                                        <a href="/guilds/@GuildId/shop/orders/@o.Id">@o.ItemName</a>
+                                    </span>
+                                </td>
+                                <td>@CategoryCell(o)</td>
+                                @if (StoreId is null) { <td>@StoreCell(o)</td> }
+                                <td class="num">@o.Amount @o.CurrencyCode</td>
+                                <td><UserChip Name="@o.BuyerName" AvatarUrl="@o.BuyerAvatarUrl" /></td>
+                                <td><UserChip Name="@o.SellerName" AvatarUrl="@o.SellerAvatarUrl" /></td>
+                                <td><LocalTime Value="o.CreatedAt" Zone="@_zoneId" /></td>
+                                <td class="dg-actions-col">
+                                    <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/orders/@o.Id">Review →</a>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        @Pager(Filtered(_disputes, false, disputeView: true))
+    </text>;
+
+    private RenderFragment OffersTable() => @<text>
+        @FilterBar(_offers, buyerView: false, disputeView: true)
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Item</th><th>Category</th>@if (StoreId is null) { <th>Store</th> }<th class="num">Price</th><th>Proposed by</th><th>With</th><th>Expires</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @if (PageRows(Filtered(_offers, false, disputeView: true)).Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="@(StoreId is null ? 8 : 7)">@(_offers.Count == 0 ? "No open offers." : "No offers match your filters.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var o in PageRows(Filtered(_offers, false, disputeView: true)))
+                        {
+                            var iAmBuyer = o.BuyerId == UserId;
+                            var myMove = YourTurn(o, iAmBuyer);
+                            var mineProposed = (o.OfferProposedBy == ShopOfferParty.Buyer) == iAmBuyer;
+                            <tr>
+                                <td>
+                                    <span style="display:inline-flex;align-items:center;gap:.5rem">
+                                        @ItemIcon(o)
+                                        <a href="/guilds/@GuildId/shop/orders/@o.Id">@o.ItemName</a>
+                                    </span>
+                                </td>
+                                <td>@CategoryCell(o)</td>
+                                @if (StoreId is null) { <td>@StoreCell(o)</td> }
+                                <td class="num">@o.Amount @o.CurrencyCode</td>
+                                <td>@(mineProposed ? "You" : "Them") · @(o.OfferProposedBy == ShopOfferParty.Buyer ? "buyer" : "seller")</td>
+                                <td><UserChip Name="@(iAmBuyer ? o.SellerName : o.BuyerName)" AvatarUrl="@(iAmBuyer ? o.SellerAvatarUrl : o.BuyerAvatarUrl)" /></td>
+                                <td>@if (o.OfferExpiresAt is { } e) { <LocalTime Value="e" Zone="@_zoneId" /> } else { <span class="muted">—</span> }</td>
+                                <td class="dg-actions-col">
+                                    <div class="dg-row-actions">
+                                        @if (myMove) { <span class="chip chip-progress">Your move</span> }
+                                        <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/orders/@o.Id">@(myMove ? "Respond →" : "View →")</a>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        @Pager(Filtered(_offers, false, disputeView: true))
+    </text>;
+
+    private RenderFragment CategoryCell(ShopOrderRow o) => @<text>
+        @if (o.CategoryName is { } cn)
+        {
+            @if (ShopIcons.Material(o.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined" style="vertical-align:-3px;font-size:1rem">@cmi</span> }
+            @cn
+        }
+        else { <span class="muted">—</span> }
+    </text>;
+
+    private RenderFragment StoreCell(ShopOrderRow o) => @<text>
+        @if (o.StoreName is { } sn)
+        {
+            <span style="display:inline-flex;align-items:center;gap:.35rem"><span class="material-symbols-outlined" style="font-size:1rem;opacity:.7">storefront</span> @sn</span>
+        }
+        else { <span class="muted">—</span> }
+    </text>;
+
+    private RenderFragment ItemIcon(ShopOrderRow o) => @<text>
+        @if (o.ThumbKey is { } tk)
+        {
+            <img src="/shop-image/@tk" alt="" style="width:24px;height:24px;border-radius:6px;object-fit:cover;flex:0 0 auto" />
+        }
+        else if (ShopIcons.Material(o.CategoryIcon) is { } cmi)
+        {
+            <span class="material-symbols-outlined" style="font-size:20px;opacity:.7">@cmi</span>
+        }
+        else
+        {
+            <span class="material-symbols-outlined" style="font-size:20px;opacity:.5">image</span>
+        }
+    </text>;
+
+    private static bool IsPending(ShopOrderStatus s) => s is ShopOrderStatus.PendingDelivery or ShopOrderStatus.Delivered;
+
+    private static string StatusDot(ShopOrderStatus s) => s switch
+    {
+        ShopOrderStatus.Settled => "is-active",
+        ShopOrderStatus.Refunded or ShopOrderStatus.Cancelled => "is-ended",
+        ShopOrderStatus.Disputed => "is-ended",
+        _ => "",
+    };
+
+    private async Task ConfirmAsync(Guid orderId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new ConfirmReceipt(GuildId, UserId, orderId))).ToCommandResult("Receipt confirmed — funds released to the seller.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task CancelAsync(Guid orderId, string item)
+    {
+        if (_busy || !await JS.InvokeAsync<bool>("confirm", new object?[] { $"Cancel the order for “{item}” and refund the buyer?" }))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new SellerCancelOrder(GuildId, UserId, orderId))).ToCommandResult("Order cancelled — buyer refunded.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    // Whose turn it is in a negotiation: the seller responds to a buyer-proposed price; the buyer responds to a counter.
+    private static bool YourTurn(ShopOrderRow o, bool buyerView)
+        => buyerView ? o.OfferProposedBy == ShopOfferParty.Seller : o.OfferProposedBy == ShopOfferParty.Buyer;
+}

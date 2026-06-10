@@ -1,0 +1,199 @@
+@page "/guilds/{GuildIdRaw}/management/shop/categories"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Contracts
+@using Muster.Domain.Entities.Shops
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>Shop categories — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready && !_shopGate.IsEnabled)
+{
+    <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Shop settings", $"/guilds/{GuildId}/management/shop"), new("Categories") })"
+                Subtitle="Curated, admin-managed categories that listings can be filed under." />
+
+    @if (Message is not null)
+    {
+        <div class="notice" role="status">
+            <span class="material-symbols-outlined notice-icon">info</span>
+            <span class="notice-text">@Message</span>
+            <button type="button" class="icon-btn notice-close" title="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+        </div>
+    }
+
+    <div class="panel glass datagrid">
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Name</th><th>Icon</th><th class="num">Sort</th><th class="num">Commission override (bps)</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @if (_categories.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="5">No categories yet — add one below.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var cat in _categories)
+                        {
+                            var m = _edit[cat.Id];
+                            <tr>
+                                <td><input @bind="m.Name" maxlength="60" /></td>
+                                <td>
+                                    <select @bind="m.Icon">
+                                        <option value="">— none —</option>
+                                        @foreach (var i in ShopIcons.All) { <option value="@i.Key">@i.Emoji @i.Label</option> }
+                                    </select>
+                                </td>
+                                <td class="num"><input type="number" @bind="m.Sort" style="max-width:5rem" /></td>
+                                <td class="num"><input type="number" min="0" max="10000" @bind="m.Override" placeholder="default" style="max-width:7rem" /></td>
+                                <td class="dg-actions-col">
+                                    <div class="dg-row-actions">
+                                        <button type="button" class="icon-btn" title="Save" disabled="@_busy" @onclick="() => SaveCategoryAsync(cat.Id)"><span class="material-symbols-outlined">save</span></button>
+                                        <button type="button" class="icon-btn danger" title="Delete" disabled="@_busy" @onclick="() => DeleteCategoryAsync(cat.Id, cat.Name)"><span class="material-symbols-outlined">delete</span></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input class="dg-search" placeholder="New category name…" @bind="_newName" />
+                <select class="dg-search" @bind="_newIcon">
+                    <option value="">— icon —</option>
+                    @foreach (var i in ShopIcons.All) { <option value="@i.Key">@i.Emoji @i.Label</option> }
+                </select>
+                <input type="number" class="dg-search" placeholder="sort" @bind="_newSort" style="max-width:5rem" />
+            </div>
+            <div class="dg-actions">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="RestoreDefaultsAsync" title="Add any missing default categories"><span class="material-symbols-outlined">auto_fix_high</span> Restore defaults</button>
+                <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="AddCategoryAsync"><span class="material-symbols-outlined">add</span> Add category</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private FeatureVerdict _shopGate;
+    private IReadOnlyList<ShopCategory> _categories = [];
+    private string? _newName;
+    private string? _newIcon;
+    private int _newSort;
+    private bool _busy;
+
+    private sealed class CatEdit { public string Name = ""; public int Sort; public int? Override; public string? Icon; }
+    private readonly Dictionary<Guid, CatEdit> _edit = [];
+
+    protected override async Task LoadAsync()
+    {
+        await using (var scope = Scopes.CreateAsyncScope())
+        {
+            _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+                .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        }
+        if (!_shopGate.IsEnabled) { return; }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _categories = await scope.ServiceProvider.GetRequiredService<IShopReadService>().GetCategoriesAsync(GuildId);
+        _edit.Clear();
+        foreach (var c in _categories)
+        {
+            _edit[c.Id] = new CatEdit { Name = c.Name, Sort = c.Sort, Override = c.CommissionBpsOverride, Icon = c.Icon };
+        }
+    }
+
+    private async Task AddCategoryAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_newName))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            var result = await bus.InvokeAsync<Result<Guid>>(new CreateCategory(GuildId, UserId, _newName!.Trim(), _newSort, null, _newIcon));
+            Message = ((Result)result).ToCommandResult($"Category “{_newName!.Trim()}” added.").Message;
+            _newName = null;
+            _newIcon = null;
+            _newSort = 0;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task RestoreDefaultsAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new SeedGuildDefaults(GuildId, UserId, Restore: true)))
+                .ToCommandResult("Default categories restored.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task SaveCategoryAsync(Guid id)
+    {
+        if (_busy || !_edit.TryGetValue(id, out var m))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new EditCategory(GuildId, UserId, id, m.Name, m.Sort, m.Override, m.Icon))).ToCommandResult("Category updated.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task DeleteCategoryAsync(Guid id, string name)
+    {
+        if (_busy || !await JS.InvokeAsync<bool>("confirm", new object?[] { $"Delete category “{name}”? Listings in it lose their category." }))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new DeleteCategory(GuildId, UserId, id))).ToCommandResult($"Category “{name}” deleted.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+}

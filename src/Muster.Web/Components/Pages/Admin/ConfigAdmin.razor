@@ -217,6 +217,8 @@ else if (State == AccessState.Ready)
         ("economy",       "Economy",     "Mint, adjust, bulk-move currency."),
         ("tracking",      "Tracking",    "Sessions, channels + multipliers, event ops (/op)."),
         ("mustercreator", "Muster Creator", "Post musters from a template only (no custom rewards)."),
+        ("shopcreator",   "Shop Creator", "Open stores and list/sell items in the marketplace."),
+        ("shopmanager",   "Shop Manager", "Moderate listings + ratings, arbitrate disputes, manage categories."),
         ("auditor",       "Auditor",     "Read-only access to audit, ledger, participation."),
         ("participant",   "Participant", "Who can earn rewards. Empty = everyone participates."),
     ];
@@ -232,6 +234,8 @@ else if (State == AccessState.Ready)
             ["economy"]      = m.EconomyManagerRoleIds.ToHashSet(),
             ["tracking"]     = m.TrackingManagerRoleIds.ToHashSet(),
             ["mustercreator"] = m.MusterCreatorRoleIds.ToHashSet(),
+            ["shopcreator"]  = m.ShopCreatorRoleIds.ToHashSet(),
+            ["shopmanager"]  = m.ShopManagerRoleIds.ToHashSet(),
             ["auditor"]      = m.AuditorRoleIds.ToHashSet(),
             ["participant"]  = m.ParticipantRoleIds.ToHashSet(),
         };
@@ -263,6 +267,8 @@ else if (State == AccessState.Ready)
             "economy" => await Config.ToggleEconomyManagerRoleAsync(GuildId, roleId),
             "tracking" => await Config.ToggleTrackingManagerRoleAsync(GuildId, roleId),
             "mustercreator" => await Config.ToggleMusterCreatorRoleAsync(GuildId, roleId),
+            "shopcreator" => await Config.ToggleShopCreatorRoleAsync(GuildId, roleId),
+            "shopmanager" => await Config.ToggleShopManagerRoleAsync(GuildId, roleId),
             "auditor" => await Config.ToggleAuditorRoleAsync(GuildId, roleId),
             "participant" => await Config.ToggleParticipantRoleAsync(GuildId, roleId),
             _ => CommandResult.Error("Unknown group."),
