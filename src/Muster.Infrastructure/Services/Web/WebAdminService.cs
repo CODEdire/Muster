@@ -18,7 +18,9 @@ public record RoleMappingView(
     IReadOnlyList<ulong> EconomyManagerRoleIds,
     IReadOnlyList<ulong> TrackingManagerRoleIds,
     IReadOnlyList<ulong> MusterCreatorRoleIds,
-    IReadOnlyList<ulong> AuditorRoleIds);
+    IReadOnlyList<ulong> AuditorRoleIds,
+    IReadOnlyList<ulong> ShopCreatorRoleIds,
+    IReadOnlyList<ulong> ShopManagerRoleIds);
 
 /// <summary>Read models backing the web admin consoles (member pickers, approval queue, role mapping).</summary>
 public class WebAdminService(MusterDbContext db)
@@ -134,6 +136,8 @@ public class WebAdminService(MusterDbContext db)
             ids(GuildRoleTier.EconomyManager),
             ids(GuildRoleTier.TrackingManager),
             ids(GuildRoleTier.MusterCreator),
-            ids(GuildRoleTier.Auditor));
+            ids(GuildRoleTier.Auditor),
+            ids(GuildRoleTier.ShopCreator),
+            ids(GuildRoleTier.ShopManager));
     }
 }

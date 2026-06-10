@@ -40,6 +40,16 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
     public DbSet<GuildTrackingSettings> GuildTrackingSettings => Set<GuildTrackingSettings>();
     public DbSet<MusterTemplate> MusterTemplates => Set<MusterTemplate>();
 
+    public DbSet<ShopStore> ShopStores => Set<ShopStore>();
+    public DbSet<ShopStoreType> ShopStoreTypes => Set<ShopStoreType>();
+    public DbSet<ShopCategory> ShopCategories => Set<ShopCategory>();
+    public DbSet<ShopListing> ShopListings => Set<ShopListing>();
+    public DbSet<ShopListingTag> ShopListingTags => Set<ShopListingTag>();
+    public DbSet<ShopOrder> ShopOrders => Set<ShopOrder>();
+    public DbSet<GuildShopSettings> GuildShopSettings => Set<GuildShopSettings>();
+
+    public DbSet<Rating> Ratings => Set<Rating>();
+
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<CurrencyLedgerEntry> CurrencyLedgerEntries => Set<CurrencyLedgerEntry>();
@@ -62,6 +72,9 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
         if (Database.IsSqlServer())
         {
             b.Entity<GuildQuest>().Property(x => x.RowVersion).IsRowVersion();
+            b.Entity<ShopStore>().Property(x => x.RowVersion).IsRowVersion();
+            b.Entity<ShopListing>().Property(x => x.RowVersion).IsRowVersion();
+            b.Entity<ShopOrder>().Property(x => x.RowVersion).IsRowVersion();
 
             // At most one ACTIVE session may be bound to a given scheduled event — a DB-level guard against the
             // check-then-act race in EnsureForScheduledEventAsync (two near-simultaneous "event started" deliveries).

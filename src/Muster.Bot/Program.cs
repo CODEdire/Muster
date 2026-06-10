@@ -33,7 +33,10 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("appcon
     // reference to a Key Vault secret which the provider resolves at load time using the workload's managed
     // identity (Key Vault Secrets User granted by WithReference(kv) on this project in the AppHost).
     builder.AddAzureAppConfiguration("appconfig", configureOptions: options =>
-        options.ConfigureKeyVault(kv => kv.SetCredential(new Azure.Identity.DefaultAzureCredential())));
+        options
+            .ConfigureKeyVault(kv => kv.SetCredential(new Azure.Identity.DefaultAzureCredential()))
+            // Load App Configuration feature flags (e.g. "MusterShop") into the FeatureManagement schema.
+            .UseFeatureFlags());
 }
 
 builder.AddMusterInfrastructure();
@@ -88,6 +91,7 @@ builder
     .AddMembershipFeature()
     .AddConfigFeature()
     .AddSeasonsFeature()
+    .AddShopFeature()
     //.AddOpsFeature()
     .AddPlatformFeature()
     ;
@@ -106,6 +110,7 @@ host.UseQuestingModule()
     .UseMembershipModule()
     .UseConfigModule()
     .UseSeasonsModule()
+    .UseShopModule()
     //.UseOpsModule()
     ;
 

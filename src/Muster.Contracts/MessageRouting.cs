@@ -31,6 +31,10 @@ public static class MessageRouting
         new(typeof(RemoveMusterCard), [HostNames.Bot]),
         // Bot delivers DM receipts (CurrencyDmHandler) and HMAC-signed webhooks (CurrencyWebhookHandler).
         new(typeof(CurrencyMovementRecorded), [HostNames.Bot]),
+        // Bot posts shop dispute alerts + maintains the channel's featured/home cards from any host's change.
+        new(typeof(ShopLifecycleNotified), [HostNames.Bot]),
+        // Bot renders/removes a store's home card on store create/edit/delete.
+        new(typeof(ShopStoreChanged), [HostNames.Bot]),
         // Bot owns the Discord gateway client needed to pull the roster.
         new(typeof(SyncGuildMembers), [HostNames.Bot]),
         // Web fans the live attendance change out to connected Blazor circuits.

@@ -203,6 +203,56 @@ public static class AuditMiddleware
                 await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Muster.SetGate, $"session:{c.SessionId} gate:{c.Gate}", ct: ct);
                 return;
 
+            // ---- Shop order lifecycle -------------------------------------
+
+            case PurchaseListing c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Purchase, $"listing:{c.ListingId} qty:{c.Quantity}", ct: ct);
+                return;
+
+            case MakeOffer c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Offer, $"listing:{c.ListingId} amount:{c.Amount} qty:{c.Quantity}", ct: ct);
+                return;
+
+            case AcceptOffer c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.OfferAccept, $"order:{c.OrderId}", ct: ct);
+                return;
+
+            case CounterOffer c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.OfferCounter, $"order:{c.OrderId} amount:{c.Amount}", ct: ct);
+                return;
+
+            case DeclineOffer c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.OfferEnd, $"order:{c.OrderId}", ct: ct);
+                return;
+
+            case WithdrawOffer c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.OfferEnd, $"order:{c.OrderId} (withdrawn)", ct: ct);
+                return;
+
+            case MarkDelivered c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.MarkDelivered, $"order:{c.OrderId}", ct: ct);
+                return;
+
+            case ConfirmReceipt c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Confirm, $"order:{c.OrderId}", ct: ct);
+                return;
+
+            case SellerCancelOrder c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Cancel, $"order:{c.OrderId}", ct: ct);
+                return;
+
+            case DisputeOrder c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Dispute, $"order:{c.OrderId}: {c.Reason}", ct: ct);
+                return;
+
+            case ArbitrateOrder c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Arbitrate, $"order:{c.OrderId} {(c.PaySeller ? "paid seller" : "refunded buyer")}", ct: ct);
+                return;
+
+            case RateOrder c:
+                await audit.RecordAsync(c.GuildId, c.ActorId, AuditActions.Shop.Rate, $"order:{c.OrderId} {c.Stars}★", ct: ct);
+                return;
+
             default:
                 // Unknown command — still record it so nothing escapes the audit. ToString() of a record gives
                 // readable {Field = value} output, which the default formatter renders as muted text.

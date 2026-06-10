@@ -28,7 +28,7 @@ public class OpAndActivityTests
     private static async Task<MusterDbContext> SeededAsync(ulong guildId = 1)
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(guildId, "G", null);
+        await new GuildProvisioningService(db).EnsureGuildAsync(guildId, "G", null, seedDefaults: false);
         return db;
     }
 

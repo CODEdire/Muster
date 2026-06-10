@@ -44,7 +44,7 @@
 
         <div class="sidebar-foot">
             <div class="me-card">
-                <UserChip Name="@_userName" AvatarUrl="@_userAvatar" />
+                <UserChip Name="@_userName" Handle="@_userHandle" AvatarUrl="@_userAvatar" />
             </div>
             <div class="foot-row"><ThemeToggle /></div>
             <a class="btn btn-ghost btn-sm btn-block" href="/account/logout">Log out</a>
@@ -73,6 +73,7 @@
     private string _guildName = "Server";
     private string _initials = "··";
     private string _userName = "You";
+    private string? _userHandle;
     private string? _userAvatar;
 
     private sealed record NavItem(string Label, string Icon, string? Href, string Match);
@@ -102,8 +103,13 @@
             {
                 new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
                 new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-                new("Sessions", "schedule", $"/guilds/{_guildId}/guild/tracking/sessions", "/guild/tracking/sessions"),
             };
+            // Shop entry only when the feature gate says it's on for this guild (platform + plan + guild toggle).
+            if (_shopEnabled)
+            {
+                guild.Add(new("Shop", "storefront", $"/guilds/{_guildId}/shop", "/shop"));
+            }
+            guild.Add(new("Sessions", "schedule", $"/guilds/{_guildId}/guild/tracking/sessions", "/guild/tracking/sessions"));
             // Musters are participant-facing — only show the entry to members who can take part.
             if (_isParticipant)
             {
@@ -147,6 +153,7 @@
 
     private bool _isAdmin;
     private bool _isParticipant;
+    private bool _shopEnabled;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -180,14 +187,22 @@
 
             var auth = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Membership.GuildAuthorizationService>();
             _isParticipant = await auth.IsParticipantAsync(_guildId, userId.Value);
+
+            var gate = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>();
+            _shopEnabled = await gate.IsEnabledAsync(_guildId, Muster.Contracts.PlatformFeature.Shop);
         }
 
         var profile = await web.GetUserProfileAsync(userId.Value);
         if (profile is not null)
         {
             _userName = profile.Name;
+            _userHandle = profile.Username;
             _userAvatar = profile.AvatarUrl;
         }
+
+        // Fall back to the avatar carried on the user's own login claims when the DB row hasn't been synced yet.
+        _userAvatar ??= Muster.Infrastructure.Discord.DiscordCdn.AvatarUrl(
+            userId.Value, principal.FindFirst("urn:discord:avatar")?.Value);
     }
 
     /// <summary>Extracts the guild id from a /guilds/{id}/… path; 0 when not on a guild page.</summary>

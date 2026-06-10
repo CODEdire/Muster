@@ -17,6 +17,10 @@ internal static class StorageConstants
     /// container URI as <c>ConnectionStrings:dpkeys</c>.</summary>
     public const string DataProtectionContainerName = "dpkeys";
 
+    /// <summary>Aspire resource id AND blob container name for shop listing/storefront images. Web references it
+    /// via <c>WithReference</c>; Aspire publishes the container URI as <c>ConnectionStrings:shopimages</c>.</summary>
+    public const string ShopImagesContainerName = "shopimages";
+
     public const string ResourceNameParam = "storageAccountName";
     public const string ResourceGroupNameParam = "storageAccountResourceGroupName";
 }
@@ -82,6 +86,7 @@ internal static class StorageExtensions
 
         p.Storage = resource;
         p.DataProtectionKeys = resource.WithDataProtectionKeys();
+        p.ShopImages = resource.AddBlobContainer(StorageConstants.ShopImagesContainerName);
         return p;
     }
 

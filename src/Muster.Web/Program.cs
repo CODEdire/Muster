@@ -38,12 +38,26 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("appcon
     // by WithReference(kv) on this project in the AppHost, so DefaultAzureCredential picks it up in Azure
     // (and falls back to dev creds locally — though this block only runs when the appconfig source exists).
     builder.AddAzureAppConfiguration("appconfig", configureOptions: options =>
-        options.ConfigureKeyVault(kv => kv.SetCredential(new Azure.Identity.DefaultAzureCredential())));
+        options
+            .ConfigureKeyVault(kv => kv.SetCredential(new Azure.Identity.DefaultAzureCredential()))
+            // Load App Configuration feature flags (e.g. "MusterShop") into the FeatureManagement schema so
+            // IFeatureManager / the feature gate sees them. Without this only appsettings flags are read.
+            .UseFeatureFlags());
 }
 
 builder.AddMusterInfrastructure();
 builder.AddMusterConnectorProtection();
 builder.AddMusterMessaging(HostNames.Web);
+
+// Shop images: the Aspire-published shopimages container client + the upload/serve service. Listing/storefront
+// image bytes live in blob storage; the DB only holds the key. Gated on the connection so local-without-AppHost
+// dev still boots (the service just has no container to talk to until you run via Aspire).
+if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("shopimages")))
+{
+    builder.AddAzureBlobContainerClient("shopimages");
+    builder.Services.AddScoped<Muster.Infrastructure.Services.Shops.IShopImageService, Muster.Infrastructure.Services.Shops.ShopImageService>();
+}
+builder.Services.Configure<Muster.Infrastructure.Services.Shops.ShopImageOptions>(builder.Configuration.GetSection("Shop"));
 // EF DbContext + Wolverine runtime readiness checks (tagged "ready") — wires into /health, never /alive.
 builder.AddMusterSharedHealthChecks();
 
@@ -151,9 +165,18 @@ if (discordConfigured)
             static string? Str(System.Text.Json.JsonElement e, string name) =>
                 e.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
 
+            var avatarHash = Str(root, "avatar");
+
+            // Carry the avatar hash on the user's own identity so the shell can always render their avatar from
+            // their token — independent of whether the bot's gateway sync has populated the DB row yet.
+            if (avatarHash is not null && ctx.Identity is { } identity)
+            {
+                identity.AddClaim(new System.Security.Claims.Claim("urn:discord:avatar", avatarHash));
+            }
+
             await using var scope = ctx.HttpContext.RequestServices.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Membership.MemberSyncService>()
-                .UpsertUserAsync(userId, Str(root, "username") ?? "", Str(root, "global_name"), Str(root, "avatar"));
+                .UpsertUserAsync(userId, Str(root, "username") ?? "", Str(root, "global_name"), avatarHash);
         };
     });
 }
@@ -275,6 +298,27 @@ Console.WriteLine("[MARKER 10] Razor components mapped");
 // discovered by assembly scanning.
 app.MapWolverineEndpoints();
 Console.WriteLine("[MARKER 11] WolverineEndpoints mapped");
+
+// Serves a shop image blob by key. Anonymous on purpose: keys are unguessable random GUIDs and the bytes are
+// product imagery meant to be seen — and crucially, Discord fetches embed image/thumbnail/author-icon URLs
+// server-side with no auth cookie, so the shop hero/featured cards' images would 401 if this required a login.
+app.MapGet("/shop-image/{key}", async (string key, HttpContext http,
+    Muster.Infrastructure.Services.Shops.IShopImageService? images, CancellationToken ct) =>
+{
+    if (images is null)
+    {
+        return Results.NotFound();
+    }
+
+    var found = await images.OpenAsync(key, ct);
+    if (found is null)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.CacheControl = "public, max-age=86400";
+    return Results.Stream(found.Value.Content, found.Value.ContentType);
+}).AllowAnonymous();
 
 app.MapDefaultEndpoints();
 Console.WriteLine("[MARKER 12] About to call app.Run()");

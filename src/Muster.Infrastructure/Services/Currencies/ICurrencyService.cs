@@ -66,4 +66,22 @@ public interface ICurrencyService
     /// <summary>Return escrowed funds to the owner (stages legs; caller commits).</summary>
     Task<EscrowStatus> RefundAsync(
         ulong guildId, ulong ownerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Shop: reserve the buyer's funds into escrow (stages legs; caller commits). Validates spendable + funds.</summary>
+    Task<EscrowStatus> ShopHoldAsync(
+        ulong guildId, ulong buyerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Shop: settle an order — pay <c>amount − fee</c> to the seller and burn <c>fee</c> to the sink
+    /// (deflationary commission). Stages legs; caller commits.</summary>
+    Task<EscrowStatus> ShopSettleAsync(
+        ulong guildId, ulong sellerId, Guid currencyId, long amount, long fee, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Shop: refund escrowed funds back to the buyer (stages legs; caller commits). No fee.</summary>
+    Task<EscrowStatus> ShopRefundAsync(
+        ulong guildId, ulong buyerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Shop: charge a flat fee from a user and burn it to the sink (e.g. a featured-listing fee). Validates
+    /// spendable + funds. Stages legs; caller commits.</summary>
+    Task<EscrowStatus> ShopBurnAsync(
+        ulong guildId, ulong userId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
 }

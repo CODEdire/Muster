@@ -19,6 +19,10 @@ public class Guild
     /// <summary>IANA time zone id used for scheduling and reporting.</summary>
     public string TimeZoneId { get; set; } = "UTC";
 
+    /// <summary>Highest default-seed version applied to this guild (shop categories/types, …). Lets provisioning
+    /// apply only newly-introduced seed items on later versions without re-adding deleted defaults. 0 = unseeded.</summary>
+    public int SeedVersion { get; set; }
+
     public GuildSettings Settings { get; set; } = new();
 }
 

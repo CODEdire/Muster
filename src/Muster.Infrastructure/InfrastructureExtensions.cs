@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.FeatureManagement;
 using Muster.Infrastructure.Messaging;
 using Muster.Persistence;
 using Microsoft.Extensions.Hosting;
@@ -13,6 +14,7 @@ using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Musters;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
+using Muster.Infrastructure.Services.Shops;
 using Muster.Infrastructure.Services.Events;
 using Muster.Infrastructure.Services.Seasons;
 using Muster.Infrastructure.Services.Tracking;
@@ -51,6 +53,28 @@ public static class InfrastructureExtensions
         // Platform defaults for a guild's muster settings (AppConfig / appsettings) — seed new rows + fill read-misses.
         builder.Services.Configure<Domain.Entities.Guilds.GuildMusterSettings>(
             builder.Configuration.GetSection("GuildDefaults:Musters"));
+        builder.Services.AddScoped<IShopService, Services.Shops.ShopService>();
+        builder.Services.AddScoped<Services.Shops.IShopAuthorizer, Services.Shops.ShopAuthorizer>();
+        // Generic reputation engine — shop wires it on settled orders; quests reuse it later (same table).
+        builder.Services.AddScoped<Services.Ratings.IRatingService, Services.Ratings.RatingService>();
+        // Default image service is a no-op (bot / migration / local-without-blob); the Web host overrides it with
+        // the blob-backed ShopImageService when storage is wired. Lets ShopService always call image cleanup.
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddScoped<
+            Services.Shops.IShopImageService, Services.Shops.NoOpShopImageService>(builder.Services);
+        builder.Services.AddScoped<Services.Shops.IShopReadService, Services.Shops.ShopReadService>();
+        builder.Services.AddScoped<Services.Shops.GuildShopSettingsService>();
+
+        // Feature gating (platform kill-switch → billing entitlement → per-guild toggle). Queried like authorization.
+        // Platform layer = Microsoft.FeatureManagement (flag "MusterShop" in Azure App Configuration / appsettings).
+        builder.Services.AddFeatureManagement();
+        builder.Services.AddScoped<Services.Platform.IFeatureGate, Services.Platform.FeatureGate>();
+        builder.Services.AddSingleton<Services.Platform.IPlatformFeatureSource, Services.Platform.FeatureManagementPlatformSource>();
+        builder.Services.AddSingleton<Services.Platform.IFeatureEntitlementSource, Services.Platform.AllowAllEntitlementSource>();
+        builder.Services.AddScoped<Services.Platform.IGuildFeatureSource, Services.Platform.GuildFeatureSource>();
+        builder.Services.AddScoped<Services.Shops.GuildSeedService>();
+        // Platform defaults for a guild's shop settings (AppConfig / appsettings) — seed new rows + fill read-misses.
+        builder.Services.Configure<Domain.Entities.Guilds.GuildShopSettings>(
+            builder.Configuration.GetSection("GuildDefaults:Shop"));
         builder.Services.AddScoped<GuildEventService>();
         builder.Services.AddScoped<TrackingSessionService>();
         builder.Services.AddScoped<Services.Tracking.GuildTrackingSettingsService>();

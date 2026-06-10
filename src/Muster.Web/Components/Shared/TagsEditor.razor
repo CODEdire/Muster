@@ -1,0 +1,58 @@
+@* A chip-style tag editor: existing tags render as removable chips; typing + Enter (or comma) adds one.
+   Two-way bind the list via @bind-Tags. Normalises to lower-case, trimmed, deduped, capped at MaxTags. *@
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="tags-editor" style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;border:1px solid var(--border);border-radius:var(--radius-sm);padding:.4rem .5rem;background:var(--surface)">
+    @foreach (var tag in Tags)
+    {
+        <span class="chip" style="display:inline-flex;align-items:center;gap:.3rem">
+            #@tag
+            <button type="button" title="Remove @tag" aria-label="Remove @tag"
+                    style="border:none;background:none;color:inherit;cursor:pointer;font-size:1rem;line-height:1;padding:0"
+                    @onclick="() => RemoveAsync(tag)">×</button>
+        </span>
+    }
+    <input value="@_input" @oninput="e => _input = e.Value as string ?? string.Empty" @onkeydown="OnKeyDownAsync"
+           placeholder="@(Tags.Count >= MaxTags ? $"max {MaxTags} tags" : Placeholder)"
+           disabled="@(Tags.Count >= MaxTags)"
+           style="border:none;background:none;flex:1;min-width:8rem;color:var(--text);outline:none" />
+</div>
+
+@code {
+    [Parameter] public List<string> Tags { get; set; } = [];
+    [Parameter] public EventCallback<List<string>> TagsChanged { get; set; }
+    [Parameter] public int MaxTags { get; set; } = 5;
+    [Parameter] public string? Placeholder { get; set; } = "add a tag…";
+
+    private string _input = string.Empty;
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or ",")
+        {
+            await AddCurrentAsync();
+        }
+    }
+
+    private async Task AddCurrentAsync()
+    {
+        // Accept commas in the buffer so a pasted "a, b, c" lands as separate chips.
+        foreach (var raw in _input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var norm = raw.ToLowerInvariant();
+            if (norm.Length > 0 && Tags.Count < MaxTags && !Tags.Contains(norm))
+            {
+                Tags.Add(norm);
+            }
+        }
+
+        _input = string.Empty;
+        await TagsChanged.InvokeAsync(Tags);
+    }
+
+    private async Task RemoveAsync(string tag)
+    {
+        Tags.Remove(tag);
+        await TagsChanged.InvokeAsync(Tags);
+    }
+}

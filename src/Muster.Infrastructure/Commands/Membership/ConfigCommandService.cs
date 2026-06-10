@@ -265,6 +265,12 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
     public Task<CommandResult> ToggleAuditorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
         => ToggleAsync(guildId, roleId, GuildRoleTier.Auditor, ct);
 
+    public Task<CommandResult> ToggleShopCreatorRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, GuildRoleTier.ShopCreator, ct);
+
+    public Task<CommandResult> ToggleShopManagerRoleAsync(ulong guildId, ulong roleId, CancellationToken ct = default)
+        => ToggleAsync(guildId, roleId, GuildRoleTier.ShopManager, ct);
+
     /// <summary>Configure the personal-quest approval workflow (intake gate + final sign-off policy).</summary>
     public async Task<CommandResult> SetQuestApprovalAsync(
         ulong guildId, bool intakeApproval, FinalApprovalMode finalMode, bool allowSelfParticipation, CancellationToken ct = default)

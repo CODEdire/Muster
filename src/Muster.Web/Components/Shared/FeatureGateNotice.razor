@@ -1,0 +1,28 @@
+@using Muster.Contracts
+
+@* Full-page "feature not enabled" gate — an access-denied-style panel shown in place of a member/manager page's
+   content when the feature gate isn't Enabled. Header + message only, no other content. See docs/feature-gating.md. *@
+
+<div class="panel glass empty feature-gate-notice">
+    <span class="material-symbols-outlined" style="font-size:2.6rem;opacity:.5">@Icon</span>
+    <h2 style="margin:.3rem 0 .2rem">Feature not enabled</h2>
+    <p class="subtitle" style="margin:0">@Message</p>
+</div>
+
+@code {
+    /// <summary>The gate verdict that triggered the block. Drives the message + icon.</summary>
+    [Parameter, EditorRequired] public FeatureVerdict Verdict { get; set; }
+
+    /// <summary>Human name of the feature, used in the message (e.g. "The shop").</summary>
+    [Parameter] public string Feature { get; set; } = "This feature";
+
+    private string Icon => Verdict.Reason == FeatureGateReason.GuildDisabled ? "toggle_off" : "lock";
+
+    private string Message => Verdict.Reason switch
+    {
+        FeatureGateReason.NotEntitled => $"{Feature} isn't included in this server's plan.",
+        FeatureGateReason.PlatformDisabled => $"{Feature} isn't available right now.",
+        FeatureGateReason.GuildDisabled => $"{Feature} is turned off for this server.",
+        _ => $"{Feature} isn't available.",
+    };
+}

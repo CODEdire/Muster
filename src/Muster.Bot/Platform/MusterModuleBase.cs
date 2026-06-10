@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Bot.Platform.Telemetry;
+using Muster.Contracts;
 using Muster.Infrastructure.Commands;
 using NetCord;
 using NetCord.Rest;
@@ -16,6 +17,8 @@ public enum RequiredRole
     EconomyManager,   // mint / adjust / bulk-move currency
     TrackingManager,  // open/close sessions, configure channels + multipliers, event ops (/op)
     Auditor,          // read-only observer (audit log, ledger, participation)
+    ShopCreator,      // open stores + list/sell items
+    ShopManager,      // moderate listings/ratings, arbitrate disputes, manage categories
     Admin,
 }
 
@@ -29,11 +32,25 @@ public enum RequiredRole
 /// </summary>
 public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : ApplicationCommandModule<ApplicationCommandContext>
 {
+    /// <summary>Standard "this feature isn't enabled here" reply shown when a feature gate blocks a command.</summary>
+    protected const string FeatureOffMessage = "🔒 This feature isn't enabled on this server.";
+
+    /// <summary>True when <paramref name="feature"/> is usable for the guild. <paramref name="windDown"/> = only a
+    /// platform/plan block hides it (guild-off stays reachable, e.g. order wind-down); otherwise it's gated whenever
+    /// the feature isn't fully Enabled. Mirrors the web's per-surface gating policy (see docs/feature-gating.md).</summary>
+    protected static async Task<bool> FeatureEnabledAsync(IServiceProvider sp, ulong guildId, PlatformFeature feature, bool windDown = false)
+    {
+        var verdict = await sp.GetRequiredService<IFeatureGate>().EvaluateAsync(guildId, feature);
+        return windDown ? verdict.CanEnable : verdict.IsEnabled;
+    }
+
     protected async Task RunAsync(
         Func<IServiceProvider, ulong, Task<CommandResult>> action,
         RequiredRole required = RequiredRole.None,
         string? auditAction = null,
-        bool ephemeral = true)
+        bool ephemeral = true,
+        PlatformFeature? feature = null,
+        bool featureWindDown = false)
     {
         // OTEL Server-kind span for the whole command, named "slash <command>". Lands in App Insights
         // Requests/Performance the same way an HTTP route does — see docs/observability.md.
@@ -50,7 +67,7 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
         string content;
         try
         {
-            content = await ExecuteAsync(action, required, auditAction);
+            content = await ExecuteAsync(action, required, auditAction, feature, featureWindDown);
             activity.SetResult(ok: true);
         }
         catch (Exception ex)
@@ -65,7 +82,9 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
     private async Task<string> ExecuteAsync(
         Func<IServiceProvider, ulong, Task<CommandResult>> action,
         RequiredRole required,
-        string? auditAction)
+        string? auditAction,
+        PlatformFeature? feature = null,
+        bool featureWindDown = false)
     {
         if (Context.Guild is not { } guild)
         {
@@ -74,6 +93,12 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
 
         using var scope = scopeFactory.CreateScope();
         var services = scope.ServiceProvider;
+
+        // Feature gate before the role check, so a disabled feature reads "not enabled" rather than "no access".
+        if (feature is { } f && !await FeatureEnabledAsync(services, guild.Id, f, featureWindDown))
+        {
+            return FeatureOffMessage;
+        }
 
         if (required != RequiredRole.None)
         {
@@ -85,6 +110,8 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
                 RequiredRole.EconomyManager => await auth.IsEconomyManagerAsync(guild.Id, Context.User.Id),
                 RequiredRole.TrackingManager => await auth.IsTrackingManagerAsync(guild.Id, Context.User.Id),
                 RequiredRole.Auditor => await auth.IsAuditorAsync(guild.Id, Context.User.Id),
+                RequiredRole.ShopCreator => await auth.IsShopCreatorAsync(guild.Id, Context.User.Id),
+                RequiredRole.ShopManager => await auth.IsShopManagerAsync(guild.Id, Context.User.Id),
                 _ => false,
             };
 
@@ -97,6 +124,8 @@ public abstract class MusterModuleBase(IServiceScopeFactory scopeFactory) : Appl
                     RequiredRole.EconomyManager => "You need economy-manager access to use this command.",
                     RequiredRole.TrackingManager => "You need tracking-manager access to use this command.",
                     RequiredRole.Auditor => "You need auditor (read-only) access to use this command.",
+                    RequiredRole.ShopCreator => "You need the shop-creator role to use this command.",
+                    RequiredRole.ShopManager => "You need shop-manager access to use this command.",
                     _ => "You don't have access to use this command.",
                 };
             }

@@ -1,0 +1,205 @@
+@page "/guilds/{GuildIdRaw}/shop/stores/{StoreId:guid}/new"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@inject Microsoft.Extensions.Options.IOptions<ShopImageOptions> ImgOpt
+@using Microsoft.AspNetCore.Components.Forms
+@using Muster.Contracts
+@using Muster.Domain.Entities.Shops
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>New listing — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && !_shopGate.IsEnabled)
+{
+    <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@Crumbs" Subtitle="List an item for sale.">
+        <Toolbar>
+            <a class="btn btn-sm btn-ghost" href="@CancelHref">Cancel</a>
+            <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="SubmitAsync">
+                <span class="material-symbols-outlined">sell</span> List item
+            </button>
+        </Toolbar>
+    </PageHeader>
+
+    @if (Message is not null)
+    {
+        <div class="notice" role="status"><span class="material-symbols-outlined notice-icon">info</span><span class="notice-text">@Message</span></div>
+    }
+
+    <div class="panel glass">
+        <div class="mform">
+            <div class="field span2">
+                <label>Name</label>
+                <input @bind="_name" maxlength="120" />
+            </div>
+            <div class="field span2">
+                <label>Description</label>
+                <MarkdownEditor @bind-Value="_description" Rows="4" MaxLength="2000"
+                                Placeholder="Describe the item. Supports Discord markdown." />
+            </div>
+            <div class="field">
+                <label>Price</label>
+                <input type="number" min="1" @bind="_price" />
+            </div>
+            <div class="field">
+                <label>Currency</label>
+                <select @bind="_currency">
+                    @foreach (var c in _currencies)
+                    {
+                        <option value="@c.Code">@c.Code — @c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>Quantity</label>
+                <input type="number" min="1" @bind="_quantity" />
+            </div>
+            <div class="field">
+                <label>Category</label>
+                <select @bind="_categoryId">
+                    <option value="">None</option>
+                    @foreach (var cat in _categories)
+                    {
+                        <option value="@cat.Id">@(ShopIcons.Emoji(cat.Icon) is { } e ? e + " " : "")@cat.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field span2">
+                <label>Tags</label>
+                <TagsEditor @bind-Tags="_tags" MaxTags="8" />
+            </div>
+            <div class="field span2"><label class="checkbox"><input type="checkbox" @bind="_acceptsOffers" /> Accept price offers on this listing</label></div>
+            @if (_imagesAvailable)
+            {
+                <div class="field span2">
+                    <label>Image</label>
+                    @if (_imageKey is not null)
+                    {
+                        <img src="/shop-image/@_imageKey" alt="" style="display:block;max-height:140px;border-radius:8px;margin-bottom:.4rem" />
+                        <button type="button" class="btn btn-sm btn-ghost" @onclick="() => _imageKey = null"><span class="material-symbols-outlined">delete</span> Remove image</button>
+                    }
+                    <InputFile OnChange="OnImageSelectedAsync" accept="image/*" />
+                    @if (_uploading) { <span class="hint">Uploading…</span> }
+                    @if (_imageError is { } err) { <span class="hint" style="color:var(--danger)">@err</span> }
+                    <span class="hint">@ImgOpt.Value.Describe(ShopImageKind.Listing)</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid StoreId { get; set; }
+
+    private string? _name, _description;
+    private string _currency = "";
+    private string? _categoryId;
+    private long _price = 1;
+    private int _quantity = 1;
+    private bool _acceptsOffers = true;
+    private List<string> _tags = [];
+    private IReadOnlyList<ShopCurrencyChoice> _currencies = [];
+    private IReadOnlyList<ShopCategory> _categories = [];
+    private ShopStoreDetail? _store;
+    private FeatureVerdict _shopGate;
+    private string? _imageKey;
+    private bool _imagesAvailable, _uploading, _busy;
+    private string? _imageError;
+
+    private const long ReadCeiling = 20 * 1024 * 1024;
+
+    private string CancelHref => $"/guilds/{GuildId}/shop/stores/{StoreId}";
+
+    private PageHeader.Crumb[] Crumbs => _store is null
+        ? [new("Shops", $"/guilds/{GuildId}/shop?tab=shops"), new("New listing")]
+        : [new("Shops", $"/guilds/{GuildId}/shop?tab=shops"),
+           new(_store.Name, $"/guilds/{GuildId}/shop/store/{_store.Slug}"), new("New listing")];
+
+    protected override async Task LoadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+            .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        if (!_shopGate.IsEnabled) { return; }
+
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _currencies = await reads.GetSpendableCurrenciesAsync(GuildId);
+        _categories = await reads.GetCategoriesAsync(GuildId);
+        _store = await reads.GetStoreAsync(GuildId, StoreId);
+        _currency = _currencies.Count > 0 ? _currencies[0].Code : "";
+        _imagesAvailable = scope.ServiceProvider.GetService<IShopImageService>() is not NoOpShopImageService and not null;
+    }
+
+    private async Task OnImageSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _imageError = null;
+        _uploading = true;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(ReadCeiling);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            await using var scope = Scopes.CreateAsyncScope();
+            var images = scope.ServiceProvider.GetRequiredService<IShopImageService>();
+            var (result, key) = await images.UploadAsync(ms, ms.Length, e.File.ContentType, ShopImageKind.Listing);
+            if (result == ShopImageUploadResult.Ok) { _imageKey = key; }
+            else
+            {
+                _imageError = result switch
+                {
+                    ShopImageUploadResult.TooLarge => $"Image is too large (max {ImgOpt.Value.MaxImageBytes / (1024d * 1024d):0.#} MB).",
+                    ShopImageUploadResult.TooLargeDimensions => $"Image dimensions are too large ({ImgOpt.Value.Describe(ShopImageKind.Listing)}).",
+                    ShopImageUploadResult.UnsupportedType => "Unsupported image type.",
+                    _ => "Couldn't read that image.",
+                };
+            }
+        }
+        catch { _imageError = "Upload failed."; }
+        finally { _uploading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_name))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            Guid? categoryId = Guid.TryParse(_categoryId, out var cid) ? cid : null;
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            var result = await bus.InvokeAsync<Result<Guid>>(new PostListing(
+                GuildId, UserId, StoreId, _name!.Trim(), _currency, _price, _description, categoryId, _quantity,
+                ImageKey: _imageKey, ThumbKey: _imageKey, Tags: _tags.Count > 0 ? _tags : null, AcceptsOffers: _acceptsOffers));
+
+            if (result.Ok)
+            {
+                // Return to the store's management listings (where this new item now appears).
+                Nav.NavigateTo($"/guilds/{GuildId}/shop/stores/{StoreId}");
+                return;
+            }
+
+            Message = ((Result)result).ToCommandResult("").Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

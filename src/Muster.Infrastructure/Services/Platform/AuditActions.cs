@@ -14,6 +14,7 @@ public enum AuditCategory
     Seasons,
     Membership,
     ApiClients,
+    Shop,
     System,
 }
 
@@ -172,6 +173,28 @@ public static class AuditActions
     {
         public static readonly AuditAction ClientCreate = new("apiclient.create", AuditCategory.ApiClients, "API client");
         public static readonly AuditAction ClientRevoke = new("apiclient.revoke", AuditCategory.ApiClients, "API client");
+    }
+
+    public static class Shop
+    {
+        // Buyer / seller / manager order actions.
+        public static readonly AuditAction Purchase = new("shop.purchase", AuditCategory.Shop, "Order");
+        public static readonly AuditAction MarkDelivered = new("shop.deliver", AuditCategory.Shop, "Order");
+        public static readonly AuditAction Confirm = new("shop.confirm", AuditCategory.Shop, "Order");
+        public static readonly AuditAction Cancel = new("shop.cancel", AuditCategory.Shop, "Order");
+        public static readonly AuditAction Dispute = new("shop.dispute", AuditCategory.Shop, "Dispute");
+        public static readonly AuditAction Arbitrate = new("shop.arbitrate", AuditCategory.Shop, "Dispute");
+        public static readonly AuditAction Rate = new("shop.rate", AuditCategory.Shop, "Rating");
+        // Offer negotiation.
+        public static readonly AuditAction Offer = new("shop.offer", AuditCategory.Shop, "Offer");
+        public static readonly AuditAction OfferAccept = new("shop.offerAccept", AuditCategory.Shop, "Offer");
+        public static readonly AuditAction OfferCounter = new("shop.offerCounter", AuditCategory.Shop, "Offer");
+        public static readonly AuditAction OfferEnd = new("shop.offerEnd", AuditCategory.Shop, "Offer");
+        // System sweeps (no human actor) — the gap the command middleware can't cover.
+        public static readonly AuditAction AutoSettle = new("shop.autoSettle", AuditCategory.Shop, "Sweep");
+        public static readonly AuditAction AutoCancelUndelivered = new("shop.autoCancel", AuditCategory.Shop, "Sweep");
+        public static readonly AuditAction AutoResolveDispute = new("shop.autoResolve", AuditCategory.Shop, "Sweep");
+        public static readonly AuditAction OfferExpired = new("shop.offerExpired", AuditCategory.Shop, "Sweep");
     }
 
     public static class System

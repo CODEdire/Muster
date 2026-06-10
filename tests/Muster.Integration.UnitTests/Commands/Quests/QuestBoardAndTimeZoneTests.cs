@@ -27,7 +27,7 @@ public class QuestBoardAndTimeZoneTests
     private static async Task<Ctx> SeededAsync(string guildTz = "UTC")
     {
         var db = NewDb();
-        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
+        await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1, seedDefaults: false);
         var guild = await db.Guilds.SingleAsync();
         guild.TimeZoneId = guildTz;
         guild.Settings.Quests.PersonalQuestIntakeApproval = false; // most flow tests use the direct open->claim path

@@ -1,0 +1,198 @@
+@page "/guilds/{GuildIdRaw}/management/shop/store-types"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Contracts
+@using Muster.Domain.Entities.Shops
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>Shop types — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready && !_shopGate.IsEnabled)
+{
+    <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Shop settings", $"/guilds/{GuildId}/management/shop"), new("Store types") })"
+                Subtitle="Curated, admin-managed store types — what kind of shop each storefront is (shown on its card)." />
+
+    @if (Message is not null)
+    {
+        <div class="notice" role="status">
+            <span class="material-symbols-outlined notice-icon">info</span>
+            <span class="notice-text">@Message</span>
+            <button type="button" class="icon-btn notice-close" title="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+        </div>
+    }
+
+    <div class="panel glass datagrid">
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Name</th><th>Icon</th><th class="num">Sort</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @if (_types.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="4">No store types yet — add one below.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var t in _types)
+                        {
+                            var m = _edit[t.Id];
+                            <tr>
+                                <td><input @bind="m.Name" maxlength="40" /></td>
+                                <td>
+                                    <select @bind="m.Icon">
+                                        <option value="">— none —</option>
+                                        @foreach (var i in ShopIcons.All) { <option value="@i.Key">@i.Emoji @i.Label</option> }
+                                    </select>
+                                </td>
+                                <td class="num"><input type="number" @bind="m.Sort" style="max-width:5rem" /></td>
+                                <td class="dg-actions-col">
+                                    <div class="dg-row-actions">
+                                        <button type="button" class="icon-btn" title="Save" disabled="@_busy" @onclick="() => SaveAsync(t.Id)"><span class="material-symbols-outlined">save</span></button>
+                                        <button type="button" class="icon-btn danger" title="Delete" disabled="@_busy" @onclick="() => DeleteAsync(t.Id, t.Name)"><span class="material-symbols-outlined">delete</span></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dg-toolbar">
+            <div class="dg-filters">
+                <input class="dg-search" placeholder="New store type…" @bind="_newName" />
+                <select class="dg-search" @bind="_newIcon">
+                    <option value="">— icon —</option>
+                    @foreach (var i in ShopIcons.All) { <option value="@i.Key">@i.Emoji @i.Label</option> }
+                </select>
+                <input type="number" class="dg-search" placeholder="sort" @bind="_newSort" style="max-width:5rem" />
+            </div>
+            <div class="dg-actions">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="RestoreDefaultsAsync" title="Add any missing default store types"><span class="material-symbols-outlined">auto_fix_high</span> Restore defaults</button>
+                <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="AddAsync"><span class="material-symbols-outlined">add</span> Add store type</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private FeatureVerdict _shopGate;
+    private IReadOnlyList<ShopStoreType> _types = [];
+    private string? _newName;
+    private string? _newIcon;
+    private int _newSort;
+    private bool _busy;
+
+    private sealed class TypeEdit { public string Name = ""; public int Sort; public string? Icon; }
+    private readonly Dictionary<Guid, TypeEdit> _edit = [];
+
+    protected override async Task LoadAsync()
+    {
+        await using (var scope = Scopes.CreateAsyncScope())
+        {
+            _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+                .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        }
+        if (!_shopGate.IsEnabled) { return; }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        _types = await scope.ServiceProvider.GetRequiredService<IShopReadService>().GetStoreTypesAsync(GuildId);
+        _edit.Clear();
+        foreach (var t in _types)
+        {
+            _edit[t.Id] = new TypeEdit { Name = t.Name, Sort = t.Sort, Icon = t.Icon };
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_newName))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            var result = await bus.InvokeAsync<Result<Guid>>(new CreateStoreType(GuildId, UserId, _newName!.Trim(), _newSort, _newIcon));
+            Message = ((Result)result).ToCommandResult($"Store type “{_newName!.Trim()}” added.").Message;
+            _newName = null;
+            _newIcon = null;
+            _newSort = 0;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task RestoreDefaultsAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new SeedGuildDefaults(GuildId, UserId, Restore: true)))
+                .ToCommandResult("Default store types restored.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task SaveAsync(Guid id)
+    {
+        if (_busy || !_edit.TryGetValue(id, out var m))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new EditStoreType(GuildId, UserId, id, m.Name, m.Sort, m.Icon))).ToCommandResult("Store type updated.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task DeleteAsync(Guid id, string name)
+    {
+        if (_busy || !await JS.InvokeAsync<bool>("confirm", new object?[] { $"Delete store type “{name}”? Shops of that type lose it." }))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new DeleteStoreType(GuildId, UserId, id))).ToCommandResult($"Store type “{name}” deleted.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+}

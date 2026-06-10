@@ -44,6 +44,10 @@ public class CurrencyService(
     /// <summary>Sentinel user id representing the guild's escrow/house account.</summary>
     public const ulong EscrowAccountUserId = 0;
 
+    /// <summary>Sentinel user id for the burn sink — shop commission credited here leaves circulation (the account
+    /// never pays out). Distinct from the escrow account so reporting can tell held funds from burned ones.</summary>
+    public const ulong BurnAccountUserId = 1;
+
     // ---------------------------------------------------------------------------------------------
     // Balance + public mint/spend API
     // ---------------------------------------------------------------------------------------------
@@ -267,6 +271,87 @@ public class CurrencyService(
     {
         await StageAsync(guildId, EscrowAccountUserId, currencyId, -amount, CurrencyLedgerSource.Quest, $"{sourceKey}:refund:escrow", "Bounty refund", ct);
         await StageAsync(guildId, ownerId, currencyId, amount, CurrencyLedgerSource.Quest, $"{sourceKey}:refund:owner", "Bounty refund", ct);
+        return EscrowStatus.Ok;
+    }
+
+    // ---- Shop escrow (mirrors bounty escrow but with a Shop source + a burned commission leg) ----
+
+    public async Task<EscrowStatus> ShopHoldAsync(
+        ulong guildId, ulong buyerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyByIdAsync(guildId, currencyId, ct);
+        if (currency is null)
+        {
+            return EscrowStatus.CurrencyNotFound;
+        }
+
+        if (!currency.IsSpendable)
+        {
+            return EscrowStatus.NotSpendable;
+        }
+
+        if (await db.BalanceAsync(guildId, buyerId, currencyId, null, ct) < amount)
+        {
+            return EscrowStatus.InsufficientFunds;
+        }
+
+        await StageAsync(guildId, buyerId, currencyId, -amount, CurrencyLedgerSource.Shop, $"{sourceKey}:hold:buyer", "Shop purchase", ct);
+        await StageAsync(guildId, EscrowAccountUserId, currencyId, amount, CurrencyLedgerSource.Shop, $"{sourceKey}:hold:escrow", "Shop purchase", ct);
+        return EscrowStatus.Ok;
+    }
+
+    public async Task<EscrowStatus> ShopSettleAsync(
+        ulong guildId, ulong sellerId, Guid currencyId, long amount, long fee, string sourceKey, CancellationToken ct = default)
+    {
+        var net = amount - fee;
+        await StageAsync(guildId, EscrowAccountUserId, currencyId, -net, CurrencyLedgerSource.Shop, $"{sourceKey}:payout:escrow", "Shop sale", ct);
+        await StageAsync(guildId, sellerId, currencyId, net, CurrencyLedgerSource.Shop, $"{sourceKey}:payout:seller", "Shop sale", ct);
+
+        if (fee > 0)
+        {
+            // Burn the commission: pull it out of escrow and park it in the burn sink (removed from circulation).
+            await StageAsync(guildId, EscrowAccountUserId, currencyId, -fee, CurrencyLedgerSource.ShopFee, $"{sourceKey}:fee:escrow", "Shop commission", ct);
+            await StageAsync(guildId, BurnAccountUserId, currencyId, fee, CurrencyLedgerSource.ShopFee, $"{sourceKey}:fee:burn", "Shop commission", ct);
+        }
+
+        return EscrowStatus.Ok;
+    }
+
+    public async Task<EscrowStatus> ShopRefundAsync(
+        ulong guildId, ulong buyerId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default)
+    {
+        await StageAsync(guildId, EscrowAccountUserId, currencyId, -amount, CurrencyLedgerSource.Shop, $"{sourceKey}:refund:escrow", "Shop refund", ct);
+        await StageAsync(guildId, buyerId, currencyId, amount, CurrencyLedgerSource.Shop, $"{sourceKey}:refund:buyer", "Shop refund", ct);
+        return EscrowStatus.Ok;
+    }
+
+    public async Task<EscrowStatus> ShopBurnAsync(
+        ulong guildId, ulong userId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default)
+    {
+        if (amount <= 0)
+        {
+            return EscrowStatus.Ok; // nothing to charge (free)
+        }
+
+        var currency = await db.FindCurrencyByIdAsync(guildId, currencyId, ct);
+        if (currency is null)
+        {
+            return EscrowStatus.CurrencyNotFound;
+        }
+
+        if (!currency.IsSpendable)
+        {
+            return EscrowStatus.NotSpendable;
+        }
+
+        if (await db.BalanceAsync(guildId, userId, currencyId, null, ct) < amount)
+        {
+            return EscrowStatus.InsufficientFunds;
+        }
+
+        // Debit the user, park it in the burn sink (removed from circulation) — same sink as the commission burn.
+        await StageAsync(guildId, userId, currencyId, -amount, CurrencyLedgerSource.ShopFee, $"{sourceKey}:fee:user", "Featured listing fee", ct);
+        await StageAsync(guildId, BurnAccountUserId, currencyId, amount, CurrencyLedgerSource.ShopFee, $"{sourceKey}:fee:burn", "Featured listing fee", ct);
         return EscrowStatus.Ok;
     }
 

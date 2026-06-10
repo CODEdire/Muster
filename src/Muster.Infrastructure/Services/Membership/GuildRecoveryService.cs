@@ -129,7 +129,7 @@ public class GuildRecoveryService(
         //    matches the GuildCreate handler path) + upsert the relevant role snapshots + the visiting
         //    user's GuildMember row. Only the user's own membership; bot's full member sync will fill
         //    the rest later.
-        await provisioning.EnsureGuildAsync(guildId, guildJson.Name ?? string.Empty, guildJson.Icon, ownerId, ct);
+        await provisioning.EnsureGuildAsync(guildId, guildJson.Name ?? string.Empty, guildJson.Icon, ownerId, ct: ct);
 
         await UpsertRolesAsync(guildId, guildJson.Roles ?? [], ct);
         await UpsertMemberAsync(guildId, userId, memberJson, ct);

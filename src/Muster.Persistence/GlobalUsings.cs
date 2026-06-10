@@ -8,3 +8,5 @@ global using Muster.Domain.Entities.Events;
 global using Muster.Domain.Entities.Tracking;
 global using Muster.Domain.Entities.Musters;
 global using Muster.Domain.Entities.Currencies;
+global using Muster.Domain.Entities.Shops;
+global using Muster.Domain.Entities.Ratings;

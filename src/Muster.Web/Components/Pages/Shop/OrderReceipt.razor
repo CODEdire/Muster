@@ -1,0 +1,644 @@
+@page "/guilds/{GuildIdRaw}/shop/orders/{OrderId:guid}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@using Microsoft.AspNetCore.Components.Forms
+@using Muster.Contracts
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+
+<PageTitle>Receipt — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    @if (!_shopGate.CanEnable)
+    {
+        @* Wind-down surface: only a platform/plan block hides it; a guild that merely turned the market off keeps
+           access so the order can still be confirmed / disputed / arbitrated. *@
+        <FeatureGateNotice Verdict="_shopGate" Feature="The shop" />
+    }
+    else if (_order is null)
+    {
+        <div class="panel glass empty">That order couldn't be found. <a href="/guilds/@GuildId/shop/orders">Back to orders</a>.</div>
+    }
+    else if (!_canView)
+    {
+        <div class="panel glass empty">This receipt is private to the buyer and seller.</div>
+    }
+    else
+    {
+        <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Shop", $"/guilds/{GuildId}/shop"), new("Orders", $"/guilds/{GuildId}/shop/orders"), new("Receipt") })"
+                    Subtitle="@($"Order {ShortId}")" />
+
+        @if (Message is not null)
+        {
+            <div class="notice" role="status">
+                <span class="material-symbols-outlined notice-icon">info</span>
+                <span class="notice-text">@Message</span>
+                <button type="button" class="icon-btn notice-close" title="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+            </div>
+        }
+
+        <div class="panel glass">
+            <div class="receipt-hero">
+                <div class="receipt-thumb @(_order.ThumbKey is null ? "placeholder" : "")">
+                    @if (_order.ThumbKey is { } tk)
+                    {
+                        <img src="/shop-image/@tk" alt="@_order.ItemName" />
+                    }
+                    else if (ShopIcons.Material(_order.CategoryIcon) is { } cmi)
+                    {
+                        <span class="material-symbols-outlined">@cmi</span>
+                    }
+                    else
+                    {
+                        <span class="material-symbols-outlined">inventory_2</span>
+                    }
+                </div>
+                <div class="receipt-ident">
+                    <div class="receipt-title-row">
+                        <h2>@_order.ItemName</h2>
+                        <span class="chip @StatusChip(_order.Status)">@_order.Status</span>
+                    </div>
+                    <div class="receipt-chips">
+                        @if (_order.StoreName is { } sn)
+                        {
+                            <a class="chip chip-type" href="/guilds/@GuildId/shop/store/@_order.StoreSlug">
+                                <span class="material-symbols-outlined">storefront</span> @sn
+                            </a>
+                        }
+                        @if (_order.CategoryName is { } cn)
+                        {
+                            <span class="chip">@if (ShopIcons.Material(_order.CategoryIcon) is { } ci) { <span class="material-symbols-outlined">@ci</span> } @cn</span>
+                        }
+                        @if (_order.Quantity > 1) { <span class="chip">×@_order.Quantity</span> }
+                    </div>
+                </div>
+            </div>
+
+            <div class="receipt-parties">
+                <div class="receipt-party">
+                    <span class="lbl">Buyer</span>
+                    <UserChip Name="@_order.BuyerName" AvatarUrl="@_order.BuyerAvatarUrl" />
+                    @if (_order.BuyerRatingCount > 0) { <span class="rep-chip">★ @_order.BuyerRatingAvg.ToString("0.0") (@_order.BuyerRatingCount)</span> }
+                </div>
+                <div class="receipt-party">
+                    <span class="lbl">Seller</span>
+                    <UserChip Name="@_order.SellerName" AvatarUrl="@_order.SellerAvatarUrl" />
+                    @if (_order.SellerRatingCount > 0) { <span class="rep-chip">★ @_order.SellerRatingAvg.ToString("0.0") (@_order.SellerRatingCount)</span> }
+                </div>
+            </div>
+
+            <dl class="receipt-lines">
+                <div><dt>Unit price</dt><dd>@_order.UnitPrice @_order.CurrencyCode</dd></div>
+                <div><dt>Quantity</dt><dd>@_order.Quantity</dd></div>
+                <div class="receipt-total"><dt>Total paid</dt><dd>@_order.Amount @_order.CurrencyCode</dd></div>
+                @if (_order.Status == ShopOrderStatus.Settled)
+                {
+                    <div><dt>Commission (burned)</dt><dd>−@_order.FeeAmount @_order.CurrencyCode</dd></div>
+                    <div><dt>Net to seller</dt><dd>@_order.Net @_order.CurrencyCode</dd></div>
+                }
+            </dl>
+
+            <div class="receipt-timeline">
+                <div class="rt-step done"><span class="material-symbols-outlined">shopping_cart</span> Ordered · <LocalTime Value="_order.CreatedAt" Zone="@_zoneId" /></div>
+                @if (_order.DeliveredAt is { } d)
+                {
+                    <div class="rt-step done"><span class="material-symbols-outlined">local_shipping</span> Marked delivered · <LocalTime Value="d" Zone="@_zoneId" /></div>
+                }
+                @if (_order.SettledAt is { } st)
+                {
+                    <div class="rt-step done"><span class="material-symbols-outlined">paid</span> Settled · <LocalTime Value="st" Zone="@_zoneId" /></div>
+                }
+                else if (_order.Status == ShopOrderStatus.Cancelled)
+                {
+                    <div class="rt-step"><span class="material-symbols-outlined">undo</span> Cancelled — refunded to buyer</div>
+                }
+                else if (_order.Status == ShopOrderStatus.Refunded)
+                {
+                    <div class="rt-step"><span class="material-symbols-outlined">undo</span> Refunded to buyer</div>
+                }
+                else if (_order.Status == ShopOrderStatus.Disputed)
+                {
+                    <div class="rt-step"><span class="material-symbols-outlined">gavel</span> Disputed — awaiting resolution</div>
+                }
+                else
+                {
+                    @if (_order.TwoStepDelivery && _order.Status == ShopOrderStatus.PendingDelivery)
+                    {
+                        <div class="rt-step pending"><span class="material-symbols-outlined">local_shipping</span> Awaiting delivery from the seller</div>
+                    }
+                    <div class="rt-step pending">
+                        <span class="material-symbols-outlined">hourglass_top</span> Awaiting buyer confirmation
+                        @if (_order.AutoSettleAt is { } a) { <span>· auto-settles <LocalTime Value="a" Zone="@_zoneId" /></span> }
+                    </div>
+                }
+            </div>
+
+            @if (_order.Status == ShopOrderStatus.OfferPending)
+            {
+                <div class="receipt-section">
+                    <h3 style="margin:0 0 .35rem"><span class="material-symbols-outlined" style="vertical-align:-4px">gavel</span> Offer in negotiation</h3>
+                    <p class="subtitle" style="margin:0 0 .5rem">
+                        Current price: <b>@_order.Amount @_order.CurrencyCode</b> ·
+                        @(_order.OfferProposedBy == ShopOfferParty.Buyer ? "buyer's offer" : "seller's counter")
+                        @if (_order.OfferExpiresAt is { } oe) { <span>· expires <LocalTime Value="oe" Zone="@_zoneId" /></span> }
+                    </p>
+                    @if (CanRespond)
+                    {
+                        <div class="btn-row">
+                            <button class="btn btn-sm success" disabled="@_busy" @onclick="AcceptOfferAsync">
+                                <span class="material-symbols-outlined">check_circle</span> Accept @_order.Amount @_order.CurrencyCode
+                            </button>
+                            <input type="number" min="1" placeholder="counter price" @bind="_counterAmount" style="max-width:9rem" />
+                            <button class="btn btn-sm" disabled="@(_busy || _counterAmount <= 0)" @onclick="CounterAsync">
+                                <span class="material-symbols-outlined">swap_horiz</span> Counter
+                            </button>
+                        </div>
+                        @if (_order.MinPrice > 0 || _order.MaxPrice > 0)
+                        {
+                            <p class="hint" style="margin:.4rem 0 0">
+                                Allowed price:
+                                @(_order.MinPrice > 0 ? $"{_order.MinPrice}" : "0")@(_order.MaxPrice > 0 ? $"–{_order.MaxPrice}" : "+") @_order.CurrencyCode
+                            </p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="subtitle" style="margin:0">Waiting for the @(_order.OfferProposedBy == ShopOfferParty.Buyer ? "seller" : "buyer")…</p>
+                    }
+                    @if (_isBuyer || _isSeller || _isManager)
+                    {
+                        <div class="btn-row" style="margin-top:.5rem">
+                            <button class="btn btn-ghost btn-sm danger" disabled="@_busy" @onclick="DeclineOfferAsync">End offer</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_order.Status == ShopOrderStatus.Disputed)
+            {
+                <div class="receipt-section">
+                    <h3 style="margin:0 0 .35rem"><span class="material-symbols-outlined" style="vertical-align:-4px">gavel</span> Dispute</h3>
+                    <p class="subtitle" style="margin:0 0 .5rem">
+                        Raised by @(_order.DisputedBy == _order.BuyerId ? _order.BuyerName : _order.SellerName)
+                        @if (_order.DisputeRaisedAt is { } dr) { <span>· <LocalTime Value="dr" Zone="@_zoneId" /></span> }
+                        @if (_order.DisputeAutoResolveAt is { } dar) { <span>· auto-resolves <LocalTime Value="dar" Zone="@_zoneId" /></span> }
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(_order.DisputeReason))
+                    {
+                        <p style="margin:0 0 .5rem">@_order.DisputeReason</p>
+                    }
+                    @if (_order.DisputeEvidenceKey is { } ek)
+                    {
+                        <img src="/shop-image/@ek" alt="Evidence" style="max-width:100%;max-height:240px;border-radius:8px" />
+                    }
+                    @if (_isManager)
+                    {
+                        <div class="btn-row" style="margin-top:.75rem">
+                            <button class="btn btn-sm success" disabled="@_busy" @onclick="() => ArbitrateAsync(true)">
+                                <span class="material-symbols-outlined">paid</span> Pay seller
+                            </button>
+                            <button class="btn btn-sm warn" disabled="@_busy" @onclick="() => ArbitrateAsync(false)">
+                                <span class="material-symbols-outlined">undo</span> Refund buyer
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="subtitle" style="margin:.5rem 0 0">A shop manager will resolve this.</p>
+                    }
+                </div>
+            }
+
+            @if (_order.Status == ShopOrderStatus.Settled && _order.RatingsEnabled && (_isBuyer || _isSeller || _isManager))
+            {
+                <div class="receipt-section">
+                    <h3 style="margin:0 0 .5rem"><span class="material-symbols-outlined" style="vertical-align:-4px">star</span> Ratings</h3>
+
+                    @if (_ratings?.Mine is { } mine)
+                    {
+                        <p class="subtitle" style="margin:0 0 .5rem">
+                            You rated the @(_isBuyer ? "seller" : "buyer"): @Stars(mine.Stars)
+                            @if (!string.IsNullOrWhiteSpace(mine.Comment)) { <span>— @mine.Comment</span> }
+                        </p>
+                    }
+                    else if (CanRate)
+                    {
+                        <div class="mform">
+                            <div class="field span2">
+                                <label>Rate the @(_isBuyer ? "seller" : "buyer")</label>
+                                <div class="star-pick">
+                                    @for (var n = 1; n <= 5; n++)
+                                    {
+                                        var v = n;
+                                        <button type="button" class="star-btn @(_rateStars >= v ? "on" : "")" @onclick="() => _rateStars = v" title="@v">
+                                            <span class="material-symbols-outlined">star</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="field span2">
+                                <label>Comment (optional)</label>
+                                <textarea rows="2" maxlength="1000" @bind="_rateComment" placeholder="How did it go?"></textarea>
+                            </div>
+                        </div>
+                        <div class="btn-row" style="margin-top:.5rem">
+                            <button class="btn btn-sm" disabled="@(_busy || _rateStars < 1)" @onclick="SubmitRatingAsync">
+                                <span class="material-symbols-outlined">send</span> Submit rating
+                            </button>
+                        </div>
+                        <p class="hint" style="margin:.4rem 0 0">
+                            @if (_order.RatingWindowClosesAt is { } w)
+                            {
+                                <text>Hidden until both of you rate, or the window closes <LocalTime Value="w" Zone="@_zoneId" />.</text>
+                            }
+                            else
+                            {
+                                <text>Hidden until both of you rate.</text>
+                            }
+                        </p>
+                    }
+                    else if (_order.RatingsClosed)
+                    {
+                        <p class="subtitle" style="margin:0 0 .5rem">The rating window has closed.</p>
+                    }
+
+                    @if (_ratings?.Counterparty is { } cp)
+                    {
+                        <p class="subtitle" style="margin:.25rem 0 0">
+                            The @(cp.Role == RatingRole.Provider ? "seller" : "buyer") was rated: @Stars(cp.Stars)
+                            @if (!string.IsNullOrWhiteSpace(cp.Comment)) { <span>— @cp.Comment</span> }
+                            @if (_isManager)
+                            {
+                                <button class="btn btn-ghost btn-sm danger" disabled="@_busy" style="margin-left:.5rem" @onclick="() => HideRatingAsync(cp.Id)">Hide</button>
+                            }
+                        </p>
+                    }
+                    else if (_ratings?.Mine is not null)
+                    {
+                        <p class="subtitle" style="margin:.25rem 0 0">The other party's rating stays hidden until they rate@(_order.RatingWindowClosesAt is not null ? " or the window closes." : ".")</p>
+                    }
+                </div>
+            }
+
+            @if (_showDispute && IsPending && (_isBuyer || _isSeller))
+            {
+                <div class="receipt-section">
+                    <div class="mform">
+                        <div class="field span2">
+                            <label>What's wrong?</label>
+                            <textarea rows="3" maxlength="1000" @bind="_disputeReason" placeholder="Describe the problem for the shop manager."></textarea>
+                        </div>
+                        @if (_imagesAvailable)
+                        {
+                            <div class="field span2">
+                                <label>Evidence (optional)</label>
+                                @if (_disputeEvidence is not null) { <span class="hint">Image attached ✓</span> }
+                                <InputFile OnChange="OnEvidenceSelectedAsync" accept="image/*" />
+                                @if (_uploading) { <span class="hint">Uploading…</span> }
+                            </div>
+                        }
+                    </div>
+                    <div class="btn-row" style="margin-top:.5rem">
+                        <button class="btn btn-sm" disabled="@(_busy || string.IsNullOrWhiteSpace(_disputeReason))" @onclick="SubmitDisputeAsync">Submit dispute</button>
+                        <button class="btn btn-ghost btn-sm" @onclick="() => _showDispute = false">Cancel</button>
+                    </div>
+                </div>
+            }
+
+            <div class="action-bar">
+                <div class="action-right">
+                    @if (_isBuyer && CanConfirm)
+                    {
+                        <button class="btn btn-sm success" disabled="@_busy" @onclick="ConfirmAsync">
+                            <span class="material-symbols-outlined">check_circle</span> Confirm receipt
+                        </button>
+                    }
+                    @if ((_isSeller || _isManager) && _order.TwoStepDelivery && _order.Status == ShopOrderStatus.PendingDelivery)
+                    {
+                        <button class="btn btn-sm" disabled="@_busy" @onclick="MarkDeliveredAsync">
+                            <span class="material-symbols-outlined">local_shipping</span> Mark delivered
+                        </button>
+                    }
+                    @if ((_isSeller || _isManager) && IsPending)
+                    {
+                        <button class="btn btn-sm danger" disabled="@_busy" @onclick="CancelAsync">
+                            <span class="material-symbols-outlined">undo</span> Cancel &amp; refund
+                        </button>
+                    }
+                    @if ((_isBuyer || _isSeller) && IsPending && !_showDispute)
+                    {
+                        <button class="btn btn-ghost btn-sm" @onclick="() => _showDispute = true">
+                            <span class="material-symbols-outlined">gavel</span> Dispute
+                        </button>
+                    }
+                    @if (_order.ListingAvailable)
+                    {
+                        <a class="btn btn-ghost btn-sm" href="@(_order.StoreSlug is { } vs ? $"/guilds/{GuildId}/shop/store/{vs}?item={_order.ListingId}" : $"/guilds/{GuildId}/shop/listing/{_order.ListingId}")">
+                            <span class="material-symbols-outlined">visibility</span> View item
+                        </a>
+                    }
+                    <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet">View in wallet</a>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<style>
+    /* Identity hero — item image + title + store/category chips, mirroring the item-tile/card design language. */
+    .receipt-hero { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; }
+    .receipt-thumb { width: 76px; height: 76px; flex: 0 0 auto; border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+    .receipt-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .receipt-thumb.placeholder .material-symbols-outlined { font-size: 2rem; color: var(--text-muted); opacity: .6; }
+    .receipt-ident { min-width: 0; flex: 1; }
+    .receipt-title-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+    .receipt-title-row h2 { margin: 0; font-size: 1.25rem; }
+    .receipt-chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .45rem; }
+    .receipt-chips .chip-type .material-symbols-outlined,
+    .receipt-chips .chip .material-symbols-outlined { font-size: .9rem; vertical-align: -2px; }
+    /* Buyer / seller identity row using UserChip + a compact reputation badge. */
+    .receipt-parties { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; margin: 0 0 1rem; padding: .8rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .receipt-party { display: flex; align-items: center; gap: .5rem; }
+    .receipt-party .lbl { color: var(--text-muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
+    .rep-chip { font-size: .72rem; font-weight: 600; border-radius: 6px; padding: 1px 7px; background: var(--surface); color: var(--text-muted); white-space: nowrap; }
+    /* Action panels (offer / dispute / ratings / dispute form). */
+    .receipt-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .85rem 1rem; margin-bottom: 1rem; }
+    .receipt-lines { display: grid; gap: .35rem; margin: 0 0 1rem; }
+    .receipt-lines > div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dashed var(--border); padding-bottom: .35rem; }
+    .receipt-lines dt { color: var(--text-muted); margin: 0; }
+    .receipt-lines dd { margin: 0; font-weight: 600; }
+    .receipt-lines .receipt-total dd { font-size: 1.15rem; }
+    .receipt-timeline { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1rem; }
+    .rt-step { display: flex; align-items: center; gap: .5rem; color: var(--text-muted); font-size: .9rem; }
+    .rt-step.done { color: var(--text); }
+    .rt-step.pending { color: var(--accent); }
+    .rt-step .material-symbols-outlined { font-size: 1.1rem; }
+    .star-pick { display: flex; gap: .15rem; }
+    .star-btn { background: none; border: none; cursor: pointer; padding: 0; line-height: 1; color: var(--text-muted); }
+    .star-btn .material-symbols-outlined { font-size: 1.6rem; }
+    .star-btn.on { color: #f5b301; }
+    .star-btn.on .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
+</style>
+
+@code {
+    [Parameter] public Guid OrderId { get; set; }
+
+    private ShopOrderDetail? _order;
+    private FeatureVerdict _shopGate;
+    private ShopOrderRatings? _ratings;
+    private bool _canView, _isBuyer, _isSeller, _isManager, _busy;
+    private bool _showDispute, _imagesAvailable, _uploading;
+    private string? _disputeReason, _disputeEvidence;
+    private long _counterAmount;
+    private int _rateStars = 5;
+    private string? _rateComment;
+    private string _zoneId = Muster.Infrastructure.Services.Platform.TimeZoneService.Utc;
+
+    private string ShortId => OrderId.ToString("N")[..8];
+    private bool IsPending => _order?.Status is ShopOrderStatus.PendingDelivery or ShopOrderStatus.Delivered;
+
+    // Under two-step delivery the buyer can only confirm after the seller marks the order delivered.
+    private bool CanConfirm => _order is { } o
+        && (o.Status == ShopOrderStatus.Delivered || (!o.TwoStepDelivery && o.Status == ShopOrderStatus.PendingDelivery));
+
+    // It's the viewer's turn to respond: seller/manager when the buyer proposed; buyer when the seller countered.
+    private bool CanRespond => _order is { Status: ShopOrderStatus.OfferPending } o
+        && (o.OfferProposedBy == ShopOfferParty.Buyer ? (_isSeller || _isManager) : _isBuyer);
+
+    // A buyer/seller may rate while the order is settled, ratings are on, the window is open, and they haven't yet.
+    private bool CanRate => _order is { Status: ShopOrderStatus.Settled, RatingsEnabled: true, RatingsClosed: false }
+        && (_isBuyer || _isSeller) && _ratings?.Mine is null
+        && (_order.RatingWindowClosesAt is not { } w || DateTimeOffset.UtcNow <= w);
+
+    private static string Stars(int n) => new string('★', Math.Clamp(n, 0, 5)) + new string('☆', 5 - Math.Clamp(n, 0, 5));
+
+    protected override async Task LoadAsync()
+    {
+        await using (var scope = Scopes.CreateAsyncScope())
+        {
+            _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
+                .EvaluateAsync(GuildId, PlatformFeature.Shop);
+        }
+        if (!_shopGate.CanEnable) { return; } // platform/plan block — render the notice, load nothing
+
+        _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
+        _order = await reads.GetOrderAsync(GuildId, OrderId);
+        if (_order is null)
+        {
+            return;
+        }
+
+        _isBuyer = _order.BuyerId == UserId;
+        _isSeller = _order.SellerId == UserId;
+        _isManager = await Auth.IsShopManagerAsync(GuildId, UserId);
+        _canView = _isBuyer || _isSeller || _isManager;
+        _imagesAvailable = scope.ServiceProvider.GetService<IShopImageService>() is not NoOpShopImageService and not null;
+
+        _ratings = _order.Status == ShopOrderStatus.Settled && _order.RatingsEnabled
+            ? await reads.GetOrderRatingsAsync(GuildId, OrderId, UserId)
+            : null;
+    }
+
+    private async Task SubmitRatingAsync()
+    {
+        if (_busy || _rateStars < 1)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new RateOrder(GuildId, UserId, OrderId, _rateStars, _rateComment)))
+                .ToCommandResult("Thanks — your rating is in (hidden until revealed).").Message;
+            _rateComment = null;
+            _rateStars = 5;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task HideRatingAsync(Guid ratingId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new ModerateRating(GuildId, UserId, ratingId, true)))
+                .ToCommandResult("Rating hidden.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task OnEvidenceSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _uploading = true;
+        try
+        {
+            const long max = 20 * 1024 * 1024;
+            await using var stream = e.File.OpenReadStream(max);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            await using var scope = Scopes.CreateAsyncScope();
+            var images = scope.ServiceProvider.GetRequiredService<IShopImageService>();
+            var (result, key) = await images.UploadAsync(ms, ms.Length, e.File.ContentType, ShopImageKind.Listing);
+            if (result == ShopImageUploadResult.Ok) { _disputeEvidence = key; }
+        }
+        catch { /* evidence is optional; ignore upload failure */ }
+        finally { _uploading = false; }
+    }
+
+    private async Task SubmitDisputeAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_disputeReason))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new DisputeOrder(GuildId, UserId, OrderId, _disputeReason!.Trim(), _disputeEvidence)))
+                .ToCommandResult("Dispute raised — a shop manager will review it.").Message;
+            _showDispute = false;
+            _disputeReason = null;
+            _disputeEvidence = null;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task ArbitrateAsync(bool paySeller)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new ArbitrateOrder(GuildId, UserId, OrderId, paySeller)))
+                .ToCommandResult(paySeller ? "Resolved — seller paid." : "Resolved — buyer refunded.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task MarkDeliveredAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new MarkDelivered(GuildId, UserId, OrderId))).ToCommandResult("Marked delivered.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private Task AcceptOfferAsync() => OfferAsync(new AcceptOffer(GuildId, UserId, OrderId), "Offer accepted — awaiting delivery confirmation.");
+    private Task DeclineOfferAsync() => OfferAsync(new DeclineOffer(GuildId, UserId, OrderId), "Offer ended — buyer refunded.");
+
+    private async Task CounterAsync()
+    {
+        if (_busy || _counterAmount <= 0)
+        {
+            return;
+        }
+
+        await OfferAsync(new CounterOffer(GuildId, UserId, OrderId, _counterAmount), $"Countered at {_counterAmount}.");
+        _counterAmount = 0;
+    }
+
+    private async Task OfferAsync(IGuildCommand command, string ok)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(command)).ToCommandResult(ok).Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private static string StatusChip(ShopOrderStatus s) => s switch
+    {
+        ShopOrderStatus.Settled => "chip-review",
+        ShopOrderStatus.Cancelled or ShopOrderStatus.Refunded => "chip-closed",
+        ShopOrderStatus.Disputed => "chip-closed",
+        _ => "chip-progress",
+    };
+
+    private async Task ConfirmAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new ConfirmReceipt(GuildId, UserId, OrderId))).ToCommandResult("Receipt confirmed — funds released to the seller.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (_busy || _order is null
+            || !await JS.InvokeAsync<bool>("confirm", new object?[] { $"Cancel the order for “{_order.ItemName}” and refund the buyer?" }))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new SellerCancelOrder(GuildId, UserId, OrderId))).ToCommandResult("Order cancelled — buyer refunded.").Message;
+        }
+        finally { _busy = false; await ReloadAsync(); }
+    }
+}
