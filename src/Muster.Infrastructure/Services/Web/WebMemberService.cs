@@ -266,8 +266,10 @@ public class WebMemberService(MusterDbContext db, ICurrencyReadService scores)
                 .ToDictionaryAsync(w => w.UserId, w => w.Balance, ct);
         }
 
+        // "Wallets" column = how many spendable wallets the member HOLDS (existence, not balance) — a freshly
+        // rebuilt wallet sits at 0 and must still count, else the column reads empty after a Rebuild.
         var currencyCountsQuery = db.Wallets
-            .Where(w => w.GuildId == guildId && w.Balance != 0 && humanIds.Contains(w.UserId));
+            .Where(w => w.GuildId == guildId && humanIds.Contains(w.UserId));
         if (points is not null)
         {
             var pid = points.Id;

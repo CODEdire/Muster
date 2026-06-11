@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Platform;
@@ -28,6 +29,10 @@ public sealed class CurrencyConnectorSyncService(
 
     /// <summary>Outcome counts for one currency's reconcile pass — drives the sweep-summary audit.</summary>
     public readonly record struct CurrencySyncStats(int Candidates, int Synced, int Failed);
+
+    /// <summary>Sync progress for a currency: total members, how many have a synced wallet, the outstanding backlog,
+    /// and the oldest/newest sync stamps.</summary>
+    public readonly record struct CurrencySyncBacklog(int Members, int Synced, int Pending, DateTimeOffset? OldestSync, DateTimeOffset? NewestSync);
 
     /// <summary>Reconcile one member. <paramref name="knownBalance"/> short-circuits the GetBalance call when a
     /// credit/debit already returned the resulting balance. Returns the external balance, or null if unavailable.</summary>
@@ -76,13 +81,18 @@ public sealed class CurrencyConnectorSyncService(
             }
         }
 
-        // Stamp the sync time (the award above created/updated the wallet when delta != 0).
+        // Stamp the sync time. A non-zero delta already created/updated the wallet via the award; when the delta is
+        // zero (external already matches), there may be no wallet row yet — create one so a synced member always has
+        // a wallet (and a LastSyncedAt to throttle future syncs), rather than re-syncing on every visit.
         var wallet = await db.FindWalletAsync(guildId, userId, currencyId, null, ct);
-        if (wallet is not null)
+        if (wallet is null)
         {
-            wallet.LastSyncedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(ct);
+            wallet = new Wallet { GuildId = guildId, UserId = userId, CurrencyId = currencyId, SeasonId = null, Balance = external.Value };
+            db.Wallets.Add(wallet);
         }
+
+        wallet.LastSyncedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
 
         return external;
     }
@@ -115,8 +125,12 @@ public sealed class CurrencyConnectorSyncService(
                 continue;
             }
 
+            // Sync when forced (the Sync button), when there's no local wallet yet (the first pull from the external
+            // system — this is exactly when we need to fetch + create it), or when an existing wallet is stale enough
+            // for a dashboard auto-sync. Previously a null wallet was skipped, so a member's external balance was
+            // never pulled until they happened to get a local wallet some other way.
             var wallet = await db.FindWalletAsync(guildId, userId, currency.Id, null, ct);
-            if (wallet is null || (!force && !IsDashboardSyncDue(wallet.LastSyncedAt, now)))
+            if (!force && wallet is not null && !IsDashboardSyncDue(wallet.LastSyncedAt, now))
             {
                 continue;
             }
@@ -130,11 +144,26 @@ public sealed class CurrencyConnectorSyncService(
         return synced;
     }
 
-    /// <summary>Reconcile every member holding a wallet for the currency, pacing calls by <paramref name="delay"/>
-    /// (the external API is rate-limited and this can be slow for large guilds). Returns per-member outcome counts.</summary>
+    /// <summary>A snapshot of how far the per-member balance sync has progressed for a currency: total guild members,
+    /// how many already have a synced wallet, and the oldest sync stamp. The "backlog" is <c>Members − Synced</c> — the
+    /// members the next full sync still has to reconcile.</summary>
+    public async Task<CurrencySyncBacklog> SyncBacklogAsync(ulong guildId, Guid currencyId, CancellationToken ct = default)
+    {
+        var members = await db.GuildMembers.CountAsync(m => m.GuildId == guildId, ct);
+        var walletQuery = db.Wallets.Where(w => w.GuildId == guildId && w.CurrencyId == currencyId);
+        var synced = await walletQuery.CountAsync(w => w.LastSyncedAt != null, ct);
+        var oldest = await walletQuery.Where(w => w.LastSyncedAt != null).MinAsync(w => (DateTimeOffset?)w.LastSyncedAt, ct);
+        var newest = await walletQuery.MaxAsync(w => (DateTimeOffset?)w.LastSyncedAt, ct);
+        return new CurrencySyncBacklog(members, synced, Math.Max(0, members - synced), oldest, newest);
+    }
+
+    /// <summary>Reconcile the currency's balances, pacing calls by <paramref name="delay"/> (the external API is
+    /// rate-limited and this can be slow for large guilds). Returns per-member outcome counts. When
+    /// <paramref name="userIds"/> is null this syncs <b>every guild member</b> (not just current wallet-holders), so a
+    /// member with an external balance but no local wallet yet is pulled in and their wallet created.</summary>
     public async Task<CurrencySyncStats> SyncCurrencyAsync(ulong guildId, Guid currencyId, TimeSpan delay, IReadOnlyList<ulong>? userIds = null, CancellationToken ct = default)
     {
-        var members = userIds ?? await db.ListWalletUserIdsAsync(guildId, currencyId, ct);
+        var members = userIds ?? (await db.ListMembersAsync(guildId, ct)).Select(m => m.UserId).ToList();
         var synced = 0;
         var failed = 0;
         foreach (var userId in members)
