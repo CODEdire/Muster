@@ -37,11 +37,6 @@ else if (State == AccessState.Ready)
                    hero, then its right edge fades into the page (mask) so wide viewports blend instead of crop. *@
                 <img src="/shop-image/@bk" alt="@(_front.Name) banner" style="position:absolute;left:0;top:0;height:100%;width:auto;display:block;object-fit:cover;-webkit-mask-image:linear-gradient(to right,#000 72%,transparent);mask-image:linear-gradient(to right,#000 72%,transparent)" />
                 <div aria-hidden="true" style="position:absolute;inset:0;@ScrimStyle(_front.AccentColor)"></div>
-                <nav class="store-crumb" aria-label="Breadcrumb">
-                    <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
-                    <span class="store-crumb-sep" aria-hidden="true">›</span>
-                    <span aria-current="page">@_front.Name</span>
-                </nav>
                 <div style="position:absolute;left:1.1rem;right:1.1rem;bottom:.85rem;display:flex;align-items:flex-end;gap:.75rem">
                     @if (_front.LogoImageKey is { } lk)
                     {
@@ -52,7 +47,11 @@ else if (State == AccessState.Ready)
                         <span class="material-symbols-outlined" style="font-size:30px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:rgba(0,0,0,.4);color:#fff">@mi</span>
                     }
                     <div>
-                        <h1 style="margin:0;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.7)">@_front.Name</h1>
+                        <nav class="store-titlecrumb store-titlecrumb-onbanner" aria-label="Breadcrumb">
+                            <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
+                            <span class="store-crumb-sep" aria-hidden="true">›</span>
+                            <h1 class="store-title" aria-current="page">@_front.Name</h1>
+                        </nav>
                         <p style="margin:2px 0 0;color:rgba(255,255,255,.88);font-size:.92rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">@HeroMetaInner</p>
                     </div>
                 </div>
@@ -62,11 +61,6 @@ else if (State == AccessState.Ready)
         {
             @* No banner — clean identity row, no empty hero box. *@
             <div class="page-head full-bleed" style="@(_front.AccentColor is { } c ? $"border-left:4px solid {c};padding-left:.75rem" : null)">
-                <nav class="store-crumb store-crumb-plain" aria-label="Breadcrumb">
-                    <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
-                    <span class="store-crumb-sep" aria-hidden="true">›</span>
-                    <span aria-current="page">@_front.Name</span>
-                </nav>
                 <div style="display:flex;align-items:center;gap:.75rem">
                     @if (_front.LogoImageKey is { } lk)
                     {
@@ -77,7 +71,11 @@ else if (State == AccessState.Ready)
                         <span class="material-symbols-outlined" style="font-size:34px;width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--surface)">@mi</span>
                     }
                     <div>
-                        <h1 style="margin:0">@_front.Name</h1>
+                        <nav class="store-titlecrumb" aria-label="Breadcrumb">
+                            <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
+                            <span class="store-crumb-sep" aria-hidden="true">›</span>
+                            <h1 class="store-title" aria-current="page">@_front.Name</h1>
+                        </nav>
                         <p class="subtitle" style="margin:0;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">@HeroMetaInner</p>
                     </div>
                 </div>
