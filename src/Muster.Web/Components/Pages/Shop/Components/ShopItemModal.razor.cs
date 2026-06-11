@@ -21,6 +21,7 @@ public partial class ShopItemModal
     private ShopListingDetail? _listing;
     private bool _isSeller, _isManager, _acting, _loaded;
     private long _offerAmount;
+    private int _buyQty = 1;
     private string? _message;
     private Guid _loadedId;
 
@@ -31,9 +32,13 @@ public partial class ShopItemModal
             _loadedId = ItemId;
             _message = null;
             _offerAmount = 0;
+            _buyQty = 1;
             await ReloadAsync();
         }
     }
+
+    private void IncQty() { if (_listing is { } l && _buyQty < l.Quantity) { _buyQty++; } }
+    private void DecQty() { if (_buyQty > 1) { _buyQty--; } }
 
     private async Task ReloadAsync()
     {
@@ -48,6 +53,8 @@ public partial class ShopItemModal
             _isManager = await scope.ServiceProvider
                 .GetRequiredService<Muster.Infrastructure.Services.Membership.GuildAuthorizationService>()
                 .IsShopManagerAsync(GuildId, UserId);
+            // Keep the chosen quantity within current stock (it can drop while the modal is open).
+            _buyQty = Math.Clamp(_buyQty, 1, Math.Max(1, _listing.Quantity));
         }
     }
 
@@ -65,7 +72,8 @@ public partial class ShopItemModal
         _acting = true;
         try
         {
-            var result = await RunAsync(bus => bus.InvokeAsync<Result<Guid>>(new PurchaseListing(GuildId, UserId, ItemId)));
+            var qty = Math.Clamp(_buyQty, 1, Math.Max(1, _listing?.Quantity ?? 1));
+            var result = await RunAsync(bus => bus.InvokeAsync<Result<Guid>>(new PurchaseListing(GuildId, UserId, ItemId, qty)));
             _message = result!.Ok
                 ? "Purchased — funds are held in escrow until you confirm receipt. See My orders."
                 : ((Result)result).ToCommandResult("").Message;

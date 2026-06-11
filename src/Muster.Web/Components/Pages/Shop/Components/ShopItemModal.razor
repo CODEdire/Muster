@@ -90,7 +90,7 @@
                             @* Self-buy is allowed server-side (clear stock / testing); offers stay seller-only. *@
                             @if (_listing.Status == ShopListingStatus.Active)
                             {
-                                <button class="btn btn-sm" disabled="@_acting" @onclick="BuyAsync"><span class="material-symbols-outlined">shopping_cart</span> Buy · @_listing.Price @_listing.CurrencyCode</button>
+                                @BuyButton()
                             }
                             <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span> Edit</a>
                             @if (_listing.Status == ShopListingStatus.Active && !_listing.Featured)
@@ -105,7 +105,7 @@
                         }
                         else if (_listing.Status == ShopListingStatus.Active)
                         {
-                            <button class="btn btn-sm" disabled="@_acting" @onclick="BuyAsync"><span class="material-symbols-outlined">shopping_cart</span> Buy · @_listing.Price @_listing.CurrencyCode</button>
+                            @BuyButton()
                             @if (_listing.OffersOpen)
                             {
                                 <input type="number" min="1" placeholder="your price" @bind="_offerAmount" style="max-width:8rem" />
@@ -126,3 +126,19 @@
         }
     </div>
 </div>
+
+@code {
+    // Quantity stepper (only when stock > 1) + the buy button, sharing _buyQty. A Razor render-fragment, so it
+    // stays in the .razor; the rest of the component lives in the code-behind partial.
+    private RenderFragment BuyButton() => @<text>
+        @if (_listing!.Quantity > 1)
+        {
+            <span class="qty-step">
+                <button type="button" class="icon-btn" title="Less" disabled="@(_acting || _buyQty <= 1)" @onclick="DecQty"><span class="material-symbols-outlined">remove</span></button>
+                <span class="qty-val">@_buyQty</span>
+                <button type="button" class="icon-btn" title="More" disabled="@(_acting || _buyQty >= _listing.Quantity)" @onclick="IncQty"><span class="material-symbols-outlined">add</span></button>
+            </span>
+        }
+        <button class="btn btn-sm" disabled="@_acting" @onclick="BuyAsync"><span class="material-symbols-outlined">shopping_cart</span> Buy@(_buyQty > 1 ? $" ×{_buyQty}" : "") · @(_listing.Price * _buyQty) @_listing.CurrencyCode</button>
+    </text>;
+}
