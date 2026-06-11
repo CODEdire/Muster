@@ -1,0 +1,33 @@
+    /* Identity hero — item image + title + store/category chips, mirroring the item-tile/card design language. */
+    .receipt-hero { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; }
+    .receipt-thumb { width: 76px; height: 76px; flex: 0 0 auto; border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+    .receipt-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .receipt-thumb.placeholder .material-symbols-outlined { font-size: 2rem; color: var(--text-muted); opacity: .6; }
+    .receipt-ident { min-width: 0; flex: 1; }
+    .receipt-title-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+    .receipt-title-row h2 { margin: 0; font-size: 1.25rem; }
+    .receipt-chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .45rem; }
+    .receipt-chips .chip-type .material-symbols-outlined,
+    .receipt-chips .chip .material-symbols-outlined { font-size: .9rem; vertical-align: -2px; }
+    /* Buyer / seller identity row using UserChip + a compact reputation badge. */
+    .receipt-parties { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; margin: 0 0 1rem; padding: .8rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .receipt-party { display: flex; align-items: center; gap: .5rem; }
+    .receipt-party .lbl { color: var(--text-muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
+    .rep-chip { font-size: .72rem; font-weight: 600; border-radius: 6px; padding: 1px 7px; background: var(--surface); color: var(--text-muted); white-space: nowrap; }
+    /* Action panels (offer / dispute / ratings / dispute form). */
+    .receipt-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .85rem 1rem; margin-bottom: 1rem; }
+    .receipt-lines { display: grid; gap: .35rem; margin: 0 0 1rem; }
+    .receipt-lines > div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dashed var(--border); padding-bottom: .35rem; }
+    .receipt-lines dt { color: var(--text-muted); margin: 0; }
+    .receipt-lines dd { margin: 0; font-weight: 600; }
+    .receipt-lines .receipt-total dd { font-size: 1.15rem; }
+    .receipt-timeline { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1rem; }
+    .rt-step { display: flex; align-items: center; gap: .5rem; color: var(--text-muted); font-size: .9rem; }
+    .rt-step.done { color: var(--text); }
+    .rt-step.pending { color: var(--accent); }
+    .rt-step .material-symbols-outlined { font-size: 1.1rem; }
+    .star-pick { display: flex; gap: .15rem; }
+    .star-btn { background: none; border: none; cursor: pointer; padding: 0; line-height: 1; color: var(--text-muted); }
+    .star-btn .material-symbols-outlined { font-size: 1.6rem; }
+    .star-btn.on { color: #f5b301; }
+    .star-btn.on .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
