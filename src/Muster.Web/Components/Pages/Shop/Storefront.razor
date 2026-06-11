@@ -7,6 +7,7 @@
 @using Muster.Contracts
 @using Muster.Domain.Entities.Shops
 @using Muster.Infrastructure.Services.Shops
+@using static Muster.Web.Components.Pages.Shop.Core.ShopPresentation
 
 <PageTitle>@(_front?.Name ?? "Storefront") — Muster</PageTitle>
 
@@ -147,42 +148,11 @@ else if (State == AccessState.Ready)
             <div class="shop-grid">
                 @foreach (var l in _items.Items)
                 {
-                    <article class="shop-tile @(l.Featured ? "is-featured" : "")">
-                        <div class="shop-tile-media-wrap @(l.ThumbKey is null ? "placeholder" : "")">
-                            <a class="shop-tile-thumb" href="@StoreItemUrl(l.Id)" aria-label="@l.Name">
-                                @if (l.ThumbKey is { } tk)
-                                {
-                                    <img class="tile-bg" src="/shop-image/@tk" alt="" aria-hidden="true" loading="lazy" />
-                                    <img class="tile-fg" src="/shop-image/@tk" alt="@l.Name" loading="lazy" />
-                                }
-                                else
-                                {
-                                    <span class="material-symbols-outlined">image</span>
-                                }
-                            </a>
-                            @if (l.Featured || l.IsNew)
-                            {
-                                <span class="shop-tile-badges">
-                                    @if (l.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
-                                    @if (l.IsNew) { <span class="shop-badge new">NEW</span> }
-                                </span>
-                            }
-                            @if (l.CategoryName is { } cn)
-                            {
-                                <div class="shop-tile-overlay">
-                                    <span class="tile-ochip">@if (ShopIcons.Material(l.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined">@cmi</span> } @cn</span>
-                                </div>
-                            }
-                        </div>
-                        <div class="shop-tile-body">
-                            <h3><a class="qc-title" href="@StoreItemUrl(l.Id)">@l.Name</a></h3>
-                            <span class="shop-stock@(l.Quantity <= 0 ? " out" : "")">@StockLabel(l.Quantity)</span>
-                            <div class="shop-tile-meta">
-                                <span class="shop-price">@l.Price @l.CurrencyCode</span>
-                                <a class="qc-details" href="@StoreItemUrl(l.Id)">Details →</a>
-                            </div>
-                        </div>
-                    </article>
+                    <ListingCard Listing="l" ItemHref="@StoreItemUrl(l.Id)">
+                        <Trailing>
+                            <a class="qc-details" href="@StoreItemUrl(l.Id)">Details →</a>
+                        </Trailing>
+                    </ListingCard>
                 }
             </div>
 
@@ -270,13 +240,6 @@ else if (State == AccessState.Ready)
     private void ClearFilters() => Go(("cat", null), ("tag", null), ("q", null), ("min", null), ("max", null), ("cur", null), ("stock", null), ("page", null));
     private string? CategoryName(string? id) => Guid.TryParse(id, out var g) ? _categories.FirstOrDefault(c => c.Id == g)?.Name : null;
     private string? CurrencyCode(string? id) => Guid.TryParse(id, out var g) ? _currencies.FirstOrDefault(c => c.Id == g)?.Code : null;
-    private static string PriceRangeLabel(int? min, int? max) => (min, max) switch
-    {
-        (not null, not null) => $"{min}–{max}",
-        (not null, null) => $"≥ {min}",
-        (null, not null) => $"≤ {max}",
-        _ => "price",
-    };
     private static string? ParsePositive(string? s) => int.TryParse(s, out var n) && n > 0 ? n.ToString() : null;
 
     private RenderFragment FilterChip(string text, Action onClear) => @<text>
@@ -345,8 +308,6 @@ else if (State == AccessState.Ready)
             <span class="hero-dot">·</span><span>★ @_front.SellerRatingAvg.ToString("0.0") (@_front.SellerRatingCount)</span>
         }
     </text>;
-
-    private static string StockLabel(int q) => q <= 0 ? "Out of stock" : q <= 20 ? $"{q} left" : "In stock";
 
     // Base colour shown behind a transparent banner.
     private static string BannerBg(string? accent)
