@@ -930,11 +930,21 @@ table.leaderboard th a { color: var(--text-muted); }
     padding: 1.5rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(3px);
 }
 .shop-modal {
-    position: relative; width: min(840px, 100%); max-height: 90vh; overflow: hidden;
-    display: grid; grid-template-columns: minmax(0, 330px) 1fr;
+    position: relative; width: min(920px, 100%); max-height: 90vh; overflow: hidden;
+    display: grid; grid-template-columns: minmax(0, 380px) 1fr;
     background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius);
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
+/* Lock the page behind any open modal (no bleed-through scrollbar). */
+html.modal-open { overflow: hidden; }
+/* Item-modal body: title, price row, and buyer/seller action rows. */
+.smi-title { margin: 0.1rem 0 0; font-size: 1.3rem; line-height: 1.25; }
+.smi-price-row { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; margin: 0.25rem 0 0.1rem; }
+.smi-price { font-size: 1.5rem; }
+.smi-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
+.smi-row { display: contents; }
+.smi-status { align-self: center; }
+.smi-offer { max-width: 8rem; }
 /* Single-column compact dialog (quick-create form). */
 .shop-modal.sm { grid-template-columns: 1fr; width: min(440px, 100%); }
 .shop-modal.sm .shop-modal-body { gap: 0.7rem; }
@@ -955,13 +965,16 @@ table.leaderboard th a { color: var(--text-muted); }
 /* On the imageless compact dialog a black disc looks alien — use the site's ghost-icon treatment. */
 .shop-modal.sm .shop-modal-close { background: var(--surface); color: var(--text-muted); border: 1px solid var(--card-border); }
 .shop-modal.sm .shop-modal-close:hover { background: var(--card-border); color: var(--text); }
-@media (max-width: 640px) {
+@media (max-width: 760px) {
     .shop-modal-backdrop { padding: 0; }
     .shop-modal {
         grid-template-columns: 1fr; grid-template-rows: auto 1fr;
         width: 100%; height: 100%; max-height: 100%; border-radius: 0; border: none;
     }
     .shop-modal-img { max-height: 36vh; }
+    /* Each action group gets its own full-width row (buyer line, then seller line); buttons share the row evenly. */
+    .smi-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex-basis: 100%; }
+    .smi-actions .btn { flex: 1 1 auto; justify-content: center; }
 }
 
 /* Quest-type icon picker — a visual palette (each swatch shows its Material glyph), not a text dropdown. */

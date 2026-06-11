@@ -3,6 +3,7 @@
    it's deep-linkable; closing/back removes the param. Full-screen sheet on mobile (see app.css .shop-modal). *@
 @inject IServiceScopeFactory Scopes
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 @using Microsoft.JSInterop
 @using Muster.Contracts
 @using Muster.Infrastructure.Commands
@@ -42,11 +43,13 @@
                     }
                 </div>
 
-                <h2 style="margin:.1rem 0 0">@_listing.Name</h2>
+                <h2 class="smi-title">@_listing.Name</h2>
                 <UserChip Name="@_listing.SellerName" AvatarUrl="@_listing.SellerAvatarUrl" Prefix="by " />
 
-                <p class="qc-reward reward-coin" style="font-size:1.5rem;margin:.2rem 0">@_listing.Price @_listing.CurrencyCode</p>
-                <span class="shop-stock@(_listing.Quantity <= 0 ? " out" : "")">@StockLabel(_listing.Quantity)</span>
+                <div class="smi-price-row">
+                    <span class="qc-reward reward-coin smi-price">@_listing.Price @_listing.CurrencyCode</span>
+                    <span class="shop-stock@(_listing.Quantity <= 0 ? " out" : "")">@StockLabel(_listing.Quantity)</span>
+                </div>
 
                 @if (_listing.RelistedFromId is { } relistedFrom)
                 {
@@ -83,44 +86,47 @@
                     <div class="notice" role="status"><span class="material-symbols-outlined notice-icon">info</span><span class="notice-text">@msg</span></div>
                 }
 
-                <div class="action-bar">
-                    <div class="action-right">
-                        @if (_isSeller)
-                        {
-                            @* Self-buy is allowed server-side (clear stock / testing); offers stay seller-only. *@
-                            @if (_listing.Status == ShopListingStatus.Active)
+                @* Buyer actions and seller/moderation actions split into their own rows (each its own line on mobile;
+                   they flow onto one wrapping row on desktop). *@
+                <div class="smi-actions">
+                    @if (_listing.Status == ShopListingStatus.Active)
+                    {
+                        <div class="smi-row smi-buyer">
+                            @BuyButton()
+                            @if (!_isSeller && _listing.OffersOpen)
                             {
-                                @BuyButton()
+                                <input type="number" min="1" placeholder="your price" @bind="_offerAmount" class="smi-offer" />
+                                <button class="btn btn-ghost btn-sm" disabled="@(_acting || _offerAmount <= 0)" @onclick="MakeOfferAsync"><span class="material-symbols-outlined">gavel</span> Make offer</button>
                             }
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="subtitle smi-status">@_listing.Status</span>
+                    }
+
+                    @if (_isSeller)
+                    {
+                        <div class="smi-row smi-seller">
                             <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span> Edit</a>
                             @if (_listing.Status == ShopListingStatus.Active && !_listing.Featured)
                             {
-                                <button class="btn btn-sm" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span> Feature</button>
+                                <button class="btn btn-ghost btn-sm" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span> Feature</button>
                             }
                             else if (_listing.Featured)
                             {
                                 <button class="btn btn-ghost btn-sm" disabled="@_acting" @onclick="UnfeatureAsync" title="Stop featuring (fee not refunded)"><span class="material-symbols-outlined">star_border</span> Unfeature</button>
                             }
-                            <button class="btn btn-sm danger" disabled="@_acting" @onclick="CancelAsync"><span class="material-symbols-outlined">delete</span> Withdraw</button>
-                        }
-                        else if (_listing.Status == ShopListingStatus.Active)
-                        {
-                            @BuyButton()
-                            @if (_listing.OffersOpen)
-                            {
-                                <input type="number" min="1" placeholder="your price" @bind="_offerAmount" style="max-width:8rem" />
-                                <button class="btn btn-ghost btn-sm" disabled="@(_acting || _offerAmount <= 0)" @onclick="MakeOfferAsync"><span class="material-symbols-outlined">gavel</span> Make offer</button>
-                            }
-                        }
-                        else
-                        {
-                            <span class="subtitle">@_listing.Status</span>
-                        }
-                        @if (_isManager && !_isSeller && _listing.Status == ShopListingStatus.Active)
-                        {
+                            <button class="btn btn-ghost btn-sm danger" disabled="@_acting" @onclick="CancelAsync"><span class="material-symbols-outlined">delete</span> Withdraw</button>
+                        </div>
+                    }
+
+                    @if (_isManager && !_isSeller && _listing.Status == ShopListingStatus.Active)
+                    {
+                        <div class="smi-row smi-mod">
                             <button class="btn btn-ghost btn-sm danger" disabled="@_acting" @onclick="TakeDownAsync" title="Take down (moderation)"><span class="material-symbols-outlined">gavel</span> Take down</button>
-                        }
-                    </div>
+                        </div>
+                    }
                 </div>
             </div>
         }

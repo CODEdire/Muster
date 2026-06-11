@@ -9,8 +9,28 @@ using Muster.Infrastructure.Services.Shops;
 
 namespace Muster.Web.Components.Pages.Shop.Components;
 
-public partial class ShopItemModal
+public partial class ShopItemModal : IAsyncDisposable
 {
+    private bool _scrollLocked;
+
+    // Lock the page scroll while the modal is up (no scrollbar bleeding through behind it); released on close.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_scrollLocked)
+        {
+            _scrollLocked = true;
+            try { await JS.InvokeVoidAsync("musterLockScroll", true); } catch { /* circuit teardown */ }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_scrollLocked)
+        {
+            try { await JS.InvokeVoidAsync("musterLockScroll", false); } catch { /* circuit teardown */ }
+        }
+    }
+
     [Parameter, EditorRequired] public ulong GuildId { get; set; }
     [Parameter, EditorRequired] public Guid ItemId { get; set; }
     [Parameter, EditorRequired] public ulong UserId { get; set; }
