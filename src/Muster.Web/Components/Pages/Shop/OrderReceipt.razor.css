@@ -133,14 +133,14 @@
 .rc-step-time { font-weight: 400; color: var(--text-muted); }
 .rc-step-note { margin: 0.15rem 0 0; font-size: 0.82rem; color: var(--text-muted); }
 
-.rc-done .rc-step-ic { background: color-mix(in srgb, #0f9d6b 18%, transparent); color: #0f9d6b; }
+.rc-done .rc-step-ic { background: color-mix(in srgb, #0f9d6b 20%, var(--card-bg)); color: #0f9d6b; }
 .rc-done .rc-step-body { border-left-color: #0f9d6b; }
-.rc-current .rc-step-ic { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.rc-current .rc-step-ic { background: color-mix(in srgb, var(--accent) 20%, var(--card-bg)); color: var(--accent); }
 .rc-current .rc-step-body { border-left-style: dashed; }
 .rc-current .rc-step-title { color: var(--accent); }
 .rc-current .rc-step-time { color: var(--accent); }
 .rc-pending .rc-step-body { border-left-style: dashed; }
-.rc-bad .rc-step-ic { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+.rc-bad .rc-step-ic { background: color-mix(in srgb, var(--danger) 20%, var(--card-bg)); color: var(--danger); }
 .rc-bad .rc-step-body { border-left-color: var(--danger); }
 
 /* Star picker (rating). */
