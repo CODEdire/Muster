@@ -29,7 +29,7 @@ else if (State == AccessState.Ready)
 {
     <TopProgress Active="@(_loading || _acting is not null)" />
 
-    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests") })" Subtitle="@SummaryText">
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests") })" Kpis="@SummaryKpis">
         <Toolbar>
             <a class="btn btn-sm" href="/guilds/@GuildId/quests/new"><span class="material-symbols-outlined">add</span> New quest</a>
         </Toolbar>
@@ -46,12 +46,6 @@ else if (State == AccessState.Ready)
 
     <div class="dg-toolbar">
         <div class="dg-filters">
-            @* Primary view toggle (active / action needed / history) lives in the filter bar. *@
-            <div class="seg board-tabs" role="group" aria-label="Quest view">
-                <a href="@TabUrl("active")" @onclick:preventDefault @onclick='() => OnTab("active")' class="@(CurrentTab == "active" ? "active" : "")">Active</a>
-                <a href="@TabUrl("actionneeded")" @onclick:preventDefault @onclick='() => OnTab("actionneeded")' class="@(CurrentTab == "actionneeded" ? "active" : "")">Action Needed</a>
-                <a href="@TabUrl("history")" @onclick:preventDefault @onclick='() => OnTab("history")' class="@(CurrentTab == "history" ? "active" : "")">History</a>
-            </div>
             <input type="search" class="dg-search" placeholder="Search quests…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
             <select class="dg-select" value="@CurrentType" @onchange="OnTypeSelect">
                 <option value="">All scopes</option>
@@ -84,6 +78,12 @@ else if (State == AccessState.Ready)
             {
                 <span class="dg-loading" aria-hidden="true"></span>
             }
+            @* Primary view (active / action needed / history) sits next to the layout toggle. *@
+            <div class="seg board-tabs" role="group" aria-label="Quest view">
+                <a href="@TabUrl("active")" @onclick:preventDefault @onclick='() => OnTab("active")' class="@(CurrentTab == "active" ? "active" : "")">Active</a>
+                <a href="@TabUrl("actionneeded")" @onclick:preventDefault @onclick='() => OnTab("actionneeded")' class="@(CurrentTab == "actionneeded" ? "active" : "")">Action Needed</a>
+                <a href="@TabUrl("history")" @onclick:preventDefault @onclick='() => OnTab("history")' class="@(CurrentTab == "history" ? "active" : "")">History</a>
+            </div>
             <div class="seg view-toggle" role="group" aria-label="Layout">
                 <button type="button" class="@(_view == "grid" ? "active" : "")" title="Cards" @onclick='() => _view = "grid"'><span class="material-symbols-outlined">grid_view</span></button>
                 <button type="button" class="@(_view == "list" ? "active" : "")" title="Table" @onclick='() => _view = "list"'><span class="material-symbols-outlined">view_list</span></button>
@@ -362,7 +362,6 @@ else if (State == AccessState.Ready)
             </div>
         }
     }
-}
 
 @code {
     [SupplyParameterFromQuery] private string? Tab { get; set; }
@@ -853,15 +852,20 @@ else if (State == AccessState.Ready)
 
     private string PageUrl(int page) => $"{QPath}?{BuildQuery(CurrentTab, CurrentType, CurrentSort, CurrentDesc, page, Search)}";
 
-    /// <summary>One-line tally of the current page's missions for the board header.</summary>
-    private string SummaryText
+    /// <summary>Summary tiles for the board header — the current page's mission tally.</summary>
+    private IReadOnlyList<PageHeader.KpiItem> SummaryKpis
     {
         get
         {
             var open = _quests.Count(q => q.Status == QuestStatus.Open && !HasActiveWorker(q));
             var inProgress = _quests.Count(q => q.Status == QuestStatus.Open && HasActiveWorker(q));
             var review = _quests.Count(q => q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted));
-            return $"{open} open · {inProgress} in progress · {review} awaiting review";
+            return
+            [
+                new($"{open}", "Open"),
+                new($"{inProgress}", "In progress"),
+                new($"{review}", "Awaiting review", review > 0 ? "warn" : null),
+            ];
         }
     }
 

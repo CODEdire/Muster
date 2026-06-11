@@ -1,0 +1,71 @@
+/* Scoped to PageHeader. The breadcrumb / subtitle / toolbar base styles stay global (app.css:
+   .page-head / .page-breadcrumb / .subtitle / .page-toolbar) — this file is the icon + KPI additions only. */
+
+.ph-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem 1.25rem;
+}
+
+.ph-lead {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+
+.ph-icon {
+    font-size: 1.9rem;
+    color: var(--accent);
+    flex: 0 0 auto;
+}
+
+.ph-headings { min-width: 0; }
+
+/* KPI tiles. Default (desktop, few): a compact cluster pinned to the top-right of the bar. */
+.ph-kpis {
+    display: flex;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+.ph-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    padding: 0.4rem 0.7rem;
+    min-width: 4.5rem;
+    border: 1px solid var(--card-border);
+    border-radius: 0.55rem;
+    background: var(--surface);
+}
+
+.ph-kpi-value { font-size: 1.15rem; font-weight: 700; line-height: 1.1; color: var(--text); }
+.ph-kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+
+.ph-kpi.kpi-good .ph-kpi-value { color: var(--success, #4ade80); }
+.ph-kpi.kpi-warn .ph-kpi-value { color: var(--warn, #fbbf24); }
+.ph-kpi.kpi-bad .ph-kpi-value { color: var(--danger, #f87171); }
+
+/* Many KPIs (> InlineKpiMax) on desktop: wrap to a full-width strip below the breadcrumb, above the toolbar. */
+.ph-many .ph-kpis {
+    flex-basis: 100%;
+    order: 2;
+}
+
+/* Mobile: KPIs always become a compact horizontal-scroll strip below the breadcrumb (never collapsed). */
+@media (max-width: 720px) {
+    .ph-kpis {
+        flex-basis: 100%;
+        order: 2;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .ph-kpis::-webkit-scrollbar { display: none; }
+    .ph-kpi { flex: 0 0 auto; min-width: 5rem; }
+}

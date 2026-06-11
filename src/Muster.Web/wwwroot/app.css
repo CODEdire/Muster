@@ -1183,8 +1183,8 @@ table.leaderboard th a { color: var(--text-muted); }
 .qc-bar { height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
 .qc-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
-/* Board: primary tabs (in the filter bar) + table (list) view. */
-.dg-filters .board-tabs { flex: 0 0 auto; }
+/* Board: primary tabs (sit by the layout toggle) + table (list) view. */
+.board-tabs { flex: 0 0 auto; }
 .quest-table .qt-cell { display: inline-flex; align-items: center; gap: 0.4rem; }
 .quest-table .qt-cell .material-symbols-outlined { font-size: 1.1rem; color: var(--accent); }
 .quest-table .qt-tier-col { width: 3.5rem; }
@@ -1194,8 +1194,9 @@ table.leaderboard th a { color: var(--text-muted); }
 
 /* The board / table fill the remaining viewport height (desktop) via the shared .dg-fill marker. */
 .quest-fill { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
-.quest-fill > .dg-scroll { flex: 1 1 auto; min-height: 0; }
-.quest-fill > .quest-board { flex: 1 1 auto; align-content: start; min-height: 0; overflow: auto; }
+/* Top padding so a card's hover lift (translateY + shadow) isn't clipped behind the sticky toolbar. */
+.quest-fill > .dg-scroll { flex: 1 1 auto; min-height: 0; padding-top: 0.5rem; }
+.quest-fill > .quest-board { flex: 1 1 auto; align-content: start; min-height: 0; overflow: auto; padding-top: 0.5rem; }
 .quest-fill > .panel.empty { flex: 1 1 auto; }
 .quest-fill > .dg-footer { flex: 0 0 auto; }
 

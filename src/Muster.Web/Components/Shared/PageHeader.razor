@@ -1,42 +1,62 @@
 @* Breadcrumb-style page header. Parent crumbs link out; the last crumb is the current page (title-sized).
-   Optional Subtitle and a Toolbar render fragment for sub-nav / actions under the breadcrumb. *@
-<div class="page-head">
-    <nav class="page-breadcrumb" aria-label="Breadcrumb">
-        @for (var i = 0; i < Crumbs.Count; i++)
-        {
-            var c = Crumbs[i];
-            var isLast = i == Crumbs.Count - 1;
-            if (!isLast && c.Href is { } href)
-            {
-                <a href="@href">@c.Label</a>
-                <span class="crumb-sep" aria-hidden="true">›</span>
-            }
-            else
-            {
-                <span class="crumb-current" aria-current="page">@c.Label</span>
-            }
-        }
-    </nav>
+   Optional Icon, Subtitle (text or SubtitleContent fragment), KPI tiles, and a Toolbar render fragment.
 
-    @if (!string.IsNullOrWhiteSpace(Subtitle))
-    {
-        <p class="subtitle">@Subtitle</p>
-    }
+   KPI placement (one Kpis list — CSS reflows it, no duplicate markup):
+   • desktop, ≤ InlineKpiMax → inline, top-right of the breadcrumb row
+   • desktop, > InlineKpiMax → full-width strip below the breadcrumb, above the toolbar (adds .ph-many)
+   • mobile → compact horizontal-scroll strip below the breadcrumb (always visible, never collapsed) *@
+<div class="page-head @(HasManyKpis ? "ph-many" : null)">
+    <div class="ph-bar">
+        <div class="ph-lead">
+            @if (!string.IsNullOrWhiteSpace(Icon))
+            {
+                <span class="ph-icon material-symbols-outlined" aria-hidden="true">@Icon</span>
+            }
+            <div class="ph-headings">
+                <nav class="page-breadcrumb" aria-label="Breadcrumb">
+                    @for (var i = 0; i < Crumbs.Count; i++)
+                    {
+                        var c = Crumbs[i];
+                        var isLast = i == Crumbs.Count - 1;
+                        if (!isLast && c.Href is { } href)
+                        {
+                            <a href="@href">@c.Label</a>
+                            <span class="crumb-sep" aria-hidden="true">›</span>
+                        }
+                        else
+                        {
+                            <span class="crumb-current" aria-current="page">@c.Label</span>
+                        }
+                    }
+                </nav>
+
+                @if (SubtitleContent is not null)
+                {
+                    <div class="subtitle">@SubtitleContent</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <p class="subtitle">@Subtitle</p>
+                }
+            </div>
+        </div>
+
+        @if (Kpis is { Count: > 0 } kpis)
+        {
+            <div class="ph-kpis" role="group" aria-label="Summary">
+                @foreach (var k in kpis)
+                {
+                    <div class="ph-kpi @(k.Tone is { } t ? $"kpi-{t}" : null)">
+                        <span class="ph-kpi-value">@k.Value</span>
+                        <span class="ph-kpi-label">@k.Label</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 
     @if (Toolbar is not null)
     {
         <div class="page-toolbar">@Toolbar</div>
     }
 </div>
-
-@code {
-    /// <summary>Breadcrumb trail in order; the last entry renders as the current page (its Href is ignored).</summary>
-    [Parameter, EditorRequired] public IReadOnlyList<Crumb> Crumbs { get; set; } = [];
-
-    [Parameter] public string? Subtitle { get; set; }
-
-    /// <summary>Optional sub-nav / action bar rendered under the breadcrumb.</summary>
-    [Parameter] public RenderFragment? Toolbar { get; set; }
-
-    public record Crumb(string Label, string? Href = null);
-}
