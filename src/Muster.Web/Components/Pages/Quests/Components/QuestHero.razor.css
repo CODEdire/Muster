@@ -16,8 +16,7 @@
     color: #fff;
     background: var(--surface);
 }
-.qhero-tier-letter { font-size: 1.15rem; font-weight: 800; line-height: 1; }
-.qhero-tier-icon { font-size: 0.85rem; opacity: 0.85; }
+.qhero-tier-letter { font-size: 1.25rem; font-weight: 800; line-height: 1; }
 
 .qhero-type-emb {
     align-self: center;
@@ -32,9 +31,9 @@
 .qhero-crumb a { color: var(--text-muted); font-size: 0.85rem; }
 .qhero-crumb a:hover { color: var(--accent); }
 .qhero-sep { color: var(--text-muted); opacity: 0.55; }
-.qhero-title { font-size: 1.35rem; font-weight: 700; color: var(--text); line-height: 1.2; overflow-wrap: anywhere; }
+.qhero-title { font-size: 1.5rem; font-weight: 700; color: var(--text); line-height: 1.2; overflow-wrap: anywhere; }
 .qhero-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; color: var(--text-muted); font-size: 0.85rem; }
-.qhero-type { font-weight: 600; color: var(--text); }
+.qhero-type { font-weight: 400; color: var(--text); }
 .qhero-dot { opacity: 0.45; }
 .qhero-issuer { display: inline-flex; align-items: center; gap: 0.25rem; }
 .qhero-issuer .material-symbols-outlined { font-size: 1rem; }
@@ -80,7 +79,6 @@
 @media (max-width: 640px) {
     .qhero { flex-wrap: wrap; }
     .qhero-rail { flex-basis: 100%; flex-direction: row; gap: 0.35rem; padding: 0.3rem 0.7rem; justify-content: flex-start; }
-    .qhero-rail .qhero-tier-icon { order: -1; }
     .qhero-type-emb { margin-left: 0.7rem; font-size: 1.8rem; }
     .qhero-head { padding: 0.6rem 0.7rem; }
     .qhero-facts {

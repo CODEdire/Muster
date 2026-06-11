@@ -25,4 +25,7 @@
     .qd-grid { grid-template-columns: 1fr; }
     .qd-main, .qd-side { grid-column: 1; }
     .qd-side { position: static; }
+    /* Full-width single column → lay the action buttons out in a wrapping row, not a tall stack. */
+    .qd-action-list { flex-direction: row; flex-wrap: wrap; align-items: center; }
+    .qd-action-list ::deep .btn { flex: 0 1 auto; }
 }

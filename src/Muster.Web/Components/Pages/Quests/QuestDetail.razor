@@ -141,7 +141,7 @@ else if (State == AccessState.Ready)
 
         @if (!string.IsNullOrWhiteSpace(q.Description))
         {
-            <article class="panel glass quest-desc-card @(q.Tier != QuestTier.None ? $"tier-accent tier-edge-{q.Tier}" : "")">
+            <article class="panel glass quest-desc-card">
                 <div class="detail-desc markdown">@DiscordMarkdown.ToHtml(q.Description)</div>
             </article>
         }
