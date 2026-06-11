@@ -30,6 +30,8 @@ public partial class PageHeader
 
     public record Crumb(string Label, string? Href = null);
 
-    /// <summary>A single summary tile. <paramref name="Tone"/> is an optional accent (e.g. "good", "warn", "bad").</summary>
-    public record KpiItem(string Value, string Label, string? Tone = null);
+    /// <summary>A single summary tile. <paramref name="Icon"/> is an optional Material symbol (renders as a square,
+    /// icon-over-value tile with the label in a hover tooltip). <paramref name="Tone"/> is an optional accent
+    /// (e.g. "good", "warn", "bad").</summary>
+    public record KpiItem(string Value, string Label, string? Icon = null, string? Tone = null);
 }

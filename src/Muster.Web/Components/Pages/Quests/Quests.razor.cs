@@ -476,9 +476,9 @@ public partial class Quests : IDisposable
             var review = _quests.Count(q => q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted));
             return
             [
-                new($"{open}", "Open"),
-                new($"{inProgress}", "In progress"),
-                new($"{review}", "Awaiting review", review > 0 ? "warn" : null),
+                new($"{open}", "Open", "inbox"),
+                new($"{inProgress}", "In progress", "pending_actions"),
+                new($"{review}", "Awaiting review", "rate_review", review > 0 ? "warn" : null),
             ];
         }
     }

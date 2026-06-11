@@ -44,12 +44,31 @@
     background: var(--surface);
 }
 
+/* Icon variant: a compact square tile — Material icon over the value, label shown in the hover tooltip. */
+.ph-kpi.has-icon {
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    width: 3.4rem;
+    height: 3.4rem;
+    min-width: 0;
+    padding: 0.4rem;
+    cursor: default;
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+.ph-kpi.has-icon:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--card-border));
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+.ph-kpi-icon { font-size: 1.25rem; line-height: 1; color: var(--text-muted); }
+.ph-kpi.has-icon .ph-kpi-value { font-size: 1.05rem; }
+
 .ph-kpi-value { font-size: 1.15rem; font-weight: 700; line-height: 1.1; color: var(--text); }
 .ph-kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
 
-.ph-kpi.kpi-good .ph-kpi-value { color: var(--success, #4ade80); }
-.ph-kpi.kpi-warn .ph-kpi-value { color: var(--warn, #fbbf24); }
-.ph-kpi.kpi-bad .ph-kpi-value { color: var(--danger, #f87171); }
+.ph-kpi.kpi-good .ph-kpi-value, .ph-kpi.kpi-good .ph-kpi-icon { color: var(--success, #4ade80); }
+.ph-kpi.kpi-warn .ph-kpi-value, .ph-kpi.kpi-warn .ph-kpi-icon { color: var(--warn, #fbbf24); }
+.ph-kpi.kpi-bad .ph-kpi-value, .ph-kpi.kpi-bad .ph-kpi-icon { color: var(--danger, #f87171); }
 
 /* Many KPIs (> InlineKpiMax) on desktop: wrap to a full-width strip below the breadcrumb, above the toolbar. */
 .ph-many .ph-kpis {

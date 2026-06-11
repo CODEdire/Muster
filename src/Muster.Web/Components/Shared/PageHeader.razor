@@ -46,9 +46,17 @@
             <div class="ph-kpis" role="group" aria-label="Summary">
                 @foreach (var k in kpis)
                 {
-                    <div class="ph-kpi @(k.Tone is { } t ? $"kpi-{t}" : null)">
+                    <div class="ph-kpi @(k.Icon is null ? null : "has-icon") @(k.Tone is { } t ? $"kpi-{t}" : null)"
+                         title="@k.Label" aria-label="@($"{k.Value} {k.Label}")">
+                        @if (k.Icon is { } ic)
+                        {
+                            <span class="ph-kpi-icon material-symbols-outlined" aria-hidden="true">@ic</span>
+                        }
                         <span class="ph-kpi-value">@k.Value</span>
-                        <span class="ph-kpi-label">@k.Label</span>
+                        @if (k.Icon is null)
+                        {
+                            <span class="ph-kpi-label">@k.Label</span>
+                        }
                     </div>
                 }
             </div>

@@ -1124,11 +1124,22 @@ table.leaderboard th a { color: var(--text-muted); }
 .quest-fill > .dg-footer { flex: 0 0 auto; }
 
 /* Action modal — text (submit/revise/reject note) or tier (intake) input, shared by card + table buttons. */
-.modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 1rem; }
-.qmodal { width: min(440px, 100%); padding: 1.2rem 1.3rem; display: flex; flex-direction: column; gap: 0.85rem; }
-.qmodal h3 { margin: 0; }
-.qmodal-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; color: var(--text-muted); }
-.qmodal-field textarea, .qmodal-field select { width: 100%; }
+.modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 1rem; }
+.qmodal { width: min(440px, 100%); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+.qmodal h3 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.qmodal-field { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); }
+.qmodal-field textarea, .qmodal-field select {
+    width: 100%; font: inherit; font-size: 0.9rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.55rem 0.7rem;
+}
+.qmodal-field textarea { resize: vertical; min-height: 4.5rem; }
+.qmodal-field textarea:focus-visible, .qmodal-field select:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--card-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.qmodal .checkbox { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 400; color: var(--text); }
+.qmodal .btn-row { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 0.15rem; }
 
 /* Quest detail page */
 .quest-detail h1 { margin: 0.4rem 0 0.5rem; }

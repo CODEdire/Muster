@@ -30,7 +30,8 @@ else if (State == AccessState.Ready)
 {
     <TopProgress Active="@(_loading || _acting is not null)" />
 
-    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests") })" Kpis="@SummaryKpis">
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests") })" Kpis="@SummaryKpis"
+                Subtitle="Take on quests for coins and points. Guild-issued quests come from the server; player-issued quests are member bounties — the guild assigns their difficulty tier when accepting them.">
         <Toolbar>
             <a class="btn btn-sm" href="/guilds/@GuildId/quests/new"><span class="material-symbols-outlined">add</span> New quest</a>
         </Toolbar>
@@ -218,7 +219,7 @@ else if (State == AccessState.Ready)
                         </label>
                     }
                     <div class="btn-row">
-                        <button type="button" disabled="@(_acting is not null)" @onclick="ConfirmActionModal">@_modalConfirm</button>
+                        <button type="button" class="btn" disabled="@(_acting is not null)" @onclick="ConfirmActionModal">@_modalConfirm</button>
                         <button type="button" class="btn btn-ghost" @onclick="CloseActionModal">Cancel</button>
                     </div>
                 </div>

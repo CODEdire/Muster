@@ -80,6 +80,9 @@
 .qc-bar { height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
 .qc-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
+/* Action buttons all sit to the right on a card (the shared .action-bar defaults to space-between). */
+.action-bar { justify-content: flex-end; }
+
 /* Footer: details link + claimer avatar stack. */
 .qc-foot {
     display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
