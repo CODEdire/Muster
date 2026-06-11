@@ -67,7 +67,12 @@ else if (State == AccessState.Ready)
             && !q.Participants.Any(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
                 or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved)
             && Can(QuestPermission.Edit);
-        var hasToolbar = canClaim || canIntake || canFinalize || canArbitrate || canCancel || canEdit;
+        // The viewer's own / single-target actions live in the action panel (unambiguous); per-submitter manager
+        // review stays on the participant rows (it targets one of many).
+        var canSubmitOwn = myPart is { Status: QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested } && q.Status == QuestStatus.Open;
+        var canAbandonOwn = myPart is { Status: QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested } && q.Status == QuestStatus.Open;
+        var canOwnerReview = isPersonal && iAmOwner && q.Status == QuestStatus.Open && hasSubmitter;
+        var hasToolbar = canClaim || canSubmitOwn || canAbandonOwn || canOwnerReview || canIntake || canFinalize || canArbitrate || canCancel || canEdit;
 
         <div class="qd-page">
         <QuestHero Quest="q" GuildId="GuildId" IsStaff="_isStaff" />
@@ -79,6 +84,22 @@ else if (State == AccessState.Ready)
                     @if (hasToolbar)
                     {
                         <div class="qd-action-list">
+                    @if (canSubmitOwn)
+                    {
+                        <input class="note-input" placeholder="submission note (optional)" value="@_questNote" @oninput="e => _questNote = e.Value as string ?? string.Empty" />
+                        <button type="button" class="btn btn-sm" disabled="@_acting" @onclick='() => ActAsync("submit", null)'>@if (IsSpinning("submit")) { @Spinner() } else { <span class="material-symbols-outlined">send</span> } @(myPart?.Status == QuestParticipantStatus.RevisionRequested ? "Resubmit" : "Submit")</button>
+                    }
+                    @if (canAbandonOwn)
+                    {
+                        <button type="button" class="btn btn-sm btn-warn" disabled="@_acting" @onclick='() => ActAsync("abandon", null)'>@if (IsSpinning("abandon")) { @Spinner() } else { <span class="material-symbols-outlined">exit_to_app</span> } Abandon</button>
+                    }
+                    @if (canOwnerReview)
+                    {
+                        <input class="note-input" placeholder="note to taker (optional)" value="@_questNote" @oninput="e => _questNote = e.Value as string ?? string.Empty" />
+                        <button type="button" class="btn btn-sm" disabled="@_acting" @onclick='() => ActAsync("confirm", null)'>@if (IsSpinning("confirm")) { @Spinner() } else { <span class="material-symbols-outlined">paid</span> } Confirm &amp; pay</button>
+                        <button type="button" class="btn btn-sm btn-warn" disabled="@_acting" @onclick='() => ActAsync("revise", null)'>@if (IsSpinning("revise")) { @Spinner() } else { <span class="material-symbols-outlined">rate_review</span> } Request revision</button>
+                        <button type="button" class="btn btn-sm btn-danger" disabled="@_acting" @onclick='() => ActAsync("dispute", null)'>@if (IsSpinning("dispute")) { @Spinner() } else { <span class="material-symbols-outlined">gavel</span> } Dispute</button>
+                    }
                     @if (canIntake)
                     {
                         <select class="tier-select" value="@_intakeTier" @onchange="e => _intakeTier = Enum.TryParse<QuestTier>(e.Value as string, out var t) ? t : QuestTier.None">
@@ -166,12 +187,6 @@ else if (State == AccessState.Ready)
                         var canReopen = _isManager && !isPersonal && q.Status == QuestStatus.Open && p.Status == QuestParticipantStatus.Rejected;
                         var canRelease = _isManager && q.Status == QuestStatus.Open && !isMine
                             && p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested;
-                        var canSubmit = isMine && q.Status == QuestStatus.Open
-                            && p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested;
-                        var canAbandon = isMine && q.Status == QuestStatus.Open
-                            && p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested;
-                        var canOwnerReview = isPersonal && iAmOwner && q.Status == QuestStatus.Open
-                            && p.Status == QuestParticipantStatus.Submitted;
                         <li class="p-row @(p.UserId == UserId ? "lb-me" : null)">
                             <span class="p-identity">
                                 <UserChip Name="@p.Name" AvatarUrl="@p.AvatarUrl" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, p.UserId) : null)" />
@@ -191,30 +206,10 @@ else if (State == AccessState.Ready)
                                 <span class="p-note p-note-review"><span class="material-symbols-outlined">subdirectory_arrow_right</span>@rn</span>
                             }
 
-                            @if (canSubmit || canAbandon || canOwnerReview || canReview || canReopen || canRelease)
+                            @if (canReview || canReopen || canRelease)
                             {
                                 <span class="p-actions">
-                                    @* My own claim: optional note (for submit), then Submit/Resubmit + Abandon. *@
-                                    @if (canSubmit)
-                                    {
-                                        <input class="note-input p-note-input" placeholder="submission note (optional)" value="@_questNote" @oninput="e => _questNote = e.Value as string ?? string.Empty" />
-                                        <button type="button" title="@(p.Status == QuestParticipantStatus.RevisionRequested ? "Resubmit" : "Submit")" aria-label="Submit" disabled="@_acting" class="icon-btn primary" @onclick='() => ActAsync("submit", null)'><span class="material-symbols-outlined @(IsSpinning("submit") ? "spin" : null)">@(IsSpinning("submit") ? "progress_activity" : "send")</span></button>
-                                    }
-                                    @if (canAbandon)
-                                    {
-                                        <button type="button" title="Abandon this claim" aria-label="Abandon" disabled="@_acting" class="icon-btn warn" @onclick='() => ActAsync("abandon", null)'><span class="material-symbols-outlined @(IsSpinning("abandon") ? "spin" : null)">@(IsSpinning("abandon") ? "progress_activity" : "exit_to_app")</span></button>
-                                    }
-
-                                    @* Personal-quest owner reviewing this submitter. *@
-                                    @if (canOwnerReview)
-                                    {
-                                        <input class="note-input p-note-input" placeholder="note to taker (optional)" value="@_questNote" @oninput="e => _questNote = e.Value as string ?? string.Empty" />
-                                        <button type="button" title="Confirm &amp; pay" aria-label="Confirm and pay" disabled="@_acting" class="icon-btn success" @onclick='() => ActAsync("confirm", null)'><span class="material-symbols-outlined @(IsSpinning("confirm") ? "spin" : null)">@(IsSpinning("confirm") ? "progress_activity" : "paid")</span></button>
-                                        <button type="button" title="Request revision" aria-label="Request revision" disabled="@_acting" class="icon-btn warn" @onclick='() => ActAsync("revise", null)'><span class="material-symbols-outlined @(IsSpinning("revise") ? "spin" : null)">@(IsSpinning("revise") ? "progress_activity" : "rate_review")</span></button>
-                                        <button type="button" title="Dispute" aria-label="Dispute" disabled="@_acting" class="icon-btn danger" @onclick='() => ActAsync("dispute", null)'><span class="material-symbols-outlined @(IsSpinning("dispute") ? "spin" : null)">@(IsSpinning("dispute") ? "progress_activity" : "gavel")</span></button>
-                                    }
-
-                                    @* Guild-quest manager review on a submitter. *@
+                                    @* Guild-quest manager review on a submitter — targets one of many, so it stays on the row. *@
                                     @if (canReview)
                                     {
                                         <input class="note-input p-note-input" placeholder="feedback (optional)"

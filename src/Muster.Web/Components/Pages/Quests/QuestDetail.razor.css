@@ -34,7 +34,7 @@
 .qd-action-list ::deep .checkbox { font-size: 0.85rem; color: var(--text-muted); }
 .qd-actions-empty { margin: 0; }
 
-@media (max-width: 860px) {
+@media (max-width: 1024px) {
     .qd-grid { grid-template-columns: 1fr; grid-template-areas: "side" "main"; }
     .qd-side { position: static; }
     /* Full-width single column → lay the action buttons out in a wrapping row, not a tall stack. */
