@@ -150,8 +150,13 @@ else if (State == AccessState.Ready)
 
         @if (q.Participants.Count > 0)
         {
+            var slotsUsed = q.Participants.Count(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
+                or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved);
             <section class="qd-participants">
-                <div class="panel-head"><h2>Participants</h2><span class="subtitle">@q.Participants.Count total</span></div>
+                <div class="panel-head">
+                    <h2>Participants</h2>
+                    <span class="subtitle">@(q.Capacity > 1 ? $"{slotsUsed} / {q.Capacity} slots · " : "")@q.Participants.Count total</span>
+                </div>
                 <ul class="participant-list">
                     @foreach (var p in q.Participants)
                     {
