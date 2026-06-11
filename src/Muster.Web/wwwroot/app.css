@@ -246,8 +246,10 @@ body::before {
 .btn .material-symbols-outlined { font-size: 1.05rem; }
 
 /* ---- Theme toggle (segmented) ------------------------------------------- */
-/* Segmented icon control (system / light / dark), stretched to the sidebar width — Claude-desktop style. */
-.theme-toggle { display: flex; width: 100%; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+/* Segmented icon control (system / light / dark), Claude-desktop style. Inline by default (fits the public
+   topbar); stretched to fill only in the guild sidebar footer. */
+.theme-toggle { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.foot-row .theme-toggle { display: flex; width: 100%; }
 .theme-toggle button {
     flex: 1;
     border: 0;
