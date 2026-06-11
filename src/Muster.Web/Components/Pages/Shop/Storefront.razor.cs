@@ -4,7 +4,6 @@ using Muster.Contracts;
 using Muster.Domain.Entities.Shops;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Shops;
-using Muster.Web.Components.Shared;
 using static Muster.Web.Components.Pages.Shop.Core.ShopPresentation;
 
 namespace Muster.Web.Components.Pages.Shop;
@@ -112,12 +111,6 @@ public partial class Storefront : IDisposable
         => Nav.NavigateTo(BuildStoreUrl(overrides), forceLoad: false, replace: true);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
-
-    private PageHeader.Crumb[] Crumbs => _front is null ? [] :
-    [
-        new("Shops", $"/guilds/{GuildId}/shop?tab=shops"),
-        new(_front.Name),
-    ];
 
     // Base colour shown behind a transparent banner.
     private static string BannerBg(string? accent)

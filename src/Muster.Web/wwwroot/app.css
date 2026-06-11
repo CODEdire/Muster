@@ -890,6 +890,17 @@ table.leaderboard th a { color: var(--text-muted); }
 /* Opaque card surface (vs translucent .glass) so a dense grid stays legible over the textured background. */
 .shop-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 
+/* Storefront breadcrumb — overlaid on the banner hero (white over the scrim), or plain above the no-banner row. */
+.store-crumb { position: absolute; top: 0.55rem; left: 1.1rem; right: 1.1rem; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-size: 0.8rem; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75); }
+.store-crumb a { color: inherit; text-decoration: none; }
+.store-crumb a:hover { color: #fff; }
+.store-crumb-sep { opacity: 0.6; }
+.store-crumb [aria-current] { color: #fff; font-weight: 600; }
+.store-crumb-plain { position: static; margin-bottom: 0.5rem; color: var(--text-muted); text-shadow: none; }
+.store-crumb-plain a { color: var(--text-muted); }
+.store-crumb-plain a:hover { color: var(--text); }
+.store-crumb-plain [aria-current] { color: var(--text); }
+
 /* Price + stock badges — shared by the listing card, the item modal, and the listing detail page. */
 .shop-price { font-weight: 700; white-space: nowrap; color: #b45309; }
 :root[data-theme="dark"] .shop-price { color: #fdba74; }

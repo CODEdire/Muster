@@ -27,8 +27,6 @@ else if (State == AccessState.Ready)
     }
     else
     {
-        <PageHeader Crumbs="@Crumbs" />
-
         @if (_front.BannerImageKey is { } bk)
         {
             @* Edge-fade hero: the banner is the masthead. Cover-fills the frame; left/right edges dissolve into the
@@ -39,6 +37,11 @@ else if (State == AccessState.Ready)
                    hero, then its right edge fades into the page (mask) so wide viewports blend instead of crop. *@
                 <img src="/shop-image/@bk" alt="@(_front.Name) banner" style="position:absolute;left:0;top:0;height:100%;width:auto;display:block;object-fit:cover;-webkit-mask-image:linear-gradient(to right,#000 72%,transparent);mask-image:linear-gradient(to right,#000 72%,transparent)" />
                 <div aria-hidden="true" style="position:absolute;inset:0;@ScrimStyle(_front.AccentColor)"></div>
+                <nav class="store-crumb" aria-label="Breadcrumb">
+                    <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
+                    <span class="store-crumb-sep" aria-hidden="true">›</span>
+                    <span aria-current="page">@_front.Name</span>
+                </nav>
                 <div style="position:absolute;left:1.1rem;right:1.1rem;bottom:.85rem;display:flex;align-items:flex-end;gap:.75rem">
                     @if (_front.LogoImageKey is { } lk)
                     {
@@ -59,6 +62,11 @@ else if (State == AccessState.Ready)
         {
             @* No banner — clean identity row, no empty hero box. *@
             <div class="page-head full-bleed" style="@(_front.AccentColor is { } c ? $"border-left:4px solid {c};padding-left:.75rem" : null)">
+                <nav class="store-crumb store-crumb-plain" aria-label="Breadcrumb">
+                    <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
+                    <span class="store-crumb-sep" aria-hidden="true">›</span>
+                    <span aria-current="page">@_front.Name</span>
+                </nav>
                 <div style="display:flex;align-items:center;gap:.75rem">
                     @if (_front.LogoImageKey is { } lk)
                     {
