@@ -97,7 +97,8 @@ public record ShopOrderDetail(
     long MinPrice = 0, long MaxPrice = 0,
     ShopStoreOrigin Origin = ShopStoreOrigin.Member, bool FromOffer = false, string? ResolvedByName = null,
     string? ListingDescription = null, IReadOnlyList<string>? ListingTags = null, string? ListingImageKey = null,
-    string? StoreAccentColor = null, Guid? RelistedFromId = null)
+    string? StoreAccentColor = null, Guid? RelistedFromId = null,
+    string? StoreLogoImageKey = null, string? StoreTypeName = null, string? StoreTypeIcon = null)
 {
     public long Net => Amount - FeeAmount;
     public long UnitPrice => Amount / Math.Max(1, Quantity);
@@ -556,14 +557,21 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
 
         // Identity: store (from the order's snapshotted StoreId) + the still-present listing's image/category.
         var storeId = o.StoreId == Guid.Empty ? (Guid?)null : o.StoreId;
-        string? storeName = null, storeSlug = null, storeAccent = null;
+        string? storeName = null, storeSlug = null, storeAccent = null, storeLogo = null, storeTypeName = null, storeTypeIcon = null;
         if (storeId is { } sidv)
         {
             var st = await db.ShopStores.AsNoTracking().Where(s => s.Id == sidv)
-                .Select(s => new { s.Name, s.Slug, s.AccentColor }).FirstOrDefaultAsync(ct);
+                .Select(s => new { s.Name, s.Slug, s.AccentColor, s.LogoImageKey, s.StoreTypeId }).FirstOrDefaultAsync(ct);
             storeName = st?.Name;
             storeSlug = st?.Slug;
             storeAccent = st?.AccentColor;
+            storeLogo = st?.LogoImageKey;
+            if (st?.StoreTypeId is { } stid)
+            {
+                var t = await db.ShopStoreTypes.AsNoTracking().Where(x => x.Id == stid).Select(x => new { x.Name, x.Icon }).FirstOrDefaultAsync(ct);
+                storeTypeName = t?.Name;
+                storeTypeIcon = t?.Icon;
+            }
         }
 
         // The still-present listing lets the receipt show an item snapshot (image/description/tags); a deleted
@@ -611,7 +619,8 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
             Origin: o.Origin, FromOffer: o.FromOffer,
             ResolvedByName: o.ResolvedBy is { } rb ? names.GetValueOrDefault(rb, rb.ToString()) : null,
             ListingDescription: li?.Description, ListingTags: li?.Tags, ListingImageKey: li?.ImageKey,
-            StoreAccentColor: storeAccent, RelistedFromId: li?.RelistedFromId);
+            StoreAccentColor: storeAccent, RelistedFromId: li?.RelistedFromId,
+            StoreLogoImageKey: storeLogo, StoreTypeName: storeTypeName, StoreTypeIcon: storeTypeIcon);
     }
 
     public async Task<ShopOrderRatings> GetOrderRatingsAsync(ulong guildId, Guid orderId, ulong viewerId, CancellationToken ct = default)
