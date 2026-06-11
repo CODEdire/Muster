@@ -28,7 +28,7 @@ public class QuestComponentBuilderTests
         IReadOnlyList<QuestDetailParticipant>? participants = null) =>
         new(QuestId, "Q", "", origin, status, 10, "COIN", QuestTier.None, 0, capacity,
             ownerId, "Owner", null, null, null, null,
-            DateTimeOffset.UnixEpoch, null, null, participants ?? []);
+            DateTimeOffset.UnixEpoch, null, null, null, null, null, participants ?? []);
 
     private static QuestDetailParticipant Part(ulong userId, QuestParticipantStatus status) =>
         new(userId, $"User{userId}", null, status, null, null, null, null, null);

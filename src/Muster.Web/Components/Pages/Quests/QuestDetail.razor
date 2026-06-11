@@ -50,44 +50,10 @@ else if (State == AccessState.Ready)
             ?? q.Participants.FirstOrDefault(p => p.UserId == UserId);
         var hasSubmitter = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
         var isPersonal = q.Origin == QuestOrigin.Player;
-        var completed = q.Participants.Count(p => p.Status == QuestParticipantStatus.Approved);
+        var (trkStages, trkCurrent, trkTone) = Tracker(q);
+        <QuestHero Quest="q" GuildId="GuildId" IsStaff="_isStaff" />
+        <div class="qd-tracker"><StatusTracker Stages="trkStages" Current="trkCurrent" Tone="@trkTone" /></div>
 
-        <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests", $"/guilds/{GuildId}/quests"), new(q.Name) })" />
-
-        <header class="sess-head full-bleed">
-            <div class="sess-title">
-                @if (q.Tier != QuestTier.None)
-                {
-                    <span class="tier-badge tier-@q.Tier" title="Difficulty @q.Tier · +@q.BonusPoints bonus points">@q.Tier</span>
-                }
-                <h1>@q.Name</h1>
-                <span class="chip @(isPersonal ? "chip-player" : "chip-quest")">@(isPersonal ? "Player" : "Guild")</span>
-                <span class="chip @StatusClass(q.Status)">@StatusLabel(q.Status)</span>
-            </div>
-
-            <div class="sess-meta">
-                <span>
-                    <span class="material-symbols-outlined">@(isPersonal ? "person" : "shield")</span>
-                    @if (isPersonal)
-                    {
-                        <text>issued by </text><UserChip Name="@q.OwnerName" AvatarUrl="@q.OwnerAvatar" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, q.OwnerId) : null)" />
-                    }
-                    else
-                    {
-                        <text>Guild-issued</text>
-                    }
-                </span>
-                <span><span class="material-symbols-outlined">groups</span>@completed / @q.Capacity completed</span>
-                <span><span class="material-symbols-outlined">event_available</span>posted <LocalTime Value="q.CreatedAt" /></span>
-                @if (q.ScheduledStart is not null)
-                {
-                    <span><span class="material-symbols-outlined">schedule</span>opens <LocalTime Value="q.ScheduledStart" /></span>
-                }
-                <span><span class="material-symbols-outlined">timer</span>closes <LocalTime Value="q.Deadline" Empty="no expiry" /></span>
-            </div>
-        </header>
-
-        @* Reward + quest-level actions strip — sits between the header's bottom border and the detail panels. *@
         // A Released slot (abandoned / idle-timeout) doesn't bar a re-claim — only an active claim or a final verdict
         // (Approved/Rejected) does, matching the server's ClaimAsync rule.
         var canClaim = q.Status == QuestStatus.Open
@@ -104,23 +70,13 @@ else if (State == AccessState.Ready)
                 or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved)
             && Can(QuestPermission.Edit);
         var hasToolbar = canClaim || canIntake || canFinalize || canArbitrate || canCancel || canEdit;
-        <div class="quest-strip">
-            <div class="quest-strip-reward">
-                <span class="qc-reward @(q.RewardCode.Equals("POINTS", StringComparison.OrdinalIgnoreCase) ? "reward-points" : "reward-coin")">
-                    +@q.RewardAmount @q.RewardCode
-                    @if (isPersonal)
+        <div class="qd-grid">
+            <aside class="qd-side">
+                <div class="panel glass qd-actions">
+                    <h2 class="qd-actions-head">Actions</h2>
+                    @if (hasToolbar)
                     {
-                        <span class="material-symbols-outlined esc-lock" title="Reward held in escrow">lock</span>
-                    }
-                </span>
-                @if (q.BonusPoints > 0)
-                {
-                    <span class="subtitle">+@q.BonusPoints pts bonus</span>
-                }
-            </div>
-            @if (hasToolbar)
-            {
-                <div class="quest-strip-actions">
+                        <div class="qd-action-list">
                     @if (canIntake)
                     {
                         <select class="tier-select" value="@_intakeTier" @onchange="e => _intakeTier = Enum.TryParse<QuestTier>(e.Value as string, out var t) ? t : QuestTier.None">
@@ -159,10 +115,16 @@ else if (State == AccessState.Ready)
                     {
                         <button type="button" class="btn btn-sm btn-danger" disabled="@_acting" @onclick='() => ActAsync("cancel", null)'>@if (IsSpinning("cancel")) { @Spinner() } else { <span class="material-symbols-outlined">delete</span> } Cancel</button>
                     }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="subtitle qd-actions-empty">Nothing for you to do right now.</p>
+                    }
                 </div>
-            }
-        </div>
+            </aside>
 
+            <div class="qd-main">
         @if (q.Status == QuestStatus.Disputed && q.DisputedByName is { } dn)
         {
             <div class="notice notice-warn" role="status">
@@ -270,6 +232,8 @@ else if (State == AccessState.Ready)
                 </ul>
             </section>
         }
+            </div>
+        </div>
     }
 }
 

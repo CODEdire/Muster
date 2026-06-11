@@ -1,0 +1,12 @@
+@* A horizontal "shipping tracker": ordered stages with a connecting line; stages at or before Current are reached.
+   Generic + reusable (quest lifecycle now, shop orders later). *@
+<ol class="tracker @(Tone is { } t ? $"tone-{t}" : null)" aria-label="Progress">
+    @for (var i = 0; i < Stages.Count; i++)
+    {
+        <li class="trk-stage @(i <= Current ? "reached" : null) @(i == Current ? "current" : null)"
+            aria-current="@(i == Current ? "step" : null)">
+            <span class="trk-dot" aria-hidden="true"></span>
+            <span class="trk-label">@Stages[i]</span>
+        </li>
+    }
+</ol>

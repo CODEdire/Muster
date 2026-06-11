@@ -1,0 +1,95 @@
+.qhero {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.qhero-rail {
+    flex: 0 0 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+    color: #fff;
+    background: var(--surface);
+}
+.qhero-tier-letter { font-size: 1.15rem; font-weight: 800; line-height: 1; }
+.qhero-tier-icon { font-size: 0.85rem; opacity: 0.85; }
+
+.qhero-type-emb {
+    align-self: center;
+    margin-left: 0.9rem;
+    font-size: 2.1rem;
+    color: var(--accent);
+    flex: 0 0 auto;
+}
+
+.qhero-head { flex: 1; min-width: 0; padding: 0.85rem 1rem; align-self: center; }
+.qhero-crumb { display: flex; align-items: baseline; gap: 0.4rem; flex-wrap: wrap; }
+.qhero-crumb a { color: var(--text-muted); font-size: 0.85rem; }
+.qhero-crumb a:hover { color: var(--accent); }
+.qhero-sep { color: var(--text-muted); opacity: 0.55; }
+.qhero-title { font-size: 1.35rem; font-weight: 700; color: var(--text); line-height: 1.2; overflow-wrap: anywhere; }
+.qhero-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; color: var(--text-muted); font-size: 0.85rem; }
+.qhero-type { font-weight: 600; color: var(--text); }
+.qhero-dot { opacity: 0.45; }
+.qhero-issuer { display: inline-flex; align-items: center; gap: 0.25rem; }
+.qhero-issuer .material-symbols-outlined { font-size: 1rem; }
+
+.qhero-facts {
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    padding: 0.85rem 1rem;
+    text-align: right;
+    flex: 0 0 auto;
+}
+.qhero-reward { font-weight: 700; font-size: 1.05rem; display: inline-flex; align-items: center; gap: 0.2rem; white-space: nowrap; }
+.qhero-reward.reward-coin { color: #b45309; }
+.qhero-reward.reward-points { color: #1d4ed8; }
+:root[data-theme="dark"] .qhero-reward.reward-coin { color: #fdba74; }
+:root[data-theme="dark"] .qhero-reward.reward-points { color: #93c5fd; }
+.qhero-pts { font-size: 0.78rem; font-weight: 700; color: #1d4ed8; }
+:root[data-theme="dark"] .qhero-pts { color: #93c5fd; }
+.qhero-timer { font-size: 0.8rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 0.2rem; }
+.qhero-timer .material-symbols-outlined { font-size: 1rem; }
+.qhero-timer.due-warn { color: #d97706; }
+.qhero-timer.due-bad { color: var(--danger); }
+
+/* Tier ramp — the rail is the bold gradient; the whole hero takes a faint tint of the same hue. */
+.qhero.tier-S { background: linear-gradient(100deg, color-mix(in srgb, #f59e0b 14%, transparent), transparent 72%); }
+.qhero.tier-S .qhero-rail { background: linear-gradient(165deg, #fde047, #f59e0b); color: #6b3d05; }
+.qhero.tier-A { background: linear-gradient(100deg, color-mix(in srgb, #ef4444 14%, transparent), transparent 72%); }
+.qhero.tier-A .qhero-rail { background: linear-gradient(165deg, #fb7185, #ef4444); }
+.qhero.tier-B { background: linear-gradient(100deg, color-mix(in srgb, #8b5cf6 14%, transparent), transparent 72%); }
+.qhero.tier-B .qhero-rail { background: linear-gradient(165deg, #c084fc, #8b5cf6); }
+.qhero.tier-C { background: linear-gradient(100deg, color-mix(in srgb, #3b82f6 14%, transparent), transparent 72%); }
+.qhero.tier-C .qhero-rail { background: linear-gradient(165deg, #60a5fa, #3b82f6); }
+.qhero.tier-D { background: linear-gradient(100deg, color-mix(in srgb, #22c55e 14%, transparent), transparent 72%); }
+.qhero.tier-D .qhero-rail { background: linear-gradient(165deg, #4ade80, #22c55e); color: #06351a; }
+.qhero.tier-E { background: linear-gradient(100deg, color-mix(in srgb, #94a3b8 14%, transparent), transparent 72%); }
+.qhero.tier-E .qhero-rail { background: linear-gradient(165deg, #cbd5e1, #94a3b8); color: #243244; }
+.qhero.no-tier .qhero-rail { flex-basis: 6px; }
+
+/* Mobile: rail becomes a top ribbon, everything stacks, facts go to a row. */
+@media (max-width: 640px) {
+    .qhero { flex-wrap: wrap; }
+    .qhero-rail { flex-basis: 100%; flex-direction: row; gap: 0.35rem; padding: 0.3rem 0.7rem; justify-content: flex-start; }
+    .qhero-rail .qhero-tier-icon { order: -1; }
+    .qhero-type-emb { margin-left: 0.7rem; font-size: 1.8rem; }
+    .qhero-head { padding: 0.6rem 0.7rem; }
+    .qhero-facts {
+        flex-basis: 100%;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.7rem;
+        padding: 0 0.7rem 0.7rem;
+        text-align: left;
+    }
+}

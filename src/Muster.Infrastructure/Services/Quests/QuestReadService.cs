@@ -35,6 +35,7 @@ public record QuestDetailView(
     long RewardAmount, string RewardCode, QuestTier Tier, long BonusPoints, int Capacity,
     ulong OwnerId, string OwnerName, string? OwnerAvatar, ulong? DisputedBy, string? DisputedByName, string? DisputeReason,
     DateTimeOffset CreatedAt, DateTimeOffset? ScheduledStart, DateTimeOffset? Deadline,
+    Guid? QuestTypeId, string? TypeName, string? TypeIcon,
     IReadOnlyList<QuestDetailParticipant> Participants);
 
 /// <summary>
@@ -205,6 +206,11 @@ public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
 
         var code = await db.Currencies.Where(c => c.Id == q.RewardCurrencyId).Select(c => c.Code).FirstOrDefaultAsync(ct) ?? "?";
 
+        // Resolve the quest type (name + icon) for the detail hero — the type is admin vocab, not on the quest row.
+        var type = q.QuestTypeId is { } tid
+            ? await db.QuestTypes.AsNoTracking().Where(t => t.Id == tid).Select(t => new { t.Name, t.Icon }).FirstOrDefaultAsync(ct)
+            : null;
+
         var ids = q.Participants.Select(p => p.UserId)
             .Concat(q.Participants.Where(p => p.ReviewedBy is not null).Select(p => p.ReviewedBy!.Value))
             .Append(q.OwnerId)
@@ -227,7 +233,9 @@ public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
         return new QuestDetailView(
             q.Id, q.Name, q.Description, q.Origin, q.Status, q.RewardAmount, code, q.Tier, q.BonusPoints, q.Capacity,
             q.OwnerId, NameOf(q.OwnerId), AvatarOf(q.OwnerId), q.DisputedBy, q.DisputedBy is { } d ? NameOf(d) : null, q.DisputeReason,
-            q.CreatedAt, q.ScheduledStart, q.Deadline, participants);
+            q.CreatedAt, q.ScheduledStart, q.Deadline,
+            q.QuestTypeId, type?.Name, type?.Icon,
+            participants);
     }
 
     public Task<Muster.Domain.Entities.Guilds.GuildQuestSettings> GetSettingsAsync(ulong guildId, CancellationToken ct = default) => db.GetQuestSettingsAsync(guildId, ct);

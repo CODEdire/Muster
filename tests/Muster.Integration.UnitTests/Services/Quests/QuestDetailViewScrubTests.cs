@@ -29,6 +29,7 @@ public class QuestDetailViewScrubTests
         OwnerId: OwnerId, OwnerName: "Owner", OwnerAvatar: null,
         DisputedBy: DisputerId, DisputedByName: "Worker A", DisputeReason: "Owner ghosted me",
         CreatedAt: DateTimeOffset.UtcNow, ScheduledStart: null, Deadline: null,
+        QuestTypeId: null, TypeName: null, TypeIcon: null,
         Participants: new List<QuestDetailParticipant>
         {
             new(WorkerA, "Worker A", null, QuestParticipantStatus.Submitted, "Did the thing", "Need more detail", ReviewedBy: ManagerId, ReviewedByName: "Mod", SubmittedAt: DateTimeOffset.UtcNow),

@@ -204,6 +204,39 @@ public partial class QuestDetail : IDisposable
         _ => s.ToString(),
     };
 
+    /// <summary>Origin-aware lifecycle stages + current index for the header status tracker. Quest-level (per-worker
+    /// progress lives in the participants list); cancelled / expired / disputed render the run in a danger tone.</summary>
+    private static (IReadOnlyList<string> Stages, int Current, string? Tone) Tracker(QuestDetailView q)
+    {
+        var hasSub = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
+        var bad = q.Status is QuestStatus.Cancelled or QuestStatus.Expired or QuestStatus.Disputed;
+
+        if (q.Origin == QuestOrigin.Player)
+        {
+            IReadOnlyList<string> stages = ["Posted", "Intake", "Open", "Settling", "Paid"];
+            var cur = q.Status switch
+            {
+                QuestStatus.Scheduled => 0,
+                QuestStatus.PendingApproval => 1,
+                QuestStatus.Open => hasSub ? 3 : 2,
+                QuestStatus.PendingFinal or QuestStatus.Disputed => 3,
+                QuestStatus.Closed => 4,
+                _ => 4,
+            };
+            return (stages, cur, bad ? "danger" : null);
+        }
+
+        IReadOnlyList<string> guildStages = ["Posted", "Open", "Reviewing", "Closed"];
+        var guildCur = q.Status switch
+        {
+            QuestStatus.Scheduled => 0,
+            QuestStatus.Open => hasSub ? 2 : 1,
+            QuestStatus.Closed => 3,
+            _ => 3,
+        };
+        return (guildStages, guildCur, bad ? "danger" : null);
+    }
+
     private static string RingClass(QuestParticipantStatus s) => s switch
     {
         QuestParticipantStatus.Approved => "approved",
