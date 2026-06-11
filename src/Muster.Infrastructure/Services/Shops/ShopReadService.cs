@@ -94,10 +94,16 @@ public record ShopOrderDetail(
     string? ThumbKey = null, string? CategoryName = null, string? CategoryIcon = null,
     string? BuyerAvatarUrl = null, string? SellerAvatarUrl = null, DateTimeOffset? AutoSettleAt = null,
     DateTimeOffset? OfferExpiresAt = null, DateTimeOffset? DisputeRaisedAt = null, DateTimeOffset? DisputeAutoResolveAt = null,
-    long MinPrice = 0, long MaxPrice = 0)
+    long MinPrice = 0, long MaxPrice = 0,
+    ShopStoreOrigin Origin = ShopStoreOrigin.Member, bool FromOffer = false, string? ResolvedByName = null,
+    string? ListingDescription = null, IReadOnlyList<string>? ListingTags = null, string? ListingImageKey = null,
+    string? StoreAccentColor = null, Guid? RelistedFromId = null)
 {
     public long Net => Amount - FeeAmount;
     public long UnitPrice => Amount / Math.Max(1, Quantity);
+
+    /// <summary>A guild-shop order burns the buyer's payment on settle (no payout) rather than paying the seller.</summary>
+    public bool IsGuildOrder => Origin == ShopStoreOrigin.Guild;
 }
 
 /// <summary>One rating as a viewer may see it. Comment is null while the rating is still blind to the viewer.</summary>
@@ -538,7 +544,9 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
         }
 
         var code = await CurrencyCodeAsync(guildId, o.CurrencyId, ct);
-        var names = await NamesAsync([o.BuyerId, o.SellerId], ct);
+        var nameIds = new List<ulong> { o.BuyerId, o.SellerId };
+        if (o.ResolvedBy is { } rbId) { nameIds.Add(rbId); }
+        var names = await NamesAsync(nameIds, ct);
         var avatars = await AvatarsAsync([o.BuyerId, o.SellerId], ct);
         var cfg = await db.GuildShopSettings.AsNoTracking().FirstOrDefaultAsync(s => s.GuildId == guildId, ct);
         var twoStep = cfg?.TwoStepDelivery ?? false;
@@ -548,16 +556,21 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
 
         // Identity: store (from the order's snapshotted StoreId) + the still-present listing's image/category.
         var storeId = o.StoreId == Guid.Empty ? (Guid?)null : o.StoreId;
-        string? storeName = null, storeSlug = null;
+        string? storeName = null, storeSlug = null, storeAccent = null;
         if (storeId is { } sidv)
         {
-            var st = await db.ShopStores.AsNoTracking().Where(s => s.Id == sidv).Select(s => new { s.Name, s.Slug }).FirstOrDefaultAsync(ct);
+            var st = await db.ShopStores.AsNoTracking().Where(s => s.Id == sidv)
+                .Select(s => new { s.Name, s.Slug, s.AccentColor }).FirstOrDefaultAsync(ct);
             storeName = st?.Name;
             storeSlug = st?.Slug;
+            storeAccent = st?.AccentColor;
         }
 
+        // The still-present listing lets the receipt show an item snapshot (image/description/tags); a deleted
+        // listing falls back to the snapshotted name only.
         var li = await db.ShopListings.AsNoTracking().Where(l => l.Id == o.ListingId)
-            .Select(l => new { l.ThumbKey, l.CategoryId }).FirstOrDefaultAsync(ct);
+            .Select(l => new { l.ThumbKey, l.ImageKey, l.CategoryId, l.Description, l.RelistedFromId, Tags = l.Tags.Select(t => t.Tag).ToList() })
+            .FirstOrDefaultAsync(ct);
         var listingAvailable = li is not null;
         string? catName = null, catIcon = null;
         if (li?.CategoryId is { } cid)
@@ -594,7 +607,11 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
             ThumbKey: li?.ThumbKey, CategoryName: catName, CategoryIcon: catIcon,
             BuyerAvatarUrl: avatars.GetValueOrDefault(o.BuyerId), SellerAvatarUrl: avatars.GetValueOrDefault(o.SellerId),
             AutoSettleAt: autoSettleAt, OfferExpiresAt: offerExpiresAt, DisputeRaisedAt: disputeRaisedAt,
-            DisputeAutoResolveAt: disputeAutoResolveAt, MinPrice: cfg?.MinPrice ?? 0, MaxPrice: cfg?.MaxPrice ?? 0);
+            DisputeAutoResolveAt: disputeAutoResolveAt, MinPrice: cfg?.MinPrice ?? 0, MaxPrice: cfg?.MaxPrice ?? 0,
+            Origin: o.Origin, FromOffer: o.FromOffer,
+            ResolvedByName: o.ResolvedBy is { } rb ? names.GetValueOrDefault(rb, rb.ToString()) : null,
+            ListingDescription: li?.Description, ListingTags: li?.Tags, ListingImageKey: li?.ImageKey,
+            StoreAccentColor: storeAccent, RelistedFromId: li?.RelistedFromId);
     }
 
     public async Task<ShopOrderRatings> GetOrderRatingsAsync(ulong guildId, Guid orderId, ulong viewerId, CancellationToken ct = default)

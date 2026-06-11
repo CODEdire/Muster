@@ -222,12 +222,140 @@ public partial class OrderReceipt
         finally { _busy = false; await ReloadAsync(); }
     }
 
-    private static string StatusChip(ShopOrderStatus s) => s switch
+    private string Money(long n) => $"{n} {_order!.CurrencyCode}";
+    private string OriginLabel => _order!.IsGuildOrder ? "guild order" : "member order";
+
+    private enum StepState { Done, Current, Pending, Bad }
+    private sealed record TimelineStep(string Icon, string Title, DateTimeOffset? At, DateTimeOffset? Deadline, string Note, StepState State);
+
+    // A short relative countdown for the one live deadline shown on the current step.
+    private static string Relative(DateTimeOffset when)
     {
-        ShopOrderStatus.Settled => "chip-review",
-        ShopOrderStatus.Cancelled or ShopOrderStatus.Refunded => "chip-closed",
-        ShopOrderStatus.Disputed => "chip-closed",
-        _ => "chip-progress",
+        var span = when - DateTimeOffset.UtcNow;
+        if (span <= TimeSpan.Zero) { return "due now"; }
+        if (span.TotalDays >= 1) { return $"{(int)span.TotalDays}d {span.Hours}h left"; }
+        if (span.TotalHours >= 1) { return $"{(int)span.TotalHours}h {span.Minutes}m left"; }
+        return $"{Math.Max(1, (int)span.TotalMinutes)}m left";
+    }
+
+    // Header status pill: friendly text + tone class + Material icon.
+    private (string Text, string Tone, string Icon) HeaderStatus() => _order!.Status switch
+    {
+        ShopOrderStatus.PendingDelivery => (_order.TwoStepDelivery ? "awaiting delivery" : "awaiting confirmation", "info", "hourglass_top"),
+        ShopOrderStatus.Delivered => ("awaiting confirmation", "info", "hourglass_top"),
+        ShopOrderStatus.Settled => ("settled", "ok", "check_circle"),
+        ShopOrderStatus.Disputed => ("disputed", "bad", "gavel"),
+        ShopOrderStatus.Refunded => ("refunded", "bad", "undo"),
+        ShopOrderStatus.Cancelled => ("cancelled", "bad", "undo"),
+        ShopOrderStatus.OfferPending => ("offer pending", "warn", "swap_horiz"),
+        ShopOrderStatus.OfferDeclined => ("offer ended", "bad", "cancel"),
+        _ => (_order.Status.ToString().ToLowerInvariant(), "info", "receipt_long"),
+    };
+
+    // The escrow line under the total: where the held funds stand.
+    private (string Text, string Icon) Escrow() => _order!.Status switch
+    {
+        ShopOrderStatus.Settled => (_order.IsGuildOrder ? "payment burned" : $"released to {_order.SellerName}", "check_circle"),
+        ShopOrderStatus.Refunded or ShopOrderStatus.Cancelled or ShopOrderStatus.OfferDeclined => ($"refunded to {_order.BuyerName}", "undo"),
+        ShopOrderStatus.Disputed => ("held · in dispute", "lock"),
+        _ => ("held in escrow", "lock"),
+    };
+
+    // The viewer-aware order journey, synthesised from the order's discrete timestamps + status.
+    private IReadOnlyList<TimelineStep> Timeline()
+    {
+        var o = _order!;
+        var b = o.BuyerName;
+        var s = o.SellerName;
+        var steps = new List<TimelineStep>();
+
+        if (o.Status is ShopOrderStatus.OfferPending or ShopOrderStatus.OfferDeclined)
+        {
+            var declined = o.Status == ShopOrderStatus.OfferDeclined;
+            steps.Add(new("local_offer", "Offer placed", o.CreatedAt, null, $"{b} offered {Money(o.Amount)}.", StepState.Done));
+            steps.Add(new(declined ? "cancel" : "swap_horiz", declined ? "Offer ended" : "Negotiating",
+                null, declined ? null : o.OfferExpiresAt,
+                declined ? $"Funds refunded to {b}."
+                         : $"{(o.OfferProposedBy == ShopOfferParty.Buyer ? s : b)}'s turn to respond.",
+                declined ? StepState.Bad : StepState.Current));
+            if (!declined)
+            {
+                steps.Add(new("check_circle", "Accepted", null, null, "Converts to an order; funds stay held.", StepState.Pending));
+                steps.Add(new("paid", "Settled", null, null, "Released after delivery and confirmation.", StepState.Pending));
+            }
+
+            return steps;
+        }
+
+        steps.Add(new("shopping_cart", "Ordered", o.CreatedAt, null,
+            o.FromOffer ? $"{b}'s offer accepted at {Money(o.Amount)}; paid into escrow."
+                        : $"{b} paid {Money(o.Amount)} into escrow.", StepState.Done));
+
+        if (o.TwoStepDelivery)
+        {
+            var delivered = o.DeliveredAt is not null;
+            steps.Add(new("local_shipping", "Delivered", o.DeliveredAt, null,
+                delivered ? $"{s} marked the order delivered."
+                          : (_isSeller ? "Mark the order delivered." : $"Awaiting delivery from {s}."),
+                delivered ? StepState.Done : StepState.Current));
+        }
+
+        switch (o.Status)
+        {
+            case ShopOrderStatus.Settled:
+                steps.Add(new("paid", "Settled", o.SettledAt, null,
+                    o.IsGuildOrder ? $"{b} confirmed; {Money(o.Amount)} burned (guild order)."
+                                   : $"Confirmed; {Money(o.Net)} released to {s}, {Money(o.FeeAmount)} burned.", StepState.Done));
+                break;
+            case ShopOrderStatus.Cancelled:
+                steps.Add(new("undo", "Cancelled", null, null, $"{s} cancelled — {b} refunded.", StepState.Bad));
+                break;
+            case ShopOrderStatus.Refunded:
+                steps.Add(new("undo", "Refunded", null, null,
+                    $"{b} refunded{(o.ResolvedByName is { } r ? $" · resolved by {r}" : "")}.", StepState.Bad));
+                break;
+            case ShopOrderStatus.Disputed:
+                steps.Add(new("gavel", "Disputed", o.DisputeRaisedAt, o.DisputeAutoResolveAt,
+                    $"Raised by {(o.DisputedBy == o.BuyerId ? b : s)}.", StepState.Bad));
+                steps.Add(new("balance", "Resolution", null, null,
+                    _isManager ? "Pay the seller or refund the buyer." : "A shop manager will resolve this.", StepState.Pending));
+                return steps;
+            default: // PendingDelivery / Delivered awaiting confirmation
+                // Under two-step delivery the buyer can't confirm until the seller delivers, so the confirm step
+                // only goes "current" (with its auto-settle countdown) once delivery has happened.
+                var awaitingDelivery = o.TwoStepDelivery && o.Status == ShopOrderStatus.PendingDelivery;
+                steps.Add(new("check_circle", "Confirm receipt", null, awaitingDelivery ? null : o.AutoSettleAt,
+                    _isSeller ? $"Awaiting confirmation from {b}."
+                              : (o.IsGuildOrder ? "Confirm to complete the order." : $"Confirm to release {Money(o.Net)} to {s}."),
+                    awaitingDelivery ? StepState.Pending : StepState.Current));
+                steps.Add(new("paid", "Settled", null, null,
+                    o.IsGuildOrder ? "Payment is burned on completion." : $"{Money(o.Net)} to {s}, {Money(o.FeeAmount)} burned.", StepState.Pending));
+                break;
+        }
+
+        if (o.RatingsEnabled && !o.IsGuildOrder)
+        {
+            if (o.Status == ShopOrderStatus.Settled)
+            {
+                steps.Add(new("star", "Rate each other", null, o.RatingsClosed ? null : o.RatingWindowClosesAt,
+                    o.RatingsClosed ? "Ratings revealed." : "Blind until you both submit.",
+                    o.RatingsClosed ? StepState.Done : StepState.Current));
+            }
+            else if (o.Status is ShopOrderStatus.PendingDelivery or ShopOrderStatus.Delivered)
+            {
+                steps.Add(new("star", "Rate", null, null, "Opens once the order settles.", StepState.Pending));
+            }
+        }
+
+        return steps;
+    }
+
+    private static string StepClass(StepState s) => s switch
+    {
+        StepState.Done => "done",
+        StepState.Current => "current",
+        StepState.Bad => "bad",
+        _ => "pending",
     };
 
     private async Task ConfirmAsync()

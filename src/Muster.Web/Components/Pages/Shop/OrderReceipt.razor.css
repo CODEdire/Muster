@@ -1,33 +1,159 @@
-    /* Identity hero — item image + title + store/category chips, mirroring the item-tile/card design language. */
-    .receipt-hero { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; }
-    .receipt-thumb { width: 76px; height: 76px; flex: 0 0 auto; border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
-    .receipt-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .receipt-thumb.placeholder .material-symbols-outlined { font-size: 2rem; color: var(--text-muted); opacity: .6; }
-    .receipt-ident { min-width: 0; flex: 1; }
-    .receipt-title-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
-    .receipt-title-row h2 { margin: 0; font-size: 1.25rem; }
-    .receipt-chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .45rem; }
-    .receipt-chips .chip-type .material-symbols-outlined,
-    .receipt-chips .chip .material-symbols-outlined { font-size: .9rem; vertical-align: -2px; }
-    /* Buyer / seller identity row using UserChip + a compact reputation badge. */
-    .receipt-parties { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; margin: 0 0 1rem; padding: .8rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-    .receipt-party { display: flex; align-items: center; gap: .5rem; }
-    .receipt-party .lbl { color: var(--text-muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
-    .rep-chip { font-size: .72rem; font-weight: 600; border-radius: 6px; padding: 1px 7px; background: var(--surface); color: var(--text-muted); white-space: nowrap; }
-    /* Action panels (offer / dispute / ratings / dispute form). */
-    .receipt-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .85rem 1rem; margin-bottom: 1rem; }
-    .receipt-lines { display: grid; gap: .35rem; margin: 0 0 1rem; }
-    .receipt-lines > div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dashed var(--border); padding-bottom: .35rem; }
-    .receipt-lines dt { color: var(--text-muted); margin: 0; }
-    .receipt-lines dd { margin: 0; font-weight: 600; }
-    .receipt-lines .receipt-total dd { font-size: 1.15rem; }
-    .receipt-timeline { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1rem; }
-    .rt-step { display: flex; align-items: center; gap: .5rem; color: var(--text-muted); font-size: .9rem; }
-    .rt-step.done { color: var(--text); }
-    .rt-step.pending { color: var(--accent); }
-    .rt-step .material-symbols-outlined { font-size: 1.1rem; }
-    .star-pick { display: flex; gap: .15rem; }
-    .star-btn { background: none; border: none; cursor: pointer; padding: 0; line-height: 1; color: var(--text-muted); }
-    .star-btn .material-symbols-outlined { font-size: 1.6rem; }
-    .star-btn.on { color: #f5b301; }
-    .star-btn.on .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
+/* Receipt = one transaction you're reading → bounded, centered column (the orders board stays full-bleed). */
+.rc-page { max-width: 1080px; margin: 0 auto; }
+
+/* ── Ticket header ── */
+.rc-head {
+    border: 1px solid var(--card-border);
+    border-top: 3px solid var(--rc-accent, var(--accent));
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    overflow: hidden;
+}
+.rc-head-top { display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 1.1rem; flex-wrap: wrap; }
+.rc-emblem {
+    width: 54px; height: 54px; flex: 0 0 auto; border-radius: 12px; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+}
+.rc-emblem img { width: 100%; height: 100%; object-fit: cover; }
+.rc-emblem .material-symbols-outlined { font-size: 1.7rem; color: var(--text-muted); }
+.rc-ident { flex: 1; min-width: 180px; }
+.rc-ident h2 { margin: 0; font-size: 1.2rem; line-height: 1.25; }
+.rc-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.45rem; }
+.rc-chips .material-symbols-outlined { font-size: 0.9rem; vertical-align: -2px; }
+
+.rc-stub { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 0.25rem; }
+.rc-status { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.rc-status .material-symbols-outlined { font-size: 0.9rem; }
+.rc-total { font-size: 1.3rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.35rem; }
+.rc-total small { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); }
+.rc-total .material-symbols-outlined { font-size: 1rem; color: var(--accent); }
+.rc-substub { font-size: 0.72rem; color: var(--text-muted); }
+
+.rc-ok   { background: color-mix(in srgb, #0f9d6b 16%, transparent); color: #0f9d6b; }
+.rc-info { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.rc-warn { background: color-mix(in srgb, #b45309 18%, transparent); color: #b45309; }
+.rc-bad  { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+
+/* Perforation + facts strip. */
+.rc-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.3rem; padding: 0.6rem 1.1rem; border-top: 1px dashed var(--border); font-size: 0.8rem; color: var(--text-muted); }
+.rc-facts > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rc-facts .material-symbols-outlined { font-size: 0.95rem; vertical-align: -2px; }
+.rc-arrow { font-size: 0.9rem; opacity: 0.6; }
+
+/* ── Layout: main + sticky side. Source order is side-then-main, so on mobile the actions stack on top. ── */
+.rc-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-areas: "main side";
+    gap: 1rem;
+    align-items: start;
+    margin-top: 1rem;
+}
+.rc-main { grid-area: main; display: flex; flex-direction: column; gap: 1.1rem; min-width: 0; }
+.rc-side { grid-area: side; position: sticky; top: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+
+.rc-side-head { margin: 0 0 0.6rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.35rem; }
+.rc-side-head .material-symbols-outlined { font-size: 1.05rem; }
+.rc-actions { padding: 0.85rem 1rem; }
+.rc-act-list { display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch; }
+.rc-act-list .btn { justify-content: center; }
+.rc-act-sep { height: 1px; background: var(--border); margin: 0.15rem 0; }
+
+.rc-rate { padding: 0.85rem 1rem; }
+.rc-rate .star-pick { margin: 0.3rem 0 0.5rem; }
+.rc-rate-lbl { font-size: 0.8rem; color: var(--text-muted); display: block; }
+.rc-rate-comment {
+    width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.85rem;
+    padding: 0.4rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--card-bg); color: var(--text); margin-bottom: 0.5rem;
+}
+.rc-rate .btn { width: 100%; justify-content: center; }
+.rc-rate-mine, .rc-rate-cp { margin: 0.35rem 0 0; }
+.rc-stars { color: #f5b301; letter-spacing: 1px; }
+.rc-hide { margin-left: 0.4rem; }
+
+/* Contextual sections (offer / dispute / dispute form). */
+.rc-section { padding: 0.85rem 1rem; }
+.rc-sec-head { margin: 0 0 0.4rem; font-size: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+.rc-sec-head .material-symbols-outlined { font-size: 1.15rem; }
+.rc-sec-sub { margin: 0 0 0.5rem; }
+.rc-sec-foot { margin-top: 0.5rem; }
+.rc-danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--card-border)); }
+.rc-counter { max-width: 9rem; }
+.rc-dispute-reason { margin: 0.2rem 0 0.5rem; }
+.rc-evidence { max-width: 100%; max-height: 260px; border-radius: 8px; }
+
+/* Parties: from → to with reputation. */
+.rc-parties {
+    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+    padding: 0.85rem 1rem; border: 1px solid var(--card-border); border-radius: var(--radius); background: var(--card-bg);
+}
+.rc-party { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-width: 140px; }
+.rc-party-lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.rc-party-arrow { color: var(--text-muted); flex: 0 0 auto; }
+.rc-rep { font-size: 0.74rem; color: #b45309; font-weight: 600; display: inline-flex; align-items: center; gap: 0.2rem; }
+.rc-rep .material-symbols-outlined { font-size: 0.85rem; }
+.rc-rep-n { color: var(--text-muted); font-weight: 400; }
+.rc-rep-none { color: var(--text-muted); font-weight: 400; }
+
+/* Itemised ledger. */
+.rc-ledger { display: grid; gap: 0.35rem; margin: 0; padding: 0.85rem 1rem; border: 1px solid var(--card-border); border-radius: var(--radius); background: var(--card-bg); }
+.rc-ledger > div { display: flex; justify-content: space-between; gap: 1rem; }
+.rc-ledger dt { color: var(--text-muted); margin: 0; }
+.rc-ledger dd { margin: 0; font-weight: 600; }
+.rc-ledger-total { border-top: 1px solid var(--border); padding-top: 0.4rem; margin-top: 0.15rem; }
+.rc-ledger-total dd { font-size: 1.1rem; }
+
+/* Timeline: icon node + a connecting line down the body; each step timestamped. */
+.rc-timeline { padding: 0.3rem 0.2rem; }
+.rc-tl-head { margin: 0 0 0.7rem; font-size: 1rem; }
+.rc-step { display: flex; gap: 10px; }
+.rc-step-ic {
+    width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto; z-index: 1;
+    display: flex; align-items: center; justify-content: center; font-size: 1rem;
+    background: var(--surface); color: var(--text-muted);
+}
+.rc-step-body { flex: 1; min-width: 0; margin-left: -14px; padding-left: 24px; padding-bottom: 1rem; border-left: 2px solid var(--border); }
+.rc-step-last { border-left-color: transparent; padding-bottom: 0; }
+.rc-step-title { margin: 0; font-size: 0.9rem; font-weight: 600; }
+.rc-step-time { font-weight: 400; color: var(--text-muted); }
+.rc-step-note { margin: 0.15rem 0 0; font-size: 0.82rem; color: var(--text-muted); }
+
+.rc-done .rc-step-ic { background: color-mix(in srgb, #0f9d6b 18%, transparent); color: #0f9d6b; }
+.rc-done .rc-step-body { border-left-color: #0f9d6b; }
+.rc-current .rc-step-ic { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.rc-current .rc-step-body { border-left-style: dashed; }
+.rc-current .rc-step-title { color: var(--accent); }
+.rc-current .rc-step-time { color: var(--accent); }
+.rc-pending .rc-step-body { border-left-style: dashed; }
+.rc-bad .rc-step-ic { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+.rc-bad .rc-step-body { border-left-color: var(--danger); }
+
+/* Item snapshot (when the listing still exists). */
+.rc-snapshot { display: flex; gap: 0.8rem; align-items: flex-start; padding: 0.85rem 1rem; border: 1px solid var(--card-border); border-radius: var(--radius); background: var(--card-bg); }
+.rc-snap-thumb { width: 64px; height: 64px; flex: 0 0 auto; border-radius: 10px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+.rc-snap-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.rc-snap-thumb .material-symbols-outlined { font-size: 1.6rem; color: var(--text-muted); }
+.rc-snap-body { min-width: 0; flex: 1; }
+.rc-snap-desc { font-size: 0.85rem; color: var(--text-muted); }
+.rc-snap-desc :is(p, ul, ol, h1, h2, h3, h4) { margin: 0; }
+.rc-snap-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+
+/* Star picker (rating). */
+.star-pick { display: flex; gap: 0.15rem; }
+.star-btn { background: none; border: none; cursor: pointer; padding: 0; line-height: 1; color: var(--text-muted); }
+.star-btn .material-symbols-outlined { font-size: 1.6rem; }
+.star-btn.on { color: #f5b301; }
+.star-btn.on .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
+
+/* ── Mobile: single column → actions, then receipt, then timeline. Header stub drops below the title. ── */
+@media (max-width: 1024px) {
+    .rc-grid { grid-template-columns: 1fr; grid-template-areas: "side" "main"; }
+    .rc-side { position: static; }
+    .rc-stub {
+        margin-left: 0; width: 100%; align-items: center; text-align: left;
+        flex-direction: row; flex-wrap: wrap; gap: 0.4rem 0.9rem;
+        border-top: 1px dashed var(--border); padding-top: 0.55rem; margin-top: 0.1rem;
+    }
+}

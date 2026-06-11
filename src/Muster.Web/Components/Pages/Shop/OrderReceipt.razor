@@ -33,6 +33,13 @@ else if (State == AccessState.Ready)
     }
     else
     {
+        var o = _order;
+        var hs = HeaderStatus();
+        var esc = Escrow();
+        var tl = Timeline();
+        var liveDeadline = tl.FirstOrDefault(x => x.State == StepState.Current && x.Deadline is not null)?.Deadline;
+        var itemHref = o.StoreSlug is { } vs ? $"/guilds/{GuildId}/shop/store/{vs}?item={o.ListingId}" : $"/guilds/{GuildId}/shop/listing/{o.ListingId}";
+
         <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Shop", $"/guilds/{GuildId}/shop"), new("Orders", $"/guilds/{GuildId}/shop/orders"), new("Receipt") })"
                     Subtitle="@($"Order {ShortId}")" />
 
@@ -45,307 +52,347 @@ else if (State == AccessState.Ready)
             </div>
         }
 
-        <div class="panel glass">
-            <div class="receipt-hero">
-                <div class="receipt-thumb @(_order.ThumbKey is null ? "placeholder" : "")">
-                    @if (_order.ThumbKey is { } tk)
-                    {
-                        <img src="/shop-image/@tk" alt="@_order.ItemName" />
-                    }
-                    else if (ShopIcons.Material(_order.CategoryIcon) is { } cmi)
-                    {
-                        <span class="material-symbols-outlined">@cmi</span>
-                    }
-                    else
-                    {
-                        <span class="material-symbols-outlined">inventory_2</span>
-                    }
+        <div class="rc-page">
+
+            @* ── Ticket header: identity + status/total stub, then a facts strip below a perforation. ── *@
+            <div class="rc-head" style="@(o.StoreAccentColor is { } ac ? $"--rc-accent:{ac};" : null)">
+                <div class="rc-head-top">
+                    <div class="rc-emblem @(o.ThumbKey is null ? "placeholder" : "")">
+                        @if (o.ThumbKey is { } tk)
+                        {
+                            <img src="/shop-image/@tk" alt="@o.ItemName" />
+                        }
+                        else if (ShopIcons.Material(o.CategoryIcon) is { } cmi)
+                        {
+                            <span class="material-symbols-outlined">@cmi</span>
+                        }
+                        else
+                        {
+                            <span class="material-symbols-outlined">inventory_2</span>
+                        }
+                    </div>
+                    <div class="rc-ident">
+                        <h2>@o.ItemName</h2>
+                        <div class="rc-chips">
+                            @if (o.StoreName is { } sn)
+                            {
+                                <a class="chip chip-type" href="/guilds/@GuildId/shop/store/@o.StoreSlug"><span class="material-symbols-outlined">storefront</span> @sn</a>
+                            }
+                            @if (o.CategoryName is { } cn)
+                            {
+                                <span class="chip">@if (ShopIcons.Material(o.CategoryIcon) is { } ci) { <span class="material-symbols-outlined">@ci</span> } @cn</span>
+                            }
+                            <span class="chip" title="@(o.IsGuildOrder ? "Run by the guild — payment is burned on completion" : "Between members — the seller is paid")"><span class="material-symbols-outlined">@(o.IsGuildOrder ? "shield" : "person")</span> @OriginLabel</span>
+                            @if (o.FromOffer) { <span class="chip"><span class="material-symbols-outlined">swap_horiz</span> from offer</span> }
+                            @if (o.Quantity > 1) { <span class="chip">×@o.Quantity</span> }
+                        </div>
+                    </div>
+                    <div class="rc-stub">
+                        <span class="rc-status rc-@hs.Tone"><span class="material-symbols-outlined">@hs.Icon</span> @hs.Text</span>
+                        <span class="rc-total"><span class="material-symbols-outlined">@esc.Icon</span> @o.Amount <small>@o.CurrencyCode</small></span>
+                        <span class="rc-substub">order @ShortId · @esc.Text</span>
+                    </div>
                 </div>
-                <div class="receipt-ident">
-                    <div class="receipt-title-row">
-                        <h2>@_order.ItemName</h2>
-                        <span class="chip @StatusChip(_order.Status)">@_order.Status</span>
-                    </div>
-                    <div class="receipt-chips">
-                        @if (_order.StoreName is { } sn)
-                        {
-                            <a class="chip chip-type" href="/guilds/@GuildId/shop/store/@_order.StoreSlug">
-                                <span class="material-symbols-outlined">storefront</span> @sn
-                            </a>
-                        }
-                        @if (_order.CategoryName is { } cn)
-                        {
-                            <span class="chip">@if (ShopIcons.Material(_order.CategoryIcon) is { } ci) { <span class="material-symbols-outlined">@ci</span> } @cn</span>
-                        }
-                        @if (_order.Quantity > 1) { <span class="chip">×@_order.Quantity</span> }
-                    </div>
+                <div class="rc-facts">
+                    @if (liveDeadline is { } dl)
+                    {
+                        <span><span class="material-symbols-outlined">schedule</span> @Relative(dl)</span>
+                    }
+                    @if (o.IsGuildOrder)
+                    {
+                        <span><span class="material-symbols-outlined">local_fire_department</span> guild order · payment burned</span>
+                    }
+                    else if (o.Status == ShopOrderStatus.Settled)
+                    {
+                        <span><span class="material-symbols-outlined">payments</span> net @o.Net · @o.FeeAmount burned</span>
+                    }
+                    <span class="rc-route"><span class="material-symbols-outlined">person</span> @o.BuyerName <span class="material-symbols-outlined rc-arrow">arrow_forward</span> @o.SellerName</span>
                 </div>
             </div>
 
-            <div class="receipt-parties">
-                <div class="receipt-party">
-                    <span class="lbl">Buyer</span>
-                    <UserChip Name="@_order.BuyerName" AvatarUrl="@_order.BuyerAvatarUrl" />
-                    @if (_order.BuyerRatingCount > 0) { <span class="rep-chip">★ @_order.BuyerRatingAvg.ToString("0.0") (@_order.BuyerRatingCount)</span> }
-                </div>
-                <div class="receipt-party">
-                    <span class="lbl">Seller</span>
-                    <UserChip Name="@_order.SellerName" AvatarUrl="@_order.SellerAvatarUrl" />
-                    @if (_order.SellerRatingCount > 0) { <span class="rep-chip">★ @_order.SellerRatingAvg.ToString("0.0") (@_order.SellerRatingCount)</span> }
-                </div>
-            </div>
-
-            <dl class="receipt-lines">
-                <div><dt>Unit price</dt><dd>@_order.UnitPrice @_order.CurrencyCode</dd></div>
-                <div><dt>Quantity</dt><dd>@_order.Quantity</dd></div>
-                <div class="receipt-total"><dt>Total paid</dt><dd>@_order.Amount @_order.CurrencyCode</dd></div>
-                @if (_order.Status == ShopOrderStatus.Settled)
-                {
-                    <div><dt>Commission (burned)</dt><dd>−@_order.FeeAmount @_order.CurrencyCode</dd></div>
-                    <div><dt>Net to seller</dt><dd>@_order.Net @_order.CurrencyCode</dd></div>
-                }
-            </dl>
-
-            <div class="receipt-timeline">
-                <div class="rt-step done"><span class="material-symbols-outlined">shopping_cart</span> Ordered · <LocalTime Value="_order.CreatedAt" Zone="@_zoneId" /></div>
-                @if (_order.DeliveredAt is { } d)
-                {
-                    <div class="rt-step done"><span class="material-symbols-outlined">local_shipping</span> Marked delivered · <LocalTime Value="d" Zone="@_zoneId" /></div>
-                }
-                @if (_order.SettledAt is { } st)
-                {
-                    <div class="rt-step done"><span class="material-symbols-outlined">paid</span> Settled · <LocalTime Value="st" Zone="@_zoneId" /></div>
-                }
-                else if (_order.Status == ShopOrderStatus.Cancelled)
-                {
-                    <div class="rt-step"><span class="material-symbols-outlined">undo</span> Cancelled — refunded to buyer</div>
-                }
-                else if (_order.Status == ShopOrderStatus.Refunded)
-                {
-                    <div class="rt-step"><span class="material-symbols-outlined">undo</span> Refunded to buyer</div>
-                }
-                else if (_order.Status == ShopOrderStatus.Disputed)
-                {
-                    <div class="rt-step"><span class="material-symbols-outlined">gavel</span> Disputed — awaiting resolution</div>
-                }
-                else
-                {
-                    @if (_order.TwoStepDelivery && _order.Status == ShopOrderStatus.PendingDelivery)
-                    {
-                        <div class="rt-step pending"><span class="material-symbols-outlined">local_shipping</span> Awaiting delivery from the seller</div>
-                    }
-                    <div class="rt-step pending">
-                        <span class="material-symbols-outlined">hourglass_top</span> Awaiting buyer confirmation
-                        @if (_order.AutoSettleAt is { } a) { <span>· auto-settles <LocalTime Value="a" Zone="@_zoneId" /></span> }
+            @* Source order is side-then-main so on mobile the actions stack on top, then the receipt, then the timeline. *@
+            <div class="rc-grid">
+                <aside class="rc-side">
+                    <div class="panel glass rc-actions">
+                        <h3 class="rc-side-head">Actions</h3>
+                        <div class="rc-act-list">
+                            @if (_isBuyer && CanConfirm)
+                            {
+                                <button class="btn btn-sm success" disabled="@_busy" @onclick="ConfirmAsync"><span class="material-symbols-outlined">check_circle</span> Confirm receipt</button>
+                            }
+                            @if ((_isSeller || _isManager) && o.TwoStepDelivery && o.Status == ShopOrderStatus.PendingDelivery)
+                            {
+                                <button class="btn btn-sm" disabled="@_busy" @onclick="MarkDeliveredAsync"><span class="material-symbols-outlined">local_shipping</span> Mark delivered</button>
+                            }
+                            @if ((_isSeller || _isManager) && IsPending)
+                            {
+                                <button class="btn btn-sm danger" disabled="@_busy" @onclick="CancelAsync"><span class="material-symbols-outlined">undo</span> Cancel &amp; refund</button>
+                            }
+                            @if ((_isBuyer || _isSeller) && IsPending && !_showDispute)
+                            {
+                                <button class="btn btn-ghost btn-sm" @onclick="() => _showDispute = true"><span class="material-symbols-outlined">gavel</span> Dispute</button>
+                            }
+                            @if (o.Status == ShopOrderStatus.Disputed && _isManager)
+                            {
+                                <button class="btn btn-sm success" disabled="@_busy" @onclick="() => ArbitrateAsync(true)"><span class="material-symbols-outlined">paid</span> Pay seller</button>
+                                <button class="btn btn-sm warn" disabled="@_busy" @onclick="() => ArbitrateAsync(false)"><span class="material-symbols-outlined">undo</span> Refund buyer</button>
+                            }
+                            <div class="rc-act-sep"></div>
+                            @if (o.ListingAvailable)
+                            {
+                                <a class="btn btn-ghost btn-sm" href="@itemHref"><span class="material-symbols-outlined">visibility</span> View item</a>
+                            }
+                            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet"><span class="material-symbols-outlined">account_balance_wallet</span> Wallet</a>
+                        </div>
                     </div>
-                }
-            </div>
 
-            @if (_order.Status == ShopOrderStatus.OfferPending)
-            {
-                <div class="receipt-section">
-                    <h3 style="margin:0 0 .35rem"><span class="material-symbols-outlined" style="vertical-align:-4px">gavel</span> Offer in negotiation</h3>
-                    <p class="subtitle" style="margin:0 0 .5rem">
-                        Current price: <b>@_order.Amount @_order.CurrencyCode</b> ·
-                        @(_order.OfferProposedBy == ShopOfferParty.Buyer ? "buyer's offer" : "seller's counter")
-                        @if (_order.OfferExpiresAt is { } oe) { <span>· expires <LocalTime Value="oe" Zone="@_zoneId" /></span> }
-                    </p>
-                    @if (CanRespond)
+                    @if (o.Status == ShopOrderStatus.Settled && o.RatingsEnabled && (_isBuyer || _isSeller || _isManager))
                     {
-                        <div class="btn-row">
-                            <button class="btn btn-sm success" disabled="@_busy" @onclick="AcceptOfferAsync">
-                                <span class="material-symbols-outlined">check_circle</span> Accept @_order.Amount @_order.CurrencyCode
-                            </button>
-                            <input type="number" min="1" placeholder="counter price" @bind="_counterAmount" style="max-width:9rem" />
-                            <button class="btn btn-sm" disabled="@(_busy || _counterAmount <= 0)" @onclick="CounterAsync">
-                                <span class="material-symbols-outlined">swap_horiz</span> Counter
-                            </button>
-                        </div>
-                        @if (_order.MinPrice > 0 || _order.MaxPrice > 0)
-                        {
-                            <p class="hint" style="margin:.4rem 0 0">
-                                Allowed price:
-                                @(_order.MinPrice > 0 ? $"{_order.MinPrice}" : "0")@(_order.MaxPrice > 0 ? $"–{_order.MaxPrice}" : "+") @_order.CurrencyCode
-                            </p>
-                        }
-                    }
-                    else
-                    {
-                        <p class="subtitle" style="margin:0">Waiting for the @(_order.OfferProposedBy == ShopOfferParty.Buyer ? "seller" : "buyer")…</p>
-                    }
-                    @if (_isBuyer || _isSeller || _isManager)
-                    {
-                        <div class="btn-row" style="margin-top:.5rem">
-                            <button class="btn btn-ghost btn-sm danger" disabled="@_busy" @onclick="DeclineOfferAsync">End offer</button>
-                        </div>
-                    }
-                </div>
-            }
-
-            @if (_order.Status == ShopOrderStatus.Disputed)
-            {
-                <div class="receipt-section">
-                    <h3 style="margin:0 0 .35rem"><span class="material-symbols-outlined" style="vertical-align:-4px">gavel</span> Dispute</h3>
-                    <p class="subtitle" style="margin:0 0 .5rem">
-                        Raised by @(_order.DisputedBy == _order.BuyerId ? _order.BuyerName : _order.SellerName)
-                        @if (_order.DisputeRaisedAt is { } dr) { <span>· <LocalTime Value="dr" Zone="@_zoneId" /></span> }
-                        @if (_order.DisputeAutoResolveAt is { } dar) { <span>· auto-resolves <LocalTime Value="dar" Zone="@_zoneId" /></span> }
-                    </p>
-                    @if (!string.IsNullOrWhiteSpace(_order.DisputeReason))
-                    {
-                        <p style="margin:0 0 .5rem">@_order.DisputeReason</p>
-                    }
-                    @if (_order.DisputeEvidenceKey is { } ek)
-                    {
-                        <img src="/shop-image/@ek" alt="Evidence" style="max-width:100%;max-height:240px;border-radius:8px" />
-                    }
-                    @if (_isManager)
-                    {
-                        <div class="btn-row" style="margin-top:.75rem">
-                            <button class="btn btn-sm success" disabled="@_busy" @onclick="() => ArbitrateAsync(true)">
-                                <span class="material-symbols-outlined">paid</span> Pay seller
-                            </button>
-                            <button class="btn btn-sm warn" disabled="@_busy" @onclick="() => ArbitrateAsync(false)">
-                                <span class="material-symbols-outlined">undo</span> Refund buyer
-                            </button>
-                        </div>
-                    }
-                    else
-                    {
-                        <p class="subtitle" style="margin:.5rem 0 0">A shop manager will resolve this.</p>
-                    }
-                </div>
-            }
-
-            @if (_order.Status == ShopOrderStatus.Settled && _order.RatingsEnabled && (_isBuyer || _isSeller || _isManager))
-            {
-                <div class="receipt-section">
-                    <h3 style="margin:0 0 .5rem"><span class="material-symbols-outlined" style="vertical-align:-4px">star</span> Ratings</h3>
-
-                    @if (_ratings?.Mine is { } mine)
-                    {
-                        <p class="subtitle" style="margin:0 0 .5rem">
-                            You rated the @(_isBuyer ? "seller" : "buyer"): @Stars(mine.Stars)
-                            @if (!string.IsNullOrWhiteSpace(mine.Comment)) { <span>— @mine.Comment</span> }
-                        </p>
-                    }
-                    else if (CanRate)
-                    {
-                        <div class="mform">
-                            <div class="field span2">
-                                <label>Rate the @(_isBuyer ? "seller" : "buyer")</label>
+                        <div class="panel glass rc-rate">
+                            <h3 class="rc-side-head"><span class="material-symbols-outlined">star</span> Ratings</h3>
+                            @if (_ratings?.Mine is { } mine)
+                            {
+                                <p class="subtitle rc-rate-mine">You rated the @(_isBuyer ? "seller" : "buyer"): <span class="rc-stars">@Stars(mine.Stars)</span>
+                                    @if (!string.IsNullOrWhiteSpace(mine.Comment)) { <span>— @mine.Comment</span> }
+                                </p>
+                            }
+                            else if (CanRate)
+                            {
+                                <label class="rc-rate-lbl">Rate the @(_isBuyer ? "seller" : "buyer")</label>
                                 <div class="star-pick">
                                     @for (var n = 1; n <= 5; n++)
                                     {
                                         var v = n;
-                                        <button type="button" class="star-btn @(_rateStars >= v ? "on" : "")" @onclick="() => _rateStars = v" title="@v">
-                                            <span class="material-symbols-outlined">star</span>
-                                        </button>
+                                        <button type="button" class="star-btn @(_rateStars >= v ? "on" : "")" @onclick="() => _rateStars = v" title="@v"><span class="material-symbols-outlined">star</span></button>
                                     }
                                 </div>
-                            </div>
-                            <div class="field span2">
-                                <label>Comment (optional)</label>
-                                <textarea rows="2" maxlength="1000" @bind="_rateComment" placeholder="How did it go?"></textarea>
-                            </div>
-                        </div>
-                        <div class="btn-row" style="margin-top:.5rem">
-                            <button class="btn btn-sm" disabled="@(_busy || _rateStars < 1)" @onclick="SubmitRatingAsync">
-                                <span class="material-symbols-outlined">send</span> Submit rating
-                            </button>
-                        </div>
-                        <p class="hint" style="margin:.4rem 0 0">
-                            @if (_order.RatingWindowClosesAt is { } w)
+                                <textarea class="rc-rate-comment" rows="2" maxlength="1000" @bind="_rateComment" placeholder="How did it go? (optional)"></textarea>
+                                <button class="btn btn-sm" disabled="@(_busy || _rateStars < 1)" @onclick="SubmitRatingAsync"><span class="material-symbols-outlined">send</span> Submit rating</button>
+                                <p class="hint">
+                                    @if (_order.RatingWindowClosesAt is { } w)
+                                    {
+                                        <text>Hidden until you both rate, or the window closes <LocalTime Value="w" Zone="@_zoneId" />.</text>
+                                    }
+                                    else
+                                    {
+                                        <text>Hidden until you both rate.</text>
+                                    }
+                                </p>
+                            }
+                            else if (o.RatingsClosed)
                             {
-                                <text>Hidden until both of you rate, or the window closes <LocalTime Value="w" Zone="@_zoneId" />.</text>
+                                <p class="subtitle">The rating window has closed.</p>
+                            }
+
+                            @if (_ratings?.Counterparty is { } cp)
+                            {
+                                <p class="subtitle rc-rate-cp">
+                                    The @(cp.Role == RatingRole.Provider ? "seller" : "buyer") was rated: <span class="rc-stars">@Stars(cp.Stars)</span>
+                                    @if (!string.IsNullOrWhiteSpace(cp.Comment)) { <span>— @cp.Comment</span> }
+                                    @if (_isManager)
+                                    {
+                                        <button class="btn btn-ghost btn-sm danger rc-hide" disabled="@_busy" @onclick="() => HideRatingAsync(cp.Id)">Hide</button>
+                                    }
+                                </p>
+                            }
+                            else if (_ratings?.Mine is not null)
+                            {
+                                <p class="subtitle rc-rate-cp">The other party's rating stays hidden until they rate@(_order.RatingWindowClosesAt is not null ? " or the window closes." : ".")</p>
+                            }
+                        </div>
+                    }
+                </aside>
+
+                <div class="rc-main">
+
+                    @if (o.Status == ShopOrderStatus.OfferPending)
+                    {
+                        <div class="panel glass rc-section">
+                            <h3 class="rc-sec-head"><span class="material-symbols-outlined">swap_horiz</span> Offer in negotiation</h3>
+                            <p class="subtitle rc-sec-sub">
+                                Current price <b>@o.Amount @o.CurrencyCode</b> · @(o.OfferProposedBy == ShopOfferParty.Buyer ? "buyer's offer" : "seller's counter")
+                                @if (o.OfferExpiresAt is { } oe) { <span>· expires <LocalTime Value="oe" Zone="@_zoneId" /></span> }
+                            </p>
+                            @if (CanRespond)
+                            {
+                                <div class="btn-row">
+                                    <button class="btn btn-sm success" disabled="@_busy" @onclick="AcceptOfferAsync"><span class="material-symbols-outlined">check_circle</span> Accept @o.Amount @o.CurrencyCode</button>
+                                    <input type="number" min="1" placeholder="counter price" @bind="_counterAmount" class="rc-counter" />
+                                    <button class="btn btn-sm" disabled="@(_busy || _counterAmount <= 0)" @onclick="CounterAsync"><span class="material-symbols-outlined">swap_horiz</span> Counter</button>
+                                </div>
+                                @if (o.MinPrice > 0 || o.MaxPrice > 0)
+                                {
+                                    <p class="hint">Allowed price: @(o.MinPrice > 0 ? $"{o.MinPrice}" : "0")@(o.MaxPrice > 0 ? $"–{o.MaxPrice}" : "+") @o.CurrencyCode</p>
+                                }
                             }
                             else
                             {
-                                <text>Hidden until both of you rate.</text>
+                                <p class="subtitle">Waiting for the @(o.OfferProposedBy == ShopOfferParty.Buyer ? "seller" : "buyer")…</p>
                             }
-                        </p>
-                    }
-                    else if (_order.RatingsClosed)
-                    {
-                        <p class="subtitle" style="margin:0 0 .5rem">The rating window has closed.</p>
-                    }
-
-                    @if (_ratings?.Counterparty is { } cp)
-                    {
-                        <p class="subtitle" style="margin:.25rem 0 0">
-                            The @(cp.Role == RatingRole.Provider ? "seller" : "buyer") was rated: @Stars(cp.Stars)
-                            @if (!string.IsNullOrWhiteSpace(cp.Comment)) { <span>— @cp.Comment</span> }
-                            @if (_isManager)
+                            @if (_isBuyer || _isSeller || _isManager)
                             {
-                                <button class="btn btn-ghost btn-sm danger" disabled="@_busy" style="margin-left:.5rem" @onclick="() => HideRatingAsync(cp.Id)">Hide</button>
+                                <div class="btn-row rc-sec-foot">
+                                    <button class="btn btn-ghost btn-sm danger" disabled="@_busy" @onclick="DeclineOfferAsync">End offer</button>
+                                </div>
                             }
-                        </p>
-                    }
-                    else if (_ratings?.Mine is not null)
-                    {
-                        <p class="subtitle" style="margin:.25rem 0 0">The other party's rating stays hidden until they rate@(_order.RatingWindowClosesAt is not null ? " or the window closes." : ".")</p>
-                    }
-                </div>
-            }
-
-            @if (_showDispute && IsPending && (_isBuyer || _isSeller))
-            {
-                <div class="receipt-section">
-                    <div class="mform">
-                        <div class="field span2">
-                            <label>What's wrong?</label>
-                            <textarea rows="3" maxlength="1000" @bind="_disputeReason" placeholder="Describe the problem for the shop manager."></textarea>
                         </div>
-                        @if (_imagesAvailable)
+                    }
+
+                    @if (o.Status == ShopOrderStatus.Disputed)
+                    {
+                        <div class="panel glass rc-section rc-danger">
+                            <h3 class="rc-sec-head"><span class="material-symbols-outlined">gavel</span> Dispute</h3>
+                            <p class="subtitle rc-sec-sub">
+                                Raised by @(o.DisputedBy == o.BuyerId ? o.BuyerName : o.SellerName)
+                                @if (o.DisputeRaisedAt is { } dr) { <span>· <LocalTime Value="dr" Zone="@_zoneId" /></span> }
+                                @if (o.DisputeAutoResolveAt is { } dar) { <span>· auto-resolves <LocalTime Value="dar" Zone="@_zoneId" /></span> }
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(o.DisputeReason))
+                            {
+                                <p class="rc-dispute-reason">@o.DisputeReason</p>
+                            }
+                            @if (o.DisputeEvidenceKey is { } ek)
+                            {
+                                <img class="rc-evidence" src="/shop-image/@ek" alt="Evidence" />
+                            }
+                            @if (!_isManager)
+                            {
+                                <p class="subtitle">A shop manager will resolve this.</p>
+                            }
+                        </div>
+                    }
+
+                    @if (_showDispute && IsPending && (_isBuyer || _isSeller))
+                    {
+                        <div class="panel glass rc-section">
+                            <h3 class="rc-sec-head"><span class="material-symbols-outlined">gavel</span> Raise a dispute</h3>
+                            <div class="mform">
+                                <div class="field span2">
+                                    <label>What's wrong?</label>
+                                    <textarea rows="3" maxlength="1000" @bind="_disputeReason" placeholder="Describe the problem for the shop manager."></textarea>
+                                </div>
+                                @if (_imagesAvailable)
+                                {
+                                    <div class="field span2">
+                                        <label>Evidence (optional)</label>
+                                        @if (_disputeEvidence is not null) { <span class="hint">Image attached ✓</span> }
+                                        <InputFile OnChange="OnEvidenceSelectedAsync" accept="image/*" />
+                                        @if (_uploading) { <span class="hint">Uploading…</span> }
+                                    </div>
+                                }
+                            </div>
+                            <div class="btn-row rc-sec-foot">
+                                <button class="btn btn-sm" disabled="@(_busy || string.IsNullOrWhiteSpace(_disputeReason))" @onclick="SubmitDisputeAsync">Submit dispute</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => _showDispute = false">Cancel</button>
+                            </div>
+                        </div>
+                    }
+
+                    @* ── Parties: from → to with current reputations. ── *@
+                    <div class="rc-parties">
+                        <div class="rc-party">
+                            <span class="rc-party-lbl">From · buyer</span>
+                            <UserChip Name="@o.BuyerName" AvatarUrl="@o.BuyerAvatarUrl" />
+                            @if (o.BuyerRatingCount > 0)
+                            {
+                                <span class="rc-rep"><span class="material-symbols-outlined">star</span> @o.BuyerRatingAvg.ToString("0.0") <span class="rc-rep-n">· @o.BuyerRatingCount</span></span>
+                            }
+                            else
+                            {
+                                <span class="rc-rep rc-rep-none">no ratings yet</span>
+                            }
+                        </div>
+                        <span class="rc-party-arrow material-symbols-outlined">arrow_forward</span>
+                        <div class="rc-party">
+                            <span class="rc-party-lbl">To · seller</span>
+                            <UserChip Name="@o.SellerName" AvatarUrl="@o.SellerAvatarUrl" />
+                            @if (o.SellerRatingCount > 0)
+                            {
+                                <span class="rc-rep"><span class="material-symbols-outlined">star</span> @o.SellerRatingAvg.ToString("0.0") <span class="rc-rep-n">· @o.SellerRatingCount</span></span>
+                            }
+                            else
+                            {
+                                <span class="rc-rep rc-rep-none">no ratings yet</span>
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Itemised ledger. ── *@
+                    <dl class="rc-ledger">
+                        <div><dt>Unit price</dt><dd>@o.UnitPrice @o.CurrencyCode</dd></div>
+                        <div><dt>Quantity</dt><dd>@o.Quantity</dd></div>
+                        <div class="rc-ledger-total"><dt>@(o.Status == ShopOrderStatus.Settled ? "Total paid" : "Total held")</dt><dd>@o.Amount @o.CurrencyCode</dd></div>
+                        @if (o.Status == ShopOrderStatus.Settled)
                         {
-                            <div class="field span2">
-                                <label>Evidence (optional)</label>
-                                @if (_disputeEvidence is not null) { <span class="hint">Image attached ✓</span> }
-                                <InputFile OnChange="OnEvidenceSelectedAsync" accept="image/*" />
-                                @if (_uploading) { <span class="hint">Uploading…</span> }
+                            @if (o.IsGuildOrder)
+                            {
+                                <div><dt>Outcome</dt><dd>burned · guild order</dd></div>
+                            }
+                            else
+                            {
+                                <div><dt>Commission · burned</dt><dd>−@o.FeeAmount @o.CurrencyCode</dd></div>
+                                <div><dt>Net to seller</dt><dd>@o.Net @o.CurrencyCode</dd></div>
+                            }
+                        }
+                    </dl>
+
+                    @* ── Timeline: the order's journey, each step timestamped. ── *@
+                    <div class="rc-timeline">
+                        <h3 class="rc-tl-head">Timeline</h3>
+                        @for (var i = 0; i < tl.Count; i++)
+                        {
+                            var step = tl[i];
+                            var last = i == tl.Count - 1;
+                            <div class="rc-step rc-@StepClass(step.State)">
+                                <span class="rc-step-ic material-symbols-outlined">@step.Icon</span>
+                                <div class="rc-step-body @(last ? "rc-step-last" : "")">
+                                    <p class="rc-step-title">
+                                        @step.Title
+                                        @if (step.At is { } at)
+                                        {
+                                            <span class="rc-step-time">· <LocalTime Value="at" Zone="@_zoneId" /></span>
+                                        }
+                                        else if (step.State == StepState.Current && step.Deadline is { } sd)
+                                        {
+                                            <span class="rc-step-time">· @Relative(sd)</span>
+                                        }
+                                    </p>
+                                    <p class="rc-step-note">@step.Note</p>
+                                </div>
                             </div>
                         }
                     </div>
-                    <div class="btn-row" style="margin-top:.5rem">
-                        <button class="btn btn-sm" disabled="@(_busy || string.IsNullOrWhiteSpace(_disputeReason))" @onclick="SubmitDisputeAsync">Submit dispute</button>
-                        <button class="btn btn-ghost btn-sm" @onclick="() => _showDispute = false">Cancel</button>
-                    </div>
-                </div>
-            }
 
-            <div class="action-bar">
-                <div class="action-right">
-                    @if (_isBuyer && CanConfirm)
+                    @if (o.ListingAvailable && (o.ListingDescription is { Length: > 0 } || o.ListingTags is { Count: > 0 }))
                     {
-                        <button class="btn btn-sm success" disabled="@_busy" @onclick="ConfirmAsync">
-                            <span class="material-symbols-outlined">check_circle</span> Confirm receipt
-                        </button>
+                        <div class="rc-snapshot">
+                            <div class="rc-snap-thumb @(o.ListingImageKey is null && o.ThumbKey is null ? "placeholder" : "")">
+                                @if ((o.ListingImageKey ?? o.ThumbKey) is { } img)
+                                {
+                                    <img src="/shop-image/@img" alt="@o.ItemName" />
+                                }
+                                else
+                                {
+                                    <span class="material-symbols-outlined">image</span>
+                                }
+                            </div>
+                            <div class="rc-snap-body">
+                                @if (o.ListingDescription is { Length: > 0 } desc)
+                                {
+                                    <div class="rc-snap-desc markdown">@Muster.Web.DiscordMarkdown.ToHtml(desc)</div>
+                                }
+                                @if (o.ListingTags is { Count: > 0 } tags)
+                                {
+                                    <div class="rc-snap-tags">
+                                        @foreach (var t in tags)
+                                        {
+                                            <a class="chip" href="/guilds/@GuildId/shop?tab=listings&ltag=@Uri.EscapeDataString(t)">#@t</a>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
                     }
-                    @if ((_isSeller || _isManager) && _order.TwoStepDelivery && _order.Status == ShopOrderStatus.PendingDelivery)
-                    {
-                        <button class="btn btn-sm" disabled="@_busy" @onclick="MarkDeliveredAsync">
-                            <span class="material-symbols-outlined">local_shipping</span> Mark delivered
-                        </button>
-                    }
-                    @if ((_isSeller || _isManager) && IsPending)
-                    {
-                        <button class="btn btn-sm danger" disabled="@_busy" @onclick="CancelAsync">
-                            <span class="material-symbols-outlined">undo</span> Cancel &amp; refund
-                        </button>
-                    }
-                    @if ((_isBuyer || _isSeller) && IsPending && !_showDispute)
-                    {
-                        <button class="btn btn-ghost btn-sm" @onclick="() => _showDispute = true">
-                            <span class="material-symbols-outlined">gavel</span> Dispute
-                        </button>
-                    }
-                    @if (_order.ListingAvailable)
-                    {
-                        <a class="btn btn-ghost btn-sm" href="@(_order.StoreSlug is { } vs ? $"/guilds/{GuildId}/shop/store/{vs}?item={_order.ListingId}" : $"/guilds/{GuildId}/shop/listing/{_order.ListingId}")">
-                            <span class="material-symbols-outlined">visibility</span> View item
-                        </a>
-                    }
-                    <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet">View in wallet</a>
                 </div>
             </div>
         </div>
