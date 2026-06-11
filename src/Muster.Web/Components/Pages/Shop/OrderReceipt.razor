@@ -53,13 +53,6 @@ else if (State == AccessState.Ready)
 
             @* ── Ticket header: breadcrumb, identity + status/total stub, then a thin countdown strip. ── *@
             <div class="rc-head" style="@(o.StoreAccentColor is { } ac ? $"--rc-accent:{ac};" : null)">
-                <nav class="rc-crumb" aria-label="Breadcrumb">
-                    <a href="/guilds/@GuildId/shop">Shop</a>
-                    <span class="rc-crumb-sep" aria-hidden="true">›</span>
-                    <a href="/guilds/@GuildId/shop/orders">Orders</a>
-                    <span class="rc-crumb-sep" aria-hidden="true">›</span>
-                    <span aria-current="page">Receipt</span>
-                </nav>
                 <div class="rc-head-top">
                     <div class="rc-emblem @(o.ThumbKey is null ? "placeholder" : "")">
                         @if (o.ThumbKey is { } tk)
@@ -76,7 +69,13 @@ else if (State == AccessState.Ready)
                         }
                     </div>
                     <div class="rc-ident">
-                        <h2>@o.ItemName</h2>
+                        <nav class="rc-crumb" aria-label="Breadcrumb">
+                            <a href="/guilds/@GuildId/shop">Shop</a>
+                            <span class="rc-crumb-sep" aria-hidden="true">›</span>
+                            <a href="/guilds/@GuildId/shop/orders">Orders</a>
+                            <span class="rc-crumb-sep" aria-hidden="true">›</span>
+                            <span class="rc-title" aria-current="page">@o.ItemName</span>
+                        </nav>
                         <div class="rc-chips">
                             @if (o.CategoryName is { } cn)
                             {
@@ -89,15 +88,17 @@ else if (State == AccessState.Ready)
                     </div>
                     <div class="rc-stub">
                         <span class="rc-status rc-@hs.Tone"><span class="material-symbols-outlined">@hs.Icon</span> @hs.Text</span>
-                        <span class="rc-order">order @ShortId</span>
-                        <span class="rc-total"><span class="material-symbols-outlined">@esc.Icon</span> @o.Amount <small>@o.CurrencyCode</small></span>
-                        <span class="rc-substub">@esc.Text</span>
+                        <span class="rc-total">@o.Amount <small>@o.CurrencyCode</small></span>
                     </div>
                 </div>
-                @if (liveDeadline is { } dl)
-                {
-                    <div class="rc-facts"><span><span class="material-symbols-outlined">schedule</span> @Relative(dl)</span></div>
-                }
+                <div class="rc-facts">
+                    @if (liveDeadline is { } dl)
+                    {
+                        <span><span class="material-symbols-outlined">schedule</span> @Relative(dl)</span>
+                    }
+                    <span><span class="material-symbols-outlined">tag</span> order @ShortId</span>
+                    <span><span class="material-symbols-outlined">@esc.Icon</span> @esc.Text</span>
+                </div>
             </div>
 
             @* Two columns on desktop (main left, rail right); on mobile the wrappers dissolve and the blocks reorder
@@ -215,6 +216,26 @@ else if (State == AccessState.Ready)
                                 {
                                     <span class="rc-rep rc-rep-none">no ratings yet</span>
                                 }
+                                @if (o.StoreName is { } sn)
+                                {
+                                    <a class="rc-party-shop" href="/guilds/@GuildId/shop/store/@o.StoreSlug">
+                                        <span class="rc-shop-ico @(o.StoreLogoImageKey is null ? "placeholder" : "")">
+                                            @if (o.StoreLogoImageKey is { } lk)
+                                            {
+                                                <img src="/shop-image/@lk" alt="" />
+                                            }
+                                            else if (ShopIcons.Material(o.StoreTypeIcon) is { } smi)
+                                            {
+                                                <span class="material-symbols-outlined">@smi</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="material-symbols-outlined">storefront</span>
+                                            }
+                                        </span>
+                                        <span class="rc-shop-text"><span class="rc-shop-name">@sn</span>@if (o.StoreTypeName is { } tn) { <span class="rc-shop-type">@tn</span> }</span>
+                                    </a>
+                                }
                             </div>
                         </div>
 
@@ -298,31 +319,6 @@ else if (State == AccessState.Ready)
                             <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet"><span class="material-symbols-outlined">account_balance_wallet</span> Wallet</a>
                         </div>
                     </div>
-
-                    @if (o.StoreName is { } sn)
-                    {
-                        <a class="panel glass rc-shopcard" href="/guilds/@GuildId/shop/store/@o.StoreSlug">
-                            <span class="rc-shop-ico @(o.StoreLogoImageKey is null ? "placeholder" : "")">
-                                @if (o.StoreLogoImageKey is { } lk)
-                                {
-                                    <img src="/shop-image/@lk" alt="" />
-                                }
-                                else if (ShopIcons.Material(o.StoreTypeIcon) is { } smi)
-                                {
-                                    <span class="material-symbols-outlined">@smi</span>
-                                }
-                                else
-                                {
-                                    <span class="material-symbols-outlined">storefront</span>
-                                }
-                            </span>
-                            <span class="rc-shop-text">
-                                <span class="rc-shop-name">@sn</span>
-                                @if (o.StoreTypeName is { } tn) { <span class="rc-shop-type">@tn</span> }
-                            </span>
-                            <span class="material-symbols-outlined rc-shop-go">chevron_right</span>
-                        </a>
-                    }
 
                     @if (o.Status == ShopOrderStatus.Settled && o.RatingsEnabled && (_isBuyer || _isSeller || _isManager))
                     {
