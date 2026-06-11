@@ -2,7 +2,7 @@ using Muster.Contracts;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Quests;
 
-namespace Muster.Web.Components.Pages.Quests.Components;
+namespace Muster.Web.Components.Pages.Quests.Core;
 
 /// <summary>Pure presentation helpers for the quest board — shared by the board cards, the table view, and the
 /// page. No instance state; data-dependent display (names, avatars, types, deadlines) lives on

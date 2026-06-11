@@ -6,6 +6,7 @@ using Muster.Infrastructure.Commands;
 using Muster.Infrastructure.Commands.Quests;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Quests;
+using Muster.Web.Components.Pages.Quests.Models;
 
 namespace Muster.Web.Components.Pages.Quests;
 

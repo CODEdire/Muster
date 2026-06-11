@@ -1,6 +1,6 @@
 using Muster.Contracts;
 
-namespace Muster.Web.Components.Pages.Quests;
+namespace Muster.Web.Components.Pages.Quests.Models;
 
 /// <summary>The fields shared by the post and edit quest forms. Nested under each page's form model so
 /// SSR model binding maps posted values (e.g. <c>Post.Fields.Name</c>) onto these properties.</summary>

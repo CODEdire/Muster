@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Muster.Infrastructure.Services.Quests;
+using Muster.Web.Components.Pages.Quests.Models;
 
 namespace Muster.Web.Components.Pages.Quests.Components;
 

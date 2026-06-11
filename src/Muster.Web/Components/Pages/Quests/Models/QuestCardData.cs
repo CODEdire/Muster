@@ -4,7 +4,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Platform;
 
-namespace Muster.Web.Components.Pages.Quests.Components;
+namespace Muster.Web.Components.Pages.Quests.Models;
 
 /// <summary>The per-board lookup bundle a <see cref="QuestCard"/> (and the table view) need to render a quest:
 /// currency codes, member names/avatars, quest types, settings, viewer role, and time zone. Built once per board
