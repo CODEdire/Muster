@@ -34,14 +34,21 @@
             </div>
 
             <div class="shop-modal-body">
-                <div class="qc-chips">
-                    @if (_listing.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
-                    <a class="chip chip-quest" href="/guilds/@GuildId/shop/store/@_listing.StoreSlug">@_listing.StoreName</a>
-                    @if (_listing.CategoryName is { } cn)
-                    {
-                        <span class="chip">@if (ShopIcons.Material(_listing.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined" style="vertical-align:-3px;font-size:.95rem">@cmi</span> } @cn</span>
-                    }
-                </div>
+                <nav class="smi-crumb" aria-label="Breadcrumb">
+                    <a href="/guilds/@GuildId/shop">Shop</a>
+                    <span class="smi-crumb-sep" aria-hidden="true">›</span>
+                    <a href="/guilds/@GuildId/shop/store/@_listing.StoreSlug">@_listing.StoreName</a>
+                </nav>
+                @if (_listing.Featured || _listing.CategoryName is not null)
+                {
+                    <div class="qc-chips">
+                        @if (_listing.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
+                        @if (_listing.CategoryName is { } cn)
+                        {
+                            <span class="chip">@if (ShopIcons.Material(_listing.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined" style="vertical-align:-3px;font-size:.95rem">@cmi</span> } @cn</span>
+                        }
+                    </div>
+                }
 
                 <h2 class="smi-title">@_listing.Name</h2>
                 <UserChip Name="@_listing.SellerName" AvatarUrl="@_listing.SellerAvatarUrl" Prefix="by " />

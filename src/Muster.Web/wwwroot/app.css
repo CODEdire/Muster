@@ -937,7 +937,11 @@ table.leaderboard th a { color: var(--text-muted); }
 }
 /* Lock the page behind any open modal (no bleed-through scrollbar). */
 html.modal-open { overflow: hidden; }
-/* Item-modal body: title, price row, and buyer/seller action rows. */
+/* Item-modal body: breadcrumb, title, price row, and buyer/seller action rows. */
+.smi-crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-size: 0.78rem; color: var(--text-muted); }
+.smi-crumb a { color: var(--text-muted); text-decoration: none; }
+.smi-crumb a:hover { color: var(--text); }
+.smi-crumb-sep { opacity: 0.5; }
 .smi-title { margin: 0.1rem 0 0; font-size: 1.3rem; line-height: 1.25; }
 .smi-price-row { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; margin: 0.25rem 0 0.1rem; }
 .smi-price { font-size: 1.5rem; }
