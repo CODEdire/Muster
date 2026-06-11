@@ -40,12 +40,29 @@
 }
 
 .trk-label {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 100%;
 }
+
+.trk-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.05rem;
+    height: 1.05rem;
+    padding: 0 0.25rem;
+    border-radius: 0.6rem;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+}
+.tracker.tone-danger .trk-count { background: var(--danger); }
 
 .trk-stage.reached { color: var(--text); }
 .trk-stage.reached .trk-dot { background: var(--accent); }

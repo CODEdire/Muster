@@ -204,37 +204,73 @@ public partial class QuestDetail : IDisposable
         _ => s.ToString(),
     };
 
-    /// <summary>Origin-aware lifecycle stages + current index for the header status tracker. Quest-level (per-worker
-    /// progress lives in the participants list); cancelled / expired / disputed render the run in a danger tone.</summary>
-    private static (IReadOnlyList<string> Stages, int Current, string? Tone) Tracker(QuestDetailView q)
+    /// <summary>Viewer-aware status tracker. A non-staff participant sees their own journey; the owner/manager sees
+    /// the aggregate with per-stage counts (filled to the furthest reached); a regular viewer sees the coarse
+    /// quest-level flow. Player quests are single-taker, so they use one quest-level flow for everyone.
+    /// Cancelled / expired / disputed render the reached run in a danger tone.</summary>
+    private (IReadOnlyList<string> Stages, int Current, IReadOnlyList<int?>? Counts, string? Tone) Tracker(QuestDetailView q)
     {
-        var hasSub = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
         var bad = q.Status is QuestStatus.Cancelled or QuestStatus.Expired or QuestStatus.Disputed;
+        var tone = bad ? "danger" : null;
+        var staff = _isManager || UserId == q.OwnerId;
+        var mine = q.Participants.FirstOrDefault(p => p.UserId == UserId && p.Status != QuestParticipantStatus.Released)
+            ?? q.Participants.FirstOrDefault(p => p.UserId == UserId);
 
         if (q.Origin == QuestOrigin.Player)
         {
-            IReadOnlyList<string> stages = ["Posted", "Intake", "Open", "Settling", "Paid"];
+            var hasSub = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
+            IReadOnlyList<string> ps = ["Posted", "Intake", "Open", "Submitted", "Settling", "Paid"];
             var cur = q.Status switch
             {
                 QuestStatus.Scheduled => 0,
                 QuestStatus.PendingApproval => 1,
                 QuestStatus.Open => hasSub ? 3 : 2,
-                QuestStatus.PendingFinal or QuestStatus.Disputed => 3,
-                QuestStatus.Closed => 4,
-                _ => 4,
+                QuestStatus.PendingFinal or QuestStatus.Disputed => 4,
+                QuestStatus.Closed => 5,
+                _ => 5,
             };
-            return (stages, cur, bad ? "danger" : null);
+            return (ps, cur, null, tone);
         }
 
-        IReadOnlyList<string> guildStages = ["Posted", "Open", "Reviewing", "Closed"];
-        var guildCur = q.Status switch
+        // Guild quest — a non-staff participant sees their own journey.
+        if (!staff && mine is { } m)
+        {
+            IReadOnlyList<string> ws = ["Claimed", "Submitted", "Approved"];
+            var (wcur, wtone) = m.Status switch
+            {
+                QuestParticipantStatus.Claimed => (0, (string?)null),
+                QuestParticipantStatus.RevisionRequested => (0, "warn"),
+                QuestParticipantStatus.Submitted => (1, null),
+                QuestParticipantStatus.Approved => (2, null),
+                QuestParticipantStatus.Rejected => (2, "danger"),
+                _ => (0, null),
+            };
+            return (ws, wcur, null, wtone);
+        }
+
+        // Owner / manager — aggregate with per-stage counts, line filled to the furthest reached.
+        if (staff)
+        {
+            var claimed = q.Participants.Count(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.RevisionRequested);
+            var submitted = q.Participants.Count(p => p.Status == QuestParticipantStatus.Submitted);
+            var approved = q.Participants.Count(p => p.Status == QuestParticipantStatus.Approved);
+            IReadOnlyList<string> gs = ["Posted", "Claimed", "Submitted", "Approved", "Closed"];
+            IReadOnlyList<int?> counts = [null, claimed > 0 ? claimed : null, submitted > 0 ? submitted : null, approved > 0 ? approved : null, null];
+            var cur = q.Status == QuestStatus.Closed ? 4 : approved > 0 ? 3 : submitted > 0 ? 2 : claimed > 0 ? 1 : 0;
+            return (gs, cur, counts, tone);
+        }
+
+        // Regular viewer — coarse quest-level.
+        var anySub = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
+        IReadOnlyList<string> cs = ["Posted", "Open", "Reviewing", "Closed"];
+        var ccur = q.Status switch
         {
             QuestStatus.Scheduled => 0,
-            QuestStatus.Open => hasSub ? 2 : 1,
+            QuestStatus.Open => anySub ? 2 : 1,
             QuestStatus.Closed => 3,
             _ => 3,
         };
-        return (guildStages, guildCur, bad ? "danger" : null);
+        return (cs, ccur, null, tone);
     }
 
     private static string RingClass(QuestParticipantStatus s) => s switch

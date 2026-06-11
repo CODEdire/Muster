@@ -1,4 +1,16 @@
+/* Detail = one object you're reading → bounded column, centered (the board stays full-bleed). */
+.qd-page { max-width: 1080px; margin: 0 auto; }
+
 .qd-tracker { margin: 0.9rem 0 0.2rem; padding: 0 0.4rem; }
+
+/* Frameless content — the hero frames the top; description + participants just breathe. */
+.qd-desc { margin: 0; padding: 0.1rem 0.2rem; }
+.qd-desc .detail-desc { color: var(--text); line-height: 1.6; }
+
+.qd-participants .panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.4rem; }
+.qd-participants .panel-head h2 { margin: 0; font-size: 1.05rem; }
+.qd-participants .p-row { border-bottom: 1px solid var(--card-border); }
+.qd-participants .p-row:last-child { border-bottom: none; }
 
 /* Two columns: main content left, sticky action panel right. Source order is side-then-main so that on mobile
    (single column) the action panel stacks on top — primary actions stay thumb-reachable. */

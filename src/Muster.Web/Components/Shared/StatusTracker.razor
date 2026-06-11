@@ -6,7 +6,13 @@
         <li class="trk-stage @(i <= Current ? "reached" : null) @(i == Current ? "current" : null)"
             aria-current="@(i == Current ? "step" : null)">
             <span class="trk-dot" aria-hidden="true"></span>
-            <span class="trk-label">@Stages[i]</span>
+            <span class="trk-label">
+                @Stages[i]
+                @if (Counts is { } cs && i < cs.Count && cs[i] is { } n && n > 0)
+                {
+                    <span class="trk-count" aria-label="@($"{n} here")">@n</span>
+                }
+            </span>
         </li>
     }
 </ol>

@@ -50,9 +50,7 @@ else if (State == AccessState.Ready)
             ?? q.Participants.FirstOrDefault(p => p.UserId == UserId);
         var hasSubmitter = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
         var isPersonal = q.Origin == QuestOrigin.Player;
-        var (trkStages, trkCurrent, trkTone) = Tracker(q);
-        <QuestHero Quest="q" GuildId="GuildId" IsStaff="_isStaff" />
-        <div class="qd-tracker"><StatusTracker Stages="trkStages" Current="trkCurrent" Tone="@trkTone" /></div>
+        var (trkStages, trkCurrent, trkCounts, trkTone) = Tracker(q);
 
         // A Released slot (abandoned / idle-timeout) doesn't bar a re-claim — only an active claim or a final verdict
         // (Approved/Rejected) does, matching the server's ClaimAsync rule.
@@ -70,6 +68,10 @@ else if (State == AccessState.Ready)
                 or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved)
             && Can(QuestPermission.Edit);
         var hasToolbar = canClaim || canIntake || canFinalize || canArbitrate || canCancel || canEdit;
+
+        <div class="qd-page">
+        <QuestHero Quest="q" GuildId="GuildId" IsStaff="_isStaff" />
+        <div class="qd-tracker"><StatusTracker Stages="trkStages" Current="trkCurrent" Counts="trkCounts" Tone="@trkTone" /></div>
         <div class="qd-grid">
             <aside class="qd-side">
                 <div class="panel glass qd-actions">
@@ -141,14 +143,14 @@ else if (State == AccessState.Ready)
 
         @if (!string.IsNullOrWhiteSpace(q.Description))
         {
-            <article class="panel glass quest-desc-card">
+            <article class="qd-desc">
                 <div class="detail-desc markdown">@DiscordMarkdown.ToHtml(q.Description)</div>
             </article>
         }
 
         @if (q.Participants.Count > 0)
         {
-            <section class="panel glass">
+            <section class="qd-participants">
                 <div class="panel-head"><h2>Participants</h2><span class="subtitle">@q.Participants.Count total</span></div>
                 <ul class="participant-list">
                     @foreach (var p in q.Participants)
@@ -233,6 +235,7 @@ else if (State == AccessState.Ready)
             </section>
         }
             </div>
+        </div>
         </div>
     }
 }
