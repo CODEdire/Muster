@@ -127,7 +127,7 @@
     display: flex; align-items: center; justify-content: center; font-size: 1rem;
     background: var(--surface); color: var(--text-muted);
 }
-.rc-step-body { flex: 1; min-width: 0; margin-left: -14px; padding-left: 24px; padding-bottom: 1rem; border-left: 2px solid var(--border); }
+.rc-step-body { flex: 1; min-width: 0; margin-left: -24px; padding-left: 24px; padding-bottom: 1rem; border-left: 2px solid var(--border); }
 .rc-step-last { border-left-color: transparent; padding-bottom: 0; }
 .rc-step-title { margin: 0; font-size: 0.9rem; font-weight: 600; }
 .rc-step-time { font-weight: 400; color: var(--text-muted); }

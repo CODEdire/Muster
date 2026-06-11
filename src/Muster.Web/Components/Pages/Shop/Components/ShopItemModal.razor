@@ -87,7 +87,12 @@
                     <div class="action-right">
                         @if (_isSeller)
                         {
-                            <a class="btn btn-sm" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span> Edit</a>
+                            @* Self-buy is allowed server-side (clear stock / testing); offers stay seller-only. *@
+                            @if (_listing.Status == ShopListingStatus.Active)
+                            {
+                                <button class="btn btn-sm" disabled="@_acting" @onclick="BuyAsync"><span class="material-symbols-outlined">shopping_cart</span> Buy · @_listing.Price @_listing.CurrencyCode</button>
+                            }
+                            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span> Edit</a>
                             @if (_listing.Status == ShopListingStatus.Active && !_listing.Featured)
                             {
                                 <button class="btn btn-sm" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span> Feature</button>
