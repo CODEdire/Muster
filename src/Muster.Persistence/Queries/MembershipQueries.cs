@@ -26,6 +26,15 @@ public static class MembershipQueries
         => await db.GuildTrackingSettings.AsNoTracking().FirstOrDefaultAsync(t => t.GuildId == guildId, ct)
            ?? new Muster.Domain.Entities.Guilds.GuildTrackingSettings { GuildId = guildId };
 
+    /// <summary>A guild's quest settings (read-only, untracked); a fresh defaults instance when no row exists yet.
+    /// Mirrors <see cref="GetTrackingSettingsAsync"/> for the table-per-feature <c>GuildQuestSettings</c>. The deploy
+    /// backfill seeds a row (forward-migrated from legacy) for every guild, so a miss only happens for an unprovisioned
+    /// guild — whose defaults match the entity defaults anyway.</summary>
+    public static async Task<Muster.Domain.Entities.Guilds.GuildQuestSettings> GetQuestSettingsAsync(
+        this MusterDbContext db, ulong guildId, CancellationToken ct = default)
+        => await db.GuildQuestSettings.AsNoTracking().FirstOrDefaultAsync(q => q.GuildId == guildId, ct)
+           ?? new Muster.Domain.Entities.Guilds.GuildQuestSettings { GuildId = guildId };
+
     /// <summary>All active guilds (for cross-guild sweeps).</summary>
     public static Task<List<Guild>> ListActiveGuildsAsync(this MusterDbContext db, CancellationToken ct = default)
         => db.Guilds.Where(g => g.IsActive).ToListAsync(ct);

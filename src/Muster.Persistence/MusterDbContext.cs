@@ -31,6 +31,8 @@ public class MusterDbContext(DbContextOptions<MusterDbContext> options) : DbCont
 
     public DbSet<GuildQuest> Quests => Set<GuildQuest>();
     public DbSet<QuestParticipant> QuestParticipants => Set<QuestParticipant>();
+    public DbSet<QuestType> QuestTypes => Set<QuestType>();
+    public DbSet<GuildQuestSettings> GuildQuestSettings => Set<GuildQuestSettings>();
     public DbSet<GuildEvent> GuildEvents => Set<GuildEvent>();
     public DbSet<EventAttendee> EventAttendees => Set<EventAttendee>();
     public DbSet<ReactionMuster> ReactionMusters => Set<ReactionMuster>();

@@ -71,7 +71,7 @@ public class QuestBoardCleanupScheduler(
         {
             if (!retentionByGuild.TryGetValue(card.GuildId, out var hours))
             {
-                hours = (await db.GetSettingsAsync(card.GuildId, ct)).Quests.BoardRetentionHours;
+                hours = (await db.GetQuestSettingsAsync(card.GuildId, ct)).BoardRetentionHours;
                 retentionByGuild[card.GuildId] = hours;
             }
 

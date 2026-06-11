@@ -61,7 +61,8 @@ public record PostQuest(
     DateTimeOffset? Deadline,
     QuestTier Tier,
     bool RequestFinalApproval,
-    int Capacity) : IGuildCommand;
+    int Capacity,
+    Guid? QuestTypeId = null) : IGuildCommand;
 
 /// <summary>Cancel a quest (guild → manager; player bounty → owner, with escrow refund). Routes by origin.</summary>
 public record CancelQuest(ulong GuildId, Guid QuestId, ulong ActorId) : IGuildCommand;
@@ -91,7 +92,8 @@ public record FinalizeQuest(ulong GuildId, Guid QuestId, ulong ActorId, bool Pay
 /// left unchanged; reward/tier/capacity apply to guild quests only.</summary>
 public record EditQuest(
     ulong GuildId, Guid QuestId, ulong ActorId,
-    string? Name, string? Description, long? Reward, DateTimeOffset? Deadline, QuestTier? Tier, int? Capacity) : IGuildCommand;
+    string? Name, string? Description, long? Reward, DateTimeOffset? Deadline, QuestTier? Tier, int? Capacity,
+    Guid? QuestTypeId = null) : IGuildCommand;
 
 /// <summary>Release an active claim/submission, freeing the slot (the participation goes to <c>Released</c>, so the
 /// member may re-claim). Self-abandon when <see cref="TargetUserId"/> == <see cref="ActorId"/> (any taker); otherwise

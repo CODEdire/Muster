@@ -1,0 +1,158 @@
+@page "/guilds/{GuildIdRaw}/quest-settings"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@implements IDisposable
+@inject Muster.Infrastructure.Services.Quests.GuildQuestSettingsService SettingsStore
+@inject Muster.Web.GuildChannelOptions Channels
+@inject IServiceScopeFactory Scopes
+@using Muster.Contracts
+@using Muster.Domain.Entities.Guilds
+@using Muster.Domain.Enums
+
+<PageTitle>Quest settings — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Quest settings") })"
+                Subtitle="Quest-board rules, approval workflow, auto-resolve timeouts, and tier rewards. Changes save automatically." />
+
+    @* Master switch — sits above the toolbar. Disabled with a reason when a higher layer (platform kill-switch /
+       plan) blocks quests, since the per-guild toggle can't make it active in that case. *@
+    <div class="shop-master-switch">
+        <label class="checkbox" style="margin:0">
+            <input type="checkbox" @bind="_s.QuestsEnabled" @bind:after="ScheduleSave" disabled="@_platformBlocked" />
+            <strong>Quests enabled</strong>
+        </label>
+        @if (_platformBlocked)
+        {
+            <span class="chip" style="background:color-mix(in srgb, var(--danger) 16%, transparent);color:var(--danger)">
+                <span class="material-symbols-outlined" style="vertical-align:-3px;font-size:1rem">lock</span> @_platformReason
+            </span>
+        }
+    </div>
+
+    <div class="dg-toolbar">
+        <div class="dg-actions">
+            <a class="btn btn-sm btn-ghost @(ConfigLocked ? "is-disabled" : null)" href="@(ConfigLocked ? null : $"/guilds/{GuildId}/quest-types")" aria-disabled="@ConfigLocked">
+                <span class="material-symbols-outlined">category</span> Manage quest types
+            </a>
+            @if (_save != SaveStatus.None)
+            {
+                <span class="save-pill is-@_save.ToString().ToLowerInvariant()">
+                    <span class="material-symbols-outlined">@(_save switch { SaveStatus.Saving => "sync", SaveStatus.Saved => "check_circle", _ => "error" })</span>
+                    @(_save switch { SaveStatus.Saving => "Saving…", SaveStatus.Saved => "Saved", _ => _saveMsg ?? "Error" })
+                </span>
+            }
+        </div>
+    </div>
+
+    @if (ConfigLocked)
+    {
+        <div class="panel glass empty">
+            <span class="material-symbols-outlined" style="font-size:2.4rem;opacity:.5">@(_platformBlocked ? "lock" : "swords")</span>
+            <p>@(_platformBlocked
+                ? $"Quests are unavailable ({_platformReason?.ToLowerInvariant()}). They can't be configured until that's resolved."
+                : "Enable quests above to configure them.")</p>
+        </div>
+    }
+    else
+    {
+    <Accordion SingleOpen="true">
+        <AccordionPane Title="Channels" Icon="forum" Open="true" Summary="@ChannelSummary">
+            <p class="subtitle">Auto-updating cards posted to Discord — edited in place as a quest changes state.
+                Leave the public channel unset for pull-only (<code>/quest list</code>).</p>
+            @if (_chat.Count == 0)
+            {
+                <p class="subtitle warn-text">No channels available — check the bot is in this server and can view channels.</p>
+            }
+            <div class="mform">
+                <div class="field"><label>Public board channel</label>
+                    <select @bind="_s.QuestChannelId" @bind:after="ScheduleSave">
+                        <option value="0">— none (pull-only) —</option>
+                        @foreach (var c in _chat) { <option value="@c.Id">#@c.Name</option> }
+                    </select>
+                </div>
+                <div class="field"><label>Mod-only channel</label>
+                    <select @bind="_s.QuestModChannelId" @bind:after="ScheduleSave">
+                        <option value="0">— none —</option>
+                        @foreach (var c in _chat) { <option value="@c.Id">#@c.Name</option> }
+                    </select>
+                    <span class="hint">Intake / disputes / final sign-off cards post here.</span>
+                </div>
+                <div class="field"><label>Completed-card retention (hours)</label><input type="number" min="0" @bind="_s.BoardRetentionHours" @bind:after="ScheduleSave" /><span class="hint">How long terminal cards linger. 0 = delete immediately.</span></div>
+                <div class="field"><label>Deadline reminder (hours)</label><input type="number" min="0" @bind="_s.DeadlineReminderHours" @bind:after="ScheduleSave" /><span class="hint">"Closes soon" DM nudge. 0 = off.</span></div>
+            </div>
+        </AccordionPane>
+
+        <AccordionPane Title="Approval" Icon="how_to_reg" Summary="@($"Intake {(_s.PersonalQuestIntakeApproval ? "on" : "off")} · {_s.FinalApprovalMode}")">
+            <div class="mform">
+                <div class="field span2"><label class="checkbox"><input type="checkbox" @bind="_s.PersonalQuestIntakeApproval" @bind:after="ScheduleSave" /> Personal quests need manager intake approval before opening</label></div>
+                <div class="field span2"><label class="checkbox"><input type="checkbox" @bind="_s.AllowSelfParticipation" @bind:after="ScheduleSave" /> Allow a poster to take their own player quest</label></div>
+                <div class="field"><label>Final sign-off policy</label>
+                    <select @bind="_s.FinalApprovalMode" @bind:after="ScheduleSave">
+                        @foreach (var v in Enum.GetValues<FinalApprovalMode>()) { <option value="@v">@v</option> }
+                    </select>
+                    <span class="hint">Whether a personal quest needs a manager's final sign-off before payout, and who decides.</span>
+                </div>
+            </div>
+        </AccordionPane>
+
+        <AccordionPane Title="Auto-resolve timeouts" Icon="timer" Summary="Anti-staleness sweeps (0 = off)">
+            <p class="subtitle">Hours a quest may sit at each stage before the sweep moves it on. 0 disables that timeout.</p>
+            <div class="mform">
+                <div class="field"><label>Intake timeout (hours)</label><input type="number" min="0" @bind="_s.IntakeTimeoutHours" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label>Intake timeout action</label>
+                    <select @bind="_s.IntakeTimeoutAction" @bind:after="ScheduleSave">
+                        @foreach (var v in Enum.GetValues<StaleIntakeAction>()) { <option value="@v">@v</option> }
+                    </select>
+                </div>
+                <div class="field"><label>Claim timeout (hours)</label><input type="number" min="0" @bind="_s.ClaimTimeoutHours" @bind:after="ScheduleSave" /><span class="hint">Idle claim released back to the board.</span></div>
+                <div class="field"><label>Submission timeout (hours)</label><input type="number" min="0" @bind="_s.SubmissionTimeoutHours" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label>Submission timeout action</label>
+                    <select @bind="_s.SubmissionTimeoutAction" @bind:after="ScheduleSave">
+                        @foreach (var v in Enum.GetValues<StaleSubmissionAction>()) { <option value="@v">@v</option> }
+                    </select>
+                </div>
+                <div class="field"><label>Final-approval timeout (hours)</label><input type="number" min="0" @bind="_s.FinalApprovalTimeoutHours" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label>Final-approval timeout action</label>
+                    <select @bind="_s.FinalApprovalTimeoutAction" @bind:after="ScheduleSave">
+                        @foreach (var v in Enum.GetValues<StaleFinalAction>()) { <option value="@v">@v</option> }
+                    </select>
+                </div>
+                <div class="field"><label>Dispute timeout (hours)</label><input type="number" min="0" @bind="_s.DisputeTimeoutHours" @bind:after="ScheduleSave" /><span class="hint">Favours the non-disputing party. 0 = manual only.</span></div>
+            </div>
+        </AccordionPane>
+
+        <AccordionPane Title="Player limits" Icon="speed" Summary="@($"{_s.MaxOpenQuestsPerPoster} open · {_s.MaxActiveClaimsPerUser} claims")">
+            <p class="subtitle">0 = unlimited.</p>
+            <div class="mform">
+                <div class="field"><label>Max open quests per poster</label><input type="number" min="0" @bind="_s.MaxOpenQuestsPerPoster" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label>Max active claims per user</label><input type="number" min="0" @bind="_s.MaxActiveClaimsPerUser" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label>Max revision round-trips</label><input type="number" min="0" @bind="_s.MaxRevisions" @bind:after="ScheduleSave" /></div>
+            </div>
+        </AccordionPane>
+
+        <AccordionPane Title="Tier rewards" Icon="trophy" Summary="@($"S {_s.TierSPoints} · E {_s.TierEPoints} pts")">
+            <p class="subtitle">Bonus POINTS minted to the completer of a guild quest, by difficulty tier.</p>
+            <div class="mform">
+                <div class="field"><label><span class="tier-badge tier-S">S</span> hardest</label><input type="number" min="0" @bind="_s.TierSPoints" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label><span class="tier-badge tier-A">A</span> very hard</label><input type="number" min="0" @bind="_s.TierAPoints" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label><span class="tier-badge tier-B">B</span> hard</label><input type="number" min="0" @bind="_s.TierBPoints" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label><span class="tier-badge tier-C">C</span> moderate</label><input type="number" min="0" @bind="_s.TierCPoints" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label><span class="tier-badge tier-D">D</span> easy</label><input type="number" min="0" @bind="_s.TierDPoints" @bind:after="ScheduleSave" /></div>
+                <div class="field"><label><span class="tier-badge tier-E">E</span> easiest</label><input type="number" min="0" @bind="_s.TierEPoints" @bind:after="ScheduleSave" /></div>
+            </div>
+        </AccordionPane>
+    </Accordion>
+    }
+}
+

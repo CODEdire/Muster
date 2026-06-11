@@ -1,0 +1,265 @@
+@page "/guilds/{GuildIdRaw}/quests"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@inject IQuestAuthorizer Authorizer
+@inject Muster.Web.Live.IQuestUpdateNotifier Notifier
+@using Muster.Contracts
+@using Muster.Domain
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Services.Quests
+@using static Muster.Web.Components.Pages.Quests.Core.QuestPresentation
+
+<PageTitle>Quest board — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && !_gate.IsEnabled)
+{
+    <FeatureGateNotice Verdict="_gate" Feature="The quest board" />
+}
+else if (State == AccessState.Ready)
+{
+    <TopProgress Active="@(_loading || _acting is not null)" />
+
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests") })" Kpis="@SummaryKpis"
+                Subtitle="Take on quests for coins and points. Guild-issued quests come from the server; player-issued quests are member bounties — the guild assigns their difficulty tier when accepting them.">
+        <Toolbar>
+            <a class="btn btn-sm" href="/guilds/@GuildId/quests/new"><span class="material-symbols-outlined">add</span> New quest</a>
+        </Toolbar>
+    </PageHeader>
+
+    @if (Message is not null)
+    {
+        <div class="notice" role="status">
+            <span class="material-symbols-outlined notice-icon">info</span>
+            <span class="notice-text">@Message</span>
+            <button type="button" class="icon-btn notice-close" title="Dismiss" aria-label="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+        </div>
+    }
+
+    <div class="dg-toolbar">
+        <div class="dg-filters">
+            <input type="search" class="dg-search" placeholder="Search quests…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+            <select class="dg-select" value="@CurrentType" @onchange="OnTypeSelect">
+                <option value="">All scopes</option>
+                <option value="guild">Guild</option>
+                <option value="player">Player</option>
+                <option value="mine">Mine</option>
+            </select>
+            @if (_types.Count > 0)
+            {
+                <select class="dg-select" value="@(QType ?? "")" @onchange="OnQuestTypeFilter">
+                    <option value="">All types</option>
+                    @foreach (var t in _types) { <option value="@t.Id">@t.Name</option> }
+                </select>
+            }
+            <select class="dg-select" value="@(QTier ?? "")" @onchange="OnTierFilter">
+                <option value="">All tiers</option>
+                @foreach (var t in _tiers.Reverse()) { <option value="@t">Tier @t</option> }
+            </select>
+            <select class="dg-select" @onchange="OnSortChange">
+                <option value="@SortValueUrl("created", true)" selected="@(CurrentSort == "created" && CurrentDesc)">Newest</option>
+                <option value="@SortValueUrl("created", false)" selected="@(CurrentSort == "created" && !CurrentDesc)">Oldest</option>
+                <option value="@SortValueUrl("reward", true)" selected="@(CurrentSort == "reward" && CurrentDesc)">Reward · high → low</option>
+                <option value="@SortValueUrl("reward", false)" selected="@(CurrentSort == "reward" && !CurrentDesc)">Reward · low → high</option>
+                <option value="@SortValueUrl("closes", false)" selected="@(CurrentSort == "closes")">Closing soonest</option>
+                <option value="@SortValueUrl("name", false)" selected="@(CurrentSort == "name")">Name · A → Z</option>
+            </select>
+        </div>
+        <div class="dg-actions">
+            @if (_loading)
+            {
+                <span class="dg-loading" aria-hidden="true"></span>
+            }
+            @* Primary view (active / action needed / history) sits next to the layout toggle. *@
+            <div class="seg board-tabs" role="group" aria-label="Quest view">
+                <a href="@TabUrl("active")" @onclick:preventDefault @onclick='() => OnTab("active")' class="@(CurrentTab == "active" ? "active" : "")">Active</a>
+                <a href="@TabUrl("actionneeded")" @onclick:preventDefault @onclick='() => OnTab("actionneeded")' class="@(CurrentTab == "actionneeded" ? "active" : "")">Action Needed</a>
+                <a href="@TabUrl("history")" @onclick:preventDefault @onclick='() => OnTab("history")' class="@(CurrentTab == "history" ? "active" : "")">History</a>
+            </div>
+            <div class="seg view-toggle" role="group" aria-label="Layout">
+                <button type="button" class="@(_view == "grid" ? "active" : "")" title="Cards" @onclick='() => _view = "grid"'><span class="material-symbols-outlined">grid_view</span></button>
+                <button type="button" class="@(_view == "list" ? "active" : "")" title="Table" @onclick='() => _view = "list"'><span class="material-symbols-outlined">view_list</span></button>
+            </div>
+        </div>
+    </div>
+
+    @if (HasFilters)
+    {
+        <div class="filter-summary">
+            @if (!string.IsNullOrEmpty(Search))
+            {
+                <span class="chip filter-chip">"@Search" <button type="button" class="filter-chip-x" title="Remove" @onclick="OnSearchClear">×</button></span>
+            }
+            @if (CurrentType is { Length: > 0 } ct)
+            {
+                <span class="chip filter-chip">@OriginLabel(ct) <button type="button" class="filter-chip-x" title="Remove" @onclick='() => OnType("")'>×</button></span>
+            }
+            @if (TypeFilterName is { } tfn)
+            {
+                <span class="chip filter-chip">@tfn <button type="button" class="filter-chip-x" title="Remove" @onclick='() => SetQuestType(null)'>×</button></span>
+            }
+            @if (!string.IsNullOrEmpty(QTier))
+            {
+                <span class="chip filter-chip">Tier @QTier <button type="button" class="filter-chip-x" title="Remove" @onclick='() => SetTier(null)'>×</button></span>
+            }
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearFilters">Clear all</button>
+        </div>
+    }
+
+    <div class="dg-fill quest-fill">
+    @if (_quests.Count == 0)
+    {
+        <div class="panel glass empty">No quests here.</div>
+    }
+    else if (_view == "list")
+    {
+        <div class="dg-scroll">
+            <table class="dg-table quest-table">
+                <thead><tr><th>Quest</th><th class="qt-tier-col">Tier</th><th>Type</th><th>Issuer</th><th class="num">Reward</th><th class="num">Slots</th><th>Closes</th><th>Status</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @foreach (var q in _quests)
+                    {
+                        var rc = _codes.GetValueOrDefault(q.RewardCurrencyId, "?");
+                        <tr>
+                            <td><a class="qc-title" href="/guilds/@GuildId/quests/@q.Id">@q.Name</a></td>
+                            <td class="qt-tier-col">
+                                @if (q.Tier != QuestTier.None)
+                                {
+                                    <span class="tier-badge tier-@q.Tier" title="Difficulty @q.Tier · +@q.BonusPoints bonus points">@q.Tier</span>
+                                }
+                                else
+                                {
+                                    <span class="dg-muted">—</span>
+                                }
+                            </td>
+                            <td><span class="qt-cell"><span class="material-symbols-outlined">@TypeIcon(q.QuestTypeId)</span> @(TypeName(q.QuestTypeId) ?? "General")</span></td>
+                            <td>
+                                @if (q.Origin == QuestOrigin.Guild)
+                                {
+                                    <span class="qc-issuer"><span class="material-symbols-outlined">shield</span> Guild</span>
+                                }
+                                else
+                                {
+                                    <UserChip Name="@Name(q.OwnerId)" AvatarUrl="@Avatar(q.OwnerId)" Href="@(_isStaff ? MusterLinks.MemberDetail(GuildId, q.OwnerId) : null)" />
+                                }
+                            </td>
+                            <td class="num">
+                                <span class="qc-reward @RewardTextClass(rc)">+@q.RewardAmount @rc</span>
+                                @if (q.BonusPoints > 0)
+                                {
+                                    <span class="qc-pts">&nbsp;+@q.BonusPoints pts</span>
+                                }
+                            </td>
+                            <td class="num">@ClaimedCount(q)/@q.Capacity</td>
+                            <td>@DueText(q)</td>
+                            <td>@if (StatusChip(q, _isManager) is { } sc) { <span class="chip @sc.Class">@sc.Text</span> }</td>
+                            <td class="dg-actions-col"><div class="qt-row-actions">@QuestActions(q)</div></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="quest-board">
+            @foreach (var q in _quests)
+            {
+                <QuestCard Quest="q" Data="_cardData" Actions="QuestActions" ShowActions="@HasAnyAction(q)" />
+            }
+        </div>
+    }
+
+        <div class="dg-footer">
+            <div class="dg-pager">
+                <a class="btn btn-ghost btn-sm @(_page <= 1 ? "is-disabled" : null)" href="@(_page <= 1 ? null : PageUrl(_page - 1))" aria-disabled="@(_page <= 1)">← Prev</a>
+                <span>Page @_page of @Math.Max(_totalPages, 1) · @_total quests</span>
+                <a class="btn btn-ghost btn-sm @(_page >= _totalPages ? "is-disabled" : null)" href="@(_page >= _totalPages ? null : PageUrl(_page + 1))" aria-disabled="@(_page >= _totalPages)">Next →</a>
+            </div>
+        </div>
+    </div>
+
+        @* Actions that need text/tier input (submit, revise, reject, intake) open this dialog — shared by the card
+           and table action buttons. One-click actions (claim, approve, confirm, finalize, cancel) run directly. *@
+        @if (_modalQuest is { } mq)
+        {
+            <div class="modal-overlay" @onclick="CloseActionModal">
+                <div class="qmodal glass" @onclick:stopPropagation>
+                    <h3>@_modalTitle</h3>
+                    @if (_modalAction == "accept")
+                    {
+                        <label class="qmodal-field">Difficulty tier
+                            <select @bind="_modalTier">
+                                <option value="@QuestTier.None">No tier (0 pts)</option>
+                                @foreach (var t in _tiers)
+                                {
+                                    <option value="@t">@t — @_settings.PointsForTier(t) pts</option>
+                                }
+                            </select>
+                        </label>
+                        @if (_settings.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
+                        {
+                            <label class="checkbox"><input type="checkbox" @bind="_modalFinal" /> Require a final manager sign-off before payout</label>
+                        }
+                    }
+                    else
+                    {
+                        <label class="qmodal-field">@_modalNoteLabel
+                            <textarea rows="3" placeholder="@_modalNotePlaceholder" @bind="_modalNote"></textarea>
+                        </label>
+                    }
+                    <div class="btn-row">
+                        <button type="button" class="btn" disabled="@(_acting is not null)" @onclick="ConfirmActionModal">@_modalConfirm</button>
+                        <button type="button" class="btn btn-ghost" @onclick="CloseActionModal">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+@code {
+    // ---- Shared action buttons (card + table) -----------------------------------------------------------
+    // The role-gated action icons for one quest. This stays in the .razor — it uses Razor template syntax
+    // (@<text>…), which a code-behind (.razor.cs) can't express. All other board logic lives in Quests.razor.cs.
+    private RenderFragment QuestActions(QuestBoardItem q) => @<text>
+        @{
+            var acts = ActionsFor(q).ToList();
+            var primary = acts.Where(a => a.Value != "cancel").ToList();
+            var cancel = acts.FirstOrDefault(a => a.Value == "cancel");
+        }
+        @foreach (var a in primary)
+        {
+            <button type="button" title="@a.Label" aria-label="@a.Label" disabled="@(_acting is not null)"
+                    @onclick="() => TriggerAction(q, a.Value)"
+                    class="icon-btn @IconColor(a.Value)"><span class="@BtnIconClass(q.Id, a.Value)">@BtnIcon(q.Id, a.Value)</span></button>
+        }
+        @if (CanIntake(q))
+        {
+            <button type="button" title="Accept &amp; open" aria-label="Accept and open" disabled="@(_acting is not null)" @onclick='() => TriggerAction(q, "accept")' class="icon-btn success"><span class="@BtnIconClass(q.Id, "accept")">@BtnIcon(q.Id, "accept")</span></button>
+            <button type="button" title="Reject intake (refund owner)" aria-label="Reject intake" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "reject-intake")' class="icon-btn danger"><span class="@BtnIconClass(q.Id, "reject-intake")">@BtnIcon(q.Id, "reject-intake")</span></button>
+        }
+        @if (CanFinalize(q))
+        {
+            <button type="button" title="Pay completer" aria-label="Pay completer" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "finalize-pay")' class="icon-btn success"><span class="@BtnIconClass(q.Id, "finalize-pay")">@BtnIcon(q.Id, "finalize-pay")</span></button>
+            <button type="button" title="Refund owner" aria-label="Refund owner" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "finalize-refund")' class="icon-btn warn"><span class="@BtnIconClass(q.Id, "finalize-refund")">@BtnIcon(q.Id, "finalize-refund")</span></button>
+        }
+        @if (CanEdit(q))
+        {
+            <a class="icon-btn" title="Edit" aria-label="Edit" href="/guilds/@GuildId/quests/@q.Id/edit"><span class="material-symbols-outlined">edit</span></a>
+        }
+        @if (cancel is not null)
+        {
+            <button type="button" title="@cancel.Label" aria-label="@cancel.Label" disabled="@(_acting is not null)" @onclick='() => ActAsync(q.Id, "cancel")' class="icon-btn danger"><span class="@BtnIconClass(q.Id, "cancel")">@BtnIcon(q.Id, "cancel")</span></button>
+        }
+    </text>;
+}

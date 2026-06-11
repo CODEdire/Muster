@@ -34,6 +34,25 @@ public sealed class ShopService(
     /// cycles on the same order don't collide on the ledger's (source, id) idempotency.</summary>
     private static string OfferKey(ShopOrder order) => $"{OrderKey(order.Id)}:r{order.OfferRound}";
 
+    /// <summary>A sold-out listing can't honour competing offers — decline + refund every still-open offer on it,
+    /// skipping <paramref name="exceptOrderId"/> (the order that caused the sellout, when one exists). Buyer-proposed
+    /// offers hold escrow and are refunded; seller-counters hold nothing. Caller commits (this only stages).</summary>
+    private async Task DeclineCompetingOffersAsync(ShopListing listing, Guid? exceptOrderId, CancellationToken ct)
+    {
+        foreach (var other in await db.ListOpenOffersForListingAsync(listing.Id, exceptOrderId ?? Guid.Empty, ct))
+        {
+            if (other.OfferProposedBy == ShopOfferParty.Buyer) // only buyer-proposed offers hold funds
+            {
+                await currency.ShopRefundAsync(other.GuildId, other.BuyerId, other.CurrencyId, other.Amount, OfferKey(other), ct);
+            }
+
+            other.TransitionTo(ShopOrderStatus.OfferDeclined);
+            await bus.PublishAsync(new ShopLifecycleNotified(
+                other.GuildId, other.ListingId, other.ItemNameSnapshot, ShopLifecycleMoment.OfferRejected, other.BuyerId,
+                "Offer declined — the item sold", other.Id));
+        }
+    }
+
     /// <summary>Best-effort delete of blob images by key (deduped; no-op for null/empty or when blob isn't wired).</summary>
     private async Task DeleteImagesAsync(IEnumerable<string?> keys, CancellationToken ct)
     {
@@ -44,7 +63,8 @@ public sealed class ShopService(
     }
 
     public async Task<(ShopResult Result, Guid? StoreId)> CreateStoreAsync(
-        ulong guildId, ulong ownerId, string name, string? description, string? slug, Guid? storeTypeId = null, CancellationToken ct = default)
+        ulong guildId, ulong ownerId, string name, string? description, string? slug, Guid? storeTypeId = null,
+        ShopStoreOrigin origin = ShopStoreOrigin.Member, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -52,7 +72,9 @@ public sealed class ShopService(
         }
 
         var cfg = await settings.GetAsync(guildId, ct);
-        if (cfg.MaxStoresPerSeller > 0 && await db.CountStoresByOwnerAsync(guildId, ownerId, ct) >= cfg.MaxStoresPerSeller)
+        // The per-seller store cap is a member-store guardrail; guild stores are admin-curated and exempt.
+        if (origin == ShopStoreOrigin.Member && cfg.MaxStoresPerSeller > 0
+            && await db.CountStoresByOwnerAsync(guildId, ownerId, ct) >= cfg.MaxStoresPerSeller)
         {
             return (ShopResult.StoreCapReached, null);
         }
@@ -65,7 +87,7 @@ public sealed class ShopService(
         var desired = string.IsNullOrWhiteSpace(slug) ? Slugify(name) : Slugify(slug);
         var unique = await UniqueSlugAsync(guildId, desired, ct);
 
-        var store = ShopStore.Create(guildId, ownerId, name, unique, description);
+        var store = ShopStore.Create(guildId, ownerId, name, unique, description, origin);
         if (storeTypeId is { } t && t != Guid.Empty) { store.StoreTypeId = t; }
         db.ShopStores.Add(store);
         await db.SaveChangesAsync(ct);
@@ -75,8 +97,15 @@ public sealed class ShopService(
 
     public async Task<ShopResult> EditStoreAsync(
         ShopStore store, string? name, string? description, string? bannerImageKey, string? logoImageKey,
-        string? accentColor, bool? closed, Guid? storeTypeId, CancellationToken ct = default)
+        string? accentColor, bool? closed, Guid? storeTypeId, ShopStoreOrigin? origin = null, CancellationToken ct = default)
     {
+        // Convert member ↔ guild. Future sales follow the new origin (guild → burn; member → pay the owner-seller);
+        // in-flight orders keep the origin they snapshotted at purchase.
+        if (origin is { } o)
+        {
+            store.Origin = o;
+        }
+
         if (name is not null)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -674,7 +703,8 @@ public sealed class ShopService(
 
         db.ShopOrders.Add(order);
         listing.Quantity -= qty;
-        if (listing.Quantity <= 0)
+        var soldOut = listing.Quantity <= 0;
+        if (soldOut)
         {
             listing.TransitionTo(ShopListingStatus.SoldOut);
             listing.FeaturedUntil = null; // sold out → free the featured slot + drop the card
@@ -689,6 +719,14 @@ public sealed class ShopService(
             // Two buyers raced the last unit(s): the RowVersion check lost. Nothing committed (incl. the hold),
             // so the order simply didn't happen — tell this buyer it's out of stock.
             return (ShopResult.OutOfStock, null);
+        }
+
+        // A buy-now that took the last unit kills any open offers the same way an accepted offer does (no order to
+        // exclude — the buy-now order isn't an OfferPending row, so nothing of ours matches the competing-offer query).
+        if (soldOut)
+        {
+            await DeclineCompetingOffersAsync(listing, null, ct);
+            await db.SaveChangesAsync(ct);
         }
 
         await bus.PublishAsync(new ShopLifecycleNotified(
@@ -731,9 +769,12 @@ public sealed class ShopService(
             return ShopResult.NotDelivered;
         }
 
-        var fee = await FeeForAsync(order, cfg, ct);
-
-        var settle = await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
+        // Guild store → consume (burn the buyer's payment, no seller, no commission); member store → pay the seller.
+        var isGuild = order.Origin == ShopStoreOrigin.Guild;
+        var fee = isGuild ? 0 : await FeeForAsync(order, cfg, ct);
+        var settle = isGuild
+            ? await currency.ShopConsumeAsync(order.GuildId, order.CurrencyId, order.Amount, OrderKey(order.Id), ct)
+            : await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
         if (settle != Currencies.EscrowStatus.Ok)
         {
             return ToShopResult(settle);
@@ -743,13 +784,13 @@ public sealed class ShopService(
         order.FeeAmount = fee;
         order.ConfirmedAt = now;
         order.SettledAt = now;
-        order.RatingWindowClosesAt = cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
+        order.RatingWindowClosesAt = !isGuild && cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
         order.TransitionTo(ShopOrderStatus.Settled);
         await db.SaveChangesAsync(ct);
 
         await bus.PublishAsync(new ShopLifecycleNotified(
             order.GuildId, order.ListingId, order.ItemNameSnapshot, ShopLifecycleMoment.Settled, order.SellerId,
-            "Order settled — funds released to seller", order.Id));
+            isGuild ? "Order settled — payment consumed by the guild" : "Order settled — funds released to seller", order.Id));
 
         return ShopResult.Ok;
     }
@@ -942,6 +983,12 @@ public sealed class ShopService(
             return (ShopResult.NotActive, null);
         }
 
+        // Guild stores are buy-now only — no negotiation (there's no member seller to counter).
+        if (listing.Store?.Origin == ShopStoreOrigin.Guild)
+        {
+            return (ShopResult.NotActive, null);
+        }
+
         if (listing.SellerId == buyerId)
         {
             return (ShopResult.Forbidden, null);
@@ -1035,19 +1082,7 @@ public sealed class ShopService(
         // A sold-out listing can't honour competing offers — decline + refund the ones currently holding funds.
         if (soldOut)
         {
-            foreach (var other in await db.ListOpenOffersForListingAsync(listing.Id, order.Id, ct))
-            {
-                if (other.OfferProposedBy == ShopOfferParty.Buyer) // only buyer-proposed offers hold funds
-                {
-                    await currency.ShopRefundAsync(other.GuildId, other.BuyerId, other.CurrencyId, other.Amount, OfferKey(other), ct);
-                }
-
-                other.TransitionTo(ShopOrderStatus.OfferDeclined);
-                await bus.PublishAsync(new ShopLifecycleNotified(
-                    other.GuildId, other.ListingId, other.ItemNameSnapshot, ShopLifecycleMoment.OfferRejected, other.BuyerId,
-                    "Offer declined — the item sold", other.Id));
-            }
-
+            await DeclineCompetingOffersAsync(listing, order.Id, ct);
             await db.SaveChangesAsync(ct);
         }
 
@@ -1194,8 +1229,12 @@ public sealed class ShopService(
     {
         if (paySeller)
         {
-            var fee = await FeeForAsync(order, cfg, ct);
-            var settle = await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
+            // Guild store → consume (burn); member store → pay the seller, less the burned commission.
+            var isGuild = order.Origin == ShopStoreOrigin.Guild;
+            var fee = isGuild ? 0 : await FeeForAsync(order, cfg, ct);
+            var settle = isGuild
+                ? await currency.ShopConsumeAsync(order.GuildId, order.CurrencyId, order.Amount, OrderKey(order.Id), ct)
+                : await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
             if (settle != Currencies.EscrowStatus.Ok)
             {
                 return ToShopResult(settle);
@@ -1204,7 +1243,7 @@ public sealed class ShopService(
             var now = DateTimeOffset.UtcNow;
             order.FeeAmount = fee;
             order.SettledAt = now;
-            order.RatingWindowClosesAt = cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
+            order.RatingWindowClosesAt = !isGuild && cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
             order.ResolvedBy = resolverId;
             order.TransitionTo(ShopOrderStatus.Settled);
             return ShopResult.Ok;
@@ -1240,6 +1279,12 @@ public sealed class ShopService(
     {
         var cfg = await settings.GetAsync(order.GuildId, ct);
         if (!cfg.RatingsEnabled)
+        {
+            return ShopResult.NotActive;
+        }
+
+        // A guild store has no member seller to rate (the guild ran the sale).
+        if (order.Origin == ShopStoreOrigin.Guild)
         {
             return ShopResult.NotActive;
         }

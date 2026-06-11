@@ -23,6 +23,10 @@ public class ShopOrder
     public ulong BuyerId { get; set; }
     public ulong SellerId { get; set; }
 
+    /// <summary>Snapshot of the store's origin at purchase. A <see cref="ShopStoreOrigin.Guild"/> order settles by
+    /// burning the buyer's payment (consume) instead of paying the seller; member orders pay the seller as usual.</summary>
+    public ShopStoreOrigin Origin { get; set; } = ShopStoreOrigin.Member;
+
     /// <summary>The listing's name captured at purchase, so receipts/history survive later edits/deletes.</summary>
     public string ItemNameSnapshot { get; set; } = string.Empty;
 
@@ -96,6 +100,7 @@ public class ShopOrder
             StoreId = listing.StoreId,
             BuyerId = buyerId,
             SellerId = listing.SellerId,
+            Origin = listing.Store?.Origin ?? ShopStoreOrigin.Member,
             ItemNameSnapshot = listing.Name,
             CurrencyId = listing.CurrencyId,
             Amount = amount,

@@ -191,7 +191,7 @@ public class CurrencyService(
     // Maintenance
     // ---------------------------------------------------------------------------------------------
 
-    public async Task<int> RebuildWalletsAsync(ulong guildId, CancellationToken ct = default)
+    public async Task<WalletRebuildResult> RebuildWalletsAsync(ulong guildId, CancellationToken ct = default)
     {
         // The ledger is the source of truth; recompute each (user,currency,season) balance from it.
         var sums = await db.LedgerTotalsAsync(guildId, ct);
@@ -200,7 +200,36 @@ public class CurrencyService(
         var byKey = wallets.ToDictionary(w => (w.UserId, w.CurrencyId, w.SeasonId));
         var ledgerKeys = sums.Select(s => (s.UserId, s.CurrencyId, s.SeasonId)).ToHashSet();
         var now = DateTimeOffset.UtcNow;
-        var changed = 0;
+        var created = 0;
+        var corrected = 0;
+
+        // First ensure every member has a wallet for every currency (0-balance where none) so balances are always
+        // present and an external sync has a row to reconcile. Seasonal currencies bind to the active season.
+        // NB: "members" is the local GuildMembers table — only members Muster knows get wallets, so a Discord roster
+        // sync should run first if it's stale.
+        var members = await db.ListMembersAsync(guildId, ct);
+        var currencies = await db.ListCurrenciesAsync(guildId, ct);
+        var activeSeasonId = await db.ActiveSeasonIdAsync(guildId, ct);
+        foreach (var m in members)
+        {
+            foreach (var c in currencies)
+            {
+                var seasonId = c.IsSeasonal ? activeSeasonId : (Guid?)null;
+                if (c.IsSeasonal && seasonId is null)
+                {
+                    continue; // no active season → no seasonal wallet to create
+                }
+
+                var key = (m.UserId, c.Id, seasonId);
+                if (!byKey.ContainsKey(key))
+                {
+                    var seeded = new Wallet { GuildId = guildId, UserId = m.UserId, CurrencyId = c.Id, SeasonId = seasonId, UpdatedAt = now };
+                    db.Wallets.Add(seeded);
+                    byKey[key] = seeded;
+                    created++;
+                }
+            }
+        }
 
         foreach (var s in sums)
         {
@@ -208,13 +237,15 @@ public class CurrencyService(
             {
                 wallet = new Wallet { GuildId = guildId, UserId = s.UserId, CurrencyId = s.CurrencyId, SeasonId = s.SeasonId };
                 db.Wallets.Add(wallet);
+                byKey[(s.UserId, s.CurrencyId, s.SeasonId)] = wallet;
+                created++;
             }
 
             if (wallet.Balance != s.Total)
             {
                 wallet.Balance = s.Total;
                 wallet.UpdatedAt = now;
-                changed++;
+                corrected++;
             }
         }
 
@@ -223,11 +254,11 @@ public class CurrencyService(
         {
             wallet.Balance = 0;
             wallet.UpdatedAt = now;
-            changed++;
+            corrected++;
         }
 
         await db.SaveChangesAsync(ct);
-        return changed;
+        return new WalletRebuildResult(members.Count, currencies.Count, created, corrected);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -314,6 +345,16 @@ public class CurrencyService(
             await StageAsync(guildId, BurnAccountUserId, currencyId, fee, CurrencyLedgerSource.ShopFee, $"{sourceKey}:fee:burn", "Shop commission", ct);
         }
 
+        return EscrowStatus.Ok;
+    }
+
+    /// <summary>Settle a <b>guild-store</b> sale: the held escrow is removed from circulation (burned) — the guild is
+    /// a coin sink, with no member seller to pay. The economic mirror of a guild quest minting a reward.</summary>
+    public async Task<EscrowStatus> ShopConsumeAsync(
+        ulong guildId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default)
+    {
+        await StageAsync(guildId, EscrowAccountUserId, currencyId, -amount, CurrencyLedgerSource.Shop, $"{sourceKey}:payout:escrow", "Guild shop sale", ct);
+        await StageAsync(guildId, BurnAccountUserId, currencyId, amount, CurrencyLedgerSource.ShopFee, $"{sourceKey}:payout:burn", "Guild shop sale", ct);
         return EscrowStatus.Ok;
     }
 

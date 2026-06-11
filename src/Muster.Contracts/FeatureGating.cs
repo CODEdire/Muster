@@ -8,6 +8,9 @@ public enum PlatformFeature
 {
     /// <summary>The player marketplace (stores, listings, orders, offers, disputes, ratings).</summary>
     Shop,
+
+    /// <summary>The quest board (guild duties + player bounties: posting, claiming, submission, payout).</summary>
+    Quests,
 }
 
 /// <summary>

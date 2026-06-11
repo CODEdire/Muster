@@ -101,6 +101,13 @@ else if (State == AccessState.Ready)
                         <label class="checkbox"><input type="checkbox" @bind="_closed" /> Closed</label>
                         <span class="hint">A closed store keeps its history but stops new listings, purchases, and offers. Reopen any time.</span>
                     </div>
+                    @if (_isManager)
+                    {
+                        <div class="field span2">
+                            <label class="checkbox"><input type="checkbox" @bind="_guildStore" /> Guild shop</label>
+                            <span class="hint">A guild shop is run by the guild: purchases <strong>burn</strong> the buyer's coins (no seller paid), and ratings/offers are off. Converting affects future sales only — in-flight orders keep their original terms. ShopManager-only.</span>
+                        </div>
+                    }
                     @if (_imagesAvailable)
                     {
                         <div class="field span2">
@@ -284,7 +291,7 @@ else if (State == AccessState.Ready)
 
     private ShopStoreDetail? _store;
     private FeatureVerdict _shopGate;
-    private bool _canManage, _imagesAvailable;
+    private bool _canManage, _imagesAvailable, _isManager, _guildStore;
     private string _tab = "config";
 
     private string? _name, _description;
@@ -322,6 +329,8 @@ else if (State == AccessState.Ready)
         }
 
         var isManager = await Auth.IsShopManagerAsync(GuildId, UserId);
+        _isManager = isManager;
+        _guildStore = _store.Origin == Muster.Contracts.ShopStoreOrigin.Guild;
         _canManage = isManager || (_store.OwnerId == UserId && await Auth.IsShopCreatorAsync(GuildId, UserId));
         _imagesAvailable = scope.ServiceProvider.GetService<IShopImageService>() is not NoOpShopImageService and not null;
 
@@ -506,7 +515,8 @@ else if (State == AccessState.Ready)
             var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
             var result = await bus.InvokeAsync<Result>(new EditStore(
                 GuildId, UserId, StoreId, Name: _name!.Trim(), Description: _description ?? "",
-                BannerImageKey: _banner, LogoImageKey: _logo, AccentColor: _accent, Closed: _closed, StoreTypeId: _storeTypeId));
+                BannerImageKey: _banner, LogoImageKey: _logo, AccentColor: _accent, Closed: _closed, StoreTypeId: _storeTypeId,
+                Origin: _isManager ? (_guildStore ? Muster.Contracts.ShopStoreOrigin.Guild : Muster.Contracts.ShopStoreOrigin.Member) : null));
             Message = result.ToCommandResult("Store updated.").Message;
         }
         finally

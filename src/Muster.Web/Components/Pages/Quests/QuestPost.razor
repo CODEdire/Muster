@@ -5,8 +5,10 @@
 @inject IQuestReadService Reads
 @inject TimeZoneService TimeZones
 @inject ICurrencyAdminService CurrencyAdmin
+@inject IFeatureGate Gate
 @inject Wolverine.IMessageBus Bus
 @using Muster.Domain.Entities
+@using Muster.Domain.Entities.Quests
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
 @using Muster.Infrastructure.Services.Currencies
@@ -20,13 +22,14 @@
 {
     <div class="panel glass empty">You don't have access to this server.</div>
 }
+else if (State == AccessState.Ready && !_gate.IsEnabled)
+{
+    <FeatureGateNotice Verdict="_gate" Feature="The quest board" />
+}
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
-        <h1>Post a quest</h1>
-        <p class="subtitle">Guild quests mint their reward on approval; personal quests escrow your own balance.</p>
-    </div>
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests", $"/guilds/{GuildId}/quests"), new("Post a quest") })"
+                Subtitle="Guild quests mint their reward on approval; personal quests escrow your own balance." />
 
     @if (Message is not null)
     {
@@ -56,13 +59,13 @@ else if (State == AccessState.Ready)
             }
             <input type="hidden" name="Post.Kind" id="quest-kind-value" value="@Post.Kind" />
 
-            <QuestFormFields Model="Post.Fields" NamePrefix="Post.Fields" Settings="_settings"
+            <QuestFormFields Model="Post.Fields" NamePrefix="Post.Fields" Settings="_settings" Types="_types"
                              Currencies="_currencies"
                              ShowRewardHints="true" GuildHintClass="@guildHidden" PlayerHintClass="@playerHidden"
                              IncludeGuildFields="_isManager" GuildFieldsClass="@($"guild-only {guildHidden}")"
                              IncludeStarts="true" />
 
-            @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.OwnerChoice)
+            @if (_settings.FinalApprovalMode == FinalApprovalMode.OwnerChoice)
             {
                 <label class="checkbox personal-only @playerHidden"><InputCheckbox @bind-Value="Post.RequestFinalApproval" /> Require a manager's final sign-off before payout</label>
             }
@@ -76,50 +79,3 @@ else if (State == AccessState.Ready)
     </div>
 }
 
-@code {
-    [SupplyParameterFromForm(FormName = "post-quest")] private PostInput Post { get; set; } = new();
-
-    private IReadOnlyList<CurrencyView> _currencies = [];
-    private bool _isManager;
-    private string _zoneId = TimeZoneService.Utc;
-    private GuildSettings _settings = new();
-
-    protected override async Task LoadAsync()
-    {
-        _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
-        _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);
-        _currencies = (await CurrencyAdmin.ListAsync(GuildId)).Where(c => c.IsSpendable).ToList();
-        _settings = await Reads.GetSettingsAsync(GuildId);
-    }
-
-    private async Task PostAsync()
-    {
-        // Guild quests are manager-only and carry tier + slots; player quests are single-taker and tiered at intake.
-        var f = Post.Fields;
-        var isGuild = _isManager && Post.Kind == "guild";
-        var origin = isGuild ? QuestOrigin.Guild : QuestOrigin.Player;
-        var tier = isGuild ? f.Tier : QuestTier.None;
-        var capacity = isGuild ? Math.Max(1, f.Capacity) : 1;
-
-        var startsAt = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.StartsAt);
-        var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.ExpiresAt);
-
-        var command = new PostQuest(GuildId, UserId, origin, f.Name ?? "", f.Currency ?? "POINTS", f.Amount,
-            f.Details ?? "", startsAt, deadline, tier, Post.RequestFinalApproval, capacity);
-        var result = (await Bus.InvokeAsync<Result<Guid>>(command)).ToCommandResult($"Quest **{f.Name}** posted.");
-        Message = result.Message;
-        if (!result.IsError)
-        {
-            Post = new PostInput();
-        }
-
-        await LoadAsync();
-    }
-
-    public class PostInput
-    {
-        public string Kind { get; set; } = "personal";
-        public bool RequestFinalApproval { get; set; }
-        public QuestFormModel Fields { get; set; } = new();
-    }
-}

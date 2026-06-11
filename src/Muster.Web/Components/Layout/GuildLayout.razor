@@ -102,9 +102,12 @@
             var guild = new List<NavItem>
             {
                 new("Leaderboard", "leaderboard", $"/guilds/{_guildId}", "$"),
-                new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
             };
-            // Shop entry only when the feature gate says it's on for this guild (platform + plan + guild toggle).
+            // Quests + Shop entries only when the feature gate says they're on for this guild (platform + plan + toggle).
+            if (_questsEnabled)
+            {
+                guild.Add(new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"));
+            }
             if (_shopEnabled)
             {
                 guild.Add(new("Shop", "storefront", $"/guilds/{_guildId}/shop", "/shop"));
@@ -143,17 +146,30 @@
         }
     }
 
-    private IReadOnlyList<NavItem> BottomTabs => _guildId == 0 ? [] :
-    [
-        new("Home", "home", $"/guilds/{_guildId}", "$"),
-        new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"),
-        new("Sessions", "schedule", $"/guilds/{_guildId}/guild/tracking/sessions", "/guild/tracking/sessions"),
-        new("You", "person", $"/guilds/{_guildId}/me", "/me"),
-    ];
+    private IReadOnlyList<NavItem> BottomTabs
+    {
+        get
+        {
+            if (_guildId == 0)
+            {
+                return [];
+            }
+
+            var tabs = new List<NavItem> { new("Home", "home", $"/guilds/{_guildId}", "$") };
+            if (_questsEnabled)
+            {
+                tabs.Add(new("Quests", "swords", $"/guilds/{_guildId}/quests", "/quests"));
+            }
+            tabs.Add(new("Sessions", "schedule", $"/guilds/{_guildId}/guild/tracking/sessions", "/guild/tracking/sessions"));
+            tabs.Add(new("You", "person", $"/guilds/{_guildId}/me", "/me"));
+            return tabs;
+        }
+    }
 
     private bool _isAdmin;
     private bool _isParticipant;
     private bool _shopEnabled;
+    private bool _questsEnabled;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -190,6 +206,7 @@
 
             var gate = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>();
             _shopEnabled = await gate.IsEnabledAsync(_guildId, Muster.Contracts.PlatformFeature.Shop);
+            _questsEnabled = await gate.IsEnabledAsync(_guildId, Muster.Contracts.PlatformFeature.Quests);
         }
 
         var profile = await web.GetUserProfileAsync(userId.Value);

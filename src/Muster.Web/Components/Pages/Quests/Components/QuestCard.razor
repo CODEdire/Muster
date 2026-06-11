@@ -1,0 +1,145 @@
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Quests
+@using static Muster.Web.Components.Pages.Quests.Core.QuestPresentation
+
+@{
+    var q = Quest;
+    var rewardCode = Data.Code(q.RewardCurrencyId);
+    var sub = q.Participants.FirstOrDefault(p => p.Status == QuestParticipantStatus.Submitted);
+    var rev = q.Participants.FirstOrDefault(p => p.Status == QuestParticipantStatus.RevisionRequested);
+    var typeName = Data.TypeName(q.QuestTypeId) ?? "General";
+    var longDesc = (q.Description?.Length ?? 0) > 140;
+    var workers = ActiveWorkers(q);
+    var roster = RosterParticipants(q);
+}
+<article class="quest-card glass">
+    @* Left rail: the quest type icon over its difficulty tier — two stacked emblems, tinted by tier. *@
+    <div class="qc-rail @(q.Tier != QuestTier.None ? $"tier-edge-{q.Tier}" : "")">
+        <span class="qc-rail-icon material-symbols-outlined" title="@typeName">@Data.TypeIcon(q.QuestTypeId)</span>
+        @if (q.Tier != QuestTier.None)
+        {
+            <span class="qc-rail-tier" title="Difficulty @q.Tier · +@q.BonusPoints bonus points">@q.Tier</span>
+        }
+    </div>
+    <div class="qc-body">
+        <div class="qc-body-top">
+            <a class="qc-title" href="/guilds/@Data.GuildId/quests/@q.Id">@q.Name</a>
+            <span class="qc-reward @RewardTextClass(rewardCode)">
+                +@q.RewardAmount @rewardCode
+                @if (q.Origin == QuestOrigin.Player)
+                {
+                    <span class="material-symbols-outlined esc-lock" title="Reward held in escrow">lock</span>
+                }
+            </span>
+        </div>
+
+        @* Type label (left) sits opposite the bonus points (right), under the title/reward line. *@
+        <div class="qc-subrow">
+            <span class="qc-type-label">@typeName</span>
+            @if (q.BonusPoints > 0)
+            {
+                <span class="qc-pts" title="Bonus POINTS minted on completion">+@q.BonusPoints pts</span>
+            }
+        </div>
+
+        <div class="qc-meta2">
+            @if (q.Origin == QuestOrigin.Guild)
+            {
+                <span class="qc-issuer"><span class="material-symbols-outlined">shield</span> Guild issued</span>
+            }
+            else
+            {
+                <UserChip Name="@Data.Name(q.OwnerId)" AvatarUrl="@Data.Avatar(q.OwnerId)" Href="@Data.MemberHref(q.OwnerId)" />
+            }
+            <span class="qc-dot">·</span>
+            <span class="qc-exp"><span class="material-symbols-outlined">@(q.Status == QuestStatus.Scheduled ? "schedule" : "timer")</span> @Data.DueText(q)</span>
+            @if (StatusChip(q, Data.IsManager) is { } sc)
+            {
+                <span class="chip @sc.Class">@sc.Text</span>
+            }
+        </div>
+
+        @* Description area is always rendered at a fixed 3-line height so cards don't grow/shrink with content;
+           long text clamps to 3 lines and reveals the rest in a hover/focus popover. *@
+        <div class="qc-desc-wrap @(longDesc ? "has-pop" : "")" tabindex="@(longDesc ? "0" : null)">
+            @if (!string.IsNullOrWhiteSpace(q.Description))
+            {
+                <div class="qc-desc markdown">@DiscordMarkdown.ToHtml(q.Description)</div>
+                @if (longDesc)
+                {
+                    <div class="qc-desc-pop glass markdown">@DiscordMarkdown.ToHtml(q.Description)</div>
+                }
+            }
+        </div>
+
+        @if (sub?.Note is { Length: > 0 } sn)
+        {
+            <p class="qc-note">Note: @sn</p>
+        }
+        @if (rev?.ReviewNote is { Length: > 0 } rn)
+        {
+            <p class="qc-note">Revision: @rn</p>
+        }
+
+        <div class="qc-foot">
+            <a class="qc-details" href="/guilds/@Data.GuildId/quests/@q.Id">Details →</a>
+            <div class="qc-claimers @(roster.Count > 0 ? "has-pop" : "")" tabindex="@(roster.Count > 0 ? "0" : null)">
+                @if (workers.Count > 0)
+                {
+                    <div class="stack">
+                        @foreach (var p in workers.Take(3))
+                        {
+                            @if (Data.Avatar(p.UserId) is { } wurl)
+                            {
+                                <img class="avatar-xs ring-@RingClass(p.Status)" src="@wurl" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span class="avatar-xs ring-@RingClass(p.Status)">@Data.Initial(p.UserId)</span>
+                            }
+                        }
+                        @if (workers.Count > 3)
+                        {
+                            <span class="avatar-xs more">+@(workers.Count - 3)</span>
+                        }
+                    </div>
+                }
+                <span class="qc-claimed">@ClaimedCount(q)/@q.Capacity</span>
+
+                @if (roster.Count > 0)
+                {
+                    <div class="roster-pop glass">
+                        <div class="roster-head">Participants</div>
+                        @foreach (var p in roster)
+                        {
+                            <div class="roster-row">
+                                @if (Data.Avatar(p.UserId) is { } rurl)
+                                {
+                                    <img class="avatar-xs ring-@RingClass(p.Status)" src="@rurl" alt="" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <span class="avatar-xs ring-@RingClass(p.Status)">@Data.Initial(p.UserId)</span>
+                                }
+                                <span class="roster-name">@Data.Name(p.UserId)</span>
+                                <span class="chip @ParticipantChip(p.Status)">@ParticipantLabel(p.Status)</span>
+                                @if (p.ReviewedBy is { } rb)
+                                {
+                                    <span class="roster-by">by @Data.Name(rb)</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Always rendered so the bar's height is reserved on every card (multi-slot fills proportionally). *@
+        <div class="qc-bar"><div class="qc-bar-fill" style="width:@(Math.Min(100, ClaimedCount(q) * 100 / Math.Max(1, q.Capacity)))%"></div></div>
+
+        @if (ShowActions)
+        {
+            <div class="action-bar">@Actions?.Invoke(q)</div>
+        }
+    </div>
+</article>

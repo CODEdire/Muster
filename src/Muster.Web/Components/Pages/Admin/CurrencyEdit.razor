@@ -4,6 +4,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inherits GuildAdminComponentBase
 @inject ICurrencyAdminService CurrencyAdmin
+@inject Muster.Infrastructure.Connectors.CurrencyConnectorSyncService Sync
 @inject Wolverine.IMessageBus Bus
 @using Muster.Contracts
 @using Muster.Domain.Entities
@@ -200,8 +201,22 @@ else if (State == AccessState.Ready)
                     <button type="button" class="btn btn-ghost" @onclick="SyncAllAsync" disabled="@_busy">
                         @(_busy ? "Working…" : "Sync all members")
                     </button>
+                    @if (_backlog is { } bl)
+                    {
+                        <span class="sync-backlog" title="The full sync still has to reconcile the pending members.">
+                            <span class="material-symbols-outlined">@(bl.Pending > 0 ? "pending" : "task_alt")</span>
+                            @bl.Synced/@bl.Members synced · <strong>@bl.Pending</strong> pending
+                            @if (bl.OldestSync is { } o) { <span class="muted"> · oldest @o.ToString("u")</span> }
+                        </span>
+                    }
                 }
                 <a class="btn btn-ghost" href="/guilds/@GuildId/currencies">Cancel</a>
+                @if (IsEdit && !_isSystem)
+                {
+                    <button type="button" class="btn btn-ghost danger" style="margin-left:auto" @onclick="DeleteAsync" disabled="@_busy">
+                        <span class="material-symbols-outlined">delete</span> Delete currency
+                    </button>
+                }
             </div>
         </div>
     }
@@ -313,6 +328,10 @@ else if (State == AccessState.Ready)
     .last-delivery { margin-top: 1rem; padding: 0.7rem 1rem; background: rgba(255,255,255,0.03);
         border-radius: 0.4rem; display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; }
     .last-delivery .err { color: #f87171; }
+    .sync-backlog { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem;
+        color: var(--text-muted); margin-left: auto; }
+    .sync-backlog .material-symbols-outlined { font-size: 1.05rem; }
+    .sync-backlog .muted { opacity: 0.7; }
 </style>
 
 @code {
@@ -323,6 +342,7 @@ else if (State == AccessState.Ready)
     private EditModel Input { get; set; } = new();
 
     private bool _notFound;
+    private bool _isSystem;       // the protected POINTS currency — can't be deleted
     private bool _authHasSecret;
     private bool _signHasSecret;
     private string? _lastStatus;
@@ -331,6 +351,7 @@ else if (State == AccessState.Ready)
     private string _activeTab = "base";
     private bool _saving;
     private bool _busy; // for test/sync buttons
+    private Muster.Infrastructure.Connectors.CurrencyConnectorSyncService.CurrencySyncBacklog? _backlog;
 
     private bool IsEdit => Guid.TryParse(CurrencyId, out _);
     private Guid EditId => Guid.TryParse(CurrencyId, out var id) ? id : Guid.Empty;
@@ -375,12 +396,21 @@ else if (State == AccessState.Ready)
             return;
         }
 
+        _isSystem = view.IsSystem;
         _authHasSecret = view.Connector.AuthHasSecret;
         _signHasSecret = view.Connector.SignHasSecret;
         _lastStatus = view.Connector.Config.LastStatus;
         _lastError = view.Connector.Config.LastError;
         _lastAttemptAt = view.Connector.Config.LastAttemptAt;
         Input = EditModel.From(view);
+        await RefreshBacklogAsync();
+    }
+
+    private async Task RefreshBacklogAsync()
+    {
+        _backlog = IsEdit && IsConnectorMode && Input.BalanceEnabled
+            ? await Sync.SyncBacklogAsync(GuildId, EditId)
+            : null;
     }
 
     // Tab-panel writer that closes over the active kind so the shared RenderFragment can mutate the right
@@ -458,7 +488,44 @@ else if (State == AccessState.Ready)
         {
             await Bus.PublishAsync(new SyncCurrencyBalances(GuildId, EditId));
             await Audit.RecordCurrencySyncAllAsync(GuildId, UserId, Input.Code ?? "");
-            Message = "Balance sync started for all members — this runs in the background and can take a while for large servers.";
+            Message = "Balance sync started for all members — this runs in the background and can take a while for large servers. Reload to watch the pending count fall.";
+        }
+        finally
+        {
+            _busy = false;
+            await RefreshBacklogAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_busy || !IsEdit || _isSystem)
+        {
+            return;
+        }
+
+        var ok = await JS.InvokeAsync<bool>("confirm", new object?[]
+        {
+            $"Delete currency {Input.Code}? This permanently removes the currency and ALL balances and history for it. This cannot be undone.",
+        });
+        if (!ok)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var result = await CurrencyAdmin.DeleteAsync(GuildId, EditId);
+            if (result.IsError)
+            {
+                Message = result.Message;
+                return;
+            }
+
+            Nav.NavigateTo($"/guilds/{GuildId}/currencies");
         }
         finally
         {

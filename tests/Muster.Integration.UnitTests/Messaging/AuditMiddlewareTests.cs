@@ -42,6 +42,8 @@ public class AuditMiddlewareTests
         builder.Services.AddScoped<ICurrencyService, CurrencyService>();
         builder.Services.AddScoped<IQuestService, QuestService>();
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
+        // QuestAuthorizer now depends on IFeatureGate; a pass-through gate keeps this audit test focused on the funnel.
+        builder.Services.AddSingleton<IFeatureGate>(TestSupport.TestFeatureGates.AlwaysOn);
         builder.Services.AddScoped<AuditService>();
         // The audit middleware injects AuditService → which depends on IAuditOriginProvider. Production hosts
         // (web/bot) register a default-origin provider in their Program.cs; tests must too or the middleware

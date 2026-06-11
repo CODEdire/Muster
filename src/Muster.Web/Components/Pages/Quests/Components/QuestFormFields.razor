@@ -1,5 +1,6 @@
 @using Muster.Contracts
 @using Muster.Domain.Entities
+@using Muster.Domain.Entities.Quests
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Services.Currencies
 
@@ -36,6 +37,20 @@
     </label>
 }
 
+@if (Types is not null && Types.Count > 0)
+{
+    <label>Type
+        <select name="@N("QuestType")">
+            <option value="">General (default)</option>
+            @foreach (var t in Types)
+            {
+                <option value="@t.Id" selected="@(Model.TypeId == t.Id)">@t.Name</option>
+            }
+        </select>
+        <span class="subtitle">Sets the quest's card icon.</span>
+    </label>
+}
+
 @if (IncludeGuildFields)
 {
     <label class="@GuildFieldsClass">Difficulty tier
@@ -43,7 +58,7 @@
             <option value="@QuestTier.None" selected="@(Model.Tier == QuestTier.None)">None — no bonus points</option>
             @foreach (var t in Tiers)
             {
-                <option value="@t" selected="@(Model.Tier == t)">@t — @Settings.Quests.PointsForTier(t) pts</option>
+                <option value="@t" selected="@(Model.Tier == t)">@t — @Settings.PointsForTier(t) pts</option>
             }
         </select>
         <span class="subtitle">Sets the bonus POINTS from guild config.</span>
@@ -65,7 +80,10 @@
     /// <summary>The parent form-model path these fields nest under, e.g. "Post.Fields".</summary>
     [Parameter, EditorRequired] public string NamePrefix { get; set; } = "";
 
-    [Parameter] public GuildSettings Settings { get; set; } = new();
+    [Parameter] public GuildQuestSettings Settings { get; set; } = new();
+
+    /// <summary>The guild's quest types (admin vocab) for the type picker. Null/empty hides the picker.</summary>
+    [Parameter] public IReadOnlyList<QuestType>? Types { get; set; }
 
     /// <summary>When set, renders a currency picker (create only).</summary>
     [Parameter] public IReadOnlyList<CurrencyView>? Currencies { get; set; }

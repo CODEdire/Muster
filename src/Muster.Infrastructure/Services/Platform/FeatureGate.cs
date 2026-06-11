@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.FeatureManagement;
 using Muster.Contracts;
+using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Shops;
 
 namespace Muster.Infrastructure.Services.Platform;
@@ -12,6 +13,7 @@ public static class PlatformFeatureNames
     public static string Of(PlatformFeature feature) => feature switch
     {
         PlatformFeature.Shop => "MusterShop",
+        PlatformFeature.Quests => "MusterQuests",
         _ => feature.ToString(),
     };
 }
@@ -127,14 +129,15 @@ public sealed class AllowAllEntitlementSource : IFeatureEntitlementSource
 
 /// <summary>
 /// Per-guild toggle layer. Maps each feature to its existing guild switch (no new storage): Shop ⇒
-/// <c>GuildShopSettings.PlayerMarketEnabled</c>. Features without an explicit per-guild toggle are on once the
-/// platform + plan allow them.
+/// <c>GuildShopSettings.PlayerMarketEnabled</c>, Quests ⇒ <c>GuildQuestSettings.QuestsEnabled</c>. Features without an
+/// explicit per-guild toggle are on once the platform + plan allow them.
 /// </summary>
-public sealed class GuildFeatureSource(GuildShopSettingsService shopSettings) : IGuildFeatureSource
+public sealed class GuildFeatureSource(GuildShopSettingsService shopSettings, GuildQuestSettingsService questSettings) : IGuildFeatureSource
 {
     public async Task<bool> IsEnabledAsync(ulong guildId, PlatformFeature feature, CancellationToken ct = default) => feature switch
     {
         PlatformFeature.Shop => (await shopSettings.GetAsync(guildId, ct)).PlayerMarketEnabled,
+        PlatformFeature.Quests => (await questSettings.GetAsync(guildId, ct)).QuestsEnabled,
         _ => true,
     };
 }

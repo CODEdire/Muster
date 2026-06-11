@@ -461,6 +461,94 @@ namespace Muster.Persistence.Migrations
                     b.ToTable("GuildMusterSettings");
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildQuestSettings", b =>
+                {
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<bool>("AllowSelfParticipation")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("BoardRetentionHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ClaimTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeadlineReminderHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DisputeTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FinalApprovalMode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FinalApprovalTimeoutAction")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FinalApprovalTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IntakeTimeoutAction")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IntakeTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxActiveClaimsPerUser")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxOpenQuestsPerPoster")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxRevisions")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("PersonalQuestIntakeApproval")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("QuestChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<decimal>("QuestModChannelId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<bool>("QuestsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("QuestsRequireApproval")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SubmissionTimeoutAction")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubmissionTimeoutHours")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TierAPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TierBPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TierCPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TierDPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TierEPoints")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TierSPoints")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("GuildId");
+
+                    b.ToTable("GuildQuestSettings");
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildShopSettings", b =>
                 {
                     b.Property<decimal>("GuildId")
@@ -1106,6 +1194,9 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("OwnerId")
                         .HasColumnType("decimal(20,0)");
 
+                    b.Property<Guid?>("QuestTypeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<bool>("RequiresFinalApproval")
                         .HasColumnType("bit");
 
@@ -1133,6 +1224,8 @@ namespace Muster.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("QuestTypeId");
 
                     b.HasIndex("GuildId", "Status");
 
@@ -1180,6 +1273,35 @@ namespace Muster.Persistence.Migrations
                     b.HasIndex("QuestId", "UserId");
 
                     b.ToTable("QuestParticipants");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Quests.QuestType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("decimal(20,0)");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Sort")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GuildId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("QuestTypes");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Ratings.Rating", b =>
@@ -1430,6 +1552,9 @@ namespace Muster.Persistence.Migrations
                     b.Property<int>("OfferRound")
                         .HasColumnType("int");
 
+                    b.Property<int>("Origin")
+                        .HasColumnType("int");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
@@ -1509,6 +1634,9 @@ namespace Muster.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("int");
 
                     b.Property<decimal>("OwnerId")
                         .HasColumnType("decimal(20,0)");
@@ -2276,6 +2404,15 @@ namespace Muster.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildQuestSettings", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
+                        .WithOne()
+                        .HasForeignKey("Muster.Domain.Entities.Guilds.GuildQuestSettings", "GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Muster.Domain.Entities.Guilds.GuildShopSettings", b =>
                 {
                     b.HasOne("Muster.Domain.Entities.Guilds.Guild", null)
@@ -2355,6 +2492,17 @@ namespace Muster.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Quest");
+                });
+
+            modelBuilder.Entity("Muster.Domain.Entities.Quests.QuestType", b =>
+                {
+                    b.HasOne("Muster.Domain.Entities.Guilds.Guild", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Guild");
                 });
 
             modelBuilder.Entity("Muster.Domain.Entities.Shops.ShopCategory", b =>

@@ -20,13 +20,14 @@ public static class CreateStoreHandler
         CreateStore command, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
         var actor = new GuildActor(command.GuildId, command.ActorId);
-        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageStore, ct))
+        // A guild store requires ShopManager; a member store requires ShopCreator.
+        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageStore, command.Origin == ShopStoreOrigin.Guild, ct))
         {
             return Result<Guid>.Fail(nameof(ShopResult.Forbidden));
         }
 
         var (result, storeId) = await shop.CreateStoreAsync(
-            command.GuildId, command.ActorId, command.Name, command.Description, command.Slug, command.StoreTypeId, ct);
+            command.GuildId, command.ActorId, command.Name, command.Description, command.Slug, command.StoreTypeId, command.Origin, ct);
         return result == ShopResult.Ok ? Result<Guid>.Success(storeId!.Value) : Result<Guid>.Fail(result.ToString());
     }
 }
@@ -42,13 +43,21 @@ public static class EditStoreHandler
             return Result.Fail(nameof(ShopResult.NotFound));
         }
 
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), store, ShopPermission.ManageStore, ct))
+        var actor = new GuildActor(command.GuildId, command.ActorId);
+        if (!await authorizer.AuthorizeAsync(actor, store, ShopPermission.ManageStore, ct))
+        {
+            return Result.Fail(nameof(ShopResult.Forbidden));
+        }
+
+        // Converting a store to/from a guild store is a manager-only action (Arbitrate resolves to the manager tier).
+        if (command.Origin is { } o && o != store.Origin
+            && !await authorizer.AuthorizeAsync(actor, store, ShopPermission.Arbitrate, ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
 
         var result = await shop.EditStoreAsync(
-            store, command.Name, command.Description, command.BannerImageKey, command.LogoImageKey, command.AccentColor, command.Closed, command.StoreTypeId, ct);
+            store, command.Name, command.Description, command.BannerImageKey, command.LogoImageKey, command.AccentColor, command.Closed, command.StoreTypeId, command.Origin, ct);
         return result == ShopResult.Ok ? Result.Success() : Result.Fail(result.ToString());
     }
 }
@@ -80,7 +89,7 @@ public static class CreateCategoryHandler
         CreateCategory command, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
         var actor = new GuildActor(command.GuildId, command.ActorId);
-        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result<Guid>.Fail(nameof(ShopResult.Forbidden));
         }
@@ -97,7 +106,7 @@ public static class EditCategoryHandler
         EditCategory command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
         var actor = new GuildActor(command.GuildId, command.ActorId);
-        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
@@ -119,7 +128,7 @@ public static class DeleteCategoryHandler
         DeleteCategory command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
         var actor = new GuildActor(command.GuildId, command.ActorId);
-        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(actor, command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
@@ -141,7 +150,7 @@ public static class SeedGuildDefaultsHandler
         SeedGuildDefaults command, IShopAuthorizer authorizer, GuildSeedService seed, CancellationToken ct)
     {
         // Seeding the shared taxonomy is admin-gated (same gate as managing categories/types).
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
@@ -156,7 +165,7 @@ public static class CreateStoreTypeHandler
     public static async Task<Result<Guid>> Handle(
         CreateStoreType command, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result<Guid>.Fail(nameof(ShopResult.Forbidden));
         }
@@ -171,7 +180,7 @@ public static class EditStoreTypeHandler
     public static async Task<Result> Handle(
         EditStoreType command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
@@ -192,7 +201,7 @@ public static class DeleteStoreTypeHandler
     public static async Task<Result> Handle(
         DeleteStoreType command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct))
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageCategories, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
@@ -303,7 +312,7 @@ public static class ResyncShopChannelHandler
         ResyncShopChannel command, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
         // Any store owner / ShopCreator (or manager) may refresh the channel cards — it's idempotent.
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageStore, ct))
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ManageStore, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }
@@ -592,7 +601,7 @@ public static class ModerateRatingHandler
     public static async Task<Result> Handle(
         ModerateRating command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
     {
-        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ModerateRating, ct))
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), command.GuildId, ShopPermission.ModerateRating, ct: ct))
         {
             return Result.Fail(nameof(ShopResult.Forbidden));
         }

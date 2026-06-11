@@ -1,0 +1,53 @@
+@using Muster.Contracts
+@using Muster.Domain.Enums
+@{
+    var (dueText, dueTone) = Due();
+}
+<div class="qhero @(Quest.Tier != QuestTier.None ? $"tier-{Quest.Tier}" : "no-tier")">
+    @* Tier rail — bold tier gradient with the letter; the whole hero gets a faint tint of the same hue. *@
+    <div class="qhero-rail" title="@(Quest.Tier != QuestTier.None ? $"Difficulty {Quest.Tier}" : null)">
+        @if (Quest.Tier != QuestTier.None)
+        {
+            <span class="qhero-tier-letter">@Quest.Tier</span>
+        }
+    </div>
+
+    @* Dominant type icon next to the title. *@
+    <span class="qhero-type-emb material-symbols-outlined" aria-hidden="true" title="@(Quest.TypeName ?? "General")">@(Quest.TypeIcon ?? "assignment")</span>
+
+    <div class="qhero-head">
+        <nav class="qhero-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/quests">Quests</a>
+            <span class="qhero-sep" aria-hidden="true">›</span>
+            <span class="qhero-title" aria-current="page">@Quest.Name</span>
+        </nav>
+        <div class="qhero-sub">
+            <span class="qhero-type">@(Quest.TypeName ?? "General")</span>
+            <span class="qhero-dot" aria-hidden="true">·</span>
+            @if (IsPlayer)
+            {
+                <UserChip Name="@Quest.OwnerName" AvatarUrl="@Quest.OwnerAvatar" Href="@(IsStaff ? MusterLinks.MemberDetail(GuildId, Quest.OwnerId) : null)" />
+            }
+            else
+            {
+                <span class="qhero-issuer"><span class="material-symbols-outlined" aria-hidden="true">shield</span> Guild-issued</span>
+            }
+        </div>
+    </div>
+
+    @* Facts column — reward, bonus points, and the deadline timer grouped together (variant 2). *@
+    <div class="qhero-facts">
+        <span class="qhero-reward @RewardClass">
+            +@Quest.RewardAmount @Quest.RewardCode
+            @if (IsPlayer)
+            {
+                <span class="material-symbols-outlined esc-lock" title="Reward held in escrow">lock</span>
+            }
+        </span>
+        @if (Quest.BonusPoints > 0)
+        {
+            <span class="qhero-pts">+@Quest.BonusPoints pts</span>
+        }
+        <span class="qhero-timer @(dueTone is { } dt ? $"due-{dt}" : null)"><span class="material-symbols-outlined" aria-hidden="true">timer</span> @dueText</span>
+    </div>
+</div>

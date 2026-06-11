@@ -1,3 +1,4 @@
+using Muster.Contracts;
 using Muster.Domain.Entities.Guilds;
 
 namespace Muster.Domain.Entities.Shops;
@@ -13,7 +14,11 @@ public class ShopStore
     public Guid Id { get; set; }
     public ulong GuildId { get; set; }
 
-    /// <summary>The member who owns (and manages) this store.</summary>
+    /// <summary>Member-run (sales pay the seller) or guild-run (sales burn the buyer's coins). Default Member.</summary>
+    public ShopStoreOrigin Origin { get; set; } = ShopStoreOrigin.Member;
+
+    /// <summary>The member who owns (and manages) this store. For a guild store this is the manager who opened it
+    /// (attribution/audit only) — behaviour is governed by <see cref="Origin"/>, not the owner.</summary>
     public ulong OwnerId { get; set; }
 
     public string Name { get; set; } = string.Empty;
@@ -47,11 +52,13 @@ public class ShopStore
 
     public Guild? Guild { get; set; }
 
-    public static ShopStore Create(ulong guildId, ulong ownerId, string name, string slug, string? description)
+    public static ShopStore Create(ulong guildId, ulong ownerId, string name, string slug, string? description,
+        ShopStoreOrigin origin = ShopStoreOrigin.Member)
         => new()
         {
             Id = Guid.NewGuid(),
             GuildId = guildId,
+            Origin = origin,
             OwnerId = ownerId,
             Name = name.Trim(),
             Slug = slug.Trim().ToLowerInvariant(),

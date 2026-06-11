@@ -1,0 +1,97 @@
+@page "/guilds/{GuildIdRaw}/quest-types"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Contracts
+@using Muster.Domain.Entities.Quests
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Quests
+
+<PageTitle>Quest types — Muster</PageTitle>
+
+@if (State == AccessState.NeedLogin)
+{
+    <div class="panel glass empty">Please <a href="/account/login">log in</a>.</div>
+}
+else if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready && !_gate.IsEnabled)
+{
+    <FeatureGateNotice Verdict="_gate" Feature="The quest board" />
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Admin", $"/guilds/{GuildId}/admin"), new("Quest settings", $"/guilds/{GuildId}/quest-settings"), new("Quest types") })"
+                Subtitle="Curated, admin-managed quest types — the activity each quest is, shown as the card's icon (quests carry no image)." />
+
+    @if (Message is not null)
+    {
+        <div class="notice" role="status">
+            <span class="material-symbols-outlined notice-icon">info</span>
+            <span class="notice-text">@Message</span>
+            <button type="button" class="icon-btn notice-close" title="Dismiss" @onclick="() => Message = null"><span class="material-symbols-outlined">close</span></button>
+        </div>
+    }
+
+    <div class="panel glass datagrid">
+        <div class="dg-scroll">
+            <table class="dg-table">
+                <thead><tr><th>Name</th><th>Icon</th><th class="num">Sort</th><th class="dg-actions-col"></th></tr></thead>
+                <tbody>
+                    @if (_types.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="4">No quest types yet — add one below or restore defaults.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var t in _types)
+                        {
+                            var m = _edit[t.Id];
+                            <tr>
+                                <td><input @bind="m.Name" maxlength="40" /></td>
+                                <td>
+                                    <div class="qt-palette">
+                                        <button type="button" class="qt-ico @(string.IsNullOrEmpty(m.Icon) ? "sel" : "")" title="General (default)" @onclick="() => m.Icon = null"><span class="material-symbols-outlined">assignment</span></button>
+                                        @foreach (var i in QuestIcons)
+                                        {
+                                            <button type="button" class="qt-ico @(m.Icon == i.Key ? "sel" : "")" title="@i.Label" @onclick="() => m.Icon = i.Key"><span class="material-symbols-outlined">@i.Key</span></button>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="num"><input type="number" @bind="m.Sort" style="max-width:5rem" /></td>
+                                <td class="dg-actions-col">
+                                    <div class="dg-row-actions">
+                                        <button type="button" class="icon-btn" title="Save" disabled="@_busy" @onclick="() => SaveAsync(t.Id)"><span class="material-symbols-outlined">save</span></button>
+                                        <button type="button" class="icon-btn danger" title="Delete" disabled="@_busy" @onclick="() => DeleteAsync(t.Id, t.Name)"><span class="material-symbols-outlined">delete</span></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dg-toolbar">
+            <div class="dg-filters" style="align-items:center;flex-wrap:wrap">
+                <input class="dg-search" placeholder="New quest type…" @bind="_newName" />
+                <input type="number" class="dg-search" placeholder="sort" @bind="_newSort" style="max-width:5rem" />
+                <div class="qt-palette">
+                    <button type="button" class="qt-ico @(string.IsNullOrEmpty(_newIcon) ? "sel" : "")" title="General (default)" @onclick="() => _newIcon = null"><span class="material-symbols-outlined">assignment</span></button>
+                    @foreach (var i in QuestIcons)
+                    {
+                        <button type="button" class="qt-ico @(_newIcon == i.Key ? "sel" : "")" title="@i.Label" @onclick="() => _newIcon = i.Key"><span class="material-symbols-outlined">@i.Key</span></button>
+                    }
+                </div>
+            </div>
+            <div class="dg-actions">
+                <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="RestoreDefaultsAsync" title="Add any missing default quest types"><span class="material-symbols-outlined">auto_fix_high</span> Restore defaults</button>
+                <button type="button" class="btn btn-sm" disabled="@_busy" @onclick="AddAsync"><span class="material-symbols-outlined">add</span> Add quest type</button>
+            </div>
+        </div>
+    </div>
+}

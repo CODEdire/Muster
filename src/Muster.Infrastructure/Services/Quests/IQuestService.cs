@@ -56,7 +56,7 @@ public interface IQuestService
     Task<QuestResult> ReleaseClaimAsync(Guid questId, ulong targetUserId, ulong actorId, CancellationToken ct = default);
 
     /// <summary>Patch a quest's editable fields before anyone works on it (reward/tier/capacity are guild-only).</summary>
-    Task<QuestResult> EditAsync(Guid questId, string? name, string? description, long? reward, DateTimeOffset? deadline, QuestTier? tier, int? capacity, CancellationToken ct = default);
+    Task<QuestResult> EditAsync(Guid questId, string? name, string? description, long? reward, DateTimeOffset? deadline, QuestTier? tier, int? capacity, Guid? questTypeId = null, CancellationToken ct = default);
 
     /// <summary>Approve a guild-quest submission and mint the reward (optional feedback note).</summary>
     Task<QuestResult> ApproveAsync(Guid questId, ulong userId, ulong reviewerId, string? note = null, CancellationToken ct = default);

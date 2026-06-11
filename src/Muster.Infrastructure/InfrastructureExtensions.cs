@@ -46,6 +46,11 @@ public static class InfrastructureExtensions
         builder.Services.AddScoped<IQuestService, QuestService>();
         builder.Services.AddScoped<IQuestAuthorizer, QuestAuthorizer>();
         builder.Services.AddScoped<IQuestReadService, QuestReadService>();
+        builder.Services.AddScoped<Services.Quests.GuildQuestSettingsService>();
+        builder.Services.AddScoped<Services.Quests.QuestTypeService>();
+        // Platform defaults for a guild's quest settings (AppConfig / appsettings) — seed new rows + fill read-misses.
+        builder.Services.Configure<Domain.Entities.Guilds.GuildQuestSettings>(
+            builder.Configuration.GetSection("GuildDefaults:Quests"));
         builder.Services.AddScoped<MusterService>();
         builder.Services.AddScoped<Services.Musters.IMusterReadService, Services.Musters.MusterReadService>();
         builder.Services.AddScoped<Services.Musters.GuildMusterSettingsService>();

@@ -30,6 +30,7 @@ public class QuestEmbedRendererTests
             Tier: tier, BonusPoints: 50, Capacity: 3, OwnerId: 7, OwnerName: "Aria", OwnerAvatar: ownerAvatar,
             DisputedBy: disputedBy, DisputedByName: disputedBy is null ? null : "Disputer", DisputeReason: disputeReason,
             CreatedAt: DateTimeOffset.UnixEpoch, ScheduledStart: scheduledStart, Deadline: deadline,
+            QuestTypeId: null, TypeName: null, TypeIcon: null,
             Participants: participants ?? []);
 
     private static EmbedFieldProperties Field(NetCord.Rest.EmbedProperties e, string name) =>

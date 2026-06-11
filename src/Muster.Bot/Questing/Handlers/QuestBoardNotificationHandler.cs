@@ -48,14 +48,14 @@ public static class QuestBoardNotificationHandler
         ILogger<QuestBoardNotification> logger,
         CancellationToken ct)
     {
-        var settings = await db.GetSettingsAsync(e.GuildId, ct);
+        var settings = await db.GetQuestSettingsAsync(e.GuildId, ct);
         var quest = await reads.GetQuestDetailAsync(e.GuildId, e.QuestId, ct);
         var existing = await db.FindPostedMessageAsync(EntityType, e.QuestId, ct);
 
-        var publicChannel = settings.Quests.QuestChannelId;
+        var publicChannel = settings.QuestChannelId;
         var target = quest is null
             ? 0UL // quest gone — nothing to render anywhere
-            : TargetChannel(quest.Status, publicChannel, settings.Quests.QuestModChannelId);
+            : TargetChannel(quest.Status, publicChannel, settings.QuestModChannelId);
 
         // A terminal quest that was NEVER public (rejected at intake) keeps its card in the mod channel — don't
         // surface it publicly just because it closed. A quest that WAS public (so a dispute / final sign-off was

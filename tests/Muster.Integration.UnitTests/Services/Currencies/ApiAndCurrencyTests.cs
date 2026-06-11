@@ -124,7 +124,7 @@ public class ApiAndCurrencyTests
 
         var changed = await sut.RebuildWalletsAsync(1);
 
-        Assert.Equal(1, changed);
+        Assert.Equal(1, changed.BalancesCorrected);
         Assert.Equal(100, await sut.GetBalanceAsync(1, "COIN", 10)); // recomputed from the ledger
     }
 

@@ -1,0 +1,56 @@
+@using Muster.Contracts
+@page "/guilds/{GuildIdRaw}/quests/{QuestId}/edit"
+@layout GuildLayout
+@inherits GuildMemberComponentBase
+@inject TimeZoneService TimeZones
+@inject IQuestReadService Reads
+@inject IFeatureGate Gate
+@inject Wolverine.IMessageBus Bus
+@using Muster.Domain.Entities
+@using Muster.Domain.Entities.Quests
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Services.Platform
+@using Muster.Infrastructure.Commands.Quests
+@using Muster.Infrastructure.Services.Quests
+
+<PageTitle>Edit quest — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready && !_gate.CanEnable)
+{
+    <FeatureGateNotice Verdict="_gate" Feature="Quests" />
+}
+else if (State == AccessState.Ready)
+{
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests", $"/guilds/{GuildId}/quests"), new(_mission?.Name is { Length: > 0 } n ? $"Edit · {n}" : "Edit quest") })"
+                Subtitle="Edits are locked once someone claims the quest." />
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_mission is null)
+    {
+        <div class="panel glass empty">Quest not found.</div>
+    }
+    else
+    {
+        <div class="panel glass">
+            <EditForm class="form-grid" Model="Edit" FormName="edit-quest" OnValidSubmit="SaveAsync">
+                <input type="hidden" name="Edit.Submitted" value="1" />
+                <QuestFormFields Model="Edit.Fields" NamePrefix="Edit.Fields" Settings="_settings" Types="_types"
+                                 IncludeReward="_isGuild" IncludeGuildFields="_isGuild" />
+                <div class="btn-row">
+                    <button type="submit">Save</button>
+                    <a class="btn btn-ghost" href="/guilds/@GuildId/quests">Cancel</a>
+                </div>
+            </EditForm>
+        </div>
+    }
+}
+

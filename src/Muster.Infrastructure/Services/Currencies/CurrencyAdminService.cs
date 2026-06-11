@@ -31,6 +31,9 @@ public interface ICurrencyAdminService
     /// <summary>Update mutable fields (name, spendable, mode); code + seasonal nature are fixed at creation.</summary>
     Task<CommandResult> UpdateAsync(ulong guildId, Guid currencyId, string name, bool isSpendable, CurrencyMode mode, CancellationToken ct = default);
 
+    /// <summary>Permanently delete a (non-system) currency along with every wallet balance and ledger entry in it.</summary>
+    Task<CommandResult> DeleteAsync(ulong guildId, Guid currencyId, CancellationToken ct = default);
+
     /// <summary>Replace a currency's connector config (secrets are write-only / kept when blank).</summary>
     Task<CommandResult> SetConnectorAsync(ulong guildId, Guid currencyId, CurrencyConnector incoming, CancellationToken ct = default);
 
@@ -144,6 +147,38 @@ public partial class CurrencyAdminService(
         await db.SaveChangesAsync(ct);
 
         return CommandResult.Ok($"Updated currency **{currency.Code}**.");
+    }
+
+    /// <summary>Permanently delete a currency together with all of its balances + history. The seeded POINTS system
+    /// currency is protected. Wallets and ledger entries are removed (there's no FK cascade — they'd otherwise dangle),
+    /// and any muster default-coin pointer at this currency is cleared so payouts don't reference a gone currency.</summary>
+    public async Task<CommandResult> DeleteAsync(ulong guildId, Guid currencyId, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyByIdAsync(guildId, currencyId, ct);
+        if (currency is null)
+        {
+            return CommandResult.Error("Currency not found.");
+        }
+
+        if (currency.Code == PointsCode)
+        {
+            return CommandResult.Error("POINTS is the system currency and can't be deleted.");
+        }
+
+        await db.Wallets.Where(w => w.GuildId == guildId && w.CurrencyId == currencyId).ExecuteDeleteAsync(ct);
+        await db.CurrencyLedgerEntries.Where(le => le.GuildId == guildId && le.CurrencyId == currencyId).ExecuteDeleteAsync(ct);
+
+        // Clear a muster default-coin pointer at this currency (a dangling pointer would break auto-payout).
+        var muster = await db.GuildMusterSettings.FirstOrDefaultAsync(m => m.GuildId == guildId, ct);
+        if (muster is { } ms && ms.DefaultCoinCurrencyId == currencyId)
+        {
+            ms.DefaultCoinCurrencyId = null;
+        }
+
+        db.Currencies.Remove(currency);
+        await db.SaveChangesAsync(ct);
+
+        return CommandResult.Ok($"Deleted currency **{currency.Code}** along with its balances and history.");
     }
 
     /// <summary>Replace a currency's connector config. Secrets (<c>Auth.Secret</c>, <c>Signing.Secret</c>) are

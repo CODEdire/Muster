@@ -58,7 +58,8 @@ public record ShopStorePage(IReadOnlyList<ShopStoreRow> Items, int Total, int Pa
 /// <summary>A store's editable config (the Config tab on the detail page).</summary>
 public record ShopStoreDetail(
     Guid Id, string Name, string Slug, string Description, string? BannerImageKey, string? LogoImageKey,
-    string? AccentColor, ulong OwnerId, string OwnerName, bool Closed, Guid? StoreTypeId = null);
+    string? AccentColor, ulong OwnerId, string OwnerName, bool Closed, Guid? StoreTypeId = null,
+    ShopStoreOrigin Origin = ShopStoreOrigin.Member);
 
 /// <summary>A listing row for a store's management tab — every status, not just active.</summary>
 public record ShopManageListingRow(
@@ -435,7 +436,7 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
         var names = await NamesAsync([s.OwnerId], ct);
         return new ShopStoreDetail(
             s.Id, s.Name, s.Slug, s.Description, s.BannerImageKey, s.LogoImageKey, s.AccentColor,
-            s.OwnerId, names.GetValueOrDefault(s.OwnerId, s.OwnerId.ToString()), s.Closed, s.StoreTypeId);
+            s.OwnerId, names.GetValueOrDefault(s.OwnerId, s.OwnerId.ToString()), s.Closed, s.StoreTypeId, s.Origin);
     }
 
     public async Task<ShopManageListingPage> GetStoreManageListingsAsync(

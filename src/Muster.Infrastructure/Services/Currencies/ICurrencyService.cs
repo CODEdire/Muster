@@ -3,6 +3,10 @@ using Muster.Domain.Enums;
 
 namespace Muster.Infrastructure.Services.Currencies;
 
+/// <summary>Outcome of <see cref="ICurrencyService.RebuildWalletsAsync"/> — covered members/currencies, wallets
+/// created, balances corrected.</summary>
+public readonly record struct WalletRebuildResult(int Members, int Currencies, int WalletsCreated, int BalancesCorrected);
+
 /// <summary>
 /// The single money API. All currency movement — minting, spending, awards, and bounty escrow — flows
 /// through one source of truth, which writes the ledger and publishes a <c>CurrencyMovementRecorded</c> message for
@@ -51,9 +55,12 @@ public interface ICurrencyService
         ulong guildId, ulong userId, long amount,
         CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct = default);
 
-    /// <summary>Recompute every wallet balance in a guild from the ledger (the ledger is the source of truth, the
-    /// wallet a cache). Corrects any drift; returns how many wallets changed. Safe to run anytime.</summary>
-    Task<int> RebuildWalletsAsync(ulong guildId, CancellationToken ct = default);
+    /// <summary>Ensure every known member has a wallet for every currency, then recompute all balances from the
+    /// ledger (the ledger is the source of truth, the wallet a cache). Returns how many members + currencies were
+    /// covered, how many wallets were created, and how many balances corrected. Safe to run anytime.
+    /// <para>NB: "members" is the local <c>GuildMembers</c> table — run a Discord roster sync first if it's stale,
+    /// or only those members get wallets.</para></summary>
+    Task<WalletRebuildResult> RebuildWalletsAsync(ulong guildId, CancellationToken ct = default);
 
     /// <summary>Reserve the owner's funds into escrow (stages legs; caller commits). Validates spendable + funds.</summary>
     Task<EscrowStatus> HoldAsync(
@@ -75,6 +82,11 @@ public interface ICurrencyService
     /// (deflationary commission). Stages legs; caller commits.</summary>
     Task<EscrowStatus> ShopSettleAsync(
         ulong guildId, ulong sellerId, Guid currencyId, long amount, long fee, string sourceKey, CancellationToken ct = default);
+
+    /// <summary>Shop: settle a guild-store sale by burning the escrowed amount (a coin sink — no member seller).
+    /// Stages legs; caller commits.</summary>
+    Task<EscrowStatus> ShopConsumeAsync(
+        ulong guildId, Guid currencyId, long amount, string sourceKey, CancellationToken ct = default);
 
     /// <summary>Shop: refund escrowed funds back to the buyer (stages legs; caller commits). No fee.</summary>
     Task<EscrowStatus> ShopRefundAsync(

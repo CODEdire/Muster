@@ -28,8 +28,10 @@ public interface IShopAuthorizer
     /// <summary>Order-scoped actions (Confirm, Dispute, MarkDelivered, seller-cancel, Arbitrate).</summary>
     Task<bool> AuthorizeAsync(GuildActor actor, ShopOrder order, ShopPermission action, CancellationToken ct = default);
 
-    /// <summary>Guild-scoped (resourceless) actions (ManageCategories, ModerateRating, Arbitrate).</summary>
-    Task<bool> AuthorizeAsync(GuildActor actor, ulong guildId, ShopPermission action, CancellationToken ct = default);
+    /// <summary>Guild-scoped (resourceless) actions (ManageCategories, ModerateRating, Arbitrate). Pass
+    /// <paramref name="guildStore"/> = true for the open-a-store / list-an-item gate of a <b>guild</b> store, which
+    /// requires ShopManager rather than ShopCreator.</summary>
+    Task<bool> AuthorizeAsync(GuildActor actor, ulong guildId, ShopPermission action, bool guildStore = false, CancellationToken ct = default);
 
     /// <summary>The pure rule, with role + relationship flags already resolved.</summary>
     bool Allows(bool isCreator, bool isManager, bool isOwner, bool isSeller, bool isParticipant, ShopPermission action);
@@ -43,10 +45,23 @@ public sealed class ShopAuthorizer(GuildAuthorizationService roles, IFeatureGate
     private async Task<bool> ShopReachableAsync(ulong guildId, CancellationToken ct)
         => (await features.EvaluateAsync(guildId, PlatformFeature.Shop, ct)).CanEnable;
 
+    // Selling-side actions on a store/listing. On a GUILD store these require ShopManager (the store is the guild's,
+    // like a guild quest), not owner+creator.
+    private static bool IsSellingAction(ShopPermission action) => action
+        is ShopPermission.ManageStore or ShopPermission.CreateListing or ShopPermission.EditListing
+        or ShopPermission.CancelListing or ShopPermission.RespondOffer or ShopPermission.MarkDelivered;
+
     public async Task<bool> AuthorizeAsync(GuildActor actor, ShopStore store, ShopPermission action, CancellationToken ct = default)
     {
         if (!await ShopReachableAsync(store.GuildId, ct)) { return false; }
         var isManager = await roles.IsShopManagerAsync(store.GuildId, actor.UserId, ct);
+
+        // A guild store is manager-managed only (no member owner to delegate to).
+        if (store.Origin == ShopStoreOrigin.Guild && IsSellingAction(action))
+        {
+            return isManager;
+        }
+
         var isCreator = isManager || await roles.IsShopCreatorAsync(store.GuildId, actor.UserId, ct);
         var isParticipant = isCreator || await roles.IsParticipantAsync(store.GuildId, actor.UserId, ct);
         var isOwner = store.OwnerId == actor.UserId;
@@ -57,6 +72,12 @@ public sealed class ShopAuthorizer(GuildAuthorizationService roles, IFeatureGate
     {
         if (!await ShopReachableAsync(listing.GuildId, ct)) { return false; }
         var isManager = await roles.IsShopManagerAsync(listing.GuildId, actor.UserId, ct);
+
+        if (listing.Store?.Origin == ShopStoreOrigin.Guild && IsSellingAction(action))
+        {
+            return isManager;
+        }
+
         var isCreator = isManager || await roles.IsShopCreatorAsync(listing.GuildId, actor.UserId, ct);
         var isParticipant = isCreator || await roles.IsParticipantAsync(listing.GuildId, actor.UserId, ct);
         var isSeller = listing.SellerId == actor.UserId;
@@ -83,17 +104,18 @@ public sealed class ShopAuthorizer(GuildAuthorizationService roles, IFeatureGate
         };
     }
 
-    public async Task<bool> AuthorizeAsync(GuildActor actor, ulong guildId, ShopPermission action, CancellationToken ct = default)
+    public async Task<bool> AuthorizeAsync(GuildActor actor, ulong guildId, ShopPermission action, bool guildStore = false, CancellationToken ct = default)
     {
         if (!await ShopReachableAsync(guildId, ct)) { return false; }
         var isManager = await roles.IsShopManagerAsync(guildId, actor.UserId, ct);
         var isCreator = isManager || await roles.IsShopCreatorAsync(guildId, actor.UserId, ct);
 
-        // Resourceless "may create" gates: opening a store / pre-checking listing creation needs the creator tier
-        // (there's no owner yet to check). Resource overloads enforce ownership once the store/listing exists.
+        // Resourceless "may create" gates: opening a store / pre-checking listing creation. A guild store needs the
+        // manager tier; a member store needs the creator tier (there's no owner yet to check). Resource overloads
+        // enforce ownership once the store/listing exists.
         if (action is ShopPermission.ManageStore or ShopPermission.CreateListing)
         {
-            return isCreator;
+            return guildStore ? isManager : isCreator;
         }
 
         // Global taxonomy is admin-only: managers moderate within the rules + categories the admin sets, but don't

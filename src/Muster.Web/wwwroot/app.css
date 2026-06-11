@@ -860,8 +860,22 @@ table.leaderboard th a { color: var(--text-muted); }
 .quest-board {
     display: grid;
     gap: 1rem;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    align-items: stretch; /* equal-height cards within a row */
 }
+/* List view: one full-width card per row. */
+.quest-board.is-list { grid-template-columns: 1fr; }
+.quest-board.is-list .quest-card { max-width: 760px; }
+
+/* View toggle (icon buttons reusing the segmented control look). */
+.seg.view-toggle button {
+    background: none; border: 0; cursor: pointer;
+    padding: 0.3rem 0.55rem; color: var(--text-muted);
+    display: grid; place-items: center; border-radius: 7px;
+}
+.seg.view-toggle button:hover { color: var(--text); }
+.seg.view-toggle button.active { background: var(--accent); color: #fff; }
+.seg.view-toggle .material-symbols-outlined { font-size: 1.15rem; }
 
 /* ---- Shop / listing tiles ------------------------------------------------ */
 /* Opaque card surface (vs translucent .glass) so a dense grid stays legible over the textured background. */
@@ -1067,39 +1081,65 @@ table.leaderboard th a { color: var(--text-muted); }
 :root[data-theme="dark"] .shop-stock { color: #6ee7b7; }
 .shop-stock.out { color: var(--danger); }
 
-.quest-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-    padding: 1.1rem 1.2rem 1.2rem;
+/* Quest-type icon picker — a visual palette (each swatch shows its Material glyph), not a text dropdown. */
+.qt-palette { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
+.qt-ico {
+    display: grid; place-items: center;
+    width: 2rem; height: 2rem;
+    border-radius: 9px; cursor: pointer;
+    background: var(--surface); color: var(--text-muted);
+    border: 1px solid var(--border);
 }
-.quest-card .qc-top {
-    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+.qt-ico .material-symbols-outlined { font-size: 1.15rem; }
+.qt-ico:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.qt-ico.sel {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
-.qc-chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-.qc-time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
-.quest-card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
-.qc-desc {
-    color: var(--text-muted);
-    font-size: 0.88rem;
-    margin: 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-/* Rendered markdown as a clamped teaser: flatten block elements so the line-clamp works,
-   but keep inline emphasis (bold/italic/links/code) visible. */
-.qc-desc.markdown p,
-.qc-desc.markdown ul,
-.qc-desc.markdown ol,
-.qc-desc.markdown blockquote,
-.qc-desc.markdown pre { display: inline; margin: 0; padding: 0; border: 0; background: none; }
-.qc-desc.markdown code { background: var(--surface); border-radius: 4px; padding: 0 0.2rem; }
-.qc-desc.markdown a { color: var(--accent); }
-.qc-title { color: var(--text); }
+
+/* Quest title + bonus-points + issuer chip — shared by the board cards and the table view. */
+.qc-title { color: var(--text); font-size: 1.05rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .qc-title:hover { color: var(--accent); }
-.qc-details { font-size: 0.8rem; font-weight: 600; align-self: flex-start; }
+.qc-pts { font-size: 0.78rem; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+:root[data-theme="dark"] .qc-pts { color: #93c5fd; }
+.qc-issuer { display: inline-flex; align-items: center; gap: 0.25rem; }
+.qc-issuer .material-symbols-outlined { font-size: 1rem; }
+
+/* Board: primary tabs (sit by the layout toggle) + table (list) view. */
+.board-tabs { flex: 0 0 auto; }
+.quest-table .qt-cell { display: inline-flex; align-items: center; gap: 0.4rem; }
+.quest-table .qt-cell .material-symbols-outlined { font-size: 1.1rem; color: var(--accent); }
+.quest-table .qt-tier-col { width: 3.5rem; }
+.quest-table .qc-reward { font-size: 0.9rem; }
+.quest-table .dg-muted { color: var(--text-muted); }
+.qt-row-actions { display: flex; gap: 0.25rem; justify-content: flex-end; }
+
+/* The board / table fill the remaining viewport height (desktop) via the shared .dg-fill marker. */
+.quest-fill { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
+/* Top padding so a card's hover lift (translateY + shadow) isn't clipped behind the sticky toolbar. */
+.quest-fill > .dg-scroll { flex: 1 1 auto; min-height: 0; padding-top: 0.5rem; }
+.quest-fill > .quest-board { flex: 1 1 auto; align-content: start; min-height: 0; overflow: auto; padding-top: 0.5rem; }
+.quest-fill > .panel.empty { flex: 1 1 auto; }
+.quest-fill > .dg-footer { flex: 0 0 auto; }
+
+/* Action modal — text (submit/revise/reject note) or tier (intake) input, shared by card + table buttons. */
+.modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 1rem; }
+.qmodal { width: min(440px, 100%); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+.qmodal h3 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.qmodal-field { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); }
+.qmodal-field textarea, .qmodal-field select {
+    width: 100%; font: inherit; font-size: 0.9rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.55rem 0.7rem;
+}
+.qmodal-field textarea { resize: vertical; min-height: 4.5rem; }
+.qmodal-field textarea:focus-visible, .qmodal-field select:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--card-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.qmodal .checkbox { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 400; color: var(--text); }
+.qmodal .btn-row { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 0.15rem; }
 
 /* Quest detail page */
 .quest-detail h1 { margin: 0.4rem 0 0.5rem; }
@@ -1183,6 +1223,9 @@ table.leaderboard th a { color: var(--text-muted); }
 
 /* Top-right cluster: tier rank badge + time. */
 .qc-top-right { display: flex; align-items: center; gap: 0.5rem; }
+/* Tier badge inline in a settings field label (tier letter as a visual reference next to its reward input). */
+.mform .field label .tier-badge { vertical-align: -4px; margin-right: 0.4rem; }
+
 .tier-badge {
     display: inline-grid; place-items: center;
     min-width: 1.5rem; height: 1.5rem; padding: 0 0.35rem;
@@ -1229,58 +1272,11 @@ table.leaderboard th a { color: var(--text-muted); }
 .qc-reward.reward-points { color: #1d4ed8; }
 :root[data-theme="dark"] .qc-reward.reward-coin { color: #fdba74; }
 :root[data-theme="dark"] .qc-reward.reward-points { color: #93c5fd; }
-.qc-foot {
-    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-    margin-top: auto;
-}
+/* Legacy owner block (kept global; not used by the QuestCard component). */
 .qc-owner { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .qc-owner .who { font-size: 0.85rem; min-width: 0; }
 .qc-owner .who b { font-weight: 600; }
 .qc-owner .who .sub { color: var(--text-muted); }
-.qc-claimed { color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; }
-
-/* Claimer avatar stack (who's on the quest). */
-.qc-claimers { position: relative; display: flex; align-items: center; gap: 0.4rem; }
-.qc-claimers.has-pop { cursor: pointer; }
-.qc-claimers .stack { display: flex; align-items: center; }
-.avatar-xs {
-    width: 1.5rem; height: 1.5rem; border-radius: 50%; flex: 0 0 auto;
-    display: inline-grid; place-items: center; object-fit: cover;
-    background: linear-gradient(135deg, var(--accent), var(--accent-soft));
-    color: #fff; font-weight: 700; font-size: 0.62rem;
-    box-shadow: 0 0 0 2px var(--bg-base);
-}
-.stack .avatar-xs { margin-left: -0.45rem; }
-.stack .avatar-xs:first-child { margin-left: 0; }
-.avatar-xs.more { background: var(--surface); color: var(--text-muted); }
-
-/* Status ring: a coloured halo around the inner avatar. */
-.avatar-xs.ring-claimed   { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--text-muted); }
-.avatar-xs.ring-submitted { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--accent); }
-.avatar-xs.ring-revision  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px #d97706; }
-.avatar-xs.ring-approved  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px #16a34a; }
-.avatar-xs.ring-rejected  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--danger); }
-
-/* Roster popup — pure CSS, shows on hover (desktop) or focus/tap (mobile). */
-.roster-pop {
-    position: absolute;
-    bottom: calc(100% + 0.5rem);
-    right: 0;
-    z-index: 30;
-    min-width: 14rem;
-    max-width: 18rem;
-    padding: 0.6rem;
-    border-radius: var(--radius-sm);
-    display: none;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-.qc-claimers:hover .roster-pop,
-.qc-claimers:focus-within .roster-pop { display: flex; }
-.roster-head { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-.roster-row { display: flex; align-items: center; gap: 0.45rem; }
-.roster-row .roster-name { font-size: 0.85rem; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.roster-row .roster-by { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
 .avatar-sm {
     width: 1.7rem; height: 1.7rem; border-radius: 50%; flex: 0 0 auto;
     display: inline-grid; place-items: center;

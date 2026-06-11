@@ -66,7 +66,7 @@ public class QuestReminderScheduler(
 
         foreach (var guild in await db.ListActiveGuildsAsync(ct))
         {
-            var hours = guild.Settings.Quests.DeadlineReminderHours;
+            var hours = (await db.GetQuestSettingsAsync(guild.Id, ct)).DeadlineReminderHours;
             if (hours <= 0)
             {
                 continue;

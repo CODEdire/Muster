@@ -1,0 +1,80 @@
+.tracker {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.trk-stage {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    padding-top: 1.15rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    min-width: 0;
+}
+
+/* Connecting line from this dot toward the next. */
+.trk-stage::after {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    right: -50%;
+    height: 2px;
+    background: var(--card-border);
+}
+.trk-stage:last-child::after { display: none; }
+
+.trk-dot {
+    position: absolute;
+    top: 0.15rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    /* Opaque centre + bg-base ring punch a hole over the connecting line; inset ring is the unreached outline. */
+    background: var(--bg-base);
+    box-shadow: inset 0 0 0 2px var(--card-border), 0 0 0 3px var(--bg-base);
+}
+
+.trk-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.trk-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.05rem;
+    height: 1.05rem;
+    padding: 0 0.25rem;
+    border-radius: 0.6rem;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+}
+.tracker.tone-danger .trk-count { background: var(--danger); }
+
+.trk-stage.reached { color: var(--text); }
+.trk-stage.reached .trk-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--bg-base); }
+.trk-stage.reached::after { background: var(--accent); }
+.trk-stage.current .trk-dot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, var(--bg-base)); }
+
+.tracker.tone-danger .trk-stage.reached .trk-dot { background: var(--danger); box-shadow: 0 0 0 3px var(--bg-base); }
+.tracker.tone-danger .trk-stage.reached::after { background: var(--danger); }
+.tracker.tone-danger .trk-stage.current .trk-dot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 35%, var(--bg-base)); }
+
+/* Mobile: tighter labels. */
+@media (max-width: 640px) {
+    .trk-stage { font-size: 0.64rem; padding-top: 1rem; }
+}

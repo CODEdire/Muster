@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Muster.Contracts;
@@ -187,8 +188,8 @@ public sealed class QuestService(
         // AllowSelfParticipation). A guild quest is owned by the guild, so its creator may participate freely.
         if (quest.Origin == QuestOrigin.Player && userId == quest.OwnerId)
         {
-            var settings = await db.GetSettingsAsync(quest.GuildId, ct);
-            if (!settings.Quests.AllowSelfParticipation)
+            var settings = await db.GetQuestSettingsAsync(quest.GuildId, ct);
+            if (!settings.AllowSelfParticipation)
             {
                 return QuestResult.Forbidden;
             }
@@ -343,7 +344,7 @@ public sealed class QuestService(
     /// </summary>
     public async Task<QuestResult> EditAsync(
         Guid questId, string? name, string? description, long? reward,
-        DateTimeOffset? deadline, QuestTier? tier, int? capacity, CancellationToken ct = default)
+        DateTimeOffset? deadline, QuestTier? tier, int? capacity, Guid? questTypeId = null, CancellationToken ct = default)
     {
         var quest = await db.FindQuestAsync(questId, ct);
         if (quest is null)
@@ -378,6 +379,14 @@ public sealed class QuestService(
             quest.DeadlineReminderSentAt = null; // new deadline → let the "closes soon" nudge fire again
         }
 
+        // Quest type applies to either origin. null = leave unchanged; Guid.Empty = clear; else set (if it's a
+        // real type in this guild — an unknown id is ignored rather than clearing the existing one).
+        if (questTypeId is { } qt)
+        {
+            quest.QuestTypeId = qt == Guid.Empty ? null
+                : await db.QuestTypes.AnyAsync(t => t.GuildId == quest.GuildId && t.Id == qt, ct) ? qt : quest.QuestTypeId;
+        }
+
         // Reward / tier / capacity are guild-quest-only.
         if (quest.Origin == QuestOrigin.Guild)
         {
@@ -394,7 +403,7 @@ public sealed class QuestService(
             if (tier is { } t)
             {
                 quest.Tier = t;
-                quest.BonusPoints = (await db.GetSettingsAsync(quest.GuildId, ct)).Quests.PointsForTier(t);
+                quest.BonusPoints = (await db.GetQuestSettingsAsync(quest.GuildId, ct)).PointsForTier(t);
             }
 
             if (capacity is { } cap)
@@ -718,7 +727,7 @@ public sealed class QuestService(
             return QuestResult.InvalidState;
         }
 
-        var max = (await db.GetSettingsAsync(quest.GuildId, ct)).Quests.MaxRevisions;
+        var max = (await db.GetQuestSettingsAsync(quest.GuildId, ct)).MaxRevisions;
         if (max > 0 && taker.RevisionCount >= max)
         {
             return QuestResult.InvalidState; // out of revisions — settle it instead

@@ -89,6 +89,10 @@ else if (State == AccessState.Ready)
             <button type="button" class="btn btn-sm" @onclick="OpenAwardAsync">
                 <span class="material-symbols-outlined">redeem</span> Award / adjust
             </button>
+            <button type="button" class="btn btn-sm btn-ghost" @onclick="SyncMemberAsync" disabled="@_syncing"
+                    title="Pull this member's external (connector) balances and create any missing wallets">
+                <span class="material-symbols-outlined">@(_syncing ? "progress_activity" : "sync")</span> @(_syncing ? "Syncing…" : "Sync balances")
+            </button>
         </div>
     }
 
@@ -793,6 +797,39 @@ else if (State == AccessState.Ready)
     }
 
     // ---- Award/adjust ----
+
+    private bool _syncing;
+
+    /// <summary>Pull this member's external (connector) balances now and create any missing wallets — the same
+    /// reconcile the dashboard does on visit, forced. Creates a wallet per external currency even when the balance
+    /// already matches (so the member always has a wallet afterwards).</summary>
+    private async Task SyncMemberAsync()
+    {
+        if (_syncing)
+        {
+            return;
+        }
+
+        _syncing = true;
+        StateHasChanged();
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var sync = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Connectors.CurrencyConnectorSyncService>();
+            var synced = await sync.SyncMemberDueAsync(GuildId, UserIdParsed, force: true);
+            Message = synced > 0 ? $"Synced {synced} external balance(s) for this member." : "No external currencies to sync for this member.";
+            await LoadAsync();
+        }
+        catch (Exception)
+        {
+            Message = "Couldn't sync this member's balances — check the connector configuration.";
+        }
+        finally
+        {
+            _syncing = false;
+            StateHasChanged();
+        }
+    }
 
     private Task OpenAwardAsync()
     {
