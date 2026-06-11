@@ -32,7 +32,8 @@ public static class ShopComponentBuilder
     public const string Home = "shophome";      // hero button — open this store's browse
     public const string Featured = "shopfeat";  // hero select — open a featured item
     public const string Directory = "shopdir";  // select — open a store from the directory
-    public const string Buy = "sbuy";           // button — buy now
+    public const string Buy = "sbuy";           // button — buy now (custom_id carries the chosen quantity)
+    public const string QtySel = "sqty";        // select — choose buy quantity (1..min(5, stock))
     public const string Offer = "soffer";       // button — make an offer (opens a modal)
     public const string OfferModal = "sofferm"; // modal — the offer amount
     public const string OfferInput = "amount";  // modal text-input id
@@ -153,13 +154,30 @@ public static class ShopComponentBuilder
         return new StringMenuProperties(customId, options) { Placeholder = "Open an item…" };
     }
 
-    /// <summary>A listing detail view's buttons: Buy / Make offer (when active + open) and Back to the board.</summary>
-    public static IReadOnlyList<IMessageComponentProperties> Listing(ShopListingDetail d, string scope, string sortKey, ulong guildId)
+    /// <summary>A listing detail view: an optional quantity picker (1..min(5, stock)) over Buy / Make offer (when
+    /// active + open) and Back. The selected <paramref name="qty"/> rides the Buy button's id and shows in its label;
+    /// picking a quantity re-renders this view with the new count.</summary>
+    public static IReadOnlyList<IMessageComponentProperties> Listing(ShopListingDetail d, string scope, string sortKey, ulong guildId, int qty = 1)
     {
-        var buttons = new List<ButtonProperties>();
-        if (d.Status == ShopListingStatus.Active)
+        var active = d.Status == ShopListingStatus.Active;
+        var stock = Math.Max(1, d.Quantity);
+        var q = Math.Clamp(qty, 1, Math.Min(5, stock));
+        var rows = new List<IMessageComponentProperties>();
+
+        // Quantity picker only when more than one is in stock (capped at 5; bigger orders use /shop buy). The compact
+        // listing id (:N) keeps the custom_id under Discord's 100-char limit alongside the scope + sort.
+        if (active && stock > 1)
         {
-            buttons.Add(new($"{Buy}:{guildId}:{d.Id}", $"Buy · {d.Price} {d.CurrencyCode}", ButtonStyle.Success));
+            var qtyOptions = Enumerable.Range(1, Math.Min(5, stock))
+                .Select(n => new StringMenuSelectOptionProperties($"Qty: {n}", n.ToString()) { Default = n == q });
+            rows.Add(new StringMenuProperties($"{QtySel}:{guildId}:{d.Id:N}:{scope}:{sortKey}", qtyOptions) { Placeholder = "Quantity…" });
+        }
+
+        var buttons = new List<ButtonProperties>();
+        if (active)
+        {
+            buttons.Add(new($"{Buy}:{guildId}:{d.Id}:{q}",
+                q > 1 ? $"Buy ×{q} · {d.Price * q} {d.CurrencyCode}" : $"Buy · {d.Price} {d.CurrencyCode}", ButtonStyle.Success));
             if (d.OffersOpen)
             {
                 buttons.Add(new($"{Offer}:{guildId}:{d.Id}", "Make offer", ButtonStyle.Secondary));
@@ -167,7 +185,8 @@ public static class ShopComponentBuilder
         }
 
         buttons.Add(new($"{Back}:{guildId}:{scope}:{sortKey}:1", "◀ Back", ButtonStyle.Secondary));
-        return [new ActionRowProperties(buttons)];
+        rows.Add(new ActionRowProperties(buttons));
+        return rows;
     }
 
     /// <summary>The per-store hero card's components — featured items + Browse on <b>one row</b>. Featured items are

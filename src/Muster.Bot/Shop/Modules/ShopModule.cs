@@ -123,6 +123,25 @@ public class ShopModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(sc
         });
     }
 
+    [SubSlashCommand("buy", "Buy an item now — funds are held in escrow until you confirm receipt.")]
+    public Task BuyAsync(
+        [SlashCommandParameter(Name = "item", Description = "Item to buy", AutocompleteProviderType = typeof(ShopBuyListingAutocompleteProvider))] string item,
+        [SlashCommandParameter(Name = "quantity", Description = "How many to buy (default 1)")] long quantity = 1)
+        => RunAsync(async (sp, guildId) =>
+        {
+            if (!Guid.TryParse(item, out var listingId))
+            {
+                return CommandResult.Error("Pick an item from the suggestions.");
+            }
+
+            var qty = (int)Math.Clamp(quantity, 1, 1000);
+            var bus = sp.GetRequiredService<IMessageBus>();
+            var result = await bus.InvokeAsync<Result<Guid>>(new PurchaseListing(guildId, Context.User.Id, listingId, qty));
+            return ((Result)result).ToCommandResult(qty > 1
+                ? $"Purchased ×{qty} — funds held in escrow until you confirm receipt. See `/shop` → 🧾 My orders."
+                : "Purchased — funds held in escrow until you confirm receipt. See `/shop` → 🧾 My orders.");
+        }, feature: PlatformFeature.Shop, auditAction: "shop.buy");
+
     [SubSlashCommand("resync", "Re-post all featured listing cards to the shop channel.")]
     public Task ResyncAsync()
         => RunAsync(async (sp, guildId) =>
