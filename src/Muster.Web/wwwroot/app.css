@@ -1113,7 +1113,7 @@ table.leaderboard th a { color: var(--text-muted); }
 .quest-table .qt-tier-col { width: 3.5rem; }
 .quest-table .qc-reward { font-size: 0.9rem; }
 .quest-table .dg-muted { color: var(--text-muted); }
-.qt-row-actions { display: inline-flex; gap: 0.25rem; justify-content: flex-end; }
+.qt-row-actions { display: flex; gap: 0.25rem; justify-content: flex-end; }
 
 /* The board / table fill the remaining viewport height (desktop) via the shared .dg-fill marker. */
 .quest-fill { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
