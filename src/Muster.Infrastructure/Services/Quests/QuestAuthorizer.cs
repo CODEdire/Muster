@@ -3,6 +3,7 @@ using Muster.Domain;
 using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Platform;
 
 namespace Muster.Infrastructure.Services.Quests;
 
@@ -43,10 +44,26 @@ public interface IQuestAuthorizer
     bool Allows(GuildActor actor, bool isManager, QuestOrigin origin, ulong ownerId, bool isTaker, QuestPermission action);
 }
 
-public sealed class QuestAuthorizer(GuildAuthorizationService roles) : IQuestAuthorizer
+public sealed class QuestAuthorizer(GuildAuthorizationService roles, IFeatureGate features) : IQuestAuthorizer
 {
     public async Task<bool> AuthorizeAsync(GuildActor actor, GuildQuest quest, QuestPermission action, CancellationToken ct = default)
     {
+        // Feature gate (mirrors ShopAuthorizer.ShopReachableAsync). A guild that merely has quests switched off
+        // isn't hard-blocked — in-flight work must still wind down — so most actions only require CanEnable
+        // (platform kill-switch on + plan entitles it). Only NEW participation (Claim) requires the guild to be
+        // fully Enabled; a guild-off board accepts no new takers but lets claimed quests be submitted, reviewed,
+        // and paid out. An above-the-guild block (Unavailable) hard-stops everything.
+        var verdict = await features.EvaluateAsync(quest.GuildId, PlatformFeature.Quests, ct);
+        if (!verdict.CanEnable)
+        {
+            return false;
+        }
+
+        if (action is QuestPermission.Claim && !verdict.IsEnabled)
+        {
+            return false;
+        }
+
         // Open to any eligible participant; finer business rules (one-per-member, capacity) stay in the transitions.
         if (action is QuestPermission.Claim or QuestPermission.Submit or QuestPermission.View)
         {

@@ -16,7 +16,7 @@ namespace Muster.IntegrationTests.TestSupport;
 /// </summary>
 internal sealed class QuestCommandHarness(MusterDbContext db, GuildAuthorizationService auth, IQuestService quests, IQuestReadService reads)
 {
-    private readonly IQuestAuthorizer _authorizer = new QuestAuthorizer(auth);
+    private readonly IQuestAuthorizer _authorizer = new QuestAuthorizer(auth, TestFeatureGates.AlwaysOn);
 
     public async Task<CommandResult> PostAsync(
         ulong guildId, ulong actorId, QuestOrigin origin, string name, string currency, long reward,
@@ -24,7 +24,7 @@ internal sealed class QuestCommandHarness(MusterDbContext db, GuildAuthorization
         QuestTier tier = QuestTier.None, bool requestFinalApproval = false, int capacity = 1)
         => (await PostQuestHandler.Handle(
             new PostQuest(guildId, actorId, origin, name, currency, reward, description, startsAt, deadline, tier, requestFinalApproval, capacity),
-            db, auth, quests, default)).ToCommandResult($"Quest **{name}** posted.");
+            db, auth, quests, TestFeatureGates.AlwaysOn, default)).ToCommandResult($"Quest **{name}** posted.");
 
     public Task<CommandResult> ClaimAsync(ulong guildId, string idRaw, ulong userId)
         => Run(idRaw, id => ClaimQuestHandler.Handle(new ClaimQuest(guildId, id, userId), db, _authorizer, quests, default), "Quest claimed.");

@@ -20,6 +20,10 @@
 {
     <div class="panel glass empty">You don't have access to this server.</div>
 }
+else if (State == AccessState.Ready && !_gate.CanEnable)
+{
+    <FeatureGateNotice Verdict="_gate" Feature="Quests" />
+}
 else if (State == AccessState.Ready)
 {
     <TopProgress Active="@(_loading || _acting)" />
@@ -46,13 +50,9 @@ else if (State == AccessState.Ready)
         var isPersonal = q.Origin == QuestOrigin.Player;
         var completed = q.Participants.Count(p => p.Status == QuestParticipantStatus.Approved);
 
-        <header class="sess-head full-bleed">
-            <div class="sess-head-bar">
-                <a class="btn btn-ghost btn-sm sess-back" href="/guilds/@GuildId/quests">
-                    <span class="material-symbols-outlined">arrow_back</span> Quests
-                </a>
-            </div>
+        <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests", $"/guilds/{GuildId}/quests"), new(q.Name) })" />
 
+        <header class="sess-head full-bleed">
             <div class="sess-title">
                 @if (q.Tier != QuestTier.None)
                 {
@@ -87,7 +87,7 @@ else if (State == AccessState.Ready)
 
         @* Reward + quest-level actions strip — sits between the header's bottom border and the detail panels. *@
         var canClaim = q.Status == QuestStatus.Open && myPart is null
-            && (!isPersonal || !iAmOwner || _settings.Quests.AllowSelfParticipation);
+            && (!isPersonal || !iAmOwner || _settings.AllowSelfParticipation);
         var canIntake = CanIntake(q);
         var canFinalize = CanFinalize(q);
         var canArbitrate = CanArbitrate(q, iAmOwner, myPart);
@@ -120,10 +120,10 @@ else if (State == AccessState.Ready)
                             <option value="@QuestTier.None">No tier (0 pts)</option>
                             @foreach (var t in _tiers)
                             {
-                                <option value="@t">@t (@_settings.Quests.PointsForTier(t) pts)</option>
+                                <option value="@t">@t (@_settings.PointsForTier(t) pts)</option>
                             }
                         </select>
-                        @if (_settings.Quests.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
+                        @if (_settings.FinalApprovalMode == FinalApprovalMode.ApproverChoice)
                         {
                             <label class="checkbox"><input type="checkbox" checked="@_intakeFinal" @onchange="e => _intakeFinal = e.Value is true" /> final sign-off</label>
                         }
@@ -271,8 +271,9 @@ else if (State == AccessState.Ready)
 
     private QuestDetailView? _quest;
     private Guid _questGuid;
-    private GuildSettings _settings = new();
+    private GuildQuestSettings _settings = new();
     private bool _isManager;
+    private FeatureVerdict _gate;
     private bool _isStaff;
     private string _zoneId = TimeZoneService.Utc;
     private bool _acting;
@@ -293,6 +294,18 @@ else if (State == AccessState.Ready)
 
     protected override async Task LoadAsync()
     {
+        await using (var scope = Scopes.CreateAsyncScope())
+        {
+            // Detail is wind-down-gated: an in-flight quest stays viewable when the guild merely has quests off
+            // (CanEnable); only a platform/plan block (Unavailable) hides it entirely.
+            _gate = await scope.ServiceProvider.GetRequiredService<IFeatureGate>().EvaluateAsync(GuildId, PlatformFeature.Quests);
+        }
+
+        if (!_gate.CanEnable)
+        {
+            return;
+        }
+
         _isManager = await Auth.IsQuestManagerAsync(GuildId, UserId);
         _isStaff = await Auth.IsEconomyManagerAsync(GuildId, UserId); // gates member-detail links (admin-inclusive)
         _zoneId = await TimeZones.ResolveZoneIdAsync(GuildId, UserId);

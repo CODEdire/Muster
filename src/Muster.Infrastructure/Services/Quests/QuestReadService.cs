@@ -15,16 +15,16 @@ public record QuestBoardItem(
     Guid Id, string Name, string Description, QuestOrigin Origin,
     long RewardAmount, Guid RewardCurrencyId, QuestTier Tier, long BonusPoints, int Capacity,
     QuestStatus Status, DateTimeOffset? ScheduledStart, DateTimeOffset? Deadline, ulong OwnerId,
-    IReadOnlyList<QuestParticipantView> Participants);
+    IReadOnlyList<QuestParticipantView> Participants, Guid? QuestTypeId = null);
 
 /// <summary>A paged board view plus the lookups the page renders with.</summary>
 public record QuestBoardPage(
     IReadOnlyList<QuestBoardItem> Items, int Total, int Page, int TotalPages,
     IReadOnlyDictionary<Guid, string> Codes, IReadOnlyDictionary<ulong, string> Names,
-    IReadOnlyDictionary<ulong, string> Avatars, GuildSettings Settings);
+    IReadOnlyDictionary<ulong, string> Avatars, Muster.Domain.Entities.Guilds.GuildQuestSettings Settings);
 
 /// <summary>The fields the edit form prefills from.</summary>
-public record QuestEditView(QuestOrigin Origin, string Name, string Description, long RewardAmount, QuestTier Tier, int Capacity, DateTimeOffset? Deadline);
+public record QuestEditView(QuestOrigin Origin, string Name, string Description, long RewardAmount, QuestTier Tier, int Capacity, DateTimeOffset? Deadline, Guid? QuestTypeId);
 
 /// <summary>A participant as the detail page shows them (name/avatar + reviewer resolved).</summary>
 public record QuestDetailParticipant(ulong UserId, string Name, string? AvatarUrl, QuestParticipantStatus Status, string? Note, string? ReviewNote, ulong? ReviewedBy, string? ReviewedByName, DateTimeOffset? SubmittedAt);
@@ -83,7 +83,8 @@ public record QuestListItem(string Name, QuestOrigin Origin, long RewardAmount, 
 public interface IQuestReadService
 {
     Task<QuestBoardPage> GetBoardAsync(ulong guildId, ulong userId, bool isManager, string tab, string? type,
-        string? search, string sort, bool desc, int page, int pageSize, CancellationToken ct = default);
+        string? search, string sort, bool desc, int page, int pageSize,
+        Guid? questTypeId = null, QuestTier? tier = null, CancellationToken ct = default);
 
     Task<QuestEditView?> GetForEditAsync(ulong guildId, Guid questId, CancellationToken ct = default);
 
@@ -92,16 +93,20 @@ public interface IQuestReadService
 
     Task<IReadOnlyList<QuestListItem>> GetOpenBoardAsync(ulong guildId, CancellationToken ct = default);
 
-    /// <summary>A guild's settings (for the post/edit forms' tier + final-approval options).</summary>
-    Task<GuildSettings> GetSettingsAsync(ulong guildId, CancellationToken ct = default);
+    /// <summary>A guild's quest settings (for the post/edit forms' tier + final-approval options).</summary>
+    Task<Muster.Domain.Entities.Guilds.GuildQuestSettings> GetSettingsAsync(ulong guildId, CancellationToken ct = default);
+
+    /// <summary>A guild's quest types (admin vocab) ordered for pickers/filters — for the post/edit forms + the board.</summary>
+    Task<IReadOnlyList<Muster.Domain.Entities.Quests.QuestType>> GetQuestTypesAsync(ulong guildId, CancellationToken ct = default);
 }
 
 public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
 {
     public async Task<QuestBoardPage> GetBoardAsync(ulong guildId, ulong userId, bool isManager, string tab, string? type,
-        string? search, string sort, bool desc, int page, int pageSize, CancellationToken ct = default)
+        string? search, string sort, bool desc, int page, int pageSize,
+        Guid? questTypeId = null, QuestTier? tier = null, CancellationToken ct = default)
     {
-        var settings = (await db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guildId, ct))?.Settings ?? new GuildSettings();
+        var settings = await db.GetQuestSettingsAsync(guildId, ct);
         var codes = await db.Currencies.Where(c => c.GuildId == guildId).ToDictionaryAsync(c => c.Id, c => c.Code, ct);
 
         var query = db.Quests.AsNoTracking().Include(m => m.Participants).Where(m => m.GuildId == guildId);
@@ -148,6 +153,16 @@ public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
             query = query.Where(m => m.Name.Contains(s) || m.Description.Contains(s));
         }
 
+        if (questTypeId is { } qt)
+        {
+            query = query.Where(m => m.QuestTypeId == qt);
+        }
+
+        if (tier is { } ti)
+        {
+            query = query.Where(m => m.Tier == ti);
+        }
+
         var total = await query.CountAsync(ct);
         var totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)Math.Max(1, pageSize)));
         var clamped = Math.Clamp(page <= 0 ? 1 : page, 1, totalPages);
@@ -167,7 +182,8 @@ public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
         var items = quests.Select(m => new QuestBoardItem(
             m.Id, m.Name, m.Description, m.Origin, m.RewardAmount, m.RewardCurrencyId, m.Tier, m.BonusPoints, m.Capacity,
             m.Status, m.ScheduledStart, m.Deadline, m.OwnerId,
-            m.Participants.Select(p => new QuestParticipantView(p.UserId, p.Status, p.Note, p.ReviewNote, p.ReviewedBy)).ToList())).ToList();
+            m.Participants.Select(p => new QuestParticipantView(p.UserId, p.Status, p.Note, p.ReviewNote, p.ReviewedBy)).ToList(),
+            m.QuestTypeId)).ToList();
 
         return new QuestBoardPage(items, total, clamped, totalPages, codes, names, avatars, settings);
     }
@@ -175,7 +191,7 @@ public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
     public async Task<QuestEditView?> GetForEditAsync(ulong guildId, Guid questId, CancellationToken ct = default)
     {
         var q = await db.Quests.AsNoTracking().FirstOrDefaultAsync(m => m.Id == questId && m.GuildId == guildId, ct);
-        return q is null ? null : new QuestEditView(q.Origin, q.Name, q.Description, q.RewardAmount, q.Tier, q.Capacity, q.Deadline);
+        return q is null ? null : new QuestEditView(q.Origin, q.Name, q.Description, q.RewardAmount, q.Tier, q.Capacity, q.Deadline, q.QuestTypeId);
     }
 
     public async Task<QuestDetailView?> GetQuestDetailAsync(ulong guildId, Guid questId, CancellationToken ct = default)
@@ -214,7 +230,11 @@ public sealed class QuestReadService(MusterDbContext db) : IQuestReadService
             q.CreatedAt, q.ScheduledStart, q.Deadline, participants);
     }
 
-    public Task<GuildSettings> GetSettingsAsync(ulong guildId, CancellationToken ct = default) => db.GetSettingsAsync(guildId, ct);
+    public Task<Muster.Domain.Entities.Guilds.GuildQuestSettings> GetSettingsAsync(ulong guildId, CancellationToken ct = default) => db.GetQuestSettingsAsync(guildId, ct);
+
+    public async Task<IReadOnlyList<Muster.Domain.Entities.Quests.QuestType>> GetQuestTypesAsync(ulong guildId, CancellationToken ct = default)
+        => await db.QuestTypes.AsNoTracking().Where(t => t.GuildId == guildId)
+            .OrderBy(t => t.Sort).ThenBy(t => t.Name).ToListAsync(ct);
 
     public async Task<IReadOnlyList<QuestListItem>> GetOpenBoardAsync(ulong guildId, CancellationToken ct = default)
     {

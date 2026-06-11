@@ -69,7 +69,7 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
             });
             var header = $"**Quest board** · {board.Total} total (page {board.Page}/{board.TotalPages})\nDetails: `/quest show`.";
             return CommandResult.Ok(header + "\n" + string.Join("\n", lines));
-        });
+        }, feature: PlatformFeature.Quests); // the board is hidden when quests are off (IsEnabled)
 
     [SubSlashCommand("show", "Show a quest's details: status, reward, and participants.")]
     public Task ShowAsync(
@@ -117,7 +117,8 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
             }
 
             return CommandResult.Ok(string.Join("\n", lines));
-        });
+        // Detail of a specific quest stays reachable during wind-down (CanEnable) so in-flight quests can be tracked.
+        }, feature: PlatformFeature.Quests, featureWindDown: true);
 
     // ---- Lifecycle ---------------------------------------------------------
 
@@ -137,8 +138,9 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
             [SlashCommandParameter(Name = "starts", Description = "When it opens — your local time (set /timezone), or `<t:...>` / `in 3 days` (optional)")] string starts = "",
             [SlashCommandParameter(Name = "expires", Description = "When it closes — your local time (set /timezone), or `<t:...>` / `in 3 days` (optional)")] string expires = "",
             [SlashCommandParameter(Name = "tier", Description = "Difficulty tier — sets the bonus POINTS from guild config")] QuestTier tier = QuestTier.None,
-            [SlashCommandParameter(Name = "slots", Description = "How many members can complete it (capacity, default 1)")] long slots = 1)
-            => PostAsync(QuestOrigin.Guild, name, currency, reward, description, starts, expires, tier, requireFinalApproval: false, slots);
+            [SlashCommandParameter(Name = "slots", Description = "How many members can complete it (capacity, default 1)")] long slots = 1,
+            [SlashCommandParameter(Name = "type", Description = "Quest type", AutocompleteProviderType = typeof(QuestTypeAutocompleteProvider))] string type = "")
+            => PostAsync(QuestOrigin.Guild, name, currency, reward, description, starts, expires, tier, requireFinalApproval: false, slots, type);
 
         [SubSlashCommand("player", "Post a player quest — its reward is escrowed from your own balance.")]
         public Task PlayerAsync(
@@ -148,11 +150,12 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
             [SlashCommandParameter(Name = "description", Description = "What to do")] string description = "",
             [SlashCommandParameter(Name = "starts", Description = "When it opens — your local time (set /timezone), or `<t:...>` / `in 3 days` (optional)")] string starts = "",
             [SlashCommandParameter(Name = "expires", Description = "When it closes — your local time (set /timezone), or `<t:...>` / `in 3 days` (optional)")] string expires = "",
-            [SlashCommandParameter(Name = "require_final_approval", Description = "Ask a manager to give a final sign-off before payout")] bool requireFinalApproval = false)
-            => PostAsync(QuestOrigin.Player, name, currency, reward, description, starts, expires, QuestTier.None, requireFinalApproval, slots: 1);
+            [SlashCommandParameter(Name = "require_final_approval", Description = "Ask a manager to give a final sign-off before payout")] bool requireFinalApproval = false,
+            [SlashCommandParameter(Name = "type", Description = "Quest type", AutocompleteProviderType = typeof(QuestTypeAutocompleteProvider))] string type = "")
+            => PostAsync(QuestOrigin.Player, name, currency, reward, description, starts, expires, QuestTier.None, requireFinalApproval, slots: 1, type);
 
         private Task PostAsync(QuestOrigin origin, string name, string currency, long reward, string description,
-            string starts, string expires, QuestTier tier, bool requireFinalApproval, long slots)
+            string starts, string expires, QuestTier tier, bool requireFinalApproval, long slots, string type)
             => RunAsync(async (sp, guildId) =>
             {
                 // Date parsing is an adapter concern (interprets the user's local time) — the command carries UTC.
@@ -169,11 +172,12 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
                     return CommandResult.Error(expiresErr!);
                 }
 
+                Guid? typeId = Guid.TryParse(type, out var tid) ? tid : null;
                 var command = new PostQuest(guildId, Context.User.Id, origin, name, currency, reward, description,
-                    startsAt, deadline, tier, requireFinalApproval, (int)Math.Max(1, slots));
+                    startsAt, deadline, tier, requireFinalApproval, (int)Math.Max(1, slots), typeId);
                 var result = await sp.GetRequiredService<IMessageBus>().InvokeAsync<Result>(command);
                 return result.ToCommandResult($"Quest **{name}** posted.");
-            });
+            }, feature: PlatformFeature.Quests); // posting is a board-entry action — blocked when quests are off
     }
 
     [SubSlashCommand("edit", "Edit a quest before anyone claims it.")]
@@ -320,7 +324,7 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<Muster.Infrastructure.Commands.Membership.ConfigCommandService>()
                     .SetQuestChannelAsync(guildId, channel?.Id ?? 0),
-                RequiredRole.Admin, auditAction: "quest.config.channel");
+                RequiredRole.Admin, auditAction: "quest.config.channel", feature: PlatformFeature.Quests, featureWindDown: true);
 
         [SubSlashCommand("modchannel", "Set the private staff channel for intake/disputes/sign-off — omit to clear (admin).")]
         public Task ModChannelAsync(
@@ -328,6 +332,6 @@ public class QuestModule(IServiceScopeFactory scopeFactory) : QuestModuleBase(sc
             => RunAsync(
                 (sp, guildId) => sp.GetRequiredService<Muster.Infrastructure.Commands.Membership.ConfigCommandService>()
                     .SetQuestModChannelAsync(guildId, channel?.Id ?? 0),
-                RequiredRole.Admin, auditAction: "quest.config.modchannel");
+                RequiredRole.Admin, auditAction: "quest.config.modchannel", feature: PlatformFeature.Quests, featureWindDown: true);
     }
 }

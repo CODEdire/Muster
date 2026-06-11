@@ -29,5 +29,8 @@ public abstract class QuestModuleBase(IServiceScopeFactory scopeFactory) : Muste
 
             var result = await sp.GetRequiredService<IMessageBus>().InvokeAsync<Result>(command(guildId, questId));
             return result.ToCommandResult(ok);
-        }, role);
+        // Acting on an existing quest — reachable whenever quests aren't platform/plan-blocked (CanEnable), so a
+        // guild that switched quests off can still wind down in-flight work. The precise per-action rule (e.g. no
+        // new claims on an off board) is enforced by the QuestAuthorizer inside the command handler.
+        }, role, feature: PlatformFeature.Quests, featureWindDown: true);
 }

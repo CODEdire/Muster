@@ -29,6 +29,9 @@ public class QuestMaintenanceTests
         await new GuildProvisioningService(db).EnsureGuildAsync(1, "G", null, ownerId: 1);
         var guild = await db.Guilds.SingleAsync();
         configure(guild.Settings.Quests);
+        // Quest settings now live in their own table (cutover from the legacy owned JSON); seed a row from the
+        // configured legacy values so the read sites (GetQuestSettingsAsync) see them.
+        db.GuildQuestSettings.Add(Muster.Domain.Entities.Guilds.GuildQuestSettings.FromLegacy(guild.Id, guild.Settings.Quests));
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();

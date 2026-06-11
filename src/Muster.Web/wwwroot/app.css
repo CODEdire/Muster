@@ -860,8 +860,26 @@ table.leaderboard th a { color: var(--text-muted); }
 .quest-board {
     display: grid;
     gap: 1rem;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    align-items: stretch; /* equal-height cards within a row */
 }
+/* List view: one full-width card per row. */
+.quest-board.is-list { grid-template-columns: 1fr; }
+.quest-board.is-list .quest-card { max-width: 760px; }
+
+/* Card hover lift (shop-tile polish). */
+.quest-card { transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease; }
+.quest-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border)); }
+
+/* View toggle (icon buttons reusing the segmented control look). */
+.seg.view-toggle button {
+    background: none; border: 0; cursor: pointer;
+    padding: 0.3rem 0.55rem; color: var(--text-muted);
+    display: grid; place-items: center; border-radius: 7px;
+}
+.seg.view-toggle button:hover { color: var(--text); }
+.seg.view-toggle button.active { background: var(--accent); color: #fff; }
+.seg.view-toggle .material-symbols-outlined { font-size: 1.15rem; }
 
 /* ---- Shop / listing tiles ------------------------------------------------ */
 /* Opaque card surface (vs translucent .glass) so a dense grid stays legible over the textured background. */
@@ -1069,19 +1087,20 @@ table.leaderboard th a { color: var(--text-muted); }
 
 .quest-card {
     display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-    padding: 1.1rem 1.2rem 1.2rem;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;
+    align-items: stretch;
 }
-.quest-card .qc-top {
-    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+.qc-body {
+    flex: 1 1 auto; min-width: 0;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    padding: 0.9rem 1.05rem 1rem;
 }
-.qc-chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-.qc-time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
-.quest-card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
 .qc-desc {
     color: var(--text-muted);
     font-size: 0.88rem;
+    line-height: 1.4;
     margin: 0;
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -1097,9 +1116,95 @@ table.leaderboard th a { color: var(--text-muted); }
 .qc-desc.markdown pre { display: inline; margin: 0; padding: 0; border: 0; background: none; }
 .qc-desc.markdown code { background: var(--surface); border-radius: 4px; padding: 0 0.2rem; }
 .qc-desc.markdown a { color: var(--accent); }
-.qc-title { color: var(--text); }
+/* Quest-type icon picker — a visual palette (each swatch shows its Material glyph), not a text dropdown. */
+.qt-palette { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
+.qt-ico {
+    display: grid; place-items: center;
+    width: 2rem; height: 2rem;
+    border-radius: 9px; cursor: pointer;
+    background: var(--surface); color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+.qt-ico .material-symbols-outlined { font-size: 1.15rem; }
+.qt-ico:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.qt-ico.sel {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Left rail — the quest type icon stacked over its difficulty tier, the whole rail tinted by tier (W1).
+   No tier → neutral accent tint with the type icon alone. The rail stretches full card height. */
+.qc-rail {
+    flex: 0 0 54px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.55rem;
+    padding: 0.9rem 0;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    border-radius: var(--radius) 0 0 var(--radius); /* match the card's rounded left edge (card no longer clips) */
+}
+.qc-rail-icon { font-size: 1.7rem; line-height: 1; }
+.qc-rail-tier { font-size: 1.1rem; font-weight: 800; line-height: 1; }
+.qc-rail.tier-edge-S { background: linear-gradient(170deg, #fde047, #f59e0b); color: #6b3d05; }
+.qc-rail.tier-edge-A { background: linear-gradient(170deg, #fb7185, #ef4444); color: #fff; }
+.qc-rail.tier-edge-B { background: linear-gradient(170deg, #c084fc, #8b5cf6); color: #fff; }
+.qc-rail.tier-edge-C { background: linear-gradient(170deg, #60a5fa, #3b82f6); color: #fff; }
+.qc-rail.tier-edge-D { background: linear-gradient(170deg, #4ade80, #22c55e); color: #06351a; }
+.qc-rail.tier-edge-E { background: linear-gradient(170deg, #cbd5e1, #94a3b8); color: #243244; }
+
+.qc-body-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem; }
+.qc-title { color: var(--text); font-size: 1.05rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .qc-title:hover { color: var(--accent); }
-.qc-details { font-size: 0.8rem; font-weight: 600; align-self: flex-start; }
+.qc-subrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: -0.25rem; }
+.qc-pts { font-size: 0.78rem; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+:root[data-theme="dark"] .qc-pts { color: #93c5fd; }
+
+.qc-meta2 { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; color: var(--text-muted); font-size: 0.82rem; }
+.qc-meta2 .qc-dot { opacity: 0.45; }
+.qc-type-label { font-weight: 600; color: var(--text); font-size: 0.82rem; }
+.qc-issuer, .qc-exp { display: inline-flex; align-items: center; gap: 0.25rem; }
+.qc-issuer .material-symbols-outlined, .qc-exp .material-symbols-outlined { font-size: 1rem; }
+.qc-details { font-size: 0.8rem; font-weight: 600; }
+
+/* Description teaser with a hover/focus popover for the full text. The area is reserved at a fixed 3-line
+   height (whether or not the quest has a description) so every card is the same height. */
+.qc-desc-wrap { position: relative; min-height: 3.7rem; }
+.qc-desc-wrap.has-pop .qc-desc { cursor: help; }
+.qc-desc-pop {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+    display: none; padding: 0.65rem 0.75rem; border-radius: 11px;
+    max-height: 16rem; overflow: auto;
+    font-size: 0.86rem; line-height: 1.5; color: var(--text);
+}
+.qc-desc-wrap.has-pop:hover .qc-desc-pop,
+.qc-desc-wrap.has-pop:focus-within .qc-desc-pop { display: block; }
+
+/* Thin progress bar for multi-slot guild quests. */
+.qc-bar { height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.qc-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* Board: primary tabs (in the filter bar) + table (list) view. */
+.dg-filters .board-tabs { flex: 0 0 auto; }
+.quest-table .qt-cell { display: inline-flex; align-items: center; gap: 0.4rem; }
+.quest-table .qt-cell .material-symbols-outlined { font-size: 1.1rem; color: var(--accent); }
+.quest-table .qt-tier-col { width: 3.5rem; }
+.quest-table .qc-reward { font-size: 0.9rem; }
+.quest-table .dg-muted { color: var(--text-muted); }
+.qt-row-actions { display: inline-flex; gap: 0.25rem; justify-content: flex-end; }
+
+/* The board / table fill the remaining viewport height (desktop) via the shared .dg-fill marker. */
+.quest-fill { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
+.quest-fill > .dg-scroll { flex: 1 1 auto; min-height: 0; }
+.quest-fill > .quest-board { flex: 1 1 auto; align-content: start; min-height: 0; overflow: auto; }
+.quest-fill > .panel.empty { flex: 1 1 auto; }
+.quest-fill > .dg-footer { flex: 0 0 auto; }
+
+/* Action modal — text (submit/revise/reject note) or tier (intake) input, shared by card + table buttons. */
+.modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 1rem; }
+.qmodal { width: min(440px, 100%); padding: 1.2rem 1.3rem; display: flex; flex-direction: column; gap: 0.85rem; }
+.qmodal h3 { margin: 0; }
+.qmodal-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; color: var(--text-muted); }
+.qmodal-field textarea, .qmodal-field select { width: 100%; }
 
 /* Quest detail page */
 .quest-detail h1 { margin: 0.4rem 0 0.5rem; }
@@ -1183,6 +1288,9 @@ table.leaderboard th a { color: var(--text-muted); }
 
 /* Top-right cluster: tier rank badge + time. */
 .qc-top-right { display: flex; align-items: center; gap: 0.5rem; }
+/* Tier badge inline in a settings field label (tier letter as a visual reference next to its reward input). */
+.mform .field label .tier-badge { vertical-align: -4px; margin-right: 0.4rem; }
+
 .tier-badge {
     display: inline-grid; place-items: center;
     min-width: 1.5rem; height: 1.5rem; padding: 0 0.35rem;

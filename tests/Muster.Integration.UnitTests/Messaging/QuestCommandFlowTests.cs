@@ -33,13 +33,15 @@ public class QuestCommandFlowTests
         await new GuildProvisioningService(db).EnsureGuildAsync(Guild, "G", null, ownerId: Master, seedDefaults: false); // owner ⇒ GuildMaster
         var guild = await db.Guilds.SingleAsync();
         configure?.Invoke(guild.Settings.Quests);
+        // Quest settings moved to their own table; mirror the configured legacy values into the row the read sites use.
+        db.GuildQuestSettings.Add(Muster.Domain.Entities.Guilds.GuildQuestSettings.FromLegacy(guild.Id, guild.Settings.Quests));
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = Guild, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
 
         var auth = new GuildAuthorizationService(db);
         var quests = new QuestService(db, new CurrencyService(db, new RecordingMessageBus()), auth, new RecordingMessageBus());
-        return new Ctx(db, auth, new QuestAuthorizer(auth), quests, coin);
+        return new Ctx(db, auth, new QuestAuthorizer(auth, TestSupport.TestFeatureGates.AlwaysOn), quests, coin);
     }
 
     private static Task FundAsync(Ctx c, ulong userId, long amount) =>
@@ -54,7 +56,7 @@ public class QuestCommandFlowTests
     private static Task<Result<Guid>> PostAsync(Ctx c, QuestOrigin origin, ulong actor, long reward = 40, QuestTier tier = QuestTier.None, bool requestFinal = false) =>
         PostQuestHandler.Handle(
             new PostQuest(Guild, actor, origin, "Quest", "COIN", reward, "brief", null, null, tier, requestFinal, 1),
-            c.Db, c.Auth, c.Quests, default);
+            c.Db, c.Auth, c.Quests, TestSupport.TestFeatureGates.AlwaysOn, default);
 
     private static Task<GuildQuest> TheQuestAsync(Ctx c) => c.Db.Quests.AsNoTracking().Include(q => q.Participants).FirstAsync();
 

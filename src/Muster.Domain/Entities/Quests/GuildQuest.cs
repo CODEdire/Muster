@@ -22,7 +22,8 @@ public record QuestDraft(
     long BonusPoints = 0,
     int Capacity = 1,
     bool RequireIntake = false,
-    bool RequireFinalApproval = false);
+    bool RequireFinalApproval = false,
+    Guid? QuestTypeId = null);
 
 /// <summary>
 /// A board quest with a claim → submit → approve flow. Two funding models share this aggregate, split by
@@ -56,6 +57,9 @@ public class GuildQuest
 
     public Guid RewardCurrencyId { get; set; }
     public long RewardAmount { get; set; }
+
+    /// <summary>The quest's activity <see cref="QuestType"/> (admin vocab) — its card visual. Null = none.</summary>
+    public Guid? QuestTypeId { get; set; }
 
     /// <summary>Difficulty tier for a guild quest (drives <see cref="BonusPoints"/> via guild config).</summary>
     public QuestTier Tier { get; set; } = QuestTier.None;
@@ -116,6 +120,7 @@ public class GuildQuest
             CreatedAt = now,
             RewardCurrencyId = draft.RewardCurrencyId,
             RewardAmount = draft.RewardAmount,
+            QuestTypeId = draft.QuestTypeId,
             Tier = draft.Tier,
             BonusPoints = draft.BonusPoints,
             Capacity = Math.Max(1, draft.Capacity),

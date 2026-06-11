@@ -34,6 +34,7 @@ public class QuestBoardAndTimeZoneTests
         var coin = new Currency { Id = Guid.NewGuid(), GuildId = 1, Code = "COIN", Name = "Coin", IsSpendable = true };
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
+        await SyncQuestSettingsAsync(db); // mirror the legacy quest settings into the new table the read sites use
 
         var awards = new CurrencyService(db, new RecordingMessageBus());
         var auth = new GuildAuthorizationService(db);
@@ -45,6 +46,25 @@ public class QuestBoardAndTimeZoneTests
 
     private static async Task FundAsync(Ctx c, ulong userId, long amount)
         => await new CurrencyService(c.Db, new RecordingMessageBus()).AwardAsync(1, userId, c.Coin.Id, amount, CurrencyLedgerSource.Connector, null, "seed");
+
+    /// <summary>Quest settings moved to their own table; mirror the guild's legacy owned quest settings into the
+    /// <c>GuildQuestSettings</c> row the read sites query, so tests can keep configuring via <c>guild.Settings.Quests</c>.</summary>
+    private static async Task SyncQuestSettingsAsync(MusterDbContext db)
+    {
+        var guild = await db.Guilds.SingleAsync();
+        var src = Muster.Domain.Entities.Guilds.GuildQuestSettings.FromLegacy(guild.Id, guild.Settings.Quests);
+        var row = await db.GuildQuestSettings.FindAsync(guild.Id);
+        if (row is null)
+        {
+            db.GuildQuestSettings.Add(src);
+        }
+        else
+        {
+            db.Entry(row).CurrentValues.SetValues(src);
+        }
+
+        await db.SaveChangesAsync();
+    }
 
     // --- Time zone ---
 
@@ -231,6 +251,7 @@ public class QuestBoardAndTimeZoneTests
         guild.Settings.Quests.PersonalQuestIntakeApproval = intake;
         guild.Settings.Quests.FinalApprovalMode = mode;
         await c.Db.SaveChangesAsync();
+        await SyncQuestSettingsAsync(c.Db);
     }
 
     [Fact]
@@ -385,6 +406,7 @@ public class QuestBoardAndTimeZoneTests
         guild.Settings.Quests.MaxActiveClaimsPerUser = 1;
         await FundAsync(c, 10, 100);
         await c.Db.SaveChangesAsync();
+        await SyncQuestSettingsAsync(c.Db);
 
         await c.Board.PostAsync(1, 10, QuestOrigin.Player, "A", c.Coin.Code, 10);
         await c.Board.PostAsync(1, 10, QuestOrigin.Player, "B", c.Coin.Code, 10);
@@ -405,6 +427,7 @@ public class QuestBoardAndTimeZoneTests
         guild.Settings.Quests.MaxOpenQuestsPerPoster = 1;
         await FundAsync(c, 10, 100);
         await c.Db.SaveChangesAsync();
+        await SyncQuestSettingsAsync(c.Db);
 
         Assert.False((await c.Board.PostAsync(1, 10, QuestOrigin.Player, "A", c.Coin.Code, 10)).IsError);
         var blocked = await c.Board.PostAsync(1, 10, QuestOrigin.Player, "B", c.Coin.Code, 10);
@@ -468,6 +491,7 @@ public class QuestBoardAndTimeZoneTests
         guild.Settings.Quests.MaxRevisions = 1;
         await FundAsync(c, 10, 100);
         await c.Db.SaveChangesAsync();
+        await SyncQuestSettingsAsync(c.Db);
 
         await c.Board.PostAsync(1, 10, QuestOrigin.Player, "Escort", c.Coin.Code, 40);
         var q = await c.Db.Quests.SingleAsync();

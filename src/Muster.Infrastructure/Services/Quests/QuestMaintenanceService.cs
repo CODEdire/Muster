@@ -4,6 +4,7 @@ using Muster.Persistence;
 using Muster.Persistence.Queries;
 using Microsoft.Extensions.Logging;
 using Muster.Domain.Entities;
+using Muster.Domain.Entities.Guilds;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Platform;
 
@@ -38,7 +39,7 @@ public class QuestMaintenanceService(
 
         foreach (var guild in guilds)
         {
-            var s = guild.Settings.Quests;
+            var s = await db.GetQuestSettingsAsync(guild.Id, ct);
             if (s.IntakeTimeoutHours > 0)
             {
                 resolved += await ResolveIntakeAsync(guild.Id, s, now, ct);
@@ -71,7 +72,7 @@ public class QuestMaintenanceService(
     /// <summary>Auto-resolve disputes left unattended past the cutoff. Fair default: the timeout favours the
     /// party that did NOT raise the dispute (the disputant bears the burden) — owner-raised pays the completer,
     /// taker-raised refunds the owner. The system arbiter (0) is exempt from recusal.</summary>
-    private async Task<int> ResolveStaleDisputesAsync(ulong guildId, QuestSettings s, DateTimeOffset now, CancellationToken ct)
+    private async Task<int> ResolveStaleDisputesAsync(ulong guildId, GuildQuestSettings s, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = now - TimeSpan.FromHours(s.DisputeTimeoutHours);
         var stale = await db.ListStaleDisputedAsync(guildId, cutoff, ct);
@@ -91,7 +92,7 @@ public class QuestMaintenanceService(
         return count;
     }
 
-    private async Task<int> ResolveIntakeAsync(ulong guildId, QuestSettings s, DateTimeOffset now, CancellationToken ct)
+    private async Task<int> ResolveIntakeAsync(ulong guildId, GuildQuestSettings s, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = now - TimeSpan.FromHours(s.IntakeTimeoutHours);
         var stale = await db.ListStaleIntakeAsync(guildId, cutoff, ct);
@@ -112,7 +113,7 @@ public class QuestMaintenanceService(
         return count;
     }
 
-    private async Task<int> ResolveStaleClaimsAsync(ulong guildId, QuestSettings s, DateTimeOffset now, CancellationToken ct)
+    private async Task<int> ResolveStaleClaimsAsync(ulong guildId, GuildQuestSettings s, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = now - TimeSpan.FromHours(s.ClaimTimeoutHours);
         var stale = await db.ListStaleClaimsAsync(guildId, cutoff, ct);
@@ -140,7 +141,7 @@ public class QuestMaintenanceService(
         return count;
     }
 
-    private async Task<int> ResolveStaleSubmissionsAsync(ulong guildId, QuestSettings s, DateTimeOffset now, CancellationToken ct)
+    private async Task<int> ResolveStaleSubmissionsAsync(ulong guildId, GuildQuestSettings s, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = now - TimeSpan.FromHours(s.SubmissionTimeoutHours);
         var stale = await db.ListStaleSubmissionsAsync(guildId, cutoff, ct);
@@ -177,7 +178,7 @@ public class QuestMaintenanceService(
             ? quests.ApproveAsync(m.Id, taker.UserId, 0, ct: ct)
             : quests.RequestRevisionAsync(m.Id, 0, taker.UserId, "Auto: reviewer timed out — please revise and resubmit.", ct);
 
-    private async Task<int> ResolveStaleFinalAsync(ulong guildId, QuestSettings s, DateTimeOffset now, CancellationToken ct)
+    private async Task<int> ResolveStaleFinalAsync(ulong guildId, GuildQuestSettings s, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = now - TimeSpan.FromHours(s.FinalApprovalTimeoutHours);
         var stale = await db.ListStaleFinalAsync(guildId, cutoff, ct);

@@ -14,4 +14,11 @@ public class QuestFormModel
     public int Capacity { get; set; } = 1;
     public DateTime? StartsAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
+
+    /// <summary>The chosen quest type (admin vocab), or null. Stored as a string for SSR form binding; parse with
+    /// <see cref="TypeId"/>.</summary>
+    public string? QuestType { get; set; }
+
+    /// <summary>The parsed quest-type id (null when none / unparseable).</summary>
+    public Guid? TypeId => Guid.TryParse(QuestType, out var id) ? id : null;
 }

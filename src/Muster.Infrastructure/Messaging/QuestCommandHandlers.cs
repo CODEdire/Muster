@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Muster.Contracts;
 using Muster.Domain;
 using Muster.Domain.Entities;
@@ -97,7 +98,7 @@ public static class ClaimQuestHandler
         }
 
         // Per-user active-claim cap (was on QuestBoardService — now in the funnel so commands can't bypass it).
-        var settings = (await db.GetSettingsAsync(command.GuildId, ct)).Quests;
+        var settings = await db.GetQuestSettingsAsync(command.GuildId, ct);
         if (settings.MaxActiveClaimsPerUser > 0
             && await db.CountActiveClaimsAsync(command.GuildId, command.UserId, ct) >= settings.MaxActiveClaimsPerUser)
         {
@@ -136,8 +137,17 @@ public static class SubmitQuestHandler
 public static class PostQuestHandler
 {
     public static async Task<Result<Guid>> Handle(
-        PostQuest c, MusterDbContext db, GuildAuthorizationService auth, IQuestService quests, CancellationToken ct)
+        PostQuest c, MusterDbContext db, GuildAuthorizationService auth, IQuestService quests,
+        Muster.Infrastructure.Services.Platform.IFeatureGate features, CancellationToken ct)
     {
+        // Posting is a board-entry action — gated on the guild having quests fully enabled (the wind-down rule:
+        // a switched-off board accepts no new quests, while in-flight ones still settle). CanEnable=false
+        // (platform/billing block) is covered by this too.
+        if (!await features.IsEnabledAsync(c.GuildId, Muster.Contracts.PlatformFeature.Quests, ct))
+        {
+            return Result<Guid>.Fail("Quests are turned off for this server.");
+        }
+
         if (string.IsNullOrWhiteSpace(c.Name))
         {
             return Result<Guid>.Fail("Please provide a quest name.");
@@ -153,7 +163,7 @@ public static class PostQuestHandler
             return Result<Guid>.Fail("The expiry must be after the start time.");
         }
 
-        var settings = (await db.GetSettingsAsync(c.GuildId, ct)).Quests;
+        var settings = await db.GetQuestSettingsAsync(c.GuildId, ct);
         if (settings.MaxOpenQuestsPerPoster > 0
             && await db.CountActiveQuestsByPosterAsync(c.GuildId, c.ActorId, ct) >= settings.MaxOpenQuestsPerPoster)
         {
@@ -172,6 +182,12 @@ public static class PostQuestHandler
             return Result<Guid>.Fail($"{code} can't be a quest reward — choose a spendable currency (e.g. COIN).");
         }
 
+        // An optional quest type must belong to this guild (else ignore it rather than fail the post).
+        Guid? questTypeId = c.QuestTypeId is { } tid && tid != Guid.Empty
+            && await db.QuestTypes.AnyAsync(t => t.GuildId == c.GuildId && t.Id == tid, ct)
+                ? c.QuestTypeId
+                : null;
+
         QuestDraft draft;
         if (c.Origin == QuestOrigin.Guild)
         {
@@ -186,7 +202,7 @@ public static class PostQuestHandler
             }
 
             draft = new QuestDraft(c.GuildId, c.ActorId, QuestOrigin.Guild, c.Name, c.Description, currency.Id, c.Reward,
-                c.Deadline, c.StartsAt, c.Tier, settings.PointsForTier(c.Tier), c.Capacity);
+                c.Deadline, c.StartsAt, c.Tier, settings.PointsForTier(c.Tier), c.Capacity, QuestTypeId: questTypeId);
         }
         else
         {
@@ -203,7 +219,8 @@ public static class PostQuestHandler
             };
 
             draft = new QuestDraft(c.GuildId, c.ActorId, QuestOrigin.Player, c.Name, c.Description, currency.Id, c.Reward,
-                c.Deadline, c.StartsAt, RequireIntake: settings.PersonalQuestIntakeApproval, RequireFinalApproval: requireFinal);
+                c.Deadline, c.StartsAt, RequireIntake: settings.PersonalQuestIntakeApproval, RequireFinalApproval: requireFinal,
+                QuestTypeId: questTypeId);
         }
 
         var (result, quest) = await quests.PostQuestAsync(draft, ct);
@@ -336,7 +353,7 @@ public static class AcceptQuestIntakeHandler
             return Result.Fail(nameof(QuestResult.Forbidden));
         }
 
-        var settings = (await db.GetSettingsAsync(command.GuildId, ct)).Quests;
+        var settings = await db.GetQuestSettingsAsync(command.GuildId, ct);
         var points = settings.PointsForTier(command.Tier);
         // The approver only sets the final-approval flag when the guild delegates that choice to them.
         var approverFinal = settings.FinalApprovalMode == FinalApprovalMode.ApproverChoice ? command.RequireFinalApproval : (bool?)null;
@@ -430,7 +447,8 @@ public static class EditQuestHandler
         }
 
         var result = await quests.EditAsync(
-            command.QuestId, command.Name, command.Description, command.Reward, command.Deadline, command.Tier, command.Capacity, ct);
+            command.QuestId, command.Name, command.Description, command.Reward, command.Deadline, command.Tier, command.Capacity,
+            command.QuestTypeId, ct);
         return result == QuestResult.Ok ? Result.Success() : Result.Fail(result.ToString());
     }
 }

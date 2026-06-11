@@ -8,6 +8,7 @@ using Muster.Domain.Entities.Members;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Musters;
+using Muster.Infrastructure.Services.Quests;
 using Muster.Infrastructure.Services.Tracking;
 
 namespace Muster.Infrastructure.Commands.Membership;
@@ -21,9 +22,9 @@ public record LedgerRetentionChange(int OldDays, int NewDays);
 /// The guild owner can always run these even before any role is mapped, so the server can be
 /// configured without being locked out.
 /// </summary>
-// musterSettings is always supplied by DI; the null-forgiving default keeps the many ConfigCommandService test
-// constructions (which don't touch the muster setters) from each needing to build one.
-public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention, GuildMusterSettingsService musterSettings = null!, IOptions<TrackingRetentionOptions> trackingRetention = null!)
+// musterSettings / questSettings are always supplied by DI; the null-forgiving defaults keep the many
+// ConfigCommandService test constructions (which don't touch those setters) from each needing to build one.
+public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetentionOptions> retention, GuildMusterSettingsService musterSettings = null!, IOptions<TrackingRetentionOptions> trackingRetention = null!, GuildQuestSettingsService questSettings = null!)
 {
     /// <summary>Set how many days of detailed ledger history this guild keeps before the prune sweep compacts older
     /// rows into carry-forward checkpoints (0 = inherit the platform default / keep forever). Validated against the
@@ -281,13 +282,13 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("This server isn't set up yet.");
         }
 
-        var settings = guild.Settings;
-        settings.Quests.PersonalQuestIntakeApproval = intakeApproval;
-        settings.Quests.FinalApprovalMode = finalMode;
-        settings.Quests.AllowSelfParticipation = allowSelfParticipation;
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
+        await questSettings.UpsertAsync(guildId, q =>
+        {
+            q.PersonalQuestIntakeApproval = intakeApproval;
+            q.FinalApprovalMode = finalMode;
+            q.AllowSelfParticipation = allowSelfParticipation;
+        }, ct);
 
-        await db.SaveChangesAsync(ct);
         return CommandResult.Ok("Quest approval settings updated.");
     }
 
@@ -373,27 +374,24 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("Retention hours can't be negative (0 = delete as soon as completed).");
         }
 
-        var settings = guild.Settings;
-        if (channelId is { } pub)
+        var q = await questSettings.UpsertAsync(guildId, s =>
         {
-            settings.Quests.QuestChannelId = pub;
-        }
+            if (channelId is { } pub)
+            {
+                s.QuestChannelId = pub;
+            }
 
-        if (modChannelId is { } mod)
-        {
-            settings.Quests.QuestModChannelId = mod;
-        }
+            if (modChannelId is { } mod)
+            {
+                s.QuestModChannelId = mod;
+            }
 
-        if (retentionHours is { } hours)
-        {
-            settings.Quests.BoardRetentionHours = hours;
-        }
+            if (retentionHours is { } hours)
+            {
+                s.BoardRetentionHours = hours;
+            }
+        }, ct);
 
-        guild.Settings = settings; // reassign so the owned JSON column is detected as changed
-
-        await db.SaveChangesAsync(ct);
-
-        var q = settings.Quests;
         var pubPart = q.QuestChannelId == 0 ? "Public board off (pull-only)" : $"Public board → <#{q.QuestChannelId}>";
         var modPart = q.QuestModChannelId == 0 ? "no mod channel" : $"mod states → <#{q.QuestModChannelId}>";
         return CommandResult.Ok($"{pubPart}; {modPart}; completed cards linger {q.BoardRetentionHours}h.");
@@ -465,21 +463,21 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("Timeouts and limits can't be negative (0 disables).");
         }
 
-        var s = guild.Settings;
-        s.Quests.IntakeTimeoutHours = intakeHours;
-        s.Quests.IntakeTimeoutAction = intakeAction;
-        s.Quests.ClaimTimeoutHours = claimHours;
-        s.Quests.SubmissionTimeoutHours = submissionHours;
-        s.Quests.SubmissionTimeoutAction = submissionAction;
-        s.Quests.FinalApprovalTimeoutHours = finalHours;
-        s.Quests.FinalApprovalTimeoutAction = finalAction;
-        s.Quests.MaxOpenQuestsPerPoster = maxOpenPerPoster;
-        s.Quests.MaxActiveClaimsPerUser = maxActiveClaims;
-        s.Quests.MaxRevisions = maxRevisions;
-        s.Quests.DeadlineReminderHours = deadlineReminderHours;
-        guild.Settings = s; // reassign so the owned JSON column is detected as changed
+        await questSettings.UpsertAsync(guildId, s =>
+        {
+            s.IntakeTimeoutHours = intakeHours;
+            s.IntakeTimeoutAction = intakeAction;
+            s.ClaimTimeoutHours = claimHours;
+            s.SubmissionTimeoutHours = submissionHours;
+            s.SubmissionTimeoutAction = submissionAction;
+            s.FinalApprovalTimeoutHours = finalHours;
+            s.FinalApprovalTimeoutAction = finalAction;
+            s.MaxOpenQuestsPerPoster = maxOpenPerPoster;
+            s.MaxActiveClaimsPerUser = maxActiveClaims;
+            s.MaxRevisions = maxRevisions;
+            s.DeadlineReminderHours = deadlineReminderHours;
+        }, ct);
 
-        await db.SaveChangesAsync(ct);
         return CommandResult.Ok("Quest automation settings updated.");
     }
 
@@ -498,17 +496,16 @@ public class ConfigCommandService(MusterDbContext db, IOptions<CurrencyRetention
             return CommandResult.Error("Tier points can't be negative.");
         }
 
-        // Reassign Settings so the owned JSON column is detected as changed.
-        var settings = guild.Settings;
-        settings.Quests.TierSPoints = s;
-        settings.Quests.TierAPoints = a;
-        settings.Quests.TierBPoints = b;
-        settings.Quests.TierCPoints = c;
-        settings.Quests.TierDPoints = d;
-        settings.Quests.TierEPoints = e;
-        guild.Settings = settings;
+        await questSettings.UpsertAsync(guildId, q =>
+        {
+            q.TierSPoints = s;
+            q.TierAPoints = a;
+            q.TierBPoints = b;
+            q.TierCPoints = c;
+            q.TierDPoints = d;
+            q.TierEPoints = e;
+        }, ct);
 
-        await db.SaveChangesAsync(ct);
         return CommandResult.Ok("Quest tier points updated.");
     }
 

@@ -37,6 +37,11 @@ try
     logger.LogInformation("Applying EF Core migrations...");
     await db.Database.MigrateAsync();
     logger.LogInformation("EF Core migrations applied.");
+
+    // Forward-migrate quest settings out of the legacy owned JSON into the new GuildQuestSettings table for every
+    // guild that doesn't have a row yet (the AddGuildQuestSettings cutover). Idempotent — a no-op once seeded.
+    var seeded = await Muster.Infrastructure.Services.Quests.GuildQuestSettingsService.BackfillAsync(db);
+    logger.LogInformation("Quest settings backfill: {Count} guild row(s) seeded.", seeded);
     return 0;
 }
 catch (Exception ex)

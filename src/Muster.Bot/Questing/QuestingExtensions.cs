@@ -34,6 +34,7 @@ public static class QuestingExtensions
         // Autocomplete providers for quest-related slash command parameters.
         builder.Services.AddTransient<QuestAutocompleteProvider>();
         builder.Services.AddTransient<QuestCurrencyAutocompleteProvider>();
+        builder.Services.AddTransient<QuestTypeAutocompleteProvider>();
 
         return builder;
     }

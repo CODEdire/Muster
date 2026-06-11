@@ -30,7 +30,7 @@ public class QuestCommandHandlerTests
         var points = await db.Currencies.SingleAsync(c => c.Code == "POINTS");
         var auth = new GuildAuthorizationService(db);
         var bus = new RecordingMessageBus();
-        return new Ctx(db, new QuestAuthorizer(auth), new QuestService(db, new CurrencyService(db, new RecordingMessageBus()), auth, bus), points, bus);
+        return new Ctx(db, new QuestAuthorizer(auth, Muster.IntegrationTests.TestSupport.TestFeatureGates.AlwaysOn), new QuestService(db, new CurrencyService(db, new RecordingMessageBus()), auth, bus), points, bus);
     }
 
     private static async Task<GuildQuest> SubmittedGuildQuestAsync(Ctx c)
@@ -154,7 +154,7 @@ public class QuestCommandHandlerTests
 
         var result = await PostQuestHandler.Handle(
             new PostQuest(1, ActorId: 99, QuestOrigin.Guild, "Drive", "COIN", 10, "", null, null, QuestTier.None, false, 1),
-            c.Db, new GuildAuthorizationService(c.Db), c.Quests, default);
+            c.Db, new GuildAuthorizationService(c.Db), c.Quests, Muster.IntegrationTests.TestSupport.TestFeatureGates.AlwaysOn, default);
 
         Assert.False(result.Ok);
         Assert.Contains("quest manager", result.Status); // validation message surfaced verbatim
@@ -247,6 +247,8 @@ public class QuestCommandHandlerTests
         var c = await SeededAsync();
         var guild = await c.Db.Guilds.SingleAsync();
         guild.Settings.Quests.MaxActiveClaimsPerUser = 1;
+        // Quest settings live in their own table now — seed the row the claim-cap check reads.
+        c.Db.GuildQuestSettings.Add(Muster.Domain.Entities.Guilds.GuildQuestSettings.FromLegacy(guild.Id, guild.Settings.Quests));
         await c.Db.SaveChangesAsync();
 
         var q1 = (await c.Quests.PostQuestAsync(new QuestDraft(1, 1, QuestOrigin.Guild, "A", "", c.Points.Id, 10))).Quest!;

@@ -4,8 +4,10 @@
 @inherits GuildMemberComponentBase
 @inject TimeZoneService TimeZones
 @inject IQuestReadService Reads
+@inject IFeatureGate Gate
 @inject Wolverine.IMessageBus Bus
 @using Muster.Domain.Entities
+@using Muster.Domain.Entities.Quests
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Commands
 @using Muster.Infrastructure.Services.Platform
@@ -18,13 +20,14 @@
 {
     <div class="panel glass empty">You don't have access to this server.</div>
 }
+else if (State == AccessState.Ready && !_gate.CanEnable)
+{
+    <FeatureGateNotice Verdict="_gate" Feature="Quests" />
+}
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/quests">← Quest board</a>
-        <h1>Edit quest</h1>
-        <p class="subtitle">Edits are locked once someone claims the quest.</p>
-    </div>
+    <PageHeader Crumbs="@(new PageHeader.Crumb[] { new("Quests", $"/guilds/{GuildId}/quests"), new(_mission?.Name is { Length: > 0 } n ? $"Edit · {n}" : "Edit quest") })"
+                Subtitle="Edits are locked once someone claims the quest." />
 
     @if (Message is not null)
     {
@@ -40,7 +43,7 @@ else if (State == AccessState.Ready)
         <div class="panel glass">
             <EditForm class="form-grid" Model="Edit" FormName="edit-quest" OnValidSubmit="SaveAsync">
                 <input type="hidden" name="Edit.Submitted" value="1" />
-                <QuestFormFields Model="Edit.Fields" NamePrefix="Edit.Fields" Settings="_settings"
+                <QuestFormFields Model="Edit.Fields" NamePrefix="Edit.Fields" Settings="_settings" Types="_types"
                                  IncludeReward="_isGuild" IncludeGuildFields="_isGuild" />
                 <div class="btn-row">
                     <button type="submit">Save</button>
@@ -56,17 +59,27 @@ else if (State == AccessState.Ready)
     [SupplyParameterFromForm(FormName = "edit-quest")] private EditInput Edit { get; set; } = new();
 
     private QuestEditView? _mission;
-    private GuildSettings _settings = new();
+    private GuildQuestSettings _settings = new();
+    private IReadOnlyList<QuestType> _types = [];
+    private FeatureVerdict _gate;
     private bool _isGuild;
 
     protected override async Task LoadAsync()
     {
+        // Editing an existing quest stays reachable during wind-down (CanEnable); only a platform/plan block hides it.
+        _gate = await Gate.EvaluateAsync(GuildId, PlatformFeature.Quests);
+        if (!_gate.CanEnable)
+        {
+            return;
+        }
+
         if (!Guid.TryParse(QuestId, out var id))
         {
             return;
         }
 
         _settings = await Reads.GetSettingsAsync(GuildId);
+        _types = await Reads.GetQuestTypesAsync(GuildId);
         _mission = await Reads.GetForEditAsync(GuildId, id);
         if (_mission is null)
         {
@@ -82,6 +95,7 @@ else if (State == AccessState.Ready)
             Edit.Fields.Tier = _mission.Tier;
             Edit.Fields.Capacity = _mission.Capacity;
             Edit.Fields.ExpiresAt = _mission.Deadline is { } d ? d.UtcDateTime : null;
+            Edit.Fields.QuestType = _mission.QuestTypeId?.ToString();
         }
     }
 
@@ -95,7 +109,8 @@ else if (State == AccessState.Ready)
         var f = Edit.Fields;
         var deadline = await TimeZones.LocalToUtcAsync(GuildId, UserId, f.ExpiresAt);
         var command = new EditQuest(GuildId, id, UserId, f.Name, f.Details,
-            _isGuild ? f.Amount : null, deadline, _isGuild ? f.Tier : null, _isGuild ? f.Capacity : null);
+            _isGuild ? f.Amount : null, deadline, _isGuild ? f.Tier : null, _isGuild ? f.Capacity : null,
+            f.TypeId ?? Guid.Empty); // empty = clear the type when "— none —" is picked
         Message = (await Bus.InvokeAsync<Result>(command)).ToCommandResult("Quest updated.").Message;
         await LoadAsync();
     }
