@@ -867,10 +867,6 @@ table.leaderboard th a { color: var(--text-muted); }
 .quest-board.is-list { grid-template-columns: 1fr; }
 .quest-board.is-list .quest-card { max-width: 760px; }
 
-/* Card hover lift (shop-tile polish). */
-.quest-card { transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease; }
-.quest-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border)); }
-
 /* View toggle (icon buttons reusing the segmented control look). */
 .seg.view-toggle button {
     background: none; border: 0; cursor: pointer;
@@ -1085,37 +1081,6 @@ table.leaderboard th a { color: var(--text-muted); }
 :root[data-theme="dark"] .shop-stock { color: #6ee7b7; }
 .shop-stock.out { color: var(--danger); }
 
-.quest-card {
-    display: flex;
-    flex-direction: row;
-    gap: 0;
-    padding: 0;
-    align-items: stretch;
-}
-.qc-body {
-    flex: 1 1 auto; min-width: 0;
-    display: flex; flex-direction: column; gap: 0.5rem;
-    padding: 0.9rem 1.05rem 1rem;
-}
-.qc-desc {
-    color: var(--text-muted);
-    font-size: 0.88rem;
-    line-height: 1.4;
-    margin: 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-/* Rendered markdown as a clamped teaser: flatten block elements so the line-clamp works,
-   but keep inline emphasis (bold/italic/links/code) visible. */
-.qc-desc.markdown p,
-.qc-desc.markdown ul,
-.qc-desc.markdown ol,
-.qc-desc.markdown blockquote,
-.qc-desc.markdown pre { display: inline; margin: 0; padding: 0; border: 0; background: none; }
-.qc-desc.markdown code { background: var(--surface); border-radius: 4px; padding: 0 0.2rem; }
-.qc-desc.markdown a { color: var(--accent); }
 /* Quest-type icon picker — a visual palette (each swatch shows its Material glyph), not a text dropdown. */
 .qt-palette { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
 .qt-ico {
@@ -1133,55 +1098,13 @@ table.leaderboard th a { color: var(--text-muted); }
     border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-/* Left rail — the quest type icon stacked over its difficulty tier, the whole rail tinted by tier (W1).
-   No tier → neutral accent tint with the type icon alone. The rail stretches full card height. */
-.qc-rail {
-    flex: 0 0 54px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.55rem;
-    padding: 0.9rem 0;
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
-    color: var(--accent);
-    border-radius: var(--radius) 0 0 var(--radius); /* match the card's rounded left edge (card no longer clips) */
-}
-.qc-rail-icon { font-size: 1.7rem; line-height: 1; }
-.qc-rail-tier { font-size: 1.1rem; font-weight: 800; line-height: 1; }
-.qc-rail.tier-edge-S { background: linear-gradient(170deg, #fde047, #f59e0b); color: #6b3d05; }
-.qc-rail.tier-edge-A { background: linear-gradient(170deg, #fb7185, #ef4444); color: #fff; }
-.qc-rail.tier-edge-B { background: linear-gradient(170deg, #c084fc, #8b5cf6); color: #fff; }
-.qc-rail.tier-edge-C { background: linear-gradient(170deg, #60a5fa, #3b82f6); color: #fff; }
-.qc-rail.tier-edge-D { background: linear-gradient(170deg, #4ade80, #22c55e); color: #06351a; }
-.qc-rail.tier-edge-E { background: linear-gradient(170deg, #cbd5e1, #94a3b8); color: #243244; }
-
-.qc-body-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem; }
+/* Quest title + bonus-points + issuer chip — shared by the board cards and the table view. */
 .qc-title { color: var(--text); font-size: 1.05rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .qc-title:hover { color: var(--accent); }
-.qc-subrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: -0.25rem; }
 .qc-pts { font-size: 0.78rem; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
 :root[data-theme="dark"] .qc-pts { color: #93c5fd; }
-
-.qc-meta2 { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; color: var(--text-muted); font-size: 0.82rem; }
-.qc-meta2 .qc-dot { opacity: 0.45; }
-.qc-type-label { font-weight: 600; color: var(--text); font-size: 0.82rem; }
-.qc-issuer, .qc-exp { display: inline-flex; align-items: center; gap: 0.25rem; }
-.qc-issuer .material-symbols-outlined, .qc-exp .material-symbols-outlined { font-size: 1rem; }
-.qc-details { font-size: 0.8rem; font-weight: 600; }
-
-/* Description teaser with a hover/focus popover for the full text. The area is reserved at a fixed 3-line
-   height (whether or not the quest has a description) so every card is the same height. */
-.qc-desc-wrap { position: relative; min-height: 3.7rem; }
-.qc-desc-wrap.has-pop .qc-desc { cursor: help; }
-.qc-desc-pop {
-    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
-    display: none; padding: 0.65rem 0.75rem; border-radius: 11px;
-    max-height: 16rem; overflow: auto;
-    font-size: 0.86rem; line-height: 1.5; color: var(--text);
-}
-.qc-desc-wrap.has-pop:hover .qc-desc-pop,
-.qc-desc-wrap.has-pop:focus-within .qc-desc-pop { display: block; }
-
-/* Thin progress bar for multi-slot guild quests. */
-.qc-bar { height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
-.qc-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+.qc-issuer { display: inline-flex; align-items: center; gap: 0.25rem; }
+.qc-issuer .material-symbols-outlined { font-size: 1rem; }
 
 /* Board: primary tabs (sit by the layout toggle) + table (list) view. */
 .board-tabs { flex: 0 0 auto; }
@@ -1338,58 +1261,11 @@ table.leaderboard th a { color: var(--text-muted); }
 .qc-reward.reward-points { color: #1d4ed8; }
 :root[data-theme="dark"] .qc-reward.reward-coin { color: #fdba74; }
 :root[data-theme="dark"] .qc-reward.reward-points { color: #93c5fd; }
-.qc-foot {
-    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-    margin-top: auto;
-}
+/* Legacy owner block (kept global; not used by the QuestCard component). */
 .qc-owner { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .qc-owner .who { font-size: 0.85rem; min-width: 0; }
 .qc-owner .who b { font-weight: 600; }
 .qc-owner .who .sub { color: var(--text-muted); }
-.qc-claimed { color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; }
-
-/* Claimer avatar stack (who's on the quest). */
-.qc-claimers { position: relative; display: flex; align-items: center; gap: 0.4rem; }
-.qc-claimers.has-pop { cursor: pointer; }
-.qc-claimers .stack { display: flex; align-items: center; }
-.avatar-xs {
-    width: 1.5rem; height: 1.5rem; border-radius: 50%; flex: 0 0 auto;
-    display: inline-grid; place-items: center; object-fit: cover;
-    background: linear-gradient(135deg, var(--accent), var(--accent-soft));
-    color: #fff; font-weight: 700; font-size: 0.62rem;
-    box-shadow: 0 0 0 2px var(--bg-base);
-}
-.stack .avatar-xs { margin-left: -0.45rem; }
-.stack .avatar-xs:first-child { margin-left: 0; }
-.avatar-xs.more { background: var(--surface); color: var(--text-muted); }
-
-/* Status ring: a coloured halo around the inner avatar. */
-.avatar-xs.ring-claimed   { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--text-muted); }
-.avatar-xs.ring-submitted { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--accent); }
-.avatar-xs.ring-revision  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px #d97706; }
-.avatar-xs.ring-approved  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px #16a34a; }
-.avatar-xs.ring-rejected  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--danger); }
-
-/* Roster popup — pure CSS, shows on hover (desktop) or focus/tap (mobile). */
-.roster-pop {
-    position: absolute;
-    bottom: calc(100% + 0.5rem);
-    right: 0;
-    z-index: 30;
-    min-width: 14rem;
-    max-width: 18rem;
-    padding: 0.6rem;
-    border-radius: var(--radius-sm);
-    display: none;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-.qc-claimers:hover .roster-pop,
-.qc-claimers:focus-within .roster-pop { display: flex; }
-.roster-head { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-.roster-row { display: flex; align-items: center; gap: 0.45rem; }
-.roster-row .roster-name { font-size: 0.85rem; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.roster-row .roster-by { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
 .avatar-sm {
     width: 1.7rem; height: 1.7rem; border-radius: 50%; flex: 0 0 auto;
     display: inline-grid; place-items: center;

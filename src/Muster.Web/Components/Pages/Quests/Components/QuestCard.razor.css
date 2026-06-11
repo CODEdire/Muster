@@ -1,0 +1,128 @@
+/* Scoped to QuestCard. Shared classes the table view / detail page also use stay global in app.css
+   (qc-title, qc-reward, qc-issuer, qc-pts, esc-lock, action-bar) — as does the board grid (.quest-board).
+   The markdown-teaser rules use ::deep because the <p>/<code>/<a> come from injected MarkupString HTML,
+   which doesn't carry the component's scope attribute. */
+
+.quest-card {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;
+    align-items: stretch;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.quest-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border)); }
+
+/* Left rail — the quest type icon stacked over its difficulty tier, the whole rail tinted by tier (W1). */
+.qc-rail {
+    flex: 0 0 54px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.55rem;
+    padding: 0.9rem 0;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    border-radius: var(--radius) 0 0 var(--radius);
+}
+.qc-rail-icon { font-size: 1.7rem; line-height: 1; }
+.qc-rail-tier { font-size: 1.1rem; font-weight: 800; line-height: 1; }
+.qc-rail.tier-edge-S { background: linear-gradient(170deg, #fde047, #f59e0b); color: #6b3d05; }
+.qc-rail.tier-edge-A { background: linear-gradient(170deg, #fb7185, #ef4444); color: #fff; }
+.qc-rail.tier-edge-B { background: linear-gradient(170deg, #c084fc, #8b5cf6); color: #fff; }
+.qc-rail.tier-edge-C { background: linear-gradient(170deg, #60a5fa, #3b82f6); color: #fff; }
+.qc-rail.tier-edge-D { background: linear-gradient(170deg, #4ade80, #22c55e); color: #06351a; }
+.qc-rail.tier-edge-E { background: linear-gradient(170deg, #cbd5e1, #94a3b8); color: #243244; }
+
+.qc-body {
+    flex: 1 1 auto; min-width: 0;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    padding: 0.9rem 1.05rem 1rem;
+}
+.qc-body-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem; }
+.qc-subrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: -0.25rem; }
+
+.qc-meta2 { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; color: var(--text-muted); font-size: 0.82rem; }
+.qc-meta2 .qc-dot { opacity: 0.45; }
+.qc-type-label { font-weight: 600; color: var(--text); font-size: 0.82rem; }
+.qc-exp { display: inline-flex; align-items: center; gap: 0.25rem; }
+.qc-exp .material-symbols-outlined { font-size: 1rem; }
+.qc-details { font-size: 0.8rem; font-weight: 600; }
+
+/* Description teaser, clamped to 3 lines; full text reveals in a hover/focus popover. */
+.qc-desc {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.4;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.qc-desc.markdown ::deep p,
+.qc-desc.markdown ::deep ul,
+.qc-desc.markdown ::deep ol,
+.qc-desc.markdown ::deep blockquote,
+.qc-desc.markdown ::deep pre { display: inline; margin: 0; padding: 0; border: 0; background: none; }
+.qc-desc.markdown ::deep code { background: var(--surface); border-radius: 4px; padding: 0 0.2rem; }
+.qc-desc.markdown ::deep a { color: var(--accent); }
+
+.qc-desc-wrap { position: relative; min-height: 3.7rem; }
+.qc-desc-wrap.has-pop .qc-desc { cursor: help; }
+.qc-desc-pop {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+    display: none; padding: 0.65rem 0.75rem; border-radius: 11px;
+    max-height: 16rem; overflow: auto;
+    font-size: 0.86rem; line-height: 1.5; color: var(--text);
+}
+.qc-desc-wrap.has-pop:hover .qc-desc-pop,
+.qc-desc-wrap.has-pop:focus-within .qc-desc-pop { display: block; }
+
+/* Thin progress bar for multi-slot guild quests. */
+.qc-bar { height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.qc-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* Footer: details link + claimer avatar stack. */
+.qc-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    margin-top: auto;
+}
+.qc-claimed { color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; }
+.qc-claimers { position: relative; display: flex; align-items: center; gap: 0.4rem; }
+.qc-claimers.has-pop { cursor: pointer; }
+.qc-claimers .stack { display: flex; align-items: center; }
+
+.avatar-xs {
+    width: 1.5rem; height: 1.5rem; border-radius: 50%; flex: 0 0 auto;
+    display: inline-grid; place-items: center; object-fit: cover;
+    background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+    color: #fff; font-weight: 700; font-size: 0.62rem;
+    box-shadow: 0 0 0 2px var(--bg-base);
+}
+.stack .avatar-xs { margin-left: -0.45rem; }
+.stack .avatar-xs:first-child { margin-left: 0; }
+.avatar-xs.more { background: var(--surface); color: var(--text-muted); }
+.avatar-xs.ring-claimed   { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--text-muted); }
+.avatar-xs.ring-submitted { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--accent); }
+.avatar-xs.ring-revision  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px #d97706; }
+.avatar-xs.ring-approved  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px #16a34a; }
+.avatar-xs.ring-rejected  { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--danger); }
+
+/* Roster popup — pure CSS, shows on hover (desktop) or focus/tap (mobile). */
+.roster-pop {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 30;
+    min-width: 14rem;
+    max-width: 18rem;
+    padding: 0.6rem;
+    border-radius: var(--radius-sm);
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.qc-claimers:hover .roster-pop,
+.qc-claimers:focus-within .roster-pop { display: flex; }
+.roster-head { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.roster-row { display: flex; align-items: center; gap: 0.45rem; }
+.roster-row .roster-name { font-size: 0.85rem; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-row .roster-by { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
