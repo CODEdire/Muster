@@ -204,7 +204,6 @@ else if (State == AccessState.Ready)
                                     <span class="rc-rep rc-rep-none">no ratings yet</span>
                                 }
                             </div>
-                            <span class="rc-party-arrow material-symbols-outlined">arrow_forward</span>
                             <div class="rc-party">
                                 <span class="rc-party-lbl">To · seller</span>
                                 <UserChip Name="@o.SellerName" AvatarUrl="@o.SellerAvatarUrl" />
@@ -216,9 +215,12 @@ else if (State == AccessState.Ready)
                                 {
                                     <span class="rc-rep rc-rep-none">no ratings yet</span>
                                 }
-                                @if (o.StoreName is { } sn)
-                                {
-                                    <a class="rc-party-shop" href="/guilds/@GuildId/shop/store/@o.StoreSlug">
+                            </div>
+                            @if (o.StoreName is { } sn)
+                            {
+                                <div class="rc-party">
+                                    <span class="rc-party-lbl">Store</span>
+                                    <a class="rc-store-col" href="/guilds/@GuildId/shop/store/@o.StoreSlug">
                                         <span class="rc-shop-ico @(o.StoreLogoImageKey is null ? "placeholder" : "")">
                                             @if (o.StoreLogoImageKey is { } lk)
                                             {
@@ -235,8 +237,8 @@ else if (State == AccessState.Ready)
                                         </span>
                                         <span class="rc-shop-text"><span class="rc-shop-name">@sn</span>@if (o.StoreTypeName is { } tn) { <span class="rc-shop-type">@tn</span> }</span>
                                     </a>
-                                }
-                            </div>
+                                </div>
+                            }
                         </div>
 
                         <dl class="rc-ledger">
