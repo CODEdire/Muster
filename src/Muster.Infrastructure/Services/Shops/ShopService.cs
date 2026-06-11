@@ -34,6 +34,25 @@ public sealed class ShopService(
     /// cycles on the same order don't collide on the ledger's (source, id) idempotency.</summary>
     private static string OfferKey(ShopOrder order) => $"{OrderKey(order.Id)}:r{order.OfferRound}";
 
+    /// <summary>A sold-out listing can't honour competing offers — decline + refund every still-open offer on it,
+    /// skipping <paramref name="exceptOrderId"/> (the order that caused the sellout, when one exists). Buyer-proposed
+    /// offers hold escrow and are refunded; seller-counters hold nothing. Caller commits (this only stages).</summary>
+    private async Task DeclineCompetingOffersAsync(ShopListing listing, Guid? exceptOrderId, CancellationToken ct)
+    {
+        foreach (var other in await db.ListOpenOffersForListingAsync(listing.Id, exceptOrderId ?? Guid.Empty, ct))
+        {
+            if (other.OfferProposedBy == ShopOfferParty.Buyer) // only buyer-proposed offers hold funds
+            {
+                await currency.ShopRefundAsync(other.GuildId, other.BuyerId, other.CurrencyId, other.Amount, OfferKey(other), ct);
+            }
+
+            other.TransitionTo(ShopOrderStatus.OfferDeclined);
+            await bus.PublishAsync(new ShopLifecycleNotified(
+                other.GuildId, other.ListingId, other.ItemNameSnapshot, ShopLifecycleMoment.OfferRejected, other.BuyerId,
+                "Offer declined — the item sold", other.Id));
+        }
+    }
+
     /// <summary>Best-effort delete of blob images by key (deduped; no-op for null/empty or when blob isn't wired).</summary>
     private async Task DeleteImagesAsync(IEnumerable<string?> keys, CancellationToken ct)
     {
@@ -684,7 +703,8 @@ public sealed class ShopService(
 
         db.ShopOrders.Add(order);
         listing.Quantity -= qty;
-        if (listing.Quantity <= 0)
+        var soldOut = listing.Quantity <= 0;
+        if (soldOut)
         {
             listing.TransitionTo(ShopListingStatus.SoldOut);
             listing.FeaturedUntil = null; // sold out → free the featured slot + drop the card
@@ -699,6 +719,14 @@ public sealed class ShopService(
             // Two buyers raced the last unit(s): the RowVersion check lost. Nothing committed (incl. the hold),
             // so the order simply didn't happen — tell this buyer it's out of stock.
             return (ShopResult.OutOfStock, null);
+        }
+
+        // A buy-now that took the last unit kills any open offers the same way an accepted offer does (no order to
+        // exclude — the buy-now order isn't an OfferPending row, so nothing of ours matches the competing-offer query).
+        if (soldOut)
+        {
+            await DeclineCompetingOffersAsync(listing, null, ct);
+            await db.SaveChangesAsync(ct);
         }
 
         await bus.PublishAsync(new ShopLifecycleNotified(
@@ -1054,19 +1082,7 @@ public sealed class ShopService(
         // A sold-out listing can't honour competing offers — decline + refund the ones currently holding funds.
         if (soldOut)
         {
-            foreach (var other in await db.ListOpenOffersForListingAsync(listing.Id, order.Id, ct))
-            {
-                if (other.OfferProposedBy == ShopOfferParty.Buyer) // only buyer-proposed offers hold funds
-                {
-                    await currency.ShopRefundAsync(other.GuildId, other.BuyerId, other.CurrencyId, other.Amount, OfferKey(other), ct);
-                }
-
-                other.TransitionTo(ShopOrderStatus.OfferDeclined);
-                await bus.PublishAsync(new ShopLifecycleNotified(
-                    other.GuildId, other.ListingId, other.ItemNameSnapshot, ShopLifecycleMoment.OfferRejected, other.BuyerId,
-                    "Offer declined — the item sold", other.Id));
-            }
-
+            await DeclineCompetingOffersAsync(listing, order.Id, ct);
             await db.SaveChangesAsync(ct);
         }
 
