@@ -16,6 +16,11 @@ public class ShopSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<ShopS
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
 
+    /// <summary>The orphan-image sweep enumerates the whole blob container, so it runs far slower than the
+    /// once-a-minute time-based reconciliation.</summary>
+    private static readonly TimeSpan OrphanSweepInterval = TimeSpan.FromHours(1);
+    private DateTimeOffset _nextOrphanSweep = DateTimeOffset.MinValue;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Shop sweep scheduler started; interval {Interval}.", Interval);
@@ -40,6 +45,16 @@ public class ShopSweepScheduler(IServiceScopeFactory scopeFactory, ILogger<ShopS
                     logger.LogInformation(
                         "Shop sweep auto-settled {Settled} order(s), auto-cancelled {Undelivered} undelivered order(s), auto-resolved {Resolved} dispute(s), expired {Expired} offer(s), closed {Revealed} rating window(s), unfeatured {Unfeatured} listing(s), delisted {Delisted} expired listing(s).",
                         settled, undelivered, resolved, expired, revealed, unfeatured, delisted);
+                }
+
+                if (now >= _nextOrphanSweep)
+                {
+                    _nextOrphanSweep = now + OrphanSweepInterval;
+                    var purged = await shop.SweepOrphanImagesAsync(now, stoppingToken);
+                    if (purged > 0)
+                    {
+                        logger.LogInformation("Shop sweep purged {Purged} orphaned image blob(s).", purged);
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

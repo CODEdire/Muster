@@ -81,9 +81,12 @@ public static class ShopQueries
         => db.ShopListings.Where(l => l.GuildId == guildId && l.SellerId == sellerId && l.Status == ShopListingStatus.Active)
             .OrderByDescending(l => l.CreatedAt).ToListAsync(ct);
 
-    /// <summary>How many of a store's listings are currently featured (active feature window) — per-store cap check.</summary>
+    /// <summary>How many of a store's listings are currently featured (active feature window) — per-store cap check.
+    /// Only Active listings count: a sold-out listing keeps its window (to carry on relist) but is hidden everywhere,
+    /// so it must not consume a featured slot.</summary>
     public static Task<int> CountFeaturedInStoreAsync(this MusterDbContext db, Guid storeId, DateTimeOffset now, CancellationToken ct = default)
-        => db.ShopListings.CountAsync(l => l.StoreId == storeId && l.FeaturedUntil != null && l.FeaturedUntil > now, ct);
+        => db.ShopListings.CountAsync(l => l.StoreId == storeId && l.Status == ShopListingStatus.Active
+            && l.FeaturedUntil != null && l.FeaturedUntil > now, ct);
 
     /// <summary>Featured listings whose window has lapsed (or that are no longer active) — for the unfeature sweep.</summary>
     public static Task<List<ShopListing>> ListExpiredFeaturedAsync(this MusterDbContext db, DateTimeOffset now, CancellationToken ct = default)
@@ -102,6 +105,45 @@ public static class ShopQueries
     public static async Task<DateTimeOffset?> LatestListingAtBySellerAsync(this MusterDbContext db, ulong guildId, ulong sellerId, CancellationToken ct = default)
         => await db.ShopListings.Where(l => l.GuildId == guildId && l.SellerId == sellerId)
             .OrderByDescending(l => l.CreatedAt).Select(l => (DateTimeOffset?)l.CreatedAt).FirstOrDefaultAsync(ct);
+
+    // --- Image blobs (orphan sweep) ---
+
+    /// <summary>Every blob key any live row could still reference: a listing's image + thumbnail (kept for ALL
+    /// statuses — sold-out/expired listings stay as relistable history), a store's banner + logo, and a disputed
+    /// order's evidence. The orphan sweep deletes container blobs outside this set. Returns an ordinal hash set
+    /// (blob keys are case-sensitive Guid-derived names).</summary>
+    public static async Task<HashSet<string>> ListReferencedImageKeysAsync(this MusterDbContext db, CancellationToken ct = default)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+
+        var listingKeys = await db.ShopListings
+            .Where(l => l.ImageKey != null || l.ThumbKey != null)
+            .Select(l => new { l.ImageKey, l.ThumbKey }).ToListAsync(ct);
+        foreach (var k in listingKeys)
+        {
+            if (k.ImageKey != null) { set.Add(k.ImageKey); }
+            if (k.ThumbKey != null) { set.Add(k.ThumbKey); }
+        }
+
+        var storeKeys = await db.ShopStores
+            .Where(s => s.BannerImageKey != null || s.LogoImageKey != null)
+            .Select(s => new { s.BannerImageKey, s.LogoImageKey }).ToListAsync(ct);
+        foreach (var k in storeKeys)
+        {
+            if (k.BannerImageKey != null) { set.Add(k.BannerImageKey); }
+            if (k.LogoImageKey != null) { set.Add(k.LogoImageKey); }
+        }
+
+        var evidenceKeys = await db.ShopOrders
+            .Where(o => o.DisputeEvidenceKey != null)
+            .Select(o => o.DisputeEvidenceKey!).ToListAsync(ct);
+        foreach (var k in evidenceKeys)
+        {
+            set.Add(k);
+        }
+
+        return set;
+    }
 
     // --- Orders ---
 

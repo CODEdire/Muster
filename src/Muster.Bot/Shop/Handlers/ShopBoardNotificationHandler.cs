@@ -35,6 +35,7 @@ public static class ShopBoardNotificationHandler
         ShopLifecycleMoment.Rated,
         ShopLifecycleMoment.Featured,
         ShopLifecycleMoment.Unfeatured,
+        ShopLifecycleMoment.Restocked,
     ];
 
     public static async Task Handle(

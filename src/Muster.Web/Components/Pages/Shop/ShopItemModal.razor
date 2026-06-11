@@ -47,6 +47,13 @@
                 <p class="qc-reward reward-coin" style="font-size:1.5rem;margin:.2rem 0">@_listing.Price @_listing.CurrencyCode</p>
                 <span class="shop-stock@(_listing.Quantity <= 0 ? " out" : "")">@StockLabel(_listing.Quantity)</span>
 
+                @if (_listing.RelistedFromId is { } relistedFrom)
+                {
+                    <a class="subtitle" style="display:inline-flex;align-items:center;gap:.25rem;margin-top:.2rem" href="/guilds/@GuildId/shop/listing/@relistedFrom" title="View the previous listing this was relisted from">
+                        <span class="material-symbols-outlined" style="font-size:1rem">history</span> Relisted from a previous listing
+                    </a>
+                }
+
                 @if (!string.IsNullOrWhiteSpace(_listing.Description))
                 {
                     <div class="markdown">@((MarkupString)Muster.Web.DiscordMarkdown.ToHtml(_listing.Description))</div>

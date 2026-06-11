@@ -32,7 +32,7 @@ public class ShopCommandFlowTests
 
     private sealed record Ctx(MusterDbContext Db, IShopAuthorizer Authz, IShopService Shop, IShopReadService Reads, Currency Coin);
 
-    private static async Task<Ctx> SeededAsync(Action<GuildShopSettings>? configure = null)
+    private static async Task<Ctx> SeededAsync(Action<GuildShopSettings>? configure = null, IShopImageService? images = null)
     {
         var db = NewDb();
         await new GuildProvisioningService(db).EnsureGuildAsync(Guild, "G", null, ownerId: Master, seedDefaults: false); // owner ⇒ Admin; no seed (tests assert a clean taxonomy)
@@ -52,7 +52,7 @@ public class ShopCommandFlowTests
         var settings = new GuildShopSettingsService(db, Options.Create(defaults));
         var currency = new CurrencyService(db, new RecordingMessageBus());
         var ratings = new RatingService(db);
-        var shop = new ShopService(db, settings, new NoOpShopImageService(), currency, auth, ratings, new AuditService(db), new RecordingMessageBus());
+        var shop = new ShopService(db, settings, images ?? new NoOpShopImageService(), currency, auth, ratings, new AuditService(db), new RecordingMessageBus());
         // Feature gate with platform-on (empty config ⇒ default on) + allow-all billing, so the authorizer's gate
         // check is a pass-through here; guild-off is still exercised via the service's own NotActive checks.
         var questSettings = new Muster.Infrastructure.Services.Quests.GuildQuestSettingsService(db, Options.Create(new GuildQuestSettings()));
@@ -902,7 +902,7 @@ public class ShopCommandFlowTests
     }
 
     [Fact]
-    public async Task Feature_ClearedWhenSoldOut()
+    public async Task Feature_SurvivesSelloutButFreesTheCap()
     {
         var c = await SeededAsync(s => s.FeaturedListingFee = 0);
         var store = (await CreateStoreAsync(c, Seller)).Value;
@@ -913,7 +913,73 @@ public class ShopCommandFlowTests
         Assert.True((await BuyAsync(c, listing, Buyer)).Ok);                       // sells out
         var l = await c.Db.ShopListings.SingleAsync();
         Assert.Equal(ShopListingStatus.SoldOut, l.Status);
-        Assert.Null(l.FeaturedUntil);                                             // featured slot freed
+        Assert.NotNull(l.FeaturedUntil);                                          // window kept so a relist can carry it
+        Assert.Equal(0, await c.Db.CountFeaturedInStoreAsync(store, DateTimeOffset.UtcNow)); // hidden ⇒ frees the slot
+    }
+
+    [Fact]
+    public async Task Relist_SoldOut_MakesFreshCopy_CarriesFeatured_LinksBack()
+    {
+        var c = await SeededAsync(s => s.FeaturedListingFee = 0);
+        var store = (await CreateStoreAsync(c, Seller)).Value;
+        var listing = (await PostAsync(c, store, Seller, price: 50, qty: 1)).Value;
+        await FundAsync(c, Buyer, 50);
+        Assert.True((await FeatureAsync(c, listing, Seller)).Ok);
+        Assert.True((await BuyAsync(c, listing, Buyer)).Ok);                       // sells out (keeps FeaturedUntil)
+
+        var relist = await RelistListingHandler.Handle(
+            new RelistListing(Guild, Seller, listing, Quantity: 5), c.Db, c.Authz, c.Shop, default);
+        Assert.True(relist.Ok);
+
+        var fresh = await c.Db.ShopListings.SingleAsync(l => l.Id == relist.Value);
+        var old = await c.Db.ShopListings.SingleAsync(l => l.Id == listing);
+        Assert.Equal(ShopListingStatus.Active, fresh.Status);
+        Assert.Equal(5, fresh.Quantity);
+        Assert.Equal(listing, fresh.RelistedFromId);                              // links back to history
+        Assert.NotNull(fresh.FeaturedUntil);                                      // featured window moved over…
+        Assert.Null(old.FeaturedUntil);                                           // …and off the old copy
+        Assert.Equal(ShopListingStatus.SoldOut, old.Status);                      // old stays as history
+    }
+
+    [Fact]
+    public async Task Relist_RejectsActiveListing()
+    {
+        var c = await SeededAsync();
+        var store = (await CreateStoreAsync(c, Seller)).Value;
+        var listing = (await PostAsync(c, store, Seller, qty: 3)).Value;
+
+        var relist = await RelistListingHandler.Handle(
+            new RelistListing(Guild, Seller, listing, Quantity: 5), c.Db, c.Authz, c.Shop, default);
+        Assert.False(relist.Ok);
+        Assert.Equal(nameof(ShopResult.InvalidState), relist.Status);
+    }
+
+    [Fact]
+    public async Task AddStock_IncrementsActiveListing()
+    {
+        var c = await SeededAsync();
+        var store = (await CreateStoreAsync(c, Seller)).Value;
+        var listing = (await PostAsync(c, store, Seller, qty: 2)).Value;
+
+        var add = await AddListingStockHandler.Handle(
+            new AddListingStock(Guild, Seller, listing, AddUnits: 8), c.Db, c.Authz, c.Shop, default);
+        Assert.True(add.Ok);
+        Assert.Equal(10, (await c.Db.ShopListings.SingleAsync(l => l.Id == listing)).Quantity);
+    }
+
+    [Fact]
+    public async Task AddStock_RejectsSoldOut()
+    {
+        var c = await SeededAsync();
+        var store = (await CreateStoreAsync(c, Seller)).Value;
+        var listing = (await PostAsync(c, store, Seller, price: 50, qty: 1)).Value;
+        await FundAsync(c, Buyer, 50);
+        Assert.True((await BuyAsync(c, listing, Buyer)).Ok);                       // sells out
+
+        var add = await AddListingStockHandler.Handle(
+            new AddListingStock(Guild, Seller, listing, AddUnits: 5), c.Db, c.Authz, c.Shop, default);
+        Assert.False(add.Ok);
+        Assert.Equal(nameof(ShopResult.NotActive), add.Status);
     }
 
     [Fact]
@@ -1131,5 +1197,63 @@ public class ShopCommandFlowTests
         var detail = await c.Reads.GetListingDetailAsync(Guild, listing);
         Assert.False(detail!.Moderated);
         Assert.Equal(Seller, (await c.Db.ShopListings.SingleAsync()).DelistedBy);
+    }
+
+    // ---- Orphan image sweep ------------------------------------------------
+
+    [Fact]
+    public async Task OrphanSweep_DeletesUnreferencedBlobsOnly()
+    {
+        var blobs = new FakeImageStore();
+        var c = await SeededAsync(images: blobs);
+        var store = (await CreateStoreAsync(c, Seller)).Value;
+        var listing = (await PostAsync(c, store, Seller)).Value;
+
+        // Attach a live image to the listing — its blob must survive the sweep.
+        var l = await c.Db.ShopListings.SingleAsync(x => x.Id == listing);
+        l.ImageKey = "referenced.png";
+        await c.Db.SaveChangesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var old = now.AddHours(-2);
+        blobs.Add("referenced.png", old);     // referenced + old  → keep
+        blobs.Add("orphan.png", old);         // unreferenced + old → delete
+        blobs.Add("fresh-orphan.png", now);   // unreferenced but inside grace window → keep
+
+        var purged = await c.Shop.SweepOrphanImagesAsync(now);
+
+        Assert.Equal(1, purged);
+        Assert.True(blobs.Contains("referenced.png"));
+        Assert.False(blobs.Contains("orphan.png"));
+        Assert.True(blobs.Contains("fresh-orphan.png")); // grace window protects in-flight uploads
+    }
+
+    /// <summary>In-memory <see cref="IShopImageService"/> for the orphan sweep — tracks blob keys with a creation
+    /// time so <see cref="ListKeysAsync"/> can honour the grace cutoff. Only the sweep's surface is implemented.</summary>
+    private sealed class FakeImageStore : IShopImageService
+    {
+        private readonly Dictionary<string, DateTimeOffset> _blobs = new(StringComparer.Ordinal);
+
+        public void Add(string key, DateTimeOffset createdAt) => _blobs[key] = createdAt;
+        public bool Contains(string key) => _blobs.ContainsKey(key);
+
+        public Task<IReadOnlyList<string>> ListKeysAsync(DateTimeOffset createdBefore, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<string>>(
+                _blobs.Where(b => b.Value <= createdBefore).Select(b => b.Key).ToList());
+
+        public Task DeleteAsync(string? key, CancellationToken ct = default)
+        {
+            if (!string.IsNullOrEmpty(key)) { _blobs.Remove(key); }
+            return Task.CompletedTask;
+        }
+
+        public Task<(ShopImageUploadResult Result, string? Key)> UploadAsync(
+            Stream content, long length, string? contentType, ShopImageKind kind, CancellationToken ct = default)
+            => Task.FromResult<(ShopImageUploadResult, string?)>((ShopImageUploadResult.Empty, null));
+
+        public Task<(Stream Content, string ContentType)?> OpenAsync(string key, CancellationToken ct = default)
+            => Task.FromResult<(Stream, string)?>(null);
+
+        public Task<string?> CopyAsync(string? srcKey, CancellationToken ct = default) => Task.FromResult<string?>(null);
     }
 }

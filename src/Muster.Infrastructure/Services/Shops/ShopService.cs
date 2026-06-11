@@ -291,79 +291,15 @@ public sealed class ShopService(
         Guid? categoryId, int quantity, bool acceptsOffers, string? imageKey, string? thumbKey, DateTimeOffset? expiresAt,
         IReadOnlyList<string>? tags, CancellationToken ct = default)
     {
-        if (store.Closed)
+        var (vr, currencyId, effectiveTags, deadline) = await ValidateNewListingAsync(
+            store, sellerId, name, currencyCode, price, categoryId, expiresAt, tags, enforceCooldown: true, ct);
+        if (vr != ShopResult.Ok)
         {
-            return (ShopResult.NotActive, null);
+            return (vr, null);
         }
-
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return (ShopResult.NameRequired, null);
-        }
-
-        if (price <= 0)
-        {
-            return (ShopResult.InvalidPrice, null);
-        }
-
-        var cfg = await settings.GetAsync(store.GuildId, ct);
-
-        // Currency must exist, be spendable, and (if a guild allow-list is set) be on it.
-        var currency = await db.FindCurrencyAsync(store.GuildId, currencyCode, ct);
-        if (currency is null || !currency.IsSpendable)
-        {
-            return (ShopResult.NotSpendable, null);
-        }
-
-        if (cfg.AllowedCurrencyIds.Count > 0 && !cfg.AllowedCurrencyIds.Contains(currency.Id))
-        {
-            return (ShopResult.NotSpendable, null);
-        }
-
-        // Price floor / ceiling.
-        if (cfg.MinPrice > 0 && price < cfg.MinPrice)
-        {
-            return (ShopResult.BelowFloor, null);
-        }
-
-        if (cfg.MaxPrice > 0 && price > cfg.MaxPrice)
-        {
-            return (ShopResult.AboveCeiling, null);
-        }
-
-        // Category required / valid.
-        if (cfg.RequireCategory && categoryId is null)
-        {
-            return (ShopResult.CategoryRequired, null);
-        }
-
-        if (categoryId is { } cid && await db.FindCategoryInGuildAsync(store.GuildId, cid, ct) is null)
-        {
-            return (ShopResult.NotFound, null);
-        }
-
-        // Per-seller active-listing cap.
-        if (cfg.MaxActiveListingsPerSeller > 0
-            && await db.CountActiveListingsBySellerAsync(store.GuildId, sellerId, ct) >= cfg.MaxActiveListingsPerSeller)
-        {
-            return (ShopResult.ListingCapReached, null);
-        }
-
-        // Anti-spam cooldown between a seller's listings.
-        if (cfg.ListingCooldownMinutes > 0
-            && await db.LatestListingAtBySellerAsync(store.GuildId, sellerId, ct) is { } last
-            && last.AddMinutes(cfg.ListingCooldownMinutes) > DateTimeOffset.UtcNow)
-        {
-            return (ShopResult.Cooldown, null);
-        }
-
-        var effectiveTags = cfg.PlayerTagsEnabled ? CapTags(tags, cfg.MaxTagsPerListing) : null;
-        var deadline = expiresAt ?? (cfg.ListingDefaultExpiryDays > 0
-            ? DateTimeOffset.UtcNow.AddDays(cfg.ListingDefaultExpiryDays)
-            : null);
 
         var listing = ShopListing.Create(new ShopListingDraft(
-            store.GuildId, store.Id, sellerId, name, description ?? string.Empty, currency.Id, price,
+            store.GuildId, store.Id, sellerId, name, description ?? string.Empty, currencyId, price,
             CategoryId: categoryId, Quantity: quantity, AcceptsOffers: acceptsOffers,
             ImageKey: imageKey, ThumbKey: thumbKey, ExpiresAt: deadline, Tags: effectiveTags));
 
@@ -375,6 +311,174 @@ public sealed class ShopService(
             $"New listing in {store.Name}"));
 
         return (ShopResult.Ok, listing.Id);
+    }
+
+    /// <summary>Shared guardrail check for creating a listing (used by post + relist): store open, name/price valid,
+    /// currency spendable + allow-listed, price floor/ceiling, category rules, per-seller active cap, and (optionally)
+    /// the anti-spam cooldown. On <see cref="ShopResult.Ok"/> returns the resolved currency id, the capped tag set,
+    /// and the effective expiry to feed into <see cref="ShopListing.Create"/>.</summary>
+    private async Task<(ShopResult Result, Guid CurrencyId, IReadOnlyList<string>? Tags, DateTimeOffset? Deadline)> ValidateNewListingAsync(
+        ShopStore store, ulong sellerId, string name, string currencyCode, long price, Guid? categoryId,
+        DateTimeOffset? expiresAt, IReadOnlyList<string>? tags, bool enforceCooldown, CancellationToken ct)
+    {
+        if (store.Closed)
+        {
+            return (ShopResult.NotActive, Guid.Empty, null, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return (ShopResult.NameRequired, Guid.Empty, null, null);
+        }
+
+        if (price <= 0)
+        {
+            return (ShopResult.InvalidPrice, Guid.Empty, null, null);
+        }
+
+        var cfg = await settings.GetAsync(store.GuildId, ct);
+
+        // Currency must exist, be spendable, and (if a guild allow-list is set) be on it.
+        var currency = await db.FindCurrencyAsync(store.GuildId, currencyCode, ct);
+        if (currency is null || !currency.IsSpendable)
+        {
+            return (ShopResult.NotSpendable, Guid.Empty, null, null);
+        }
+
+        if (cfg.AllowedCurrencyIds.Count > 0 && !cfg.AllowedCurrencyIds.Contains(currency.Id))
+        {
+            return (ShopResult.NotSpendable, Guid.Empty, null, null);
+        }
+
+        // Price floor / ceiling.
+        if (cfg.MinPrice > 0 && price < cfg.MinPrice)
+        {
+            return (ShopResult.BelowFloor, Guid.Empty, null, null);
+        }
+
+        if (cfg.MaxPrice > 0 && price > cfg.MaxPrice)
+        {
+            return (ShopResult.AboveCeiling, Guid.Empty, null, null);
+        }
+
+        // Category required / valid.
+        if (cfg.RequireCategory && categoryId is null)
+        {
+            return (ShopResult.CategoryRequired, Guid.Empty, null, null);
+        }
+
+        if (categoryId is { } cid && await db.FindCategoryInGuildAsync(store.GuildId, cid, ct) is null)
+        {
+            return (ShopResult.NotFound, Guid.Empty, null, null);
+        }
+
+        // Per-seller active-listing cap.
+        if (cfg.MaxActiveListingsPerSeller > 0
+            && await db.CountActiveListingsBySellerAsync(store.GuildId, sellerId, ct) >= cfg.MaxActiveListingsPerSeller)
+        {
+            return (ShopResult.ListingCapReached, Guid.Empty, null, null);
+        }
+
+        // Anti-spam cooldown between a seller's listings (skipped for a relist — it's not new-listing spam).
+        if (enforceCooldown && cfg.ListingCooldownMinutes > 0
+            && await db.LatestListingAtBySellerAsync(store.GuildId, sellerId, ct) is { } last
+            && last.AddMinutes(cfg.ListingCooldownMinutes) > DateTimeOffset.UtcNow)
+        {
+            return (ShopResult.Cooldown, Guid.Empty, null, null);
+        }
+
+        var effectiveTags = cfg.PlayerTagsEnabled ? CapTags(tags, cfg.MaxTagsPerListing) : null;
+        var deadline = expiresAt ?? (cfg.ListingDefaultExpiryDays > 0
+            ? DateTimeOffset.UtcNow.AddDays(cfg.ListingDefaultExpiryDays)
+            : null);
+
+        return (ShopResult.Ok, currency.Id, effectiveTags, deadline);
+    }
+
+    public async Task<(ShopResult Result, Guid? ListingId)> RelistAsync(
+        ShopListing old, int quantity, long? priceOverride, CancellationToken ct = default)
+    {
+        // Only a dead listing is relisted into a fresh copy; an Active one tops up via AdjustStockAsync.
+        if (old.Status is not (ShopListingStatus.SoldOut or ShopListingStatus.Expired))
+        {
+            return (ShopResult.InvalidState, null);
+        }
+
+        var store = old.Store ?? await db.FindStoreInGuildAsync(old.GuildId, old.StoreId, ct);
+        if (store is null)
+        {
+            return (ShopResult.NotFound, null);
+        }
+
+        var qty = Math.Max(1, quantity);
+        var price = priceOverride ?? old.Price;
+        // The new copy reuses the old listing's currency; resolve its code so validation re-checks spendable/allow-list
+        // (an empty code when the currency was since deleted simply fails as NotSpendable).
+        var code = (await db.FindCurrencyByIdAsync(old.GuildId, old.CurrencyId, ct))?.Code ?? string.Empty;
+        var oldTags = old.Tags.Select(t => t.Tag).ToList();
+
+        var (vr, currencyId, effectiveTags, deadline) = await ValidateNewListingAsync(
+            store, old.SellerId, old.Name, code, price, old.CategoryId, expiresAt: null, oldTags, enforceCooldown: false, ct);
+        if (vr != ShopResult.Ok)
+        {
+            return (vr, null);
+        }
+
+        // Independent image blobs (no ref-counting): copy so the old sold-out listing keeps its own thumbnail.
+        // Phase 1 uses the original as its own thumbnail, so when the keys match copy once and share the new key.
+        var newImage = await images.CopyAsync(old.ImageKey, ct);
+        var newThumb = old.ThumbKey == old.ImageKey ? newImage : await images.CopyAsync(old.ThumbKey, ct);
+
+        var listing = ShopListing.Create(new ShopListingDraft(
+            store.GuildId, store.Id, old.SellerId, old.Name, old.Description, currencyId, price,
+            CategoryId: old.CategoryId, Quantity: qty, AcceptsOffers: old.AcceptsOffers,
+            ImageKey: newImage, ThumbKey: newThumb, ExpiresAt: deadline, Tags: effectiveTags));
+        listing.RelistedFromId = old.Id;
+
+        // Carry the remaining paid featured window to the new copy — no re-charge, no reset to a full duration.
+        var carriedFeatured = old.FeaturedUntil is { } fu && fu > DateTimeOffset.UtcNow;
+        if (carriedFeatured)
+        {
+            listing.FeaturedUntil = old.FeaturedUntil;
+            old.FeaturedUntil = null;
+        }
+
+        db.ShopListings.Add(listing);
+        await db.SaveChangesAsync(ct);
+
+        await bus.PublishAsync(new ShopLifecycleNotified(
+            store.GuildId, listing.Id, listing.Name, ShopLifecycleMoment.Listed, null, $"Relisted in {store.Name}"));
+        if (carriedFeatured)
+        {
+            await bus.PublishAsync(new ShopLifecycleNotified(
+                store.GuildId, listing.Id, listing.Name, ShopLifecycleMoment.Featured, null, "Featured (carried over)"));
+        }
+
+        return (ShopResult.Ok, listing.Id);
+    }
+
+    public async Task<ShopResult> AdjustStockAsync(ShopListing listing, int addUnits, CancellationToken ct = default)
+    {
+        // Top-up only: a sold-out listing is restocked via RelistAsync (fresh card/freshness), not revived here.
+        if (listing.Status != ShopListingStatus.Active)
+        {
+            return ShopResult.NotActive;
+        }
+
+        if (addUnits <= 0)
+        {
+            return ShopResult.InvalidState;
+        }
+
+        // Deliberately bypasses the edit-lock (live orders/offers): adding stock never changes terms under an
+        // in-flight buyer, whose units are already reserved.
+        listing.Quantity += addUnits;
+        await db.SaveChangesAsync(ct);
+
+        await bus.PublishAsync(new ShopLifecycleNotified(
+            listing.GuildId, listing.Id, listing.Name, ShopLifecycleMoment.Restocked, null, "Stock added"));
+
+        return ShopResult.Ok;
     }
 
     public async Task<ShopResult> EditListingAsync(
@@ -600,7 +704,9 @@ public sealed class ShopService(
         if (due.Count > 0)
         {
             await db.SaveChangesAsync(ct);
-            foreach (var listing in due)
+            // Only an Active listing has a visible card to drop; a sold-out one carrying a lapsed window is hidden,
+            // so skip the no-op board event for it.
+            foreach (var listing in due.Where(l => l.Status == ShopListingStatus.Active))
             {
                 await bus.PublishAsync(new ShopLifecycleNotified(
                     listing.GuildId, listing.Id, listing.Name, ShopLifecycleMoment.Unfeatured, null, "Feature ended"));
@@ -669,6 +775,29 @@ public sealed class ShopService(
         return due.Count;
     }
 
+    /// <summary>How long a freshly-uploaded blob is left untouched by the orphan sweep — long enough that any
+    /// in-flight upload has committed (or rolled back) its owning DB row.</summary>
+    private static readonly TimeSpan OrphanGrace = TimeSpan.FromHours(1);
+
+    public async Task<int> SweepOrphanImagesAsync(DateTimeOffset now, CancellationToken ct = default)
+    {
+        var candidates = await images.ListKeysAsync(now - OrphanGrace, ct);
+        if (candidates.Count == 0)
+        {
+            return 0;
+        }
+
+        // Snapshot every key any live row could reference, then delete the candidate blobs outside that set.
+        var referenced = await db.ListReferencedImageKeysAsync(ct);
+        var orphans = candidates.Where(k => !referenced.Contains(k)).ToList();
+        foreach (var key in orphans)
+        {
+            await images.DeleteAsync(key, ct);
+        }
+
+        return orphans.Count;
+    }
+
     // --- Orders (buy-now escrow) ---
 
     public async Task<(ShopResult Result, Guid? OrderId)> PurchaseAsync(ShopListing listing, ulong buyerId, int quantity, CancellationToken ct = default)
@@ -706,8 +835,9 @@ public sealed class ShopService(
         var soldOut = listing.Quantity <= 0;
         if (soldOut)
         {
+            // Keep FeaturedUntil: a sold-out listing is hidden from every board/browse query anyway, and preserving
+            // the remaining paid window lets a later relist carry it to the new copy (see RelistAsync).
             listing.TransitionTo(ShopListingStatus.SoldOut);
-            listing.FeaturedUntil = null; // sold out → free the featured slot + drop the card
         }
 
         try
@@ -1073,8 +1203,8 @@ public sealed class ShopService(
         var soldOut = listing.Quantity <= 0;
         if (soldOut)
         {
+            // Keep FeaturedUntil (hidden while sold out; a later relist carries the remaining paid window over).
             listing.TransitionTo(ShopListingStatus.SoldOut);
-            listing.FeaturedUntil = null;
         }
 
         await db.SaveChangesAsync(ct);

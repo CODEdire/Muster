@@ -117,6 +117,15 @@ public record FeatureListing(ulong GuildId, ulong ActorId, Guid ListingId) : IGu
 /// refunded.</summary>
 public record UnfeatureListing(ulong GuildId, ulong ActorId, Guid ListingId) : IGuildCommand;
 
+/// <summary>Relist a sold-out/expired listing as a fresh copy (owner + ShopCreator, or a shop manager): new stock and
+/// board card, while the seller's reputation, the image, and any remaining featured window carry over. The old
+/// listing stays as history. <paramref name="Price"/> null keeps the old price.</summary>
+public record RelistListing(ulong GuildId, ulong ActorId, Guid ListingId, int Quantity, long? Price = null) : IGuildCommand;
+
+/// <summary>Add stock to an Active listing (owner + ShopCreator, or a shop manager) — increment only, allowed even
+/// while the listing has live orders/offers (sold-out listings restock via <see cref="RelistListing"/>).</summary>
+public record AddListingStock(ulong GuildId, ulong ActorId, Guid ListingId, int AddUnits) : IGuildCommand;
+
 /// <summary>Re-post / refresh the whole shop channel (every store's home card + every featured listing card)
 /// (owner + ShopCreator). Used after the shop channel is first linked or changed, or as a manual repair.</summary>
 public record ResyncShopChannel(ulong GuildId, ulong ActorId) : IGuildCommand;

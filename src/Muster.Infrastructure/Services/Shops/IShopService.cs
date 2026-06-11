@@ -81,6 +81,17 @@ public interface IShopService
         ShopListing listing, string? name, string? description, long? price, Guid? categoryId, int? quantity,
         bool? acceptsOffers, string? imageKey, string? thumbKey, DateTimeOffset? expiresAt, IReadOnlyList<string>? tags, CancellationToken ct = default);
 
+    /// <summary>Relist a sold-out/expired listing as a fresh copy (new id, fresh stock + <c>CreatedAt</c>, fresh board
+    /// card): the seller's reputation carries (ratings are per-seller), the image blob is copied so the old listing
+    /// keeps its thumbnail, and any remaining featured window moves over without re-charging. The old listing stays
+    /// as history, linked via <c>RelistedFromId</c>. <paramref name="priceOverride"/> null keeps the old price.</summary>
+    Task<(ShopResult Result, Guid? ListingId)> RelistAsync(
+        ShopListing old, int quantity, long? priceOverride, CancellationToken ct = default);
+
+    /// <summary>Add stock to an Active listing (top-up). Increment-only and deliberately bypasses the edit-lock —
+    /// adding units never changes terms under an in-flight buyer. Sold-out listings restock via <see cref="RelistAsync"/>.</summary>
+    Task<ShopResult> AdjustStockAsync(ShopListing listing, int addUnits, CancellationToken ct = default);
+
     /// <summary>Delist a listing. <paramref name="actorId"/> records who (seller = withdrawal, anyone else =
     /// moderator takedown); <paramref name="reason"/> is shown to the seller.</summary>
     Task<ShopResult> CancelListingAsync(ShopListing listing, ulong actorId, string? reason, CancellationToken ct = default);
@@ -98,6 +109,12 @@ public interface IShopService
 
     /// <summary>Auto-delist active listings past their <c>ExpiresAt</c> (transition to Expired). Returns the count.</summary>
     Task<int> ExpireListingsDueAsync(DateTimeOffset now, CancellationToken ct = default);
+
+    /// <summary>Delete blobs in the <c>shopimages</c> container that no live row references (relisting copies a
+    /// listing's image to a fresh key, so blobs accumulate). Blobs uploaded within the grace window before
+    /// <paramref name="now"/> are skipped so the sweep can't race an in-flight upload whose DB row hasn't committed.
+    /// Returns the count deleted. Run on a slow cadence — it enumerates the whole container.</summary>
+    Task<int> SweepOrphanImagesAsync(DateTimeOffset now, CancellationToken ct = default);
 
     /// <summary>Re-post the whole shop channel — every open store's home card + every featured listing's card
     /// (after the channel is linked/changed, or as a manual repair). Returns the number of stores re-synced.</summary>

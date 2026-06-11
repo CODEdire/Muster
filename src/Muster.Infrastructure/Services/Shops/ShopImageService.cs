@@ -82,6 +82,16 @@ public interface IShopImageService
     /// <summary>Open a stored image for streaming back to a client (null if it doesn't exist).</summary>
     Task<(Stream Content, string ContentType)?> OpenAsync(string key, CancellationToken ct = default);
 
+    /// <summary>Copy an existing stored image to a fresh, independent key — used when relisting so the new listing
+    /// owns its own blob and the original keeps its thumbnail. Returns the new key, or null for a missing/empty
+    /// source (or when blob storage isn't wired).</summary>
+    Task<string?> CopyAsync(string? srcKey, CancellationToken ct = default);
+
+    /// <summary>List the keys of stored blobs created at or before <paramref name="createdBefore"/> — the candidate
+    /// set for the orphan sweep. The cutoff deliberately skips very-recently-uploaded blobs whose owning DB row may
+    /// not have committed yet, so the sweep can't race an in-flight upload. Empty when blob storage isn't wired.</summary>
+    Task<IReadOnlyList<string>> ListKeysAsync(DateTimeOffset createdBefore, CancellationToken ct = default);
+
     Task DeleteAsync(string? key, CancellationToken ct = default);
 }
 
@@ -95,6 +105,11 @@ public sealed class NoOpShopImageService : IShopImageService
 
     public Task<(Stream Content, string ContentType)?> OpenAsync(string key, CancellationToken ct = default)
         => Task.FromResult<(Stream, string)?>(null);
+
+    public Task<string?> CopyAsync(string? srcKey, CancellationToken ct = default) => Task.FromResult<string?>(null);
+
+    public Task<IReadOnlyList<string>> ListKeysAsync(DateTimeOffset createdBefore, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<string>>([]);
 
     public Task DeleteAsync(string? key, CancellationToken ct = default) => Task.CompletedTask;
 }
@@ -160,6 +175,54 @@ public sealed class ShopImageService(BlobContainerClient container, IOptions<Sho
 
         var resp = await blob.DownloadStreamingAsync(cancellationToken: ct);
         return (resp.Value.Content, resp.Value.Details.ContentType ?? "application/octet-stream");
+    }
+
+    public async Task<string?> CopyAsync(string? srcKey, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(srcKey))
+        {
+            return null;
+        }
+
+        var src = container.GetBlobClient(srcKey);
+        if (!await src.ExistsAsync(ct))
+        {
+            return null;
+        }
+
+        // Download + re-upload (rather than a server-side copy URI) so it works without a public container / SAS.
+        var resp = await src.DownloadStreamingAsync(cancellationToken: ct);
+        await using var content = resp.Value.Content;
+        var contentType = resp.Value.Details.ContentType;
+        var key = $"{Guid.NewGuid():N}{Path.GetExtension(srcKey)}";
+        var dest = container.GetBlobClient(key);
+        await dest.UploadAsync(content, new BlobUploadOptions
+        {
+            HttpHeaders = string.IsNullOrEmpty(contentType) ? null : new BlobHttpHeaders { ContentType = contentType },
+        }, ct);
+        return key;
+    }
+
+    public async Task<IReadOnlyList<string>> ListKeysAsync(DateTimeOffset createdBefore, CancellationToken ct = default)
+    {
+        if (!await container.ExistsAsync(ct))
+        {
+            return [];
+        }
+
+        var keys = new List<string>();
+        await foreach (var item in container.GetBlobsAsync(cancellationToken: ct))
+        {
+            // Only consider blobs we can confirm are old enough; an unknown creation time stays untouched so the
+            // sweep never deletes a blob it can't prove is stale.
+            var created = item.Properties.CreatedOn;
+            if (created is { } when && when <= createdBefore)
+            {
+                keys.Add(item.Name);
+            }
+        }
+
+        return keys;
     }
 
     public async Task DeleteAsync(string? key, CancellationToken ct = default)

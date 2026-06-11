@@ -255,9 +255,20 @@ else if (State == AccessState.Ready)
                                                 }
                                                 @if (l.Status == ShopListingStatus.Active)
                                                 {
+                                                    <button type="button" class="icon-btn" title="Add stock" aria-label="Add stock"
+                                                            disabled="@_busy" @onclick="() => AddStockAsync(l.Id, l.Name)">
+                                                        <span class="material-symbols-outlined">add_box</span>
+                                                    </button>
                                                     <button type="button" class="icon-btn danger" title="Withdraw listing" aria-label="Withdraw listing"
                                                             disabled="@_busy" @onclick="() => CancelListingAsync(l.Id, l.Name)">
                                                         <span class="material-symbols-outlined">delete</span>
+                                                    </button>
+                                                }
+                                                else if (l.Status == ShopListingStatus.SoldOut || l.Status == ShopListingStatus.Expired)
+                                                {
+                                                    <button type="button" class="icon-btn" title="Relist as a new copy" aria-label="Relist listing"
+                                                            disabled="@_busy" @onclick="() => RelistAsync(l.Id, l.Name)">
+                                                        <span class="material-symbols-outlined">restart_alt</span>
                                                     </button>
                                                 }
                                             </div>
@@ -580,6 +591,66 @@ else if (State == AccessState.Ready)
             await using var scope = Scopes.CreateAsyncScope();
             var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
             Message = (await bus.InvokeAsync<Result>(new UnfeatureListing(GuildId, UserId, listingId))).ToCommandResult($"“{name}” unfeatured.").Message;
+        }
+        finally { _busy = false; await ReloadListingsAsync(); }
+    }
+
+    private async Task AddStockAsync(Guid listingId, string name)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var raw = await JS.InvokeAsync<string?>("prompt", new object?[] { $"Add stock to “{name}” — how many units?", "1" });
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return; // cancelled
+        }
+
+        if (!int.TryParse(raw, out var add) || add < 1)
+        {
+            Message = "Enter a whole number of units (1 or more).";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            Message = (await bus.InvokeAsync<Result>(new AddListingStock(GuildId, UserId, listingId, add)))
+                .ToCommandResult($"Added {add} to “{name}”.").Message;
+        }
+        finally { _busy = false; await ReloadListingsAsync(); }
+    }
+
+    private async Task RelistAsync(Guid listingId, string name)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var raw = await JS.InvokeAsync<string?>("prompt", new object?[] { $"Relist “{name}” as a new copy — how many units?", "1" });
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return; // cancelled
+        }
+
+        if (!int.TryParse(raw, out var qty) || qty < 1)
+        {
+            Message = "Enter a whole number of units (1 or more).";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
+            var result = await bus.InvokeAsync<Result<Guid>>(new RelistListing(GuildId, UserId, listingId, qty));
+            Message = ((Result)result).ToCommandResult($"“{name}” relisted.").Message;
         }
         finally { _busy = false; await ReloadListingsAsync(); }
     }

@@ -34,7 +34,8 @@ public record ShopListingDetail(
     int Quantity, ShopListingStatus Status, Guid StoreId, string StoreName, string StoreSlug,
     ulong SellerId, string SellerName, Guid? CategoryId, string? CategoryName, IReadOnlyList<string> Tags,
     DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, bool OffersOpen, DateTimeOffset? FeaturedUntil = null,
-    ulong? DelistedBy = null, string? DelistReason = null, string? CategoryIcon = null, string? SellerAvatarUrl = null)
+    ulong? DelistedBy = null, string? DelistReason = null, string? CategoryIcon = null, string? SellerAvatarUrl = null,
+    Guid? RelistedFromId = null)
 {
     public bool Featured => FeaturedUntil is { } f && f > DateTimeOffset.UtcNow;
 
@@ -309,7 +310,7 @@ public sealed class ShopReadService(MusterDbContext db) : IShopReadService
             l.CategoryId, category?.Name, l.Tags.Select(t => t.Tag).ToList(), l.CreatedAt, l.ExpiresAt,
             OffersOpen: offersEnabledGuild && l.AcceptsOffers, FeaturedUntil: l.FeaturedUntil,
             DelistedBy: l.DelistedBy, DelistReason: l.DelistReason, CategoryIcon: category?.Icon,
-            SellerAvatarUrl: avatars.GetValueOrDefault(l.SellerId));
+            SellerAvatarUrl: avatars.GetValueOrDefault(l.SellerId), RelistedFromId: l.RelistedFromId);
     }
 
     public async Task<ShopListingEditView?> GetForEditAsync(ulong guildId, Guid listingId, CancellationToken ct = default)
