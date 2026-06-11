@@ -89,6 +89,18 @@ public static class WolverineExtensions
             // own subscription delivers to its handler the same way the other hosts' subs do.
             opts.Policies.DisableConventionalLocalRouting();
 
+            // …but that also strips the automatic local route from local-only background commands that are
+            // *published* (fire-and-forget) and never cross a host — without one, PublishAsync throws
+            // "No routes can be determined for …". These two aren't in the cross-host manifest, so re-add an
+            // explicit local route for each so they reach their in-process handler. The queue is durable when a
+            // message store is configured, so a web restart doesn't drop an in-flight sync/bulk run.
+            opts.PublishMessage<SyncCurrencyBalances>().ToLocalQueue("background");
+            opts.PublishMessage<RunCurrencyBulkAdjust>().ToLocalQueue("background");
+            if (!string.IsNullOrWhiteSpace(sqlConnectionString))
+            {
+                opts.LocalQueue("background").UseDurableInbox();
+            }
+
             // Audit every successful guild command in one place — attached only to IGuildCommand handler chains.
             opts.Policies.AddMiddleware(typeof(AuditMiddleware),
                 chain => typeof(Muster.Contracts.IGuildCommand).IsAssignableFrom(chain.MessageType));
