@@ -45,7 +45,9 @@ else if (State == AccessState.Ready)
     {
         var q = _quest;
         var iAmOwner = q.OwnerId == UserId;
-        var myPart = q.Participants.FirstOrDefault(p => p.UserId == UserId);
+        // Prefer an active/decided row over a Released (abandoned) one so a re-claim leaves the old slot inert.
+        var myPart = q.Participants.FirstOrDefault(p => p.UserId == UserId && p.Status != QuestParticipantStatus.Released)
+            ?? q.Participants.FirstOrDefault(p => p.UserId == UserId);
         var hasSubmitter = q.Participants.Any(p => p.Status == QuestParticipantStatus.Submitted);
         var isPersonal = q.Origin == QuestOrigin.Player;
         var completed = q.Participants.Count(p => p.Status == QuestParticipantStatus.Approved);
@@ -86,7 +88,12 @@ else if (State == AccessState.Ready)
         </header>
 
         @* Reward + quest-level actions strip — sits between the header's bottom border and the detail panels. *@
-        var canClaim = q.Status == QuestStatus.Open && myPart is null
+        // A Released slot (abandoned / idle-timeout) doesn't bar a re-claim — only an active claim or a final verdict
+        // (Approved/Rejected) does, matching the server's ClaimAsync rule.
+        var canClaim = q.Status == QuestStatus.Open
+            && !q.Participants.Any(p => p.UserId == UserId && p.Status is QuestParticipantStatus.Claimed
+                or QuestParticipantStatus.Submitted or QuestParticipantStatus.RevisionRequested
+                or QuestParticipantStatus.Approved or QuestParticipantStatus.Rejected)
             && (!isPersonal || !iAmOwner || _settings.AllowSelfParticipation);
         var canIntake = CanIntake(q);
         var canFinalize = CanFinalize(q);

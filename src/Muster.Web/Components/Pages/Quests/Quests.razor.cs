@@ -368,16 +368,22 @@ public partial class Quests : IDisposable
     /// <summary>The actions this viewer may take on a quest, given its state and their role.</summary>
     private IEnumerable<QuestAction> ActionsFor(QuestBoardItem q)
     {
-        var myPart = q.Participants.FirstOrDefault(p => p.UserId == UserId);
+        var myParts = q.Participants.Where(p => p.UserId == UserId).ToList();
+        // The row that drives actions: prefer an active/decided one over a Released (abandoned/timed-out) slot, so a
+        // re-claim after abandoning leaves the old Released row inert.
+        var myPart = myParts.FirstOrDefault(p => p.Status != QuestParticipantStatus.Released) ?? myParts.FirstOrDefault();
         var iAmOwner = q.OwnerId == UserId;
         var submitters = q.Participants.Where(p => p.Status == QuestParticipantStatus.Submitted).ToList();
         var isPersonal = q.Origin == QuestOrigin.Player;
 
         if (q.Status == QuestStatus.Open)
         {
-            // Guild quests are guild-owned, so the creator may claim. A player bounty's owner can't take it
-            // unless the guild enabled self-participation.
-            var canClaim = myPart is null && (!isPersonal || !iAmOwner || _settings.AllowSelfParticipation);
+            // Claim when they have no active claim and no final verdict — a Released slot (abandoned / idle-timeout)
+            // doesn't bar a re-claim, mirroring the server's ClaimAsync rule. Guild quests are guild-owned, so the
+            // creator may claim; a player bounty's owner can't unless the guild enabled self-participation.
+            var blocked = myParts.Any(p => p.Status is QuestParticipantStatus.Claimed or QuestParticipantStatus.Submitted
+                or QuestParticipantStatus.RevisionRequested or QuestParticipantStatus.Approved or QuestParticipantStatus.Rejected);
+            var canClaim = !blocked && (!isPersonal || !iAmOwner || _settings.AllowSelfParticipation);
             if (canClaim)
             {
                 yield return new("claim", "Claim", true);
