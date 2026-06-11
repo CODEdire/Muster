@@ -74,6 +74,10 @@ public class ShopListing
     /// <summary>Why it was delisted — shown to the seller, especially for a moderator takedown. Null = none given.</summary>
     public string? DelistReason { get; set; }
 
+    /// <summary>When this listing was created by relisting a sold-out/expired one, the id of that prior listing —
+    /// links the batches for history (shown as a "relisted from" link on the detail page). Null for an original.</summary>
+    public Guid? RelistedFromId { get; set; }
+
     /// <summary>Optimistic-concurrency token (SQL Server only). Guards the last-unit purchase race.</summary>
     public byte[]? RowVersion { get; set; }
 

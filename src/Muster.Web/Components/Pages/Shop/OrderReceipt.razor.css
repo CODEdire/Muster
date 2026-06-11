@@ -1,0 +1,167 @@
+/* Receipt = one transaction you're reading → bounded, centered column (the orders board stays full-bleed). */
+.rc-page { max-width: 1080px; margin: 0 auto; }
+
+/* ── Ticket header ── */
+.rc-head {
+    border: 1px solid var(--card-border);
+    border-top: 3px solid var(--rc-accent, var(--accent));
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    overflow: hidden;
+}
+.rc-crumb { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.4rem; font-size: 0.78rem; color: var(--text-muted); }
+.rc-crumb a { color: var(--text-muted); text-decoration: none; }
+.rc-crumb a:hover { color: var(--text); }
+.rc-crumb-sep { opacity: 0.5; }
+.rc-title { font-size: 1.2rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+.rc-head-top { display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 1.1rem; flex-wrap: wrap; }
+.rc-emblem {
+    width: 54px; height: 54px; flex: 0 0 auto; border-radius: 12px; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+}
+.rc-emblem img { width: 100%; height: 100%; object-fit: cover; }
+.rc-emblem .material-symbols-outlined { font-size: 1.7rem; color: var(--text-muted); }
+.rc-ident { flex: 1; min-width: 120px; }
+.rc-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.45rem; }
+.rc-chips .material-symbols-outlined { font-size: 0.9rem; vertical-align: -2px; }
+
+.rc-stub { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 0.25rem; }
+.rc-status { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.rc-status .material-symbols-outlined { font-size: 0.9rem; }
+.rc-total { font-size: 1.3rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.35rem; }
+.rc-total small { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); }
+.rc-total .material-symbols-outlined { font-size: 1rem; color: var(--accent); }
+
+.rc-ok   { background: color-mix(in srgb, #0f9d6b 16%, transparent); color: #0f9d6b; }
+.rc-info { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.rc-warn { background: color-mix(in srgb, #b45309 18%, transparent); color: #b45309; }
+.rc-bad  { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+
+/* Perforation + facts strip. */
+.rc-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.3rem; padding: 0.6rem 1.1rem; border-top: 1px dashed var(--border); font-size: 0.8rem; color: var(--text-muted); }
+.rc-facts > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rc-facts .material-symbols-outlined { font-size: 0.95rem; vertical-align: -2px; }
+
+/* ── Layout: main + sticky side. Source order is side-then-main, so on mobile the actions stack on top. ── */
+.rc-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 1rem;
+    align-items: start;
+    margin-top: 1rem;
+}
+.rc-col-main { display: flex; flex-direction: column; gap: 1.1rem; min-width: 0; }
+.rc-col-side { display: flex; flex-direction: column; gap: 1rem; position: sticky; top: 1rem; }
+.rc-receipt { display: flex; flex-direction: column; }
+
+/* Store column (in the buyer · seller · store row): compact logo/type-icon + name + type. */
+.rc-store-col { display: inline-flex; align-items: center; gap: 0.45rem; text-decoration: none; color: inherit; min-width: 0; max-width: 100%; }
+.rc-store-col:hover .rc-shop-name { color: var(--accent); }
+.rc-shop-ico { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+.rc-shop-ico img { width: 100%; height: 100%; object-fit: cover; }
+.rc-shop-ico .material-symbols-outlined { font-size: 1rem; color: var(--text-muted); }
+.rc-shop-text { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.rc-shop-name { font-size: 0.82rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-shop-type { font-size: 0.68rem; color: var(--text-muted); }
+
+.rc-side-head { margin: 0 0 0.6rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.35rem; }
+.rc-side-head .material-symbols-outlined { font-size: 1.05rem; }
+.rc-actions { padding: 0.85rem 1rem; }
+.rc-act-list { display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch; }
+.rc-act-list .btn { justify-content: center; }
+.rc-act-sep { height: 1px; background: var(--border); margin: 0.15rem 0; }
+
+.rc-rate { padding: 0.85rem 1rem; }
+.rc-rate .star-pick { margin: 0.3rem 0 0.5rem; }
+.rc-rate-lbl { font-size: 0.8rem; color: var(--text-muted); display: block; }
+.rc-rate-comment {
+    width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.85rem;
+    padding: 0.4rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--card-bg); color: var(--text); margin-bottom: 0.5rem;
+}
+.rc-rate .btn { width: 100%; justify-content: center; }
+.rc-rate-mine, .rc-rate-cp { margin: 0.35rem 0 0; }
+.rc-stars { color: #f5b301; letter-spacing: 1px; }
+.rc-hide { margin-left: 0.4rem; }
+
+/* Contextual sections (offer / dispute / dispute form). */
+.rc-section { padding: 0.85rem 1rem; }
+.rc-sec-head { margin: 0 0 0.4rem; font-size: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+.rc-sec-head .material-symbols-outlined { font-size: 1.15rem; }
+.rc-sec-sub { margin: 0 0 0.5rem; }
+.rc-sec-foot { margin-top: 0.5rem; }
+.rc-danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--card-border)); }
+.rc-counter { max-width: 9rem; }
+.rc-dispute-reason { margin: 0.2rem 0 0.5rem; }
+.rc-evidence { max-width: 100%; max-height: 260px; border-radius: 8px; }
+
+/* Parties: from → to with reputation. */
+/* Frameless content (matches the quest detail): a buyer · seller · store row that flows 3-up on desktop and
+   wraps 2-up on phones, then the ledger — divided by a hairline. */
+.rc-parties {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.9rem 1.2rem;
+    padding: 0 0.2rem 0.9rem; border-bottom: 1px solid var(--border);
+}
+.rc-party { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.rc-party-lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.rc-rep { font-size: 0.74rem; color: #b45309; font-weight: 600; display: inline-flex; align-items: center; gap: 0.2rem; }
+.rc-rep .material-symbols-outlined { font-size: 0.85rem; }
+.rc-rep-n { color: var(--text-muted); font-weight: 400; }
+.rc-rep-none { color: var(--text-muted); font-weight: 400; }
+
+/* Itemised ledger. */
+.rc-ledger { display: grid; gap: 0.4rem; margin: 0; padding: 0.9rem 0.2rem 0; }
+.rc-ledger > div { display: flex; justify-content: space-between; gap: 1rem; }
+.rc-ledger dt { color: var(--text-muted); margin: 0; }
+.rc-ledger dd { margin: 0; font-weight: 600; }
+.rc-ledger-total { border-top: 1px solid var(--border); padding-top: 0.4rem; margin-top: 0.15rem; }
+.rc-ledger-total dd { font-size: 1.1rem; }
+
+/* Timeline: icon node + a connecting line down the body; each step timestamped. */
+.rc-timeline { padding: 0.3rem 0.2rem; }
+.rc-tl-head { margin: 0 0 0.7rem; font-size: 1rem; }
+.rc-step { display: flex; gap: 10px; }
+.rc-step-ic {
+    width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto; z-index: 1;
+    display: flex; align-items: center; justify-content: center; font-size: 1rem;
+    background: var(--surface); color: var(--text-muted);
+}
+.rc-step-body { flex: 1; min-width: 0; margin-left: -24px; padding-left: 24px; padding-bottom: 1rem; border-left: 2px solid var(--border); }
+.rc-step-last { border-left-color: transparent; padding-bottom: 0; }
+.rc-step-title { margin: 0; font-size: 0.9rem; font-weight: 600; }
+.rc-step-time { font-weight: 400; color: var(--text-muted); }
+.rc-step-note { margin: 0.15rem 0 0; font-size: 0.82rem; color: var(--text-muted); }
+
+.rc-done .rc-step-ic { background: color-mix(in srgb, #0f9d6b 20%, var(--card-bg)); color: #0f9d6b; }
+.rc-done .rc-step-body { border-left-color: #0f9d6b; }
+.rc-current .rc-step-ic { background: color-mix(in srgb, var(--accent) 20%, var(--card-bg)); color: var(--accent); }
+.rc-current .rc-step-body { border-left-style: dashed; }
+.rc-current .rc-step-title { color: var(--accent); }
+.rc-current .rc-step-time { color: var(--accent); }
+.rc-pending .rc-step-body { border-left-style: dashed; }
+.rc-bad .rc-step-ic { background: color-mix(in srgb, var(--danger) 20%, var(--card-bg)); color: var(--danger); }
+.rc-bad .rc-step-body { border-left-color: var(--danger); }
+
+/* Star picker (rating). */
+.star-pick { display: flex; gap: 0.15rem; }
+.star-btn { background: none; border: none; cursor: pointer; padding: 0; line-height: 1; color: var(--text-muted); }
+.star-btn .material-symbols-outlined { font-size: 1.6rem; }
+.star-btn.on { color: #f5b301; }
+.star-btn.on .material-symbols-outlined { font-variation-settings: 'FILL' 1; }
+
+/* ── Mobile: dissolve the columns and reorder the blocks → actions, receipt, ratings, timeline. ── */
+@media (max-width: 1024px) {
+    .rc-grid { display: flex; flex-direction: column; gap: 1rem; }
+    .rc-col-main, .rc-col-side { display: contents; }
+    .rc-actions { order: 1; }
+    .rc-section { order: 2; }
+    .rc-receipt { order: 3; }
+    .rc-rate { order: 4; }
+    .rc-timeline { order: 5; }
+
+    /* Actions pack onto shared rows instead of one tall stack; the separator forces a row break. */
+    .rc-act-list { flex-direction: row; flex-wrap: wrap; }
+    .rc-act-list .btn { flex: 1 1 auto; }
+    .rc-act-sep { flex-basis: 100%; height: 0; margin: 0; background: transparent; }
+}

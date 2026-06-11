@@ -1,0 +1,52 @@
+.shop-tile {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    box-shadow: var(--card-shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.shop-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--card-shadow-hover);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border));
+}
+.shop-tile.is-featured { border-color: rgba(246, 196, 83, 0.5); }
+
+/* Media area: the whole product image (contain) over a blurred copy of itself — never cropped. The item link
+   covers the media; store/category chips overlay a scrim at the bottom (siblings, so no nested anchors). */
+.shop-tile-media-wrap { position: relative; aspect-ratio: 1 / 1; background: var(--surface); overflow: hidden; }
+.shop-tile-thumb { position: absolute; inset: 0; display: block; }
+.shop-tile-thumb .tile-bg {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    filter: blur(20px) brightness(0.7); transform: scale(1.15);
+}
+.shop-tile-thumb .tile-fg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.shop-tile-media-wrap.placeholder .shop-tile-thumb {
+    display: flex; align-items: center; justify-content: center; color: var(--text-muted);
+}
+.shop-tile-media-wrap.placeholder .shop-tile-thumb .material-symbols-outlined { font-size: 2.2rem; opacity: 0.5; }
+.shop-tile-overlay {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 1.3rem 0.5rem 0.45rem; display: flex; gap: 0.3rem; flex-wrap: wrap; align-items: center;
+    background: linear-gradient(to top, rgba(3, 7, 16, 0.82), rgba(3, 7, 16, 0.3) 55%, transparent);
+    pointer-events: none;
+}
+.tile-ochip {
+    font-size: 0.68rem; line-height: 1; border-radius: 6px; padding: 0 8px; height: 22px; pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 0.25rem; background: rgba(255, 255, 255, 0.16);
+    color: #eaf1fb; text-decoration: none; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+    box-sizing: border-box; vertical-align: middle;
+}
+.tile-ochip.store { background: rgba(96, 165, 250, 0.34); color: #dbeafe; }
+.tile-ochip.store:hover { background: rgba(96, 165, 250, 0.5); }
+.tile-ochip .material-symbols-outlined { font-size: 0.95rem; line-height: 1; flex: 0 0 auto; }
+
+/* Corner badges (featured / new) live top-left of the media. */
+.shop-tile-badges { position: absolute; top: 0.5rem; left: 0.5rem; display: flex; gap: 0.3rem; z-index: 4; }
+
+.shop-tile-body { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.65rem 0.8rem 0.8rem; flex: 1; }
+.shop-tile-body h3 { margin: 0; font-size: 1.02rem; line-height: 1.25; }
+.shop-tile-meta { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: auto; }

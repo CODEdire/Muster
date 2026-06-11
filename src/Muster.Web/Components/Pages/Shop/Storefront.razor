@@ -7,6 +7,7 @@
 @using Muster.Contracts
 @using Muster.Domain.Entities.Shops
 @using Muster.Infrastructure.Services.Shops
+@using static Muster.Web.Components.Pages.Shop.Core.ShopPresentation
 
 <PageTitle>@(_front?.Name ?? "Storefront") — Muster</PageTitle>
 
@@ -26,8 +27,6 @@ else if (State == AccessState.Ready)
     }
     else
     {
-        <PageHeader Crumbs="@Crumbs" />
-
         @if (_front.BannerImageKey is { } bk)
         {
             @* Edge-fade hero: the banner is the masthead. Cover-fills the frame; left/right edges dissolve into the
@@ -48,7 +47,11 @@ else if (State == AccessState.Ready)
                         <span class="material-symbols-outlined" style="font-size:30px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:rgba(0,0,0,.4);color:#fff">@mi</span>
                     }
                     <div>
-                        <h1 style="margin:0;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.7)">@_front.Name</h1>
+                        <nav class="store-titlecrumb store-titlecrumb-onbanner" aria-label="Breadcrumb">
+                            <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
+                            <span class="store-crumb-sep" aria-hidden="true">›</span>
+                            <h1 class="store-title" aria-current="page">@_front.Name</h1>
+                        </nav>
                         <p style="margin:2px 0 0;color:rgba(255,255,255,.88);font-size:.92rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">@HeroMetaInner</p>
                     </div>
                 </div>
@@ -68,7 +71,11 @@ else if (State == AccessState.Ready)
                         <span class="material-symbols-outlined" style="font-size:34px;width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--surface)">@mi</span>
                     }
                     <div>
-                        <h1 style="margin:0">@_front.Name</h1>
+                        <nav class="store-titlecrumb" aria-label="Breadcrumb">
+                            <a href="/guilds/@GuildId/shop?tab=shops">Shops</a>
+                            <span class="store-crumb-sep" aria-hidden="true">›</span>
+                            <h1 class="store-title" aria-current="page">@_front.Name</h1>
+                        </nav>
                         <p class="subtitle" style="margin:0;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">@HeroMetaInner</p>
                     </div>
                 </div>
@@ -147,42 +154,11 @@ else if (State == AccessState.Ready)
             <div class="shop-grid">
                 @foreach (var l in _items.Items)
                 {
-                    <article class="shop-tile @(l.Featured ? "is-featured" : "")">
-                        <div class="shop-tile-media-wrap @(l.ThumbKey is null ? "placeholder" : "")">
-                            <a class="shop-tile-thumb" href="@StoreItemUrl(l.Id)" aria-label="@l.Name">
-                                @if (l.ThumbKey is { } tk)
-                                {
-                                    <img class="tile-bg" src="/shop-image/@tk" alt="" aria-hidden="true" loading="lazy" />
-                                    <img class="tile-fg" src="/shop-image/@tk" alt="@l.Name" loading="lazy" />
-                                }
-                                else
-                                {
-                                    <span class="material-symbols-outlined">image</span>
-                                }
-                            </a>
-                            @if (l.Featured || l.IsNew)
-                            {
-                                <span class="shop-tile-badges">
-                                    @if (l.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
-                                    @if (l.IsNew) { <span class="shop-badge new">NEW</span> }
-                                </span>
-                            }
-                            @if (l.CategoryName is { } cn)
-                            {
-                                <div class="shop-tile-overlay">
-                                    <span class="tile-ochip">@if (ShopIcons.Material(l.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined">@cmi</span> } @cn</span>
-                                </div>
-                            }
-                        </div>
-                        <div class="shop-tile-body">
-                            <h3><a class="qc-title" href="@StoreItemUrl(l.Id)">@l.Name</a></h3>
-                            <span class="shop-stock@(l.Quantity <= 0 ? " out" : "")">@StockLabel(l.Quantity)</span>
-                            <div class="shop-tile-meta">
-                                <span class="shop-price">@l.Price @l.CurrencyCode</span>
-                                <a class="qc-details" href="@StoreItemUrl(l.Id)">Details →</a>
-                            </div>
-                        </div>
-                    </article>
+                    <ListingCard Listing="l" ItemHref="@StoreItemUrl(l.Id)">
+                        <Trailing>
+                            <a class="qc-details" href="@StoreItemUrl(l.Id)">Details →</a>
+                        </Trailing>
+                    </ListingCard>
                 }
             </div>
 
@@ -203,124 +179,11 @@ else if (State == AccessState.Ready)
 }
 
 @code {
-    [Parameter] public string Slug { get; set; } = string.Empty;
-    [SupplyParameterFromQuery(Name = "item")] private string? Item { get; set; }
-    [SupplyParameterFromQuery(Name = "cat")] private string? Cat { get; set; }
-    [SupplyParameterFromQuery(Name = "sort")] private string? Sort { get; set; }
-    [SupplyParameterFromQuery(Name = "q")] private string? Q { get; set; }
-    [SupplyParameterFromQuery(Name = "page")] private int Page { get; set; }
-    [SupplyParameterFromQuery(Name = "tag")] private string? Tag { get; set; }
-    [SupplyParameterFromQuery(Name = "min")] private int? Min { get; set; }
-    [SupplyParameterFromQuery(Name = "max")] private int? Max { get; set; }
-    [SupplyParameterFromQuery(Name = "stock")] private bool Stock { get; set; }
-    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
-
-    private const int PageSize = 24;
-
-    private ShopStorefront? _front;
-    private bool _canManage, _isManager;
-    private FeatureVerdict _shopGate;
-    private ShopBoardPage? _items;
-    private IReadOnlyList<ShopCategory> _categories = [];
-    private IReadOnlyList<ShopCurrencyChoice> _currencies = [];
-    private string? _searchBox, _tagBox, _minBox, _maxBox, _itemsKey;
-
-    private Guid? ItemId => Guid.TryParse(Item, out var g) ? g : null;
-    private string CurSort => Sort is "price-asc" or "price-desc" or "name" or "stock" ? Sort : "";
-    private int CurPage => Page < 1 ? 1 : Page;
-
-    private string StoreItemUrl(Guid id) => BuildStoreUrl(("item", id.ToString()));
-    private void CloseItem() => Go(("item", null));
-    private void OnCategory(ChangeEventArgs e) => Go(("cat", e.Value as string is { Length: > 0 } v ? v : null), ("page", null));
-    private void OnSort(ChangeEventArgs e) => Go(("sort", NullIfEmpty(e.Value as string)), ("page", null));
-    private void OnCurrency(ChangeEventArgs e) => Go(("cur", e.Value as string is { Length: > 0 } v ? v : null), ("page", null));
-    private void OnStock(ChangeEventArgs e) => Go(("stock", e.Value is true ? "true" : null), ("page", null));
-    private void ApplySearch() => Go(("q", NullIfEmpty(_searchBox)), ("page", null));
-
-    private const int SearchDebounceMs = 350;
-    private CancellationTokenSource? _searchDebounce, _tagDebounce, _priceDebounce;
-
-    private async Task DebouncedSearchAsync()
-    {
-        _searchDebounce?.Cancel();
-        var cts = _searchDebounce = new CancellationTokenSource();
-        try { await Task.Delay(SearchDebounceMs, cts.Token); }
-        catch (TaskCanceledException) { return; }
-        if (!cts.IsCancellationRequested) { ApplySearch(); }
-    }
-
-    private async Task DebouncedTagAsync()
-    {
-        _tagDebounce?.Cancel();
-        var cts = _tagDebounce = new CancellationTokenSource();
-        try { await Task.Delay(SearchDebounceMs, cts.Token); } catch (TaskCanceledException) { return; }
-        if (!cts.IsCancellationRequested) { Go(("tag", NullIfEmpty(_tagBox?.TrimStart('#'))), ("page", null)); }
-    }
-
-    private async Task DebouncedPriceAsync()
-    {
-        _priceDebounce?.Cancel();
-        var cts = _priceDebounce = new CancellationTokenSource();
-        try { await Task.Delay(SearchDebounceMs, cts.Token); } catch (TaskCanceledException) { return; }
-        if (!cts.IsCancellationRequested) { Go(("min", ParsePositive(_minBox)), ("max", ParsePositive(_maxBox)), ("page", null)); }
-    }
-
-    private bool HasFilters => !string.IsNullOrEmpty(Cat) || !string.IsNullOrEmpty(Tag) || !string.IsNullOrEmpty(Q)
-        || Min is not null || Max is not null || !string.IsNullOrEmpty(Cur) || Stock;
-    private void ClearFilters() => Go(("cat", null), ("tag", null), ("q", null), ("min", null), ("max", null), ("cur", null), ("stock", null), ("page", null));
-    private string? CategoryName(string? id) => Guid.TryParse(id, out var g) ? _categories.FirstOrDefault(c => c.Id == g)?.Name : null;
-    private string? CurrencyCode(string? id) => Guid.TryParse(id, out var g) ? _currencies.FirstOrDefault(c => c.Id == g)?.Code : null;
-    private static string PriceRangeLabel(int? min, int? max) => (min, max) switch
-    {
-        (not null, not null) => $"{min}–{max}",
-        (not null, null) => $"≥ {min}",
-        (null, not null) => $"≤ {max}",
-        _ => "price",
-    };
-    private static string? ParsePositive(string? s) => int.TryParse(s, out var n) && n > 0 ? n.ToString() : null;
-
+    // Razor render-fragment helpers (markup templates) stay in the .razor; the rest of the component lives in the
+    // code-behind partial.
     private RenderFragment FilterChip(string text, Action onClear) => @<text>
         <span class="chip filter-chip">@text <button type="button" class="filter-chip-x" title="Remove" @onclick="onClear">×</button></span>
     </text>;
-
-    public void Dispose()
-    {
-        _searchDebounce?.Cancel(); _searchDebounce?.Dispose();
-        _tagDebounce?.Cancel(); _tagDebounce?.Dispose();
-        _priceDebounce?.Cancel(); _priceDebounce?.Dispose();
-    }
-    private async Task OnItemChangedAsync() { await LoadAsync(); await ReloadItemsAsync(); StateHasChanged(); }
-
-    private string BuildStoreUrl(params (string Key, string? Value)[] overrides)
-    {
-        var q = new Dictionary<string, string?>
-        {
-            ["cat"] = Cat,
-            ["sort"] = NullIfEmpty(CurSort),
-            ["q"] = NullIfEmpty(Q),
-            ["page"] = CurPage == 1 ? null : CurPage.ToString(),
-            ["tag"] = NullIfEmpty(Tag),
-            ["min"] = Min?.ToString(),
-            ["max"] = Max?.ToString(),
-            ["stock"] = Stock ? "true" : null,
-            ["cur"] = NullIfEmpty(Cur),
-            ["item"] = NullIfEmpty(Item),
-        };
-        foreach (var (k, v) in overrides) { q[k] = v; }
-        var query = string.Join("&", q.Where(kv => !string.IsNullOrEmpty(kv.Value)).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value!)}"));
-        return $"/guilds/{GuildId}/shop/store/{Slug}{(query.Length > 0 ? "?" + query : "")}";
-    }
-
-    private void Go(params (string Key, string? Value)[] overrides)
-        => Nav.NavigateTo(BuildStoreUrl(overrides), forceLoad: false, replace: true);
-
-    private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
-
-    private PageHeader.Crumb[] Crumbs => _front is null ? [] :
-    [
-        new("Shops", $"/guilds/{GuildId}/shop?tab=shops"),
-        new(_front.Name),
-    ];
 
     // Owner UserChip + type (with its icon) + closed + rating — shared by the banner hero and the no-banner row.
     private RenderFragment HeroMetaInner => @<text>
@@ -345,88 +208,4 @@ else if (State == AccessState.Ready)
             <span class="hero-dot">·</span><span>★ @_front.SellerRatingAvg.ToString("0.0") (@_front.SellerRatingCount)</span>
         }
     </text>;
-
-    private static string StockLabel(int q) => q <= 0 ? "Out of stock" : q <= 20 ? $"{q} left" : "In stock";
-
-    // Base colour shown behind a transparent banner.
-    private static string BannerBg(string? accent)
-        => !string.IsNullOrWhiteSpace(accent) && accent.StartsWith('#') ? accent! : "var(--surface)";
-
-    // Bottom scrim behind the overlaid identity. A neutral legibility gradient always applies; when the store has
-    // an accent colour it washes up underneath it (per-store tint) without hurting title contrast.
-    private static string ScrimStyle(string? accent)
-    {
-        const string legibility = "linear-gradient(to top, rgba(6,10,16,.86) 2%, rgba(6,10,16,.40) 40%, transparent 66%)";
-        return !string.IsNullOrWhiteSpace(accent) && accent.StartsWith('#') && accent.TrimStart('#').Length == 6
-            ? $"background:{legibility}, linear-gradient(to top, {accent}b3 0%, {accent}26 38%, transparent 62%)"
-            : $"background:{legibility}";
-    }
-
-    protected override async Task LoadAsync()
-    {
-        await using var scope = Scopes.CreateAsyncScope();
-        _shopGate = await scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>()
-            .EvaluateAsync(GuildId, PlatformFeature.Shop);
-        if (!_shopGate.IsEnabled)
-        {
-            return; // shop off for this guild — render the gated state, skip loading the storefront
-        }
-
-        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
-        _front = await reads.GetStorefrontAsync(GuildId, Slug);
-        if (_front is null)
-        {
-            return;
-        }
-
-        _categories = await reads.GetCategoriesAsync(GuildId);
-        _currencies = await reads.GetSpendableCurrenciesAsync(GuildId);
-
-        // Owner (with the creator tier) or a shop manager may add listings / edit the shop (moderation).
-        _isManager = await Auth.IsShopManagerAsync(GuildId, UserId);
-        _canManage = _isManager || (_front.OwnerId == UserId && await Auth.IsShopCreatorAsync(GuildId, UserId));
-    }
-
-    // Items reload when the filter/sort/search/page query changes (keyed); opening the item modal doesn't refetch.
-    protected override async Task OnParametersSetAsync()
-    {
-        if (State != AccessState.Ready || _front is null)
-        {
-            return;
-        }
-
-        _searchBox = Q;
-        _tagBox = Tag;
-        _minBox = Min?.ToString();
-        _maxBox = Max?.ToString();
-        var key = $"{Cat}|{CurSort}|{Q}|{CurPage}|{Tag}|{Min}|{Max}|{Stock}|{Cur}";
-        if (key != _itemsKey)
-        {
-            _itemsKey = key;
-            await ReloadItemsAsync();
-        }
-    }
-
-    private async Task ReloadItemsAsync()
-    {
-        if (_front is null)
-        {
-            return;
-        }
-
-        var (sort, desc) = CurSort switch
-        {
-            "price-asc" => ("price", false),
-            "price-desc" => ("price", true),
-            "name" => ("name", false),
-            "stock" => ("stock", true),
-            _ => ("created", true),
-        };
-        Guid? cat = Guid.TryParse(Cat, out var c) ? c : null;
-        Guid? cur = Guid.TryParse(Cur, out var cg) ? cg : null;
-        await using var scope = Scopes.CreateAsyncScope();
-        var reads = scope.ServiceProvider.GetRequiredService<IShopReadService>();
-        _items = await reads.GetMarketAsync(GuildId, cat, NullIfEmpty(Tag), NullIfEmpty(Q), sort, desc, CurPage, PageSize,
-            storeId: _front.Id, minPrice: Min, maxPrice: Max, inStockOnly: Stock, currencyId: cur);
-    }
 }

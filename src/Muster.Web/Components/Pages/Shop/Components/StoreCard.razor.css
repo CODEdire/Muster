@@ -1,0 +1,73 @@
+/* Discord-style shop card (Shops tab): banner + overlapping logo + type chip + description + featured strip. */
+.shop-store-card {
+    position: relative;
+    display: flex; flex-direction: column; overflow: visible;
+    background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+    box-shadow: var(--card-shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.shop-store-card:hover {
+    transform: translateY(-3px); box-shadow: var(--card-shadow-hover);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--card-border));
+}
+/* Fixed (not min) height so collapsed and expanded are byte-for-byte the same footprint — collapsed content is
+   always bounded (clamped description + 2 featured rows), expanded fills the same box with internal scroll. */
+.shop-store-card { height: 25rem; overflow: hidden; }
+
+/* Full-bleed banner (edge to edge, cover) like a Discord profile/store header. */
+.ssc-banner { position: relative; display: block; height: 132px; background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; }
+.ssc-banner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ssc-banner.placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.ssc-banner.placeholder .material-symbols-outlined { font-size: 2rem; opacity: 0.5; }
+.ssc-body { position: relative; flex: 1; display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem 0.9rem 0.9rem; border-radius: 0 0 var(--radius) var(--radius); }
+/* Rating badge overlaid on the banner's top-right corner. */
+.ssc-rating {
+    position: absolute; top: 0.55rem; right: 0.6rem; z-index: 5;
+    font-size: 0.72rem; font-weight: 600; border-radius: 6px; padding: 2px 8px; white-space: nowrap;
+    background: rgba(0, 0, 0, 0.55); color: #fff; backdrop-filter: blur(3px);
+}
+
+/* Expanded: keep icon/title, drop the banner; the featured block holds its natural size (5 rows is the standard),
+   and the description flexes to fill whatever height remains, scrolling if it overflows. */
+.shop-store-card.expanded .ssc-body { border-radius: var(--radius); }
+.shop-store-card.expanded .ssc-desc.ssc-desc-full { flex: 1 1 auto; height: auto; max-height: none; min-height: 2.7rem; overflow-y: auto; }
+.shop-store-card.expanded .ssc-featured { flex: 0 0 auto; }
+/* Collapsed long descriptions still get the un-clamped scroll treatment when shown full elsewhere. */
+.ssc-desc.ssc-desc-full { height: auto; max-height: 8rem; overflow-y: auto; }
+.ssc-expand {
+    align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    background: none; border: none; cursor: pointer; padding: 0.1rem 0;
+    font-size: 0.78rem; font-weight: 600; color: var(--accent);
+}
+.ssc-expand:hover { text-decoration: underline; }
+.ssc-expand .material-symbols-outlined { font-size: 1.05rem; }
+.ssc-logo {
+    width: 52px; height: 52px; flex: 0 0 auto; border-radius: 11px;
+    border: 2px solid var(--card-bg); object-fit: cover; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+/* Header row below the banner: logo left; title (line 1) + type (line 2) beside it; rating pinned top-right. */
+.ssc-head { display: flex; align-items: flex-start; gap: 0.7rem; min-width: 0; }
+.ssc-headtext { flex: 1; min-width: 0; }
+.ssc-head h3 {
+    margin: 0; font-size: 1.1rem; line-height: 1.2; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ssc-meta { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; margin-top: 0.25rem; }
+/* Compact markdown preview: render emphasis/lists but reserve a fixed ~2-line slot so cards stay comparable. */
+.ssc-desc { color: var(--text-muted); font-size: 0.85rem; margin: 0; height: 2.7rem; overflow: hidden; }
+.ssc-more { color: var(--text-muted); font-size: 0.78rem; }
+.ssc-desc > :is(p, ul, ol, h1, h2, h3, h4, blockquote) { margin: 0; }
+.ssc-desc ul, .ssc-desc ol { padding-left: 1.1rem; }
+.ssc-desc :is(strong, b) { color: var(--text); }
+.ssc-featured { border-top: 1px solid var(--card-border); padding-top: 0.45rem; }
+.ssc-featured .lbl {
+    font-size: 0.64rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.25rem;
+}
+.ssc-featured .lbl .material-symbols-outlined { font-size: 0.85rem; }
+.ssc-frow { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.84rem; padding: 1px 0; }
+.ssc-frow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ssc-foot { display: flex; align-items: center; gap: 0.45rem; margin-top: auto; color: var(--text-muted); font-size: 0.78rem; flex-wrap: wrap; }

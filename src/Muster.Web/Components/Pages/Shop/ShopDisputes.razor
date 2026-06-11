@@ -6,14 +6,3 @@
 @* Disputes moved into the Orders page as a manager-only tab. This route now just redirects there, preserving an
    optional ?store= scope, so older links/bookmarks keep working. *@
 <PageTitle>Disputes — Muster</PageTitle>
-
-@code {
-    [SupplyParameterFromQuery(Name = "store")] private string? Store { get; set; }
-
-    protected override Task LoadAsync()
-    {
-        var qs = string.IsNullOrEmpty(Store) ? "" : $"&store={Store}";
-        Nav.NavigateTo($"/guilds/{GuildId}/shop/orders?tab=disputes{qs}", forceLoad: false, replace: true);
-        return Task.CompletedTask;
-    }
-}

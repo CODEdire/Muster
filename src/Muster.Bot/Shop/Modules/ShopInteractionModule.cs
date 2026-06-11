@@ -107,9 +107,9 @@ public class ShopInteractionModule(IServiceScopeFactory scopeFactory) : Componen
         ShopInteractionDispatch.RunAsync(Context.Interaction, scopeFactory, new ArbitrateOrder(guildId, Context.User.Id, orderId, false), "Resolved — buyer refunded.");
 
     [ComponentInteraction(ShopComponentBuilder.Buy)]
-    public Task Buy(ulong guildId, Guid listingId) =>
+    public Task Buy(ulong guildId, Guid listingId, int qty) =>
         ShopInteractionDispatch.PurchaseAsync(Context.Interaction, scopeFactory,
-            new PurchaseListing(guildId, Context.User.Id, listingId),
+            new PurchaseListing(guildId, Context.User.Id, listingId, Math.Max(1, qty)),
             "Purchased — your funds are held in escrow until you confirm receipt. See **🧾 My orders**.");
 
     [ComponentInteraction(ShopComponentBuilder.Offer)]
@@ -207,6 +207,33 @@ public class ShopMenuInteractionModule(IServiceScopeFactory scopeFactory) : Comp
 
         using var s = scopeFactory.CreateScope();
         var view = await ShopHub.ListingViewAsync(s.ServiceProvider, guildId, listingId, scope, sortKey);
+        if (view is not { } v)
+        {
+            await Context.Interaction.SendResponseAsync(InteractionCallback.Message(
+                new InteractionMessageProperties { Content = "That item is no longer available.", Flags = MessageFlags.Ephemeral }));
+            return;
+        }
+
+        await Context.Interaction.SendResponseAsync(InteractionCallback.ModifyMessage(m =>
+        {
+            m.Content = null;
+            m.Embeds = [v.Embed];
+            m.Components = v.Components;
+        }));
+    }
+
+    // Quantity picker on a listing detail → re-render the same view with the chosen count so the Buy button reflects it.
+    [ComponentInteraction(ShopComponentBuilder.QtySel)]
+    public async Task QtySel(ulong guildId, string listingKey, string scope, string sortKey)
+    {
+        if (!Guid.TryParseExact(listingKey, "N", out var listingId))
+        {
+            return;
+        }
+
+        var qty = Context.SelectedValues.Count > 0 && int.TryParse(Context.SelectedValues[0], out var n) ? n : 1;
+        using var s = scopeFactory.CreateScope();
+        var view = await ShopHub.ListingViewAsync(s.ServiceProvider, guildId, listingId, scope, sortKey, qty);
         if (view is not { } v)
         {
             await Context.Interaction.SendResponseAsync(InteractionCallback.Message(
@@ -392,7 +419,7 @@ internal static class ShopHub
 
     /// <summary>A listing detail view (embed + Buy/Offer/Back), or null if the listing is gone.</summary>
     public static async Task<(EmbedProperties Embed, IReadOnlyList<IMessageComponentProperties> Components)?> ListingViewAsync(
-        IServiceProvider sp, ulong guildId, Guid listingId, string scope, string sortKey)
+        IServiceProvider sp, ulong guildId, Guid listingId, string scope, string sortKey, int qty = 1)
     {
         var reads = sp.GetRequiredService<IShopReadService>();
         var detail = await reads.GetListingDetailAsync(guildId, listingId);
@@ -403,7 +430,7 @@ internal static class ShopHub
 
         var baseUrl = sp.GetRequiredService<IConfiguration>()["Web:BaseUrl"];
         var embed = ShopEmbedRenderer.Listing(detail, guildId, baseUrl);
-        var components = ShopComponentBuilder.Listing(detail, scope, sortKey, guildId);
+        var components = ShopComponentBuilder.Listing(detail, scope, sortKey, guildId, qty);
         return (embed, components);
     }
 

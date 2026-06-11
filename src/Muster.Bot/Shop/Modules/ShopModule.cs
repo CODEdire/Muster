@@ -123,6 +123,25 @@ public class ShopModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(sc
         });
     }
 
+    [SubSlashCommand("buy", "Buy an item now — funds are held in escrow until you confirm receipt.")]
+    public Task BuyAsync(
+        [SlashCommandParameter(Name = "item", Description = "Item to buy", AutocompleteProviderType = typeof(ShopBuyListingAutocompleteProvider))] string item,
+        [SlashCommandParameter(Name = "quantity", Description = "How many to buy (default 1)")] long quantity = 1)
+        => RunAsync(async (sp, guildId) =>
+        {
+            if (!Guid.TryParse(item, out var listingId))
+            {
+                return CommandResult.Error("Pick an item from the suggestions.");
+            }
+
+            var qty = (int)Math.Clamp(quantity, 1, 1000);
+            var bus = sp.GetRequiredService<IMessageBus>();
+            var result = await bus.InvokeAsync<Result<Guid>>(new PurchaseListing(guildId, Context.User.Id, listingId, qty));
+            return ((Result)result).ToCommandResult(qty > 1
+                ? $"Purchased ×{qty} — funds held in escrow until you confirm receipt. See `/shop` → 🧾 My orders."
+                : "Purchased — funds held in escrow until you confirm receipt. See `/shop` → 🧾 My orders.");
+        }, feature: PlatformFeature.Shop, auditAction: "shop.buy");
+
     [SubSlashCommand("resync", "Re-post all featured listing cards to the shop channel.")]
     public Task ResyncAsync()
         => RunAsync(async (sp, guildId) =>
@@ -347,6 +366,49 @@ public class ShopModule(IServiceScopeFactory scopeFactory) : MusterModuleBase(sc
                 var result = await bus.InvokeAsync<Result>(new UnfeatureListing(guildId, Context.User.Id, listingId));
                 return result.ToCommandResult("Listing un-featured.");
             }, RequiredRole.ShopCreator, auditAction: "shop.unfeature", feature: PlatformFeature.Shop);
+
+        [SubSlashCommand("add-stock", "Add more units to one of your active listings (works even with live orders).")]
+        public Task AddStockAsync(
+            [SlashCommandParameter(Name = "listing", Description = "Your active listing", AutocompleteProviderType = typeof(ShopListingAutocompleteProvider))] string listing,
+            [SlashCommandParameter(Name = "units", Description = "How many units to add")] long units)
+            => RunAsync(async (sp, guildId) =>
+            {
+                if (!Guid.TryParse(listing, out var listingId))
+                {
+                    return CommandResult.Error("That doesn't look like a valid listing.");
+                }
+
+                if (units < 1)
+                {
+                    return CommandResult.Error("Enter a whole number of units (1 or more).");
+                }
+
+                var bus = sp.GetRequiredService<IMessageBus>();
+                var result = await bus.InvokeAsync<Result>(new AddListingStock(guildId, Context.User.Id, listingId, (int)units));
+                return result.ToCommandResult($"Added {units} to stock.");
+            }, RequiredRole.ShopCreator, auditAction: "shop.listingAddStock", feature: PlatformFeature.Shop);
+
+        [SubSlashCommand("relist", "Relist a sold-out or expired listing as a fresh copy with new stock.")]
+        public Task RelistAsync(
+            [SlashCommandParameter(Name = "listing", Description = "Your sold-out / expired listing", AutocompleteProviderType = typeof(ShopRelistableListingAutocompleteProvider))] string listing,
+            [SlashCommandParameter(Name = "units", Description = "Units to stock the new copy with")] long units,
+            [SlashCommandParameter(Name = "price", Description = "New price (leave blank to keep the old one)")] long price = 0)
+            => RunAsync(async (sp, guildId) =>
+            {
+                if (!Guid.TryParse(listing, out var listingId))
+                {
+                    return CommandResult.Error("That doesn't look like a valid listing.");
+                }
+
+                if (units < 1)
+                {
+                    return CommandResult.Error("Enter a whole number of units (1 or more).");
+                }
+
+                var bus = sp.GetRequiredService<IMessageBus>();
+                var result = await bus.InvokeAsync<Result<Guid>>(new RelistListing(guildId, Context.User.Id, listingId, (int)units, price > 0 ? price : null));
+                return ((Result)result).ToCommandResult("Relisted — a fresh copy is now live.");
+            }, RequiredRole.ShopCreator, auditAction: "shop.listingRelist", feature: PlatformFeature.Shop);
     }
 
     // ---- /shop orders … ----------------------------------------------------

@@ -207,4 +207,5 @@ public enum ShopLifecycleMoment
     Rated,
     Featured,
     Unfeatured,
+    Restocked,
 }

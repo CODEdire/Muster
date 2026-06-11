@@ -1,0 +1,82 @@
+@using Muster.Infrastructure.Services.Shops
+@using static Muster.Web.Components.Pages.Shop.Core.ShopPresentation
+
+@* A storefront card for the Shops tab. At rest it shows a banner, rating, a clamped description and the first two
+   featured items; "Show more" expands it in place to the full description and up to five featured items. *@
+<article class="shop-store-card @(_expanded ? "expanded" : "")" style="@(Store.AccentColor is { } ac ? $"border-top:3px solid {ac}" : null)">
+    @if (!_expanded)
+    {
+        <a class="ssc-banner @(Store.BannerImageKey is null ? "placeholder" : "")" href="/guilds/@GuildId/shop/store/@Store.Slug">
+            @if (Store.BannerImageKey is { } bk)
+            {
+                <img src="/shop-image/@bk" alt="" loading="lazy" />
+            }
+            else
+            {
+                <span class="material-symbols-outlined">storefront</span>
+            }
+        </a>
+        @if (Store.RatingCount > 0)
+        {
+            <span class="ssc-rating">★ @Store.RatingAvg.ToString("0.0") (@Store.RatingCount)</span>
+        }
+    }
+    <div class="ssc-body">
+        <div class="ssc-head">
+            @if (Store.LogoImageKey is { } lk)
+            {
+                <img class="ssc-logo" src="/shop-image/@lk" alt="" />
+            }
+            else if (ShopIcons.Material(Store.StoreTypeIcon) is { } lmi)
+            {
+                <span class="ssc-logo"><span class="material-symbols-outlined">@lmi</span></span>
+            }
+            else
+            {
+                <span class="ssc-logo">@Initial(Store.Name)</span>
+            }
+            <div class="ssc-headtext">
+                <h3><a class="qc-title" href="/guilds/@GuildId/shop/store/@Store.Slug">@Store.Name</a></h3>
+                <div class="ssc-meta">
+                    @if (Store.StoreTypeName is { } tn)
+                    {
+                        <span class="chip chip-type">@if (ShopIcons.Material(Store.StoreTypeIcon) is { } tmi) { <span class="material-symbols-outlined">@tmi</span> } @tn</span>
+                    }
+                    @if (Store.Closed) { <span class="chip">closed</span> }
+                </div>
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Store.Description))
+        {
+            <div class="ssc-desc markdown @(_expanded ? "ssc-desc-full" : "")">@Muster.Web.DiscordMarkdown.ToHtml(Store.Description)</div>
+        }
+        @if (Store.Featured is { Count: > 0 } feat)
+        {
+            <div class="ssc-featured">
+                <div class="lbl"><span class="material-symbols-outlined">star</span> Featured</div>
+                @{ var cap = _expanded ? 5 : 2; }
+                @foreach (var f in feat.Take(cap))
+                {
+                    <div class="ssc-frow"><span class="nm">@f.Name</span><span class="shop-price">@f.Price @f.CurrencyCode</span></div>
+                }
+                @if (feat.Count > cap) { <div class="ssc-frow ssc-more">+@(feat.Count - cap) more</div> }
+            </div>
+        }
+        <div class="ssc-foot">
+            <span>@Store.ListingCount item@(Store.ListingCount == 1 ? "" : "s")</span>
+            <span class="hero-dot">·</span>
+            <UserChip Name="@Store.OwnerName" AvatarUrl="@Store.OwnerAvatarUrl" Prefix="by " />
+            @if (CanManage)
+            {
+                <a class="icon-btn" title="Edit shop" href="/guilds/@GuildId/shop/stores/@Store.Id" style="margin-left:auto"><span class="material-symbols-outlined">edit</span></a>
+            }
+        </div>
+        @if (Expandable(Store))
+        {
+            <button type="button" class="ssc-expand" @onclick="Toggle">
+                <span>@(_expanded ? "Show less" : "Show more")</span>
+                <span class="material-symbols-outlined">@(_expanded ? "expand_less" : "expand_more")</span>
+            </button>
+        }
+    </div>
+</article>

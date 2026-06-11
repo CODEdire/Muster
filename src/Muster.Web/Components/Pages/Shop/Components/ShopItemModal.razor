@@ -1,0 +1,158 @@
+@* Quick-view item modal — the shop's item detail surface (modal-only). Loads its own detail, handles Buy/Offer
+   and (for the seller/manager) Feature/Unfeature/Withdraw/Take-down. Opened by a parent via the ?item= query so
+   it's deep-linkable; closing/back removes the param. Full-screen sheet on mobile (see app.css .shop-modal). *@
+@inject IServiceScopeFactory Scopes
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@using Muster.Contracts
+@using Muster.Infrastructure.Commands
+@using Muster.Infrastructure.Commands.Shops
+@using Muster.Infrastructure.Services.Shops
+@using static Muster.Web.Components.Pages.Shop.Core.ShopPresentation
+
+<div class="shop-modal-backdrop" @onclick="CloseAsync">
+    <div class="shop-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+        <button type="button" class="icon-btn shop-modal-close" title="Close" @onclick="CloseAsync"><span class="material-symbols-outlined">close</span></button>
+
+        @if (_listing is null)
+        {
+            <div class="shop-modal-img placeholder"><span class="material-symbols-outlined">hourglass_empty</span></div>
+            <div class="shop-modal-body"><p class="subtitle">@(_loaded ? "That item couldn't be found." : "Loading…")</p></div>
+        }
+        else
+        {
+            <div class="shop-modal-img @(_listing.ImageKey is null ? "placeholder" : "")">
+                @if (_listing.ImageKey is { } ik)
+                {
+                    <img src="/shop-image/@ik" alt="@_listing.Name" />
+                }
+                else
+                {
+                    <span class="material-symbols-outlined">image</span>
+                }
+            </div>
+
+            <div class="shop-modal-body">
+                <nav class="smi-crumb" aria-label="Breadcrumb">
+                    <a href="/guilds/@GuildId/shop">Shop</a>
+                    <span class="smi-crumb-sep" aria-hidden="true">›</span>
+                    <a href="/guilds/@GuildId/shop/store/@_listing.StoreSlug">@_listing.StoreName</a>
+                </nav>
+                @if (_listing.Featured || _listing.CategoryName is not null)
+                {
+                    <div class="qc-chips">
+                        @if (_listing.Featured) { <span class="shop-badge feat"><span class="material-symbols-outlined">star</span> Featured</span> }
+                        @if (_listing.CategoryName is { } cn)
+                        {
+                            <span class="chip">@if (ShopIcons.Material(_listing.CategoryIcon) is { } cmi) { <span class="material-symbols-outlined" style="vertical-align:-3px;font-size:.95rem">@cmi</span> } @cn</span>
+                        }
+                    </div>
+                }
+
+                <h2 class="smi-title">@_listing.Name</h2>
+                <UserChip Name="@_listing.SellerName" AvatarUrl="@_listing.SellerAvatarUrl" Prefix="by " />
+
+                <div class="smi-price-row">
+                    <span class="qc-reward reward-coin smi-price">@_listing.Price @_listing.CurrencyCode</span>
+                    <span class="shop-stock@(_listing.Quantity <= 0 ? " out" : "")">@StockLabel(_listing.Quantity)</span>
+                </div>
+
+                @if (_listing.RelistedFromId is { } relistedFrom)
+                {
+                    <a class="subtitle" style="display:inline-flex;align-items:center;gap:.25rem;margin-top:.2rem" href="/guilds/@GuildId/shop/listing/@relistedFrom" title="View the previous listing this was relisted from">
+                        <span class="material-symbols-outlined" style="font-size:1rem">history</span> Relisted from a previous listing
+                    </a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_listing.Description))
+                {
+                    <div class="markdown">@((MarkupString)Muster.Web.DiscordMarkdown.ToHtml(_listing.Description))</div>
+                }
+
+                @if (_listing.Tags.Count > 0)
+                {
+                    <div class="qc-chips">
+                        @foreach (var t in _listing.Tags)
+                        {
+                            <a class="chip" href="/guilds/@GuildId/shop?tab=listings&ltag=@Uri.EscapeDataString(t)">#@t</a>
+                        }
+                    </div>
+                }
+
+                @if (_listing.Status == ShopListingStatus.Cancelled && _listing.Moderated)
+                {
+                    <div class="notice" role="status" style="border-color:var(--danger)">
+                        <span class="material-symbols-outlined notice-icon">gavel</span>
+                        <span class="notice-text">This listing was taken down by a moderator.@(_listing.DelistReason is { } r ? $" Reason: {r}" : "")</span>
+                    </div>
+                }
+
+                @if (_message is { } msg)
+                {
+                    <div class="notice" role="status"><span class="material-symbols-outlined notice-icon">info</span><span class="notice-text">@msg</span></div>
+                }
+
+                @* Buyer actions and seller/moderation actions split into their own rows (each its own line on mobile;
+                   they flow onto one wrapping row on desktop). *@
+                <div class="smi-actions">
+                    @if (_listing.Status == ShopListingStatus.Active)
+                    {
+                        <div class="smi-row smi-buyer">
+                            @BuyButton()
+                            @if (!_isSeller && _listing.OffersOpen)
+                            {
+                                <input type="number" min="1" placeholder="your price" @bind="_offerAmount" class="smi-offer" />
+                                <button class="btn btn-ghost btn-sm" disabled="@(_acting || _offerAmount <= 0)" @onclick="MakeOfferAsync"><span class="material-symbols-outlined">gavel</span> Make offer</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="subtitle smi-status">@_listing.Status</span>
+                    }
+
+                    @if (_isSeller)
+                    {
+                        @* Owner controls as compact icon buttons so they share the row with the primary Buy CTA. *@
+                        <div class="smi-row smi-seller">
+                            <a class="icon-btn" title="Edit listing" aria-label="Edit listing" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span></a>
+                            @if (_listing.Status == ShopListingStatus.Active && !_listing.Featured)
+                            {
+                                <button class="icon-btn" title="Feature" aria-label="Feature" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span></button>
+                            }
+                            else if (_listing.Featured)
+                            {
+                                <button class="icon-btn" title="Unfeature (fee not refunded)" aria-label="Unfeature" disabled="@_acting" @onclick="UnfeatureAsync"><span class="material-symbols-outlined">star_border</span></button>
+                            }
+                            <button class="icon-btn danger" title="Withdraw listing" aria-label="Withdraw listing" disabled="@_acting" @onclick="CancelAsync"><span class="material-symbols-outlined">delete</span></button>
+                        </div>
+                    }
+
+                    @if (_isManager && !_isSeller && _listing.Status == ShopListingStatus.Active)
+                    {
+                        <div class="smi-row smi-mod">
+                            <button class="icon-btn danger" title="Take down (moderation)" aria-label="Take down" disabled="@_acting" @onclick="TakeDownAsync"><span class="material-symbols-outlined">gavel</span></button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    // Quantity stepper (only when stock > 1) + the buy button, sharing _buyQty. A Razor render-fragment, so it
+    // stays in the .razor; the rest of the component lives in the code-behind partial.
+    private RenderFragment BuyButton() => @<text>
+        @if (_listing!.Quantity > 1)
+        {
+            <span class="qty-step">
+                <button type="button" class="icon-btn" title="Less" disabled="@(_acting || _buyQty <= 1)" @onclick="DecQty"><span class="material-symbols-outlined">remove</span></button>
+                <span class="qty-val">@_buyQty</span>
+                <button type="button" class="icon-btn" title="More" disabled="@(_acting || _buyQty >= _listing.Quantity)" @onclick="IncQty"><span class="material-symbols-outlined">add</span></button>
+            </span>
+        }
+        <button class="btn btn-sm" disabled="@_acting" @onclick="BuyAsync"><span class="material-symbols-outlined">shopping_cart</span> Buy@(_buyQty > 1 ? $" ×{_buyQty}" : "") · @(_listing.Price * _buyQty) @_listing.CurrencyCode</button>
+    </text>;
+}

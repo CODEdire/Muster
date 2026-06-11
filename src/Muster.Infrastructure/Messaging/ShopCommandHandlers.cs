@@ -306,6 +306,49 @@ public static class FeatureListingHandler
     }
 }
 
+public static class RelistListingHandler
+{
+    public static async Task<Result<Guid>> Handle(
+        RelistListing command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
+    {
+        var listing = await db.FindListingInGuildAsync(command.GuildId, command.ListingId, ct);
+        if (listing is null)
+        {
+            return Result<Guid>.Fail(nameof(ShopResult.NotFound));
+        }
+
+        // Relisting is a seller action — owner + ShopCreator (or a shop manager). Reuses the EditListing gate.
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), listing, ShopPermission.EditListing, ct))
+        {
+            return Result<Guid>.Fail(nameof(ShopResult.Forbidden));
+        }
+
+        var (result, listingId) = await shop.RelistAsync(listing, command.Quantity, command.Price, ct);
+        return result == ShopResult.Ok ? Result<Guid>.Success(listingId!.Value) : Result<Guid>.Fail(result.ToString());
+    }
+}
+
+public static class AddListingStockHandler
+{
+    public static async Task<Result> Handle(
+        AddListingStock command, MusterDbContext db, IShopAuthorizer authorizer, IShopService shop, CancellationToken ct)
+    {
+        var listing = await db.FindListingInGuildAsync(command.GuildId, command.ListingId, ct);
+        if (listing is null)
+        {
+            return Result.Fail(nameof(ShopResult.NotFound));
+        }
+
+        if (!await authorizer.AuthorizeAsync(new GuildActor(command.GuildId, command.ActorId), listing, ShopPermission.EditListing, ct))
+        {
+            return Result.Fail(nameof(ShopResult.Forbidden));
+        }
+
+        var result = await shop.AdjustStockAsync(listing, command.AddUnits, ct);
+        return result == ShopResult.Ok ? Result.Success() : Result.Fail(result.ToString());
+    }
+}
+
 public static class ResyncShopChannelHandler
 {
     public static async Task<Result> Handle(

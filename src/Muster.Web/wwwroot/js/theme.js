@@ -29,6 +29,11 @@
         syncButtons();
     };
 
+    // Lock/unlock page scroll while a modal is open (CSS hides the page overflow via html.modal-open).
+    window.musterLockScroll = function (lock) {
+        document.documentElement.classList.toggle("modal-open", !!lock);
+    };
+
     function reinit() {
         apply(current());
         syncButtons();
