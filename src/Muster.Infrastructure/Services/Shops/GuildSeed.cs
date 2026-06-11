@@ -17,7 +17,7 @@ public static class GuildSeed
 {
     /// <summary>Bump when a new default is introduced; set its stager entry's <c>IntroducedIn</c> to this value so
     /// existing guilds pick it up on their next seed pass.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>Stage every area's missing defaults onto the context and advance the guild's seed version. Returns the
     /// total rows added across all areas.</summary>
@@ -27,6 +27,7 @@ public static class GuildSeed
         var added = 0;
 
         added += await ShopSeed.StageAsync(db, guild.Id, from, force, ct);
+        added += await Quests.QuestTypeSeed.StageAsync(db, guild.Id, from, force, ct);
         added += await CurrencySeed.StageAsync(db, guild.Id, from, force, ct);
         added += await MusterTemplateSeed.StageAsync(db, guild.Id, from, force, ct);
 

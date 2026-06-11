@@ -1,3 +1,4 @@
+using Muster.Contracts;
 using Muster.Domain.Entities.Ratings;
 using Muster.Domain.Entities.Shops;
 
@@ -49,11 +50,12 @@ public enum ShopResult
 public interface IShopService
 {
     Task<(ShopResult Result, Guid? StoreId)> CreateStoreAsync(
-        ulong guildId, ulong ownerId, string name, string? description, string? slug, Guid? storeTypeId = null, CancellationToken ct = default);
+        ulong guildId, ulong ownerId, string name, string? description, string? slug, Guid? storeTypeId = null,
+        ShopStoreOrigin origin = ShopStoreOrigin.Member, CancellationToken ct = default);
 
     Task<ShopResult> EditStoreAsync(
         ShopStore store, string? name, string? description, string? bannerImageKey, string? logoImageKey,
-        string? accentColor, bool? closed, Guid? storeTypeId, CancellationToken ct = default);
+        string? accentColor, bool? closed, Guid? storeTypeId, ShopStoreOrigin? origin = null, CancellationToken ct = default);
 
     Task<ShopResult> DeleteStoreAsync(ShopStore store, CancellationToken ct = default);
 

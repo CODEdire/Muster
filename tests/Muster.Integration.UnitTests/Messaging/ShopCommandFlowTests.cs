@@ -55,10 +55,11 @@ public class ShopCommandFlowTests
         var shop = new ShopService(db, settings, new NoOpShopImageService(), currency, auth, ratings, new AuditService(db), new RecordingMessageBus());
         // Feature gate with platform-on (empty config ⇒ default on) + allow-all billing, so the authorizer's gate
         // check is a pass-through here; guild-off is still exercised via the service's own NotActive checks.
+        var questSettings = new Muster.Infrastructure.Services.Quests.GuildQuestSettingsService(db, Options.Create(new GuildQuestSettings()));
         var featureGate = new FeatureGate(
             new ConfigurationFeatureSource(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()),
             new AllowAllEntitlementSource(),
-            new GuildFeatureSource(settings));
+            new GuildFeatureSource(settings, questSettings));
         return new Ctx(db, new ShopAuthorizer(auth, featureGate), shop, new ShopReadService(db), coin);
     }
 

@@ -44,7 +44,8 @@ public sealed class ShopService(
     }
 
     public async Task<(ShopResult Result, Guid? StoreId)> CreateStoreAsync(
-        ulong guildId, ulong ownerId, string name, string? description, string? slug, Guid? storeTypeId = null, CancellationToken ct = default)
+        ulong guildId, ulong ownerId, string name, string? description, string? slug, Guid? storeTypeId = null,
+        ShopStoreOrigin origin = ShopStoreOrigin.Member, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -52,7 +53,9 @@ public sealed class ShopService(
         }
 
         var cfg = await settings.GetAsync(guildId, ct);
-        if (cfg.MaxStoresPerSeller > 0 && await db.CountStoresByOwnerAsync(guildId, ownerId, ct) >= cfg.MaxStoresPerSeller)
+        // The per-seller store cap is a member-store guardrail; guild stores are admin-curated and exempt.
+        if (origin == ShopStoreOrigin.Member && cfg.MaxStoresPerSeller > 0
+            && await db.CountStoresByOwnerAsync(guildId, ownerId, ct) >= cfg.MaxStoresPerSeller)
         {
             return (ShopResult.StoreCapReached, null);
         }
@@ -65,7 +68,7 @@ public sealed class ShopService(
         var desired = string.IsNullOrWhiteSpace(slug) ? Slugify(name) : Slugify(slug);
         var unique = await UniqueSlugAsync(guildId, desired, ct);
 
-        var store = ShopStore.Create(guildId, ownerId, name, unique, description);
+        var store = ShopStore.Create(guildId, ownerId, name, unique, description, origin);
         if (storeTypeId is { } t && t != Guid.Empty) { store.StoreTypeId = t; }
         db.ShopStores.Add(store);
         await db.SaveChangesAsync(ct);
@@ -75,8 +78,15 @@ public sealed class ShopService(
 
     public async Task<ShopResult> EditStoreAsync(
         ShopStore store, string? name, string? description, string? bannerImageKey, string? logoImageKey,
-        string? accentColor, bool? closed, Guid? storeTypeId, CancellationToken ct = default)
+        string? accentColor, bool? closed, Guid? storeTypeId, ShopStoreOrigin? origin = null, CancellationToken ct = default)
     {
+        // Convert member ↔ guild. Future sales follow the new origin (guild → burn; member → pay the owner-seller);
+        // in-flight orders keep the origin they snapshotted at purchase.
+        if (origin is { } o)
+        {
+            store.Origin = o;
+        }
+
         if (name is not null)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -731,9 +741,12 @@ public sealed class ShopService(
             return ShopResult.NotDelivered;
         }
 
-        var fee = await FeeForAsync(order, cfg, ct);
-
-        var settle = await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
+        // Guild store → consume (burn the buyer's payment, no seller, no commission); member store → pay the seller.
+        var isGuild = order.Origin == ShopStoreOrigin.Guild;
+        var fee = isGuild ? 0 : await FeeForAsync(order, cfg, ct);
+        var settle = isGuild
+            ? await currency.ShopConsumeAsync(order.GuildId, order.CurrencyId, order.Amount, OrderKey(order.Id), ct)
+            : await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
         if (settle != Currencies.EscrowStatus.Ok)
         {
             return ToShopResult(settle);
@@ -743,13 +756,13 @@ public sealed class ShopService(
         order.FeeAmount = fee;
         order.ConfirmedAt = now;
         order.SettledAt = now;
-        order.RatingWindowClosesAt = cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
+        order.RatingWindowClosesAt = !isGuild && cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
         order.TransitionTo(ShopOrderStatus.Settled);
         await db.SaveChangesAsync(ct);
 
         await bus.PublishAsync(new ShopLifecycleNotified(
             order.GuildId, order.ListingId, order.ItemNameSnapshot, ShopLifecycleMoment.Settled, order.SellerId,
-            "Order settled — funds released to seller", order.Id));
+            isGuild ? "Order settled — payment consumed by the guild" : "Order settled — funds released to seller", order.Id));
 
         return ShopResult.Ok;
     }
@@ -938,6 +951,12 @@ public sealed class ShopService(
         }
 
         if (listing.Status != ShopListingStatus.Active || listing.Store?.Closed == true)
+        {
+            return (ShopResult.NotActive, null);
+        }
+
+        // Guild stores are buy-now only — no negotiation (there's no member seller to counter).
+        if (listing.Store?.Origin == ShopStoreOrigin.Guild)
         {
             return (ShopResult.NotActive, null);
         }
@@ -1194,8 +1213,12 @@ public sealed class ShopService(
     {
         if (paySeller)
         {
-            var fee = await FeeForAsync(order, cfg, ct);
-            var settle = await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
+            // Guild store → consume (burn); member store → pay the seller, less the burned commission.
+            var isGuild = order.Origin == ShopStoreOrigin.Guild;
+            var fee = isGuild ? 0 : await FeeForAsync(order, cfg, ct);
+            var settle = isGuild
+                ? await currency.ShopConsumeAsync(order.GuildId, order.CurrencyId, order.Amount, OrderKey(order.Id), ct)
+                : await currency.ShopSettleAsync(order.GuildId, order.SellerId, order.CurrencyId, order.Amount, fee, OrderKey(order.Id), ct);
             if (settle != Currencies.EscrowStatus.Ok)
             {
                 return ToShopResult(settle);
@@ -1204,7 +1227,7 @@ public sealed class ShopService(
             var now = DateTimeOffset.UtcNow;
             order.FeeAmount = fee;
             order.SettledAt = now;
-            order.RatingWindowClosesAt = cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
+            order.RatingWindowClosesAt = !isGuild && cfg.RatingWindowHours > 0 ? now.AddHours(cfg.RatingWindowHours) : null;
             order.ResolvedBy = resolverId;
             order.TransitionTo(ShopOrderStatus.Settled);
             return ShopResult.Ok;
@@ -1240,6 +1263,12 @@ public sealed class ShopService(
     {
         var cfg = await settings.GetAsync(order.GuildId, ct);
         if (!cfg.RatingsEnabled)
+        {
+            return ShopResult.NotActive;
+        }
+
+        // A guild store has no member seller to rate (the guild ran the sale).
+        if (order.Origin == ShopStoreOrigin.Guild)
         {
             return ShopResult.NotActive;
         }

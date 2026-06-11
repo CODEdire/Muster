@@ -20,8 +20,9 @@ public record ShopLifecycleNotified(
 
 // --- Stores ---
 
-/// <summary>Open a new storefront (ShopCreator only). Slug is derived from the name when omitted.</summary>
-public record CreateStore(ulong GuildId, ulong ActorId, string Name, string? Description = null, string? Slug = null, Guid? StoreTypeId = null) : IGuildCommand;
+/// <summary>Open a new storefront. A member store needs ShopCreator; a <see cref="ShopStoreOrigin.Guild"/> store
+/// needs ShopManager and burns the buyer's coins on each sale. Slug is derived from the name when omitted.</summary>
+public record CreateStore(ulong GuildId, ulong ActorId, string Name, string? Description = null, string? Slug = null, Guid? StoreTypeId = null, ShopStoreOrigin Origin = ShopStoreOrigin.Member) : IGuildCommand;
 
 /// <summary>Delete a store and its listings (owner + ShopCreator, or a shop manager). Refused while the store
 /// has active orders.</summary>
@@ -38,7 +39,8 @@ public record EditStore(
     string? LogoImageKey = null,
     string? AccentColor = null,
     bool? Closed = null,
-    Guid? StoreTypeId = null) : IGuildCommand;
+    Guid? StoreTypeId = null,
+    ShopStoreOrigin? Origin = null) : IGuildCommand;  // null = leave unchanged; changing it requires ShopManager
 
 // --- Categories (shop manager) ---
 

@@ -84,6 +84,17 @@ public enum QuestLifecycleMoment
 
 // --- Shop / player marketplace ---
 
+/// <summary>Who owns a shop store. Mirrors <see cref="QuestOrigin"/>: a member store is run by a player (sales pay
+/// the member seller, less a burned commission); a guild store is run by the guild (sales <b>consume</b> the buyer's
+/// coins — burned from circulation, the economic mirror of a guild quest minting them).</summary>
+public enum ShopStoreOrigin
+{
+    /// <summary>A player-run store; sales settle to the member seller.</summary>
+    Member = 0,
+    /// <summary>A guild-run store; sales burn the buyer's payment (a coin sink). ShopManager-managed; no ratings/offers.</summary>
+    Guild = 1,
+}
+
 /// <summary>Lifecycle of a shop listing (a sell offer for an in-game item).</summary>
 public enum ShopListingStatus
 {

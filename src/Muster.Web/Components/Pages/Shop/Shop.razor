@@ -397,6 +397,13 @@ else if (State == AccessState.Ready)
                         <span>Description <span class="muted">(optional)</span></span>
                         <textarea class="dg-search" rows="2" placeholder="Short tagline for your storefront" @bind="_newStoreDesc" @bind:event="oninput"></textarea>
                     </label>
+                    @if (_isManager)
+                    {
+                        <label class="field" style="flex-direction:row;align-items:center;gap:.5rem">
+                            <input type="checkbox" @bind="_newStoreGuild" />
+                            <span>Guild shop <span class="muted">— run by the guild; purchases burn the buyer's coins (no seller paid, no ratings/offers)</span></span>
+                        </label>
+                    }
                     <div style="display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;margin-top:.3rem">
                         <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy" @onclick="CloseCreateStore">Cancel</button>
                         <button type="button" class="btn btn-ghost btn-sm" disabled="@(_busy || string.IsNullOrWhiteSpace(_newStoreName))" @onclick="() => CreateStoreAsync(thenEdit: true)">
@@ -451,6 +458,7 @@ else if (State == AccessState.Ready)
     private ShopBoardPage? _listings;
     private ShopStorePage? _stores;
     private string? _lSearchBox, _sSearchBox, _newStoreName, _newStoreDesc, _newStoreType;
+    private bool _newStoreGuild;
     private bool _showCreateStore;
     private string? _lTagBox, _lMinBox, _lMaxBox;
     private IReadOnlyList<ShopCurrencyChoice> _currencies = [];
@@ -714,7 +722,8 @@ else if (State == AccessState.Ready)
             await using var scope = Scopes.CreateAsyncScope();
             var bus = scope.ServiceProvider.GetRequiredService<Wolverine.IMessageBus>();
             var desc = string.IsNullOrWhiteSpace(_newStoreDesc) ? null : _newStoreDesc!.Trim();
-            var result = await bus.InvokeAsync<Result<Guid>>(new CreateStore(GuildId, UserId, _newStoreName!.Trim(), desc, null, typeId));
+            var origin = _isManager && _newStoreGuild ? Muster.Contracts.ShopStoreOrigin.Guild : Muster.Contracts.ShopStoreOrigin.Member;
+            var result = await bus.InvokeAsync<Result<Guid>>(new CreateStore(GuildId, UserId, _newStoreName!.Trim(), desc, null, typeId, origin));
             if (result.Ok)
             {
                 _showCreateStore = false;
