@@ -107,24 +107,25 @@
 
                     @if (_isSeller)
                     {
+                        @* Owner controls as compact icon buttons so they share the row with the primary Buy CTA. *@
                         <div class="smi-row smi-seller">
-                            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span> Edit</a>
+                            <a class="icon-btn" title="Edit listing" aria-label="Edit listing" href="/guilds/@GuildId/shop/listing/@_listing.Id/edit"><span class="material-symbols-outlined">edit</span></a>
                             @if (_listing.Status == ShopListingStatus.Active && !_listing.Featured)
                             {
-                                <button class="btn btn-ghost btn-sm" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span> Feature</button>
+                                <button class="icon-btn" title="Feature" aria-label="Feature" disabled="@_acting" @onclick="FeatureAsync"><span class="material-symbols-outlined">star</span></button>
                             }
                             else if (_listing.Featured)
                             {
-                                <button class="btn btn-ghost btn-sm" disabled="@_acting" @onclick="UnfeatureAsync" title="Stop featuring (fee not refunded)"><span class="material-symbols-outlined">star_border</span> Unfeature</button>
+                                <button class="icon-btn" title="Unfeature (fee not refunded)" aria-label="Unfeature" disabled="@_acting" @onclick="UnfeatureAsync"><span class="material-symbols-outlined">star_border</span></button>
                             }
-                            <button class="btn btn-ghost btn-sm danger" disabled="@_acting" @onclick="CancelAsync"><span class="material-symbols-outlined">delete</span> Withdraw</button>
+                            <button class="icon-btn danger" title="Withdraw listing" aria-label="Withdraw listing" disabled="@_acting" @onclick="CancelAsync"><span class="material-symbols-outlined">delete</span></button>
                         </div>
                     }
 
                     @if (_isManager && !_isSeller && _listing.Status == ShopListingStatus.Active)
                     {
                         <div class="smi-row smi-mod">
-                            <button class="btn btn-ghost btn-sm danger" disabled="@_acting" @onclick="TakeDownAsync" title="Take down (moderation)"><span class="material-symbols-outlined">gavel</span> Take down</button>
+                            <button class="icon-btn danger" title="Take down (moderation)" aria-label="Take down" disabled="@_acting" @onclick="TakeDownAsync"><span class="material-symbols-outlined">gavel</span></button>
                         </div>
                     }
                 </div>

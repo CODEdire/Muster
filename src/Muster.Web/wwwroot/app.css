@@ -943,6 +943,8 @@ html.modal-open { overflow: hidden; }
 .smi-price { font-size: 1.5rem; }
 .smi-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
 .smi-row { display: contents; }
+/* On desktop the groups flow as one row; the owner controls float to the right, away from the Buy CTA. */
+.smi-seller > :first-child, .smi-mod > :first-child { margin-left: auto; }
 .smi-status { align-self: center; }
 .smi-offer { max-width: 8rem; }
 /* Single-column compact dialog (quick-create form). */
@@ -972,9 +974,11 @@ html.modal-open { overflow: hidden; }
         width: 100%; height: 100%; max-height: 100%; border-radius: 0; border: none;
     }
     .shop-modal-img { max-height: 36vh; }
-    /* Each action group gets its own full-width row (buyer line, then seller line); buttons share the row evenly. */
+    /* Each action group gets its own full-width row (buyer line, then seller line); the primary buttons share the
+       row evenly, while the owner icon-buttons stay left-aligned and compact. */
     .smi-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex-basis: 100%; }
     .smi-actions .btn { flex: 1 1 auto; justify-content: center; }
+    .smi-seller > :first-child, .smi-mod > :first-child { margin-left: 0; }
 }
 
 /* Quest-type icon picker — a visual palette (each swatch shows its Material glyph), not a text dropdown. */
