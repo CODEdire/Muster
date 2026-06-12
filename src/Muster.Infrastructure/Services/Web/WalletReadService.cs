@@ -59,12 +59,14 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     public async Task<PagedResult<MemberLedgerRow>> GetHistoryPageAsync(
         ulong guildId, ulong userId, string? code, string? search, string sortKey, bool descending,
         int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, CancellationToken ct = default)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, bool withRunningBalance = false,
+        CancellationToken ct = default)
     {
         // Resolve POINTS once so the wallet surface can never accidentally surface a points row.
         var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
         var pointsId = points?.Id;
 
+        Currency? currency = null;
         Guid? currencyId = null;
         if (!string.IsNullOrWhiteSpace(code))
         {
@@ -73,7 +75,7 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
                 return new PagedResult<MemberLedgerRow>([], page, pageSize, 0);
             }
 
-            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            currency = await db.FindCurrencyAsync(guildId, code, ct);
             if (currency is null)
             {
                 return new PagedResult<MemberLedgerRow>([], page, pageSize, 0);
@@ -85,17 +87,66 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         var size = Math.Clamp(pageSize, 1, 100);
         var p = Math.Max(page, 1);
         var skip = (p - 1) * size;
+        var codes = await db.CurrencyCodeMapAsync(guildId, ct);
+
+        // Running balance only makes sense scoped to a single non-seasonal currency (escrow account excluded).
+        if (withRunningBalance && currency is { IsSeasonal: false } && currencyId is { } cid)
+        {
+            var (balRows, balTotal) = await db.MemberLedgerPagedWithBalanceAsync(
+                guildId, userId, cid, search, sortKey, descending, skip, size, ct,
+                sources: sources, from: from, to: to, sign: sign);
+
+            var balItems = balRows
+                .Select(r => new MemberLedgerRow(codes.GetValueOrDefault(r.CurrencyId, "?"), r.Amount, r.SourceType, r.OccurredAt, r.Reason, r.BalanceAfter))
+                .ToList();
+
+            return new PagedResult<MemberLedgerRow>(balItems, p, size, balTotal);
+        }
 
         var (rows, total) = await db.MemberLedgerPagedAsync(
             guildId, userId, currencyId, search, sortKey, descending, skip, size, ct,
             excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign);
 
-        var codes = await db.CurrencyCodeMapAsync(guildId, ct);
         var items = rows
             .Select(r => new MemberLedgerRow(codes.GetValueOrDefault(r.CurrencyId, "?"), r.Amount, r.SourceType, r.OccurredAt, r.Reason))
             .ToList();
 
         return new PagedResult<MemberLedgerRow>(items, p, size, total);
+    }
+
+    /// <summary>All filtered wallet-ledger rows (POINTS excluded), capped, for a CSV export of the current view.</summary>
+    public async Task<IReadOnlyList<MemberLedgerRow>> GetHistoryForExportAsync(
+        ulong guildId, ulong userId, string? code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, int cap = 10000, CancellationToken ct = default)
+    {
+        var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
+        var pointsId = points?.Id;
+
+        Guid? currencyId = null;
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            if (string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return [];
+            }
+
+            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            if (currency is null)
+            {
+                return [];
+            }
+
+            currencyId = currency.Id;
+        }
+
+        var rows = await db.MemberLedgerAllAsync(
+            guildId, userId, currencyId, search, cap, ct,
+            excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign);
+
+        var codes = await db.CurrencyCodeMapAsync(guildId, ct);
+        return rows
+            .Select(r => new MemberLedgerRow(codes.GetValueOrDefault(r.CurrencyId, "?"), r.Amount, r.SourceType, r.OccurredAt, r.Reason))
+            .ToList();
     }
 
     /// <summary>Σ in / Σ out for the same filter the ledger datagrid is showing (POINTS excluded; same code/sources/

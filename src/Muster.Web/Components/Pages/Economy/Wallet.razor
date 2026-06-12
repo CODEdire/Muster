@@ -5,6 +5,8 @@
 @implements IDisposable
 @inject IServiceScopeFactory Scopes
 @inject Wolverine.IMessageBus Bus
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
@@ -214,6 +216,7 @@ else if (State == AccessState.Ready)
                 }
             </div>
             <div class="dg-actions">
+                <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
                 <button type="button" class="btn btn-sm btn-ghost" disabled="@_syncing" @onclick="ForceSyncAsync">Sync</button>
             </div>
         </div>
@@ -225,20 +228,24 @@ else if (State == AccessState.Ready)
                         <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
                         <th>Source</th>
                         <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
+                        @if (ShowBalanceCol)
+                        {
+                            <th class="num">Balance</th>
+                        }
                         <th>Reason</th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (_activity is null || _activity.Items.Count == 0)
                     {
-                        <tr class="dg-empty"><td colspan="4">@(_activity is null ? "Loading…" : "No activity matches these filters.")</td></tr>
+                        <tr class="dg-empty"><td colspan="@LedgerCols">@(_activity is null ? "Loading…" : "No activity matches these filters.")</td></tr>
                     }
                     else if (Grouped)
                     {
                         @foreach (var g in LedgerGroups())
                         {
                             <tr class="dg-group">
-                                <td colspan="4">@DateLabel(g.Date) <span class="grp-net @(g.Net >= 0 ? "pos" : "neg")">@(g.Net > 0 ? "+" : "")@g.Net.ToString("N0")</span></td>
+                                <td colspan="@LedgerCols">@DateLabel(g.Date) <span class="grp-net @(g.Net >= 0 ? "pos" : "neg")">@(g.Net > 0 ? "+" : "")@g.Net.ToString("N0")</span></td>
                             </tr>
                             @foreach (var h in g.Rows)
                             {
@@ -246,6 +253,10 @@ else if (State == AccessState.Ready)
                                     <td><LocalTime Value="h.OccurredAt" /></td>
                                     <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
                                     <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
+                                    @if (ShowBalanceCol)
+                                    {
+                                        <td class="num bal">@(h.BalanceAfter?.ToString("N0"))</td>
+                                    }
                                     <td>@h.Reason</td>
                                 </tr>
                             }
@@ -259,6 +270,10 @@ else if (State == AccessState.Ready)
                                 <td><LocalTime Value="h.OccurredAt" /></td>
                                 <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
                                 <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
+                                @if (ShowBalanceCol)
+                                {
+                                    <td class="num bal">@(h.BalanceAfter?.ToString("N0"))</td>
+                                }
                                 <td>@h.Reason</td>
                             </tr>
                         }

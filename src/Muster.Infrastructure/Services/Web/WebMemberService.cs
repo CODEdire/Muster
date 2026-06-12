@@ -10,7 +10,7 @@ namespace Muster.Infrastructure.Services.Web;
 
 /// <summary>One ledger row for the wallet/points activity datagrid. <see cref="Source"/> is the typed enum so the
 /// UI can render the right icon/label without re-parsing.</summary>
-public record MemberLedgerRow(string Currency, long Amount, CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason);
+public record MemberLedgerRow(string Currency, long Amount, CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason, long? BalanceAfter = null);
 
 public record MemberDetailView(
     ulong UserId,

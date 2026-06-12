@@ -73,6 +73,21 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
             : await db.MemberLedgerTotalsAsync(guildId, userId, points.Id, search, ct, sources: sources, from: from, to: to, sign: sign);
     }
 
+    /// <summary>All filtered POINTS rows (capped) for a CSV export of the current view.</summary>
+    public async Task<IReadOnlyList<MemberLedgerRow>> GetHistoryForExportAsync(
+        ulong guildId, ulong userId, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, int cap = 10000, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return [];
+        }
+
+        var rows = await db.MemberLedgerAllAsync(guildId, userId, points.Id, search, cap, ct, sources: sources, from: from, to: to, sign: sign);
+        return rows.Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason)).ToList();
+    }
+
     /// <summary>Supply analytics for POINTS (or null when POINTS isn't configured in this guild).</summary>
     public Task<CurrencySupply?> GetSupplyAsync(ulong guildId, CancellationToken ct = default)
         => scores.GetSupplyAsync(guildId, CurrencyCodes.PointsCode, ct);

@@ -245,6 +245,60 @@ public static class CurrencyLedgerQueries
         return (rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
     }
 
+    /// <summary>Like <see cref="MemberLedgerPagedAsync"/> but also returns each row's <b>running balance</b> (the
+    /// member's balance for this currency after that entry), computed over the full history via a correlated sum so
+    /// display filters don't distort it. Single non-seasonal currency only (season scope is null).</summary>
+    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason, long BalanceAfter)> Rows, int Total)> MemberLedgerPagedWithBalanceAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+    {
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, null, sources, from, to, sign);
+        var total = await q.CountAsync(ct);
+
+        q = (sortKey, descending) switch
+        {
+            ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
+            ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            (_, false) => q.OrderBy(e => e.Id),
+            _ => q.OrderByDescending(e => e.Id),
+        };
+
+        var rows = await q
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new
+            {
+                e.CurrencyId,
+                e.Amount,
+                e.SourceType,
+                e.OccurredAt,
+                e.Reason,
+                Bal = db.CurrencyLedgerEntries
+                    .Where(x => x.GuildId == guildId && x.UserId == userId && x.CurrencyId == currencyId && x.SeasonId == null
+                        && (x.OccurredAt < e.OccurredAt || (x.OccurredAt == e.OccurredAt && x.Id <= e.Id)))
+                    .Sum(x => (long?)x.Amount) ?? 0,
+            })
+            .ToListAsync(ct);
+
+        return (rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.Bal)).ToList(), total);
+    }
+
+    /// <summary>All filtered member-ledger rows (newest first, capped) for an export. Same filter as the datagrid.</summary>
+    public static async Task<List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)>> MemberLedgerAllAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, int cap, CancellationToken ct = default,
+        Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+    {
+        var rows = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign)
+            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
+            .Take(Math.Clamp(cap, 1, 50000))
+            .Select(e => new { e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .ToListAsync(ct);
+
+        return rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList();
+    }
+
     /// <summary>A user's most recent ledger entries across all currencies (newest first), projected for display.</summary>
     public static Task<List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)>> RecentHistoryAsync(
         this MusterDbContext db, ulong guildId, ulong userId, int count, CancellationToken ct = default)

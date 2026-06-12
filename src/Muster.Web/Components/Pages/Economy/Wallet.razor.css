@@ -86,6 +86,7 @@
 .dg-table tr.dg-group .grp-net { margin-left: 0.5rem; font-weight: 600; }
 .dg-table tr.dg-group .grp-net.pos { color: #4ade80; }
 .dg-table tr.dg-group .grp-net.neg { color: var(--danger); }
+.dg-table td.num.bal { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .dg-totals { font-size: 0.82rem; color: var(--text-muted); margin-left: 1rem; }
 .dg-totals .pos { color: #4ade80; }
 .dg-totals .neg { color: var(--danger); }

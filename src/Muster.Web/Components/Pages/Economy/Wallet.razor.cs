@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Muster.Contracts;
 using Muster.Domain;
 using Muster.Domain.Enums;
@@ -172,7 +174,8 @@ public partial class Wallet : IDisposable
             {
                 var wallet = sp.GetRequiredService<WalletReadService>();
                 _activity = await wallet.GetHistoryPageAsync(
-                    GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+                    GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size,
+                    sources: sources, from: from, to: to, sign: _sign, withRunningBalance: _sortKey == "when");
                 _totals = await wallet.GetHistoryTotalsAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign);
             }
         }
@@ -266,6 +269,41 @@ public partial class Wallet : IDisposable
 
     /// <summary>Day grouping only makes sense when the grid is date-ordered.</summary>
     private bool Grouped => _sortKey == "when";
+
+    /// <summary>The running-balance column shows only when the read path returned it (single non-seasonal currency,
+    /// date-sorted).</summary>
+    private bool ShowBalanceCol => _activity is { Items.Count: > 0 } && _activity.Items[0].BalanceAfter.HasValue;
+    private int LedgerCols => ShowBalanceCol ? 5 : 4;
+
+    /// <summary>Export the current filtered ledger view to CSV (whole filtered set, not just the page).</summary>
+    private async Task ExportCsvAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var (from, to) = ResolveRange(_preset);
+        var sources = _source is { } s ? new[] { s } : null;
+
+        IReadOnlyList<MemberLedgerRow> rows = SelIsPoints
+            ? await sp.GetRequiredService<PointsReadService>().GetHistoryForExportAsync(GuildId, UserId, _searchBox, sources, from, to, _sign)
+            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("When (UTC),Currency,Source,Amount,Reason");
+        foreach (var r in rows)
+        {
+            sb.Append(r.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(',')
+              .Append(Csv(r.Currency)).Append(',')
+              .Append(Csv(SourceLabel(r.Source))).Append(',')
+              .Append(r.Amount.ToString(CultureInfo.InvariantCulture)).Append(',')
+              .AppendLine(Csv(r.Reason));
+        }
+
+        var name = $"wallet-{_sel}-{DateTimeOffset.UtcNow.UtcDateTime:yyyyMMdd}.csv";
+        await JS.InvokeVoidAsync("musterDownload", name, sb.ToString(), "text/csv;charset=utf-8");
+    }
+
+    private static string Csv(string s) =>
+        s.Contains(',') || s.Contains('"') || s.Contains('\n') ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
 
     /// <summary>The current page's rows grouped by day (preserving the page's order), with each day's visible net.</summary>
     private IReadOnlyList<(DateOnly Date, long Net, List<MemberLedgerRow> Rows)> LedgerGroups()
