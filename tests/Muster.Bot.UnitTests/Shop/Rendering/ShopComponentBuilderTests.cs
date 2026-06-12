@@ -112,7 +112,7 @@ public class ShopComponentBuilderTests
     {
         var rows = ShopComponentBuilder.Listing(Detail(offersOpen: true), "all", Sort, Guild);
         var buttons = Buttons(rows[0]).ToList();
-        Assert.Contains(buttons, b => b.CustomId == $"{ShopComponentBuilder.Buy}:{Guild}:{Listing}");
+        Assert.Contains(buttons, b => b.CustomId == $"{ShopComponentBuilder.Buy}:{Guild}:{Listing}:1"); // default qty rides the Buy id
         Assert.Contains(buttons, b => b.CustomId == $"{ShopComponentBuilder.Offer}:{Guild}:{Listing}");
         Assert.Contains(buttons, b => b.CustomId!.StartsWith(ShopComponentBuilder.Back + ":"));
     }

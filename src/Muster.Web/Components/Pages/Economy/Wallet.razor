@@ -22,8 +22,7 @@ else if (State == AccessState.Ready)
     <nav class="wallet-crumb" aria-label="Breadcrumb">
         <a href="/guilds/@GuildId/me">Wallet</a>
         <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
-        <span class="avatar" aria-hidden="true">@Initials()</span>
-        <span class="who">@_displayName</span>
+        <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
     </nav>
 
     @if (Message is not null)
@@ -48,40 +47,82 @@ else if (State == AccessState.Ready)
         </div>
     }
 
-    <div class="stat-grid">
-        <div class="stat glass">
-            <div class="label">Balance</div>
-            <div class="num">@_kpis.Balance.ToString("N0") <span class="unit">@SelUnit</span></div>
-            <p class="subtitle">avail @_kpis.Available.ToString("N0")@(_kpis.Held > 0 ? $" · {_kpis.Held:N0} held" : "")</p>
+    <div class="kpi-band">
+        <div class="kpi-hero">
+            <div class="kpi-hero-top">
+                <div>
+                    <div class="label">Balance</div>
+                    <div class="hero-num">@_kpis.Balance.ToString("N0") <span class="unit">@SelUnit</span></div>
+                </div>
+                @if (TrendPct != 0)
+                {
+                    <span class="trend @(TrendPct >= 0 ? "up" : "down")">
+                        <span class="material-symbols-outlined" aria-hidden="true">@(TrendPct >= 0 ? "trending_up" : "trending_down")</span>
+                        @(TrendPct > 0 ? "+" : "")@TrendPct% · 30d
+                    </span>
+                }
+            </div>
             @if (!string.IsNullOrEmpty(SparkPoints()))
             {
-                <svg class="kpi-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+                <svg class="hero-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
                     <polyline points="@SparkPoints()" />
                 </svg>
             }
+            <div class="avail-bar" aria-hidden="true">
+                <div class="seg avail" style="width:@AvailPct%"></div>
+                <div class="seg held" style="width:@HeldPct%"></div>
+            </div>
+            <div class="avail-meta">
+                <span>available @_kpis.Available.ToString("N0")</span>
+                @if (_kpis.Held > 0)
+                {
+                    <span><span class="material-symbols-outlined" aria-hidden="true">lock</span> @_kpis.Held.ToString("N0") held · @_heldOrders order@(_heldOrders == 1 ? "" : "s")</span>
+                }
+            </div>
         </div>
-        <div class="stat glass">
-            <div class="label">Net flow · 30d</div>
-            <div class="num @(_kpis.Net >= 0 ? "pos" : "neg")">@(_kpis.Net > 0 ? "+" : "")@_kpis.Net.ToString("N0")</div>
-            <p class="subtitle">earned − spent</p>
-        </div>
-        <div class="stat glass">
-            <div class="label">Earned · 30d</div>
-            <div class="num">@_kpis.Earned.ToString("N0")</div>
-            <p class="subtitle">@(_earned.Count > 0 ? $"top: {SourceLabel(_earned[0].Source)}" : "—")</p>
-        </div>
-        <div class="stat glass">
-            <div class="label">Spent · 30d</div>
-            <div class="num">@_kpis.Spent.ToString("N0")</div>
-            @if (_kpis.Held > 0)
-            {
-                <p class="subtitle"><span class="material-symbols-outlined held" aria-hidden="true">lock</span> @_heldOrders open order@(_heldOrders == 1 ? "" : "s")</p>
-            }
+
+        <div class="kpi-side">
+            <div class="kpi-flow">
+                <div class="flow-head">
+                    <span class="label">Net flow · 30d</span>
+                    <span class="flow-net @(_kpis.Net >= 0 ? "pos" : "neg")">@(_kpis.Net > 0 ? "+" : "")@_kpis.Net.ToString("N0")</span>
+                </div>
+                <div class="flow-row">
+                    <span class="dir">in</span>
+                    <div class="flow-bar"><div class="fill in" style="width:@(_kpis.Earned * 100 / FlowMax)%"></div></div>
+                    <span class="fv">@_kpis.Earned.ToString("N0")</span>
+                </div>
+                <div class="flow-row">
+                    <span class="dir">out</span>
+                    <div class="flow-bar"><div class="fill out" style="width:@(_kpis.Spent * 100 / FlowMax)%"></div></div>
+                    <span class="fv">@_kpis.Spent.ToString("N0")</span>
+                </div>
+            </div>
+            <div class="kpi-mini-grid">
+                <div class="kpi-mini">
+                    <div class="label">Earned · 30d</div>
+                    <div class="mini-num">@_kpis.Earned.ToString("N0")
+                        @if (_prevEarned > 0)
+                        {
+                            <span class="delta @(EarnedDelta >= 0 ? "up" : "down")">@(EarnedDelta >= 0 ? "▲" : "▼")@Math.Abs(EarnedDelta)%</span>
+                        }
+                    </div>
+                </div>
+                <div class="kpi-mini">
+                    <div class="label">Spent · 30d</div>
+                    <div class="mini-num">@_kpis.Spent.ToString("N0")
+                        @if (_prevSpent > 0)
+                        {
+                            <span class="delta @(SpentDelta <= 0 ? "up" : "down")">@(SpentDelta >= 0 ? "▲" : "▼")@Math.Abs(SpentDelta)%</span>
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <div class="wallet-cols">
-        <div class="panel glass">
+        <div class="src-panel">
             <div class="panel-head">
                 <h2>Earned by source · 30d</h2>
                 <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet/analytics">Full analytics</a>

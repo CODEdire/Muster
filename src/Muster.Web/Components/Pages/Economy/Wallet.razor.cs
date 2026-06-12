@@ -19,6 +19,7 @@ public partial class Wallet : IDisposable
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private string _sel = "";
     private string _displayName = "";
+    private string? _avatarUrl;
 
     private CurrencyInfo? Selected => _currencies.FirstOrDefault(c => c.Code == _sel);
     private string SelUnit => Selected?.Code ?? "";
@@ -26,10 +27,22 @@ public partial class Wallet : IDisposable
 
     // --- KPIs / breakdown / sparkline (scoped to the selected currency, 30-day window) ---
     private WalletKpis _kpis = new(0, 0, 0, 0, 0, 0);
+    private long _prevEarned;
+    private long _prevSpent;
     private int _heldOrders;
     private IReadOnlyList<SourceFlow> _earned = [];
     private IReadOnlyList<BalancePoint> _series = [];
     private long EarnedMax => _earned.Count == 0 ? 1 : Math.Max(1, _earned.Max(s => s.Earned));
+
+    // Blended-KPI helpers.
+    private long BalancePrev => _kpis.Balance - _kpis.Net;
+    private int TrendPct => BalancePrev <= 0 ? 0 : (int)(_kpis.Net * 100 / BalancePrev);
+    private int AvailPct => _kpis.Balance <= 0 ? 100 : (int)(_kpis.Available * 100 / _kpis.Balance);
+    private int HeldPct => _kpis.Balance <= 0 ? 0 : (int)(_kpis.Held * 100 / _kpis.Balance);
+    private long FlowMax => Math.Max(1, Math.Max(_kpis.Earned, _kpis.Spent));
+    private static int Delta(long now, long prev) => prev <= 0 ? (now > 0 ? 100 : 0) : (int)((now - prev) * 100 / prev);
+    private int EarnedDelta => Delta(_kpis.Earned, _prevEarned);
+    private int SpentDelta => Delta(_kpis.Spent, _prevSpent);
 
     // --- Quick transfer ---
     private IReadOnlyList<MemberOption> _recipients = [];
@@ -73,6 +86,7 @@ public partial class Wallet : IDisposable
 
         var detail = await members.GetAsync(GuildId, UserId, historyCount: 1);
         _displayName = detail.DisplayName;
+        _avatarUrl = detail.AvatarUrl;
 
         await LoadScopeAsync();
     }
@@ -114,6 +128,9 @@ public partial class Wallet : IDisposable
         var from = to.AddDays(-30);
 
         _kpis = await wallet.GetKpisAsync(GuildId, UserId, _sel, from, to);
+        var prev = await wallet.GetKpisAsync(GuildId, UserId, _sel, from.AddDays(-30), from);
+        _prevEarned = prev.Earned;
+        _prevSpent = prev.Spent;
         _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, UserId, _sel) : 0;
         var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(4).ToList();
@@ -223,24 +240,6 @@ public partial class Wallet : IDisposable
     }
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
-
-    /// <summary>Initials for the breadcrumb avatar (first letters of the display name, up to two).</summary>
-    private string Initials()
-    {
-        var parts = _displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-        {
-            return "?";
-        }
-
-        var s = parts[0][..1];
-        if (parts.Length > 1)
-        {
-            s += parts[^1][..1];
-        }
-
-        return s.ToUpperInvariant();
-    }
 
     /// <summary>Balance sparkline as an SVG polyline points string over a 100×30 viewbox (empty when too few points).</summary>
     private string SparkPoints()
