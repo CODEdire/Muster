@@ -41,7 +41,7 @@ else if (State == AccessState.Ready)
                     }
                 </div>
             }
-            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/guild-ledger"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</a>
+            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/treasury/ledger"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</a>
         </div>
     </div>
 
@@ -145,7 +145,7 @@ else if (State == AccessState.Ready)
                 }
             </div>
             <div class="t-card">
-                <div class="panel-head"><h2>Recent movement</h2><a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/guild-ledger">Ledger ↗</a></div>
+                <div class="panel-head"><h2>Recent movement</h2><a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/treasury/ledger">Ledger ↗</a></div>
                 @if (_recent.Count == 0)
                 {
                     <p class="subtitle">No movement yet.</p>

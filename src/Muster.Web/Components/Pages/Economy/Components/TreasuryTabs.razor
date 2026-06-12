@@ -15,9 +15,9 @@
     private IEnumerable<(string Key, string Label, string Icon, string Href)> Tabs =>
     [
         ("overview", "Overview", "account_balance", $"/guilds/{GuildId}/treasury"),
-        ("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/guild-ledger"),
+        ("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger"),
         ("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution"),
         ("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow"),
-        ("participation", "Participation", "trophy", $"/guilds/{GuildId}/guild-points"),
+        ("participation", "Participation", "trophy", $"/guilds/{GuildId}/treasury/participation"),
     ];
 }
