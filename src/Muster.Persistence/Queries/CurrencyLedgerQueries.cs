@@ -212,7 +212,9 @@ public static class CurrencyLedgerQueries
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            q = q.Where(e => e.Reason.Contains(s));
+            // Match the reason or the counterparty's name (username / global name) so search covers the party too.
+            q = q.Where(e => e.Reason.Contains(s)
+                || db.Users.Any(u => u.Id == e.CounterpartyId && (u.Username.Contains(s) || (u.GlobalName != null && u.GlobalName.Contains(s)))));
         }
 
         return q;

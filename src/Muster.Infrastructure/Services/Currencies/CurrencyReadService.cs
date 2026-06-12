@@ -10,8 +10,9 @@ public record WalletBalance(string CurrencyCode, string CurrencyName, long Balan
 /// <summary>One ledger entry projected for display (currency resolved to its code; amount signed, source as a string).</summary>
 public record LedgerHistoryEntry(string CurrencyCode, long Amount, string SourceType, DateTimeOffset OccurredAt, string Reason);
 
-/// <summary>A currency in the member-facing directory ("what exists / what's it for").</summary>
-public record CurrencyInfo(string Code, string Name, bool Spendable, bool Seasonal, bool Transferable = false, bool Primary = false);
+/// <summary>A currency in the member-facing directory ("what exists / what's it for"). <see cref="External"/> is true
+/// for connector-backed currencies (External/Hybrid mode) — the only ones a member can force-sync.</summary>
+public record CurrencyInfo(string Code, string Name, bool Spendable, bool Seasonal, bool Transferable = false, bool Primary = false, bool External = false);
 
 /// <summary>Supply analytics for one currency (admin overview). <see cref="Minted"/>/<see cref="Removed"/> are all-time
 /// gross inflow/outflow; <see cref="Circulating"/> is member-held; <see cref="Escrow"/> is held by the house account.</summary>
@@ -115,7 +116,7 @@ public class CurrencyReadService(MusterDbContext db) : ICurrencyReadService
         var currencies = await db.ListCurrenciesAsync(guildId, ct);
         return currencies
             .OrderBy(c => c.Code)
-            .Select(c => new CurrencyInfo(c.Code, c.Name, c.IsSpendable, c.IsSeasonal, c.IsTransferable, c.IsPrimary))
+            .Select(c => new CurrencyInfo(c.Code, c.Name, c.IsSpendable, c.IsSeasonal, c.IsTransferable, c.IsPrimary, c.Mode != Muster.Domain.Enums.CurrencyMode.Internal))
             .ToList();
     }
 

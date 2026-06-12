@@ -1377,6 +1377,7 @@ img.avatar-sm { object-fit: cover; }
 .wallet-crumb a { color: var(--text-muted); font-weight: 600; }
 .wallet-crumb a:hover { color: var(--text); }
 .wallet-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+.wallet-crumb .wallet-ico { font-size: 1.7rem; color: var(--accent); margin-right: 0.15rem; }
 .wallet-crumb .user-chip .avatar-sm { width: 30px; height: 30px; font-size: 0.85rem; }
 .wallet-crumb .user-chip-name b { font-size: 1.35rem; font-weight: 600; }
 /* Make a standalone datagrid fill the viewport height (full-frame pages like shop disputes). */

@@ -16,8 +16,9 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="wallet-head">
+    <div class="wallet-head t-wide">
         <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
             <a href="/guilds/@GuildId/wallet">Wallet</a>
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
             <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
@@ -99,6 +100,75 @@ else if (State == AccessState.Ready)
                             <span class="val">+@s.Earned.ToString("N0")</span>
                         </div>
                     }
+                }
+            </div>
+        </div>
+
+        <div class="pp-cols">
+            <div class="pp-card">
+                <div class="panel-head"><h2>Cumulative points</h2><span class="legend">your running total across seasons</span></div>
+                @if (_seasonTotals.Count < 2)
+                {
+                    <p class="subtitle">Not enough seasons yet to plot a curve.</p>
+                }
+                else
+                {
+                    var cum = new List<long>(_seasonTotals.Count);
+                    long run = 0;
+                    foreach (var s in _seasonTotals) { run += s.Total; cum.Add(run); }
+                    var cmax = Math.Max(1L, cum.Max());
+                    var cn = cum.Count;
+                    var cline = new System.Text.StringBuilder();
+                    for (var i = 0; i < cn; i++)
+                    {
+                        var x = i * (600.0 / (cn - 1));
+                        var y = 140 - cum[i] / (double)cmax * 122;
+                        cline.Append(Fmt(x)).Append(',').Append(Fmt(y)).Append(' ');
+                    }
+                    var cpts = cline.ToString().Trim();
+                    <svg class="pp-area" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+                        <line x1="0" y1="140" x2="600" y2="140" class="axis" />
+                        <polygon class="fill" points="@($"0,140 {cpts} 600,140")" />
+                        <polyline class="line" points="@cpts" />
+                    </svg>
+                    <div class="pp-axis-labels">
+                        @foreach (var (s, i) in _seasonTotals.Select((s, i) => (s, i)))
+                        {
+                            <span>@s.Season.Name<br /><span class="cnt">@cum[i].ToString("N0")</span></span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="pp-card">
+                <div class="panel-head"><h2>Source mix · 30d</h2></div>
+                @if (_earned.Count == 0)
+                {
+                    <p class="subtitle">No points earned in this window.</p>
+                }
+                else
+                {
+                    var total = Math.Max(1L, _earned.Sum(s => s.Earned));
+                    var palette = new[] { "#1D9E75", "#378ADD", "#7F77DD", "#EF9F27", "#888780" };
+                    double off = 0;
+                    <div class="pp-donut">
+                        <svg width="112" height="112" viewBox="0 0 120 120" aria-hidden="true">
+                            <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16" />
+                            @for (var i = 0; i < _earned.Count; i++)
+                            {
+                                var frac = _earned[i].Earned / (double)total * 301.593;
+                                <circle cx="60" cy="60" r="48" fill="none" stroke="@palette[i % palette.Length]" stroke-width="16"
+                                        stroke-dasharray="@($"{Fmt(frac)} 301.593")" stroke-dashoffset="@Fmt(-off)" transform="rotate(-90 60 60)" />
+                                off += frac;
+                            }
+                        </svg>
+                        <div class="pp-donut-legend">
+                            @for (var i = 0; i < _earned.Count; i++)
+                            {
+                                <div><span class="pp-dot" style="background:@palette[i % palette.Length]"></span>@SourceLabel(_earned[i].Source) <b>@((_earned[i].Earned * 100 / total))%</b></div>
+                            }
+                        </div>
+                    </div>
                 }
             </div>
         </div>

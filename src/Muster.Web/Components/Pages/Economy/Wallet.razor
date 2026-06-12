@@ -24,6 +24,7 @@ else if (State == AccessState.Ready)
 {
     <div class="wallet-head">
         <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
             <a href="/guilds/@GuildId/me">Wallet</a>
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
             <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
@@ -246,7 +247,10 @@ else if (State == AccessState.Ready)
                     <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
                 </div>
                 <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
-                <button type="button" class="btn btn-sm btn-ghost" disabled="@_syncing" @onclick="ForceSyncAsync">Sync</button>
+                @if (Selected?.External == true)
+                {
+                    <button type="button" class="btn btn-sm btn-ghost" disabled="@_syncing" @onclick="ForceSyncAsync">Sync</button>
+                }
         </Actions>
         <ChildContent>
             <table class="dg-table">

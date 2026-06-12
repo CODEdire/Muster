@@ -22,6 +22,7 @@ else if (State == AccessState.Ready)
 {
     <div class="wallet-head">
         <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
             <a href="/guilds/@GuildId/wallet">Wallet</a>
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
             <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
@@ -124,7 +125,7 @@ else if (State == AccessState.Ready)
                     <option value="100">100</option>
                 </select>
             </div>
-            <span class="dg-totals">Σ <span class="pos">+@_totals.In.ToString("N0")</span> / <span class="neg">−@_totals.Out.ToString("N0")</span></span>
+            <span class="dg-totals">Σ earned <span class="pos">+@_totals.In.ToString("N0")</span></span>
         </FooterLeft>
     </LedgerFrame>
 }
