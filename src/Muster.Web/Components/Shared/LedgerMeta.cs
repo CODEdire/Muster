@@ -20,6 +20,8 @@ public static class LedgerMeta
         CurrencyLedgerSource.Adjustment => "Adjustment",
         CurrencyLedgerSource.Checkpoint => "Checkpoint",
         CurrencyLedgerSource.Background => "Background",
+        CurrencyLedgerSource.Shop => "Shop",
+        CurrencyLedgerSource.ShopFee => "Fee",
         _ => source.ToString(),
     };
 
@@ -36,6 +38,8 @@ public static class LedgerMeta
         CurrencyLedgerSource.Adjustment => "tune",
         CurrencyLedgerSource.Checkpoint => "flag",
         CurrencyLedgerSource.Background => "sensors",
+        CurrencyLedgerSource.Shop => "shopping_bag",
+        CurrencyLedgerSource.ShopFee => "percent",
         _ => "receipt_long",
     };
 

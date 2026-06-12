@@ -1,6 +1,8 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Contracts;
+using Muster.Domain;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Connectors;
 using Muster.Infrastructure.Services.Currencies;
@@ -13,8 +15,31 @@ namespace Muster.Web.Components.Pages.Economy;
 
 public partial class Wallet : IDisposable
 {
-    // Activity grid local state.
-    private string? _code;
+    // --- Currencies + selection ---
+    private IReadOnlyList<CurrencyInfo> _currencies = [];
+    private string _sel = "";
+    private string _displayName = "";
+
+    private CurrencyInfo? Selected => _currencies.FirstOrDefault(c => c.Code == _sel);
+    private string SelUnit => Selected?.Code ?? "";
+    private bool SelIsPoints => string.Equals(_sel, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase);
+
+    // --- KPIs / breakdown / sparkline (scoped to the selected currency, 30-day window) ---
+    private WalletKpis _kpis = new(0, 0, 0, 0, 0, 0);
+    private int _heldOrders;
+    private IReadOnlyList<SourceFlow> _earned = [];
+    private IReadOnlyList<BalancePoint> _series = [];
+    private long EarnedMax => _earned.Count == 0 ? 1 : Math.Max(1, _earned.Max(s => s.Earned));
+
+    // --- Quick transfer ---
+    private IReadOnlyList<MemberOption> _recipients = [];
+    private SendInput Send { get; set; } = new();
+    private bool _sending;
+    private bool _syncing;
+
+    private IEnumerable<CurrencyInfo> Sendable => _currencies.Where(c => c is { Spendable: true, Transferable: true });
+
+    // --- Ledger datagrid state ---
     private string _preset = "";
     private CurrencyLedgerSource? _source;
     private const int SearchDebounceMs = 350;
@@ -25,17 +50,7 @@ public partial class Wallet : IDisposable
     private int _page = 1;
     private int _size = 25;
     private bool _loading;
-
-    private string _displayName = "";
-    private IReadOnlyList<WalletBalance> _wallets = [];
-    private IReadOnlyList<CurrencyInfo> _currencies = [];
-    private IReadOnlyList<CurrencyInfo> _spendable = [];
-    private IReadOnlyList<MemberOption> _recipients = [];
     private PagedResult<MemberLedgerRow>? _activity;
-    private bool _sending;
-    private bool _syncing;
-
-    private SendInput Send { get; set; } = new();
 
     private int TotalPages => _activity?.TotalPages ?? 1;
 
@@ -43,51 +58,95 @@ public partial class Wallet : IDisposable
     {
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
-        var wallet = sp.GetRequiredService<WalletReadService>();
+        var currencies = sp.GetRequiredService<ICurrencyReadService>();
         var members = sp.GetRequiredService<WebMemberService>();
 
-        _currencies = await wallet.GetCurrenciesAsync(GuildId);
-        _spendable = _currencies.Where(c => c.Spendable).ToList();
+        _currencies = await currencies.GetCurrenciesAsync(GuildId);
         _recipients = await members.GetRecipientsAsync(GuildId, UserId);
-        Send.Currency ??= _spendable.FirstOrDefault()?.Code;
 
-        // Display name + initial activity load.
+        // Open on the guild's primary/default currency; fall back to the first spendable, then any.
+        _sel = _currencies.FirstOrDefault(c => c.Primary)?.Code
+            ?? _currencies.FirstOrDefault(c => c.Spendable)?.Code
+            ?? _currencies.FirstOrDefault()?.Code
+            ?? "";
+        Send.Currency ??= Sendable.FirstOrDefault()?.Code;
+
         var detail = await members.GetAsync(GuildId, UserId, historyCount: 1);
         _displayName = detail.DisplayName;
+
+        await LoadScopeAsync();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (State == AccessState.Ready && _activity is null)
+        if (State == AccessState.Ready && _activity is null && !string.IsNullOrEmpty(_sel))
         {
-            await ReloadAsync();
+            await ReloadLedgerAsync();
         }
     }
 
-    private async Task ReloadAsync()
+    private async Task SelectCurrency(string code)
     {
+        if (code == _sel)
+        {
+            return;
+        }
+
+        _sel = code;
+        _page = 1;
+        _source = null;
+        await LoadScopeAsync();
+        await ReloadLedgerAsync();
+    }
+
+    /// <summary>Load the KPI bundle, earned-by-source and balance sparkline for the selected currency (30-day window).</summary>
+    private async Task LoadScopeAsync()
+    {
+        if (string.IsNullOrEmpty(_sel))
+        {
+            return;
+        }
+
+        await using var scope = Scopes.CreateAsyncScope();
+        var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
+
+        var to = DateTimeOffset.UtcNow;
+        var from = to.AddDays(-30);
+
+        _kpis = await wallet.GetKpisAsync(GuildId, UserId, _sel, from, to);
+        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, UserId, _sel) : 0;
+        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to);
+        _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(4).ToList();
+        _series = await wallet.GetBalanceSeriesAsync(GuildId, UserId, _sel, from, to);
+    }
+
+    private async Task ReloadLedgerAsync()
+    {
+        if (string.IsNullOrEmpty(_sel))
+        {
+            return;
+        }
+
         _loading = true;
         try
         {
             await using var scope = Scopes.CreateAsyncScope();
             var sp = scope.ServiceProvider;
-            var wallet = sp.GetRequiredService<WalletReadService>();
-            var sync = sp.GetRequiredService<CurrencyConnectorSyncService>();
 
-            // On-visit reconcile of any External/Hybrid balances, throttled to once per 5 minutes per wallet.
-            await sync.SyncMemberDueAsync(GuildId, UserId, force: false);
-
-            _wallets = await wallet.GetWalletsAsync(GuildId, UserId);
+            // On-visit reconcile of any External/Hybrid balances (skipped for the seasonal points score).
+            if (!SelIsPoints)
+            {
+                await sp.GetRequiredService<CurrencyConnectorSyncService>().SyncMemberDueAsync(GuildId, UserId, force: false);
+            }
 
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
-            _activity = await wallet.GetHistoryPageAsync(
-                GuildId, UserId,
-                string.IsNullOrWhiteSpace(_code) ? null : _code,
-                _searchBox,
-                _sortKey, _descending,
-                _page, _size,
-                sources: sources, from: from, to: to);
+
+            _activity = SelIsPoints
+                ? await sp.GetRequiredService<PointsReadService>().GetHistoryPageAsync(
+                    GuildId, UserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to)
+                : await sp.GetRequiredService<WalletReadService>().GetHistoryPageAsync(
+                    GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to);
         }
         finally
         {
@@ -95,19 +154,11 @@ public partial class Wallet : IDisposable
         }
     }
 
-    private async Task OnCode(ChangeEventArgs e)
-    {
-        var v = (e.Value as string)?.Trim();
-        _code = string.IsNullOrEmpty(v) ? null : v;
-        _page = 1;
-        await ReloadAsync();
-    }
-
     private async Task OnRange(ChangeEventArgs e)
     {
         _preset = (e.Value as string) ?? "";
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task OnSource(ChangeEventArgs e)
@@ -115,7 +166,7 @@ public partial class Wallet : IDisposable
         var raw = e.Value as string;
         _source = string.IsNullOrEmpty(raw) || !Enum.TryParse<CurrencyLedgerSource>(raw, out var v) ? null : v;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task DebouncedSearchAsync()
@@ -134,7 +185,7 @@ public partial class Wallet : IDisposable
         if (!cts.IsCancellationRequested)
         {
             _page = 1;
-            await ReloadAsync();
+            await ReloadLedgerAsync();
         }
     }
 
@@ -143,14 +194,14 @@ public partial class Wallet : IDisposable
         _descending = _sortKey == column ? !_descending : true;
         _sortKey = column;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task OnSize(ChangeEventArgs e)
     {
         _size = int.TryParse(e.Value as string, out var v) ? v : 25;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task Prev()
@@ -158,7 +209,7 @@ public partial class Wallet : IDisposable
         if (_page > 1)
         {
             _page--;
-            await ReloadAsync();
+            await ReloadLedgerAsync();
         }
     }
 
@@ -167,11 +218,54 @@ public partial class Wallet : IDisposable
         if (_page < TotalPages)
         {
             _page++;
-            await ReloadAsync();
+            await ReloadLedgerAsync();
         }
     }
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    /// <summary>Initials for the breadcrumb avatar (first letters of the display name, up to two).</summary>
+    private string Initials()
+    {
+        var parts = _displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return "?";
+        }
+
+        var s = parts[0][..1];
+        if (parts.Length > 1)
+        {
+            s += parts[^1][..1];
+        }
+
+        return s.ToUpperInvariant();
+    }
+
+    /// <summary>Balance sparkline as an SVG polyline points string over a 100×30 viewbox (empty when too few points).</summary>
+    private string SparkPoints()
+    {
+        if (_series.Count < 2)
+        {
+            return "";
+        }
+
+        long min = _series.Min(p => p.Balance);
+        long max = _series.Max(p => p.Balance);
+        double range = max - min == 0 ? 1 : max - min;
+        int n = _series.Count;
+
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < n; i++)
+        {
+            double x = i * (100.0 / (n - 1));
+            double y = 29 - (_series[i].Balance - min) / range * 28;
+            sb.Append(x.ToString("0.#", CultureInfo.InvariantCulture)).Append(',')
+              .Append(y.ToString("0.#", CultureInfo.InvariantCulture)).Append(' ');
+        }
+
+        return sb.ToString().TrimEnd();
+    }
 
     private async Task SendAsync()
     {
@@ -215,6 +309,7 @@ public partial class Wallet : IDisposable
                 {
                     "InsufficientFunds" => "You don't have enough for that.",
                     "CurrencyNotFound" => "That currency doesn't exist here.",
+                    "NotTransferable" => "That currency can't be transferred.",
                     "Forbidden" => "You're not allowed to do that.",
                     var other => other,
                 };
@@ -227,7 +322,8 @@ public partial class Wallet : IDisposable
         finally
         {
             _sending = false;
-            await ReloadAsync();
+            await LoadScopeAsync();
+            await ReloadLedgerAsync();
         }
     }
 
@@ -249,7 +345,8 @@ public partial class Wallet : IDisposable
         finally
         {
             _syncing = false;
-            await ReloadAsync();
+            await LoadScopeAsync();
+            await ReloadLedgerAsync();
         }
     }
 
