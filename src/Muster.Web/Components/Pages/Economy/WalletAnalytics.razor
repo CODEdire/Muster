@@ -113,7 +113,11 @@ else if (State == AccessState.Ready)
             <h2>Balance@(IsScore ? "" : " · candles per month")</h2>
             @if (!IsScore && _candles.Count > 0)
             {
-                <span class="legend"><span class="sw earned"></span>up <span class="sw spent"></span>down <span class="ln close"></span>balance <span class="ln trend"></span>trend</span>
+                <span class="legend">
+                    <span title="Each candle is one month. The body spans that month's opening → closing balance; the wick its high and low. Green = balance rose that month, red = it fell."><span class="sw earned"></span>up <span class="sw spent"></span>down</span>
+                    <span title="Your balance at each month's close, joined into a line."><span class="ln close"></span>balance</span>
+                    <span title="A straight best-fit line over the closes — your overall direction across the window."><span class="ln trend"></span>trend</span>
+                </span>
             }
         </div>
         @if (IsScore)

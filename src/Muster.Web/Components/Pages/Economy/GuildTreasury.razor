@@ -94,7 +94,12 @@ else if (State == AccessState.Ready)
         <div class="t-card">
             <div class="panel-head">
                 <h2>Circulating supply · monthly candles</h2>
-                <span class="legend"><span class="sw up"></span>up <span class="sw down"></span>down <span class="ln close"></span>close <span class="ln ma"></span>3-mo avg <span class="ln trend"></span>trend</span>
+                <span class="legend">
+                    <span title="Each candle is one month. The body spans that month's opening → closing circulating supply; the thin wick its high and low. Green = supply grew that month, red = it shrank."><span class="sw up"></span>up <span class="sw down"></span>down</span>
+                    <span title="Circulating supply at each month's close, joined into a line."><span class="ln close"></span>close</span>
+                    <span title="3-month moving average of the closes — smooths out the month-to-month noise to show the underlying trend."><span class="ln ma"></span>3-mo avg</span>
+                    <span title="A straight best-fit line over the closes — the overall direction of supply across the whole window."><span class="ln trend"></span>trend</span>
+                </span>
             </div>
             @if (_candles.Count == 0)
             {
