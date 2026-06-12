@@ -1,0 +1,167 @@
+@page "/guilds/{GuildIdRaw}/treasury"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+<PageTitle>Treasury — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="t-head">
+        <nav class="t-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/admin">Guild</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <span class="who">Treasury</span>
+        </nav>
+        <div class="t-controls">
+            @if (_currencies.Count > 1)
+            {
+                <div class="t-switch" role="tablist">
+                    @foreach (var c in _currencies)
+                    {
+                        <button type="button" role="tab" class="cur-tab @(c.Code == _code ? "active" : "")"
+                                aria-selected="@(c.Code == _code)" @onclick="() => SelectCurrency(c.Code)">
+                            @if (c.Primary)
+                            {
+                                <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
+                            }
+                            @c.Code
+                        </button>
+                    }
+                </div>
+            }
+            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/guild-ledger"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</a>
+        </div>
+    </div>
+
+    <TreasuryTabs GuildId="GuildId" Active="overview" />
+
+    <p class="t-note">Currency configuration lives in <a href="/guilds/@GuildId/currencies">Admin · Currencies</a> — here you read the economy and mint / adjust / sync.</p>
+
+    @if (_currencies.Count == 0)
+    {
+        <div class="panel glass empty">No wallet currencies are configured yet (Points has its own Participation tab).</div>
+    }
+    else if (_supply is not null)
+    {
+        <div class="t-band">
+            <div class="t-hero">
+                <div class="t-hero-top">
+                    <div>
+                        <div class="label">Circulating supply</div>
+                        <div class="hero-num">@_supply.Circulating.ToString("N0") <span class="unit">@_code</span></div>
+                    </div>
+                    @if (TrendPct != 0)
+                    {
+                        <span class="trend @(TrendPct >= 0 ? "up" : "down")">
+                            <span class="material-symbols-outlined" aria-hidden="true">@(TrendPct >= 0 ? "trending_up" : "trending_down")</span>
+                            @(TrendPct > 0 ? "+" : "")@TrendPct% · 6mo
+                        </span>
+                    }
+                </div>
+                <div class="supply-bar" aria-hidden="true">
+                    <div class="seg circ" style="width:@CircPct%"></div>
+                    <div class="seg escrow" style="width:@EscrowPct%"></div>
+                    <div class="seg burned" style="width:@BurnedPct%"></div>
+                </div>
+                <div class="supply-meta">
+                    <span><span class="dot circ"></span>circulating</span>
+                    <span><span class="dot escrow"></span>escrow @_supply.Escrow.ToString("N0")</span>
+                    <span><span class="dot burned"></span>burned @_supply.Removed.ToString("N0")</span>
+                    <span style="margin-left:auto">minted @_supply.Minted.ToString("N0")</span>
+                </div>
+            </div>
+            <div class="t-side">
+                <div class="t-stat"><div class="label">Net supply · 6mo</div><div class="num @(NetSupply >= 0 ? "pos" : "neg")">@(NetSupply > 0 ? "+" : "")@NetSupply.ToString("N0")</div></div>
+                <div class="t-mini-grid">
+                    <div class="t-stat"><div class="label">Holders</div><div class="mini-num">@_supply.Holders.ToString("N0")</div></div>
+                    <div class="t-stat"><div class="label">In escrow</div><div class="mini-num">@_supply.Escrow.ToString("N0")</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="t-card">
+            <div class="panel-head">
+                <h2>Circulating supply · monthly candles</h2>
+                <span class="legend"><span class="sw up"></span>up <span class="sw down"></span>down <span class="ln close"></span>close <span class="ln ma"></span>3-mo avg <span class="ln trend"></span>trend</span>
+            </div>
+            @if (_candles.Count == 0)
+            {
+                <p class="subtitle">Not enough history yet — supply movement will plot here.</p>
+            }
+            else
+            {
+                <svg class="t-candles" viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
+                    <line x1="0" y1="172" x2="600" y2="172" class="axis" />
+                    @if (_trend is { } t)
+                    {
+                        <line class="trend" x1="@Fmt(t.X1)" y1="@Fmt(t.Y1)" x2="@Fmt(t.X2)" y2="@Fmt(t.Y2)" />
+                    }
+                    @foreach (var c in _candles)
+                    {
+                        <line class="wick @(c.Up ? "up" : "down")" x1="@Fmt(c.X)" y1="@Fmt(c.WickTop)" x2="@Fmt(c.X)" y2="@Fmt(c.WickTop + c.WickH)" />
+                        <rect class="body @(c.Up ? "up" : "down")" x="@Fmt(c.X - c.BodyW / 2)" y="@Fmt(c.BodyTop)" width="@Fmt(c.BodyW)" height="@Fmt(c.BodyH)" rx="1" />
+                    }
+                    <polyline class="ma" points="@_maLine" />
+                    <polyline class="close" points="@_closeLine" />
+                </svg>
+                <div class="t-mlabels">
+                    @foreach (var c in _candles)
+                    {
+                        <span>@c.Label</span>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="t-cols">
+            <div class="t-card">
+                <div class="panel-head"><h2>Top holders</h2><a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/guild-ledger">Distribution ↗</a></div>
+                @if (_topHolders.Count == 0)
+                {
+                    <p class="subtitle">No balances yet.</p>
+                }
+                else
+                {
+                    @foreach (var h in _topHolders)
+                    {
+                        <div class="hold-row">
+                            <span class="rank">@h.Rank</span>
+                            <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
+                            <span class="hold-val">@h.Total.ToString("N0")</span>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="t-card">
+                <div class="panel-head"><h2>Recent movement</h2><a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/guild-ledger">Ledger ↗</a></div>
+                @if (_recent.Count == 0)
+                {
+                    <p class="subtitle">No movement yet.</p>
+                }
+                else
+                {
+                    @foreach (var m in _recent)
+                    {
+                        <div class="mv-row">
+                            <span class="mv-src"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(m.Source)</span>@SourceLabel(m.Source)</span>
+                            <span class="mv-who">@(m.Account == "member" ? m.DisplayName : m.DisplayName)</span>
+                            <span class="mv-amt @(m.Amount < 0 ? "neg" : "pos")">@(m.Amount >= 0 ? "+" : "")@m.Amount.ToString("N0")</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+}

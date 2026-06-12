@@ -9,6 +9,7 @@
 @using Muster.Infrastructure.Services.Tracking
 @using Muster.Infrastructure.Services.Web
 @using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
 <PageTitle>Guild points — Muster</PageTitle>
@@ -20,10 +21,14 @@
 else if (State == AccessState.Ready)
 {
     <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/admin">← Admin</a>
-        <h1>Guild points</h1>
-        <p class="subtitle">Supply, top holders, and points movement across this server.</p>
+        <nav class="t-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/treasury">Treasury</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <span class="who">Participation</span>
+        </nav>
     </div>
+
+    <TreasuryTabs GuildId="GuildId" Active="participation" />
 
     @if (_supply is null)
     {

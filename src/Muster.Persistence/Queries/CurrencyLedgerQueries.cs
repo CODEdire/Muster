@@ -577,6 +577,34 @@ public static class CurrencyLedgerQueries
             .ToList();
     }
 
+    /// <summary>Circulating supply (member-held only — excludes the escrow account 0 and burn sink 1) just before
+    /// <paramref name="asOf"/>: the opening point for the guild supply-over-time / candle chart.</summary>
+    public static async Task<long> GuildCirculatingAsOfAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, DateTimeOffset asOf, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.OccurredAt < asOf)
+            .SumAsync(e => (long?)e.Amount, ct) ?? 0;
+
+    /// <summary>Net change in circulating supply per day over a window (member-held only) — the caller seeds with
+    /// <see cref="GuildCirculatingAsOfAsync"/> and accumulates to plot circulating supply over time.</summary>
+    public static async Task<List<(int Year, int Month, int Day, long Net)>> GuildCirculatingDailyNetAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month, e.OccurredAt.Day })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Net = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows
+            .OrderBy(r => r.Year).ThenBy(r => r.Month).ThenBy(r => r.Day)
+            .Select(r => (r.Year, r.Month, r.Day, r.Net))
+            .ToList();
+    }
+
     /// <summary>Earned/spent totals per calendar month for a member over a window — the cash-flow-by-month chart.</summary>
     public static async Task<List<(int Year, int Month, long Earned, long Spent)>> MonthlyCashFlowAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,

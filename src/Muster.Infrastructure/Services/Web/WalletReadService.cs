@@ -379,6 +379,29 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         return points;
     }
 
+    /// <summary>Circulating supply (member-held) at the end of each day with movement in the window — the guild
+    /// treasury supply-over-time / candle chart. Seeded from the opening circulating balance before the window.</summary>
+    public async Task<IReadOnlyList<BalancePoint>> GetSupplySeriesAsync(
+        ulong guildId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var running = await db.GuildCirculatingAsOfAsync(guildId, scope.Id, scope.SeasonId, from, ct);
+        var daily = await db.GuildCirculatingDailyNetAsync(guildId, scope.Id, scope.SeasonId, from, to, ct);
+
+        var points = new List<BalancePoint>(daily.Count);
+        foreach (var d in daily)
+        {
+            running += d.Net;
+            points.Add(new BalancePoint(new DateTimeOffset(d.Year, d.Month, d.Day, 0, 0, 0, TimeSpan.Zero), running));
+        }
+
+        return points;
+    }
+
     /// <summary>Earned/spent per calendar month over the window — the cash-flow-by-month chart.</summary>
     public async Task<IReadOnlyList<MonthFlow>> GetCashFlowAsync(
         ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)

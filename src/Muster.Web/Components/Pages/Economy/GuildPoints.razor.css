@@ -1,0 +1,4 @@
+.t-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.t-crumb a { color: var(--text-muted); font-weight: 600; }
+.t-crumb a:hover { color: var(--text); }
+.t-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }

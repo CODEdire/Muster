@@ -119,8 +119,7 @@
             }
             if (_isAdmin)
             {
-                guild.Add(new("Guild points", "trophy", $"/guilds/{_guildId}/guild-points", "/guild-points"));
-                guild.Add(new("Guild ledger", "account_balance", $"/guilds/{_guildId}/guild-ledger", "/guild-ledger"));
+                guild.Add(new("Treasury", "account_balance", $"/guilds/{_guildId}/treasury", "/treasury"));
             }
 
             var management = new List<NavItem>();

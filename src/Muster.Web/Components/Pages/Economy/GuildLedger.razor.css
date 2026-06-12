@@ -1,3 +1,8 @@
+.t-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.t-crumb a { color: var(--text-muted); font-weight: 600; }
+.t-crumb a:hover { color: var(--text); }
+.t-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+
 /* Account chips on the guild-ledger movement feed (member / escrow hold / burn sink) */
 .acct { font-size: 0.72rem; padding: 2px 8px; border-radius: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .acct-member { background: rgba(255, 255, 255, 0.06); color: var(--text-muted); }
