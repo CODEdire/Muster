@@ -19,7 +19,8 @@ public static class ApiReadGuards
     public static IResult Forbid(string detail = "forbidden") =>
         Results.Json(new { error = detail }, statusCode: StatusCodes.Status403Forbidden);
 
-    /// <summary>Self-or-economy-staff: the actor may read their own wallet/ledger, or anyone's if they're staff.</summary>
+    /// <summary>Wallet/ledger read gate: own always; anyone's for economy staff or read-only auditors. Delegates to
+    /// <see cref="CurrencyPermission.View"/> so the self / manager / auditor rule stays defined in one place.</summary>
     public static async Task<IResult?> RequireSelfOrEconomyStaffAsync(
         HttpContext http, ulong guildId, ulong subjectUserId, ICurrencyAuthorizer currency, CancellationToken ct = default)
     {

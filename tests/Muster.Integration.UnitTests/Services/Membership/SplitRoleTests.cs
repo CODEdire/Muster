@@ -45,6 +45,26 @@ public class SplitRoleTests
     }
 
     [Fact]
+    public async Task AuditorRole_GrantsViewButNotMutationsViaCurrencyAuthorizer()
+    {
+        using var db = NewDb();
+        await Seed(db, roleId: 1700, userId: 33);
+
+        var config = new ConfigCommandService(db, Microsoft.Extensions.Options.Options.Create(new CurrencyRetentionOptions()));
+        await config.ToggleAuditorRoleAsync(1, 1700);
+
+        var auth = new CurrencyAuthorizer(new GuildAuthorizationService(db));
+        var actor = new GuildActor(1, 33);
+
+        // Read-only observer may view anyone's wallet / ledger…
+        Assert.True(await auth.AuthorizeAsync(actor, subjectUserId: 99, CurrencyPermission.View));
+        // …but never mutate.
+        Assert.False(await auth.AuthorizeAsync(actor, subjectUserId: 99, CurrencyPermission.Mint));
+        Assert.False(await auth.AuthorizeAsync(actor, subjectUserId: 99, CurrencyPermission.Adjust));
+        Assert.False(await auth.AuthorizeAsync(actor, subjectUserId: 99, CurrencyPermission.Transfer));
+    }
+
+    [Fact]
     public async Task TrackingManagerRole_DoesNotGrantMint()
     {
         using var db = NewDb();

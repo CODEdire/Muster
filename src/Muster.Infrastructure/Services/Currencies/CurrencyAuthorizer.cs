@@ -18,7 +18,8 @@ public enum CurrencyPermission
 /// owner-vs-staff rules live so command handlers (before mutating) and the UI (button visibility) can't drift.
 /// The "resource" is the <b>subject</b> — the member whose wallet the action targets. Members act only on their
 /// own wallet (spend / transfer-out / view); economy staff (officers + admins) mint, adjust, and may move or
-/// view anyone's. The escrow/house account (<see cref="CurrencyService.EscrowAccountUserId"/>) is staff-only.
+/// view anyone's. Read-only auditors may additionally VIEW anyone's wallet/ledger (never mutate). The
+/// escrow/house account (<see cref="CurrencyService.EscrowAccountUserId"/>) is staff-only.
 /// </summary>
 public interface ICurrencyAuthorizer
 {
@@ -34,7 +35,14 @@ public sealed class CurrencyAuthorizer(GuildAuthorizationService roles) : ICurre
     {
         // EconomyManager (or admin) is the economy-management tier — mint/adjust + acting on others.
         var isManager = await roles.IsEconomyManagerAsync(actor.GuildId, actor.UserId, ct);
-        return Allows(actor, isManager, subjectUserId, action);
+        if (Allows(actor, isManager, subjectUserId, action))
+        {
+            return true;
+        }
+
+        // Read-only observers (auditors) may additionally VIEW anyone's wallet / ledger — never mutate.
+        return action == CurrencyPermission.View
+            && await roles.IsAuditorAsync(actor.GuildId, actor.UserId, ct);
     }
 
     public bool Allows(GuildActor actor, bool isManager, ulong subjectUserId, CurrencyPermission action)
