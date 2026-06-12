@@ -9,10 +9,22 @@
     /// <summary>The selected wallet currency, carried across tabs as ?cur= so the choice survives navigation.</summary>
     [Parameter] public string? Cur { get; set; }
 
+    /// <summary>When an admin / economy-manager views another member's wallet, carried across tabs as ?member=.</summary>
+    [Parameter] public string? Member { get; set; }
+
     /// <summary>Show the points Season + Points-ledger tabs (server runs a points score).</summary>
     [Parameter] public bool HasPoints { get; set; }
 
-    private string Q => string.IsNullOrWhiteSpace(Cur) ? "" : $"?cur={Uri.EscapeDataString(Cur)}";
+    private string CurOnly => Query(includeCur: true, includeMember: true);
+    private string MemberOnly => Query(includeCur: false, includeMember: true);
+
+    private string Query(bool includeCur, bool includeMember)
+    {
+        var parts = new List<string>();
+        if (includeCur && !string.IsNullOrWhiteSpace(Cur)) parts.Add($"cur={Uri.EscapeDataString(Cur)}");
+        if (includeMember && !string.IsNullOrWhiteSpace(Member)) parts.Add($"member={Uri.EscapeDataString(Member)}");
+        return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+    }
 
     private IReadOnlyList<TabBar.TabItem> Items
     {
@@ -20,13 +32,13 @@
         {
             var items = new List<TabBar.TabItem>
             {
-                new("account", "Account", "payments", $"/guilds/{GuildId}/wallet{Q}"),
-                new("analytics", "Analytics", "monitoring", $"/guilds/{GuildId}/wallet/analytics{Q}"),
+                new("account", "Account", "payments", $"/guilds/{GuildId}/wallet{CurOnly}"),
+                new("analytics", "Analytics", "monitoring", $"/guilds/{GuildId}/wallet/analytics{CurOnly}"),
             };
             if (HasPoints)
             {
-                items.Add(new("season", "Season", "local_fire_department", $"/guilds/{GuildId}/wallet/season"));
-                items.Add(new("points", "Points", "trophy", $"/guilds/{GuildId}/wallet/points"));
+                items.Add(new("season", "Season", "local_fire_department", $"/guilds/{GuildId}/wallet/season{MemberOnly}"));
+                items.Add(new("points", "Points", "trophy", $"/guilds/{GuildId}/wallet/points{MemberOnly}"));
             }
             return items;
         }

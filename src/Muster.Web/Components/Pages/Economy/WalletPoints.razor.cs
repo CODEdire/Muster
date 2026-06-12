@@ -14,6 +14,10 @@ public partial class WalletPoints : IDisposable
 {
     private const int SearchDebounceMs = 350;
 
+    [SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
+    private ulong _targetUserId;
+    private bool _viewingOther;
+
     private string _displayName = "";
     private string? _avatarUrl;
     private long _balance;
@@ -47,13 +51,17 @@ public partial class WalletPoints : IDisposable
         var points = sp.GetRequiredService<PointsReadService>();
         var members = sp.GetRequiredService<WebMemberService>();
 
-        var snap = await points.GetSnapshotAsync(GuildId, UserId);
+        var canManage = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        _targetUserId = ulong.TryParse(MemberRaw, out var m) && canManage ? m : UserId;
+        _viewingOther = _targetUserId != UserId;
+
+        var snap = await points.GetSnapshotAsync(GuildId, _targetUserId);
         _balance = snap.Balance;
         _seasonal = snap.Seasonal;
         _hasPoints = (await points.GetSupplyAsync(GuildId)) is not null;
         _seasonName = (await points.GetSeasonsAsync(GuildId)).FirstOrDefault(s => s.IsActive)?.Name;
 
-        var detail = await members.GetAsync(GuildId, UserId, historyCount: 1);
+        var detail = await members.GetAsync(GuildId, _targetUserId, historyCount: 1);
         _displayName = detail.DisplayName;
         _avatarUrl = detail.AvatarUrl;
 
@@ -69,8 +77,8 @@ public partial class WalletPoints : IDisposable
             var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
-            _activity = await points.GetHistoryPageAsync(GuildId, UserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
-            _totals = await points.GetHistoryTotalsAsync(GuildId, UserId, _searchBox, sources, from, to, _sign);
+            _activity = await points.GetHistoryPageAsync(GuildId, _targetUserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+            _totals = await points.GetHistoryTotalsAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign);
         }
         finally
         {
@@ -203,7 +211,7 @@ public partial class WalletPoints : IDisposable
         var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
         var (from, to) = ResolveRange(_preset);
         var sources = _source is { } s ? new[] { s } : null;
-        var rows = await points.GetHistoryForExportAsync(GuildId, UserId, _searchBox, sources, from, to, _sign);
+        var rows = await points.GetHistoryForExportAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign);
 
         var sb = new StringBuilder();
         sb.AppendLine("When (UTC),Amount,Source,Reason");

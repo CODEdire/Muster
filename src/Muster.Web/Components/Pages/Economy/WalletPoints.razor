@@ -33,7 +33,7 @@ else if (State == AccessState.Ready)
         </div>
     </div>
 
-    <WalletTabs GuildId="GuildId" Active="points" HasPoints="_hasPoints" />
+    <WalletTabs GuildId="GuildId" Active="points" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" />
 
     <LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">
         <Filters>

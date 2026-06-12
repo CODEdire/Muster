@@ -17,6 +17,17 @@ namespace Muster.Web.Components.Pages.Economy;
 
 public partial class Wallet : IDisposable
 {
+    // --- Target member (admin / economy-manager can view another member's wallet via ?member=) ---
+    [SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
+    private ulong _targetUserId;
+    private bool _canManage;     // viewer is admin / economy-manager
+    private bool _viewingOther;  // target != the signed-in user
+
+    // Admin mint/adjust (shown in the transfer frame when viewing another member's wallet).
+    private long _adjustAmount;
+    private string _adjustReason = "";
+    private bool _adjusting;
+
     // --- Currencies + selection ---
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     // Account shows spendable wallet currencies only; points live in the dedicated Season + Points tabs.
@@ -90,6 +101,11 @@ public partial class Wallet : IDisposable
         var currencies = sp.GetRequiredService<ICurrencyReadService>();
         var members = sp.GetRequiredService<WebMemberService>();
 
+        // An admin / economy-manager may view (and adjust) another member's wallet via ?member=.
+        _canManage = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        _targetUserId = ulong.TryParse(MemberRaw, out var m) && _canManage ? m : UserId;
+        _viewingOther = _targetUserId != UserId;
+
         _currencies = await currencies.GetCurrenciesAsync(GuildId);
         _recipients = await members.GetRecipientsAsync(GuildId, UserId);
 
@@ -103,7 +119,7 @@ public partial class Wallet : IDisposable
             ?? "";
         Send.Currency ??= Sendable.FirstOrDefault()?.Code;
 
-        var detail = await members.GetAsync(GuildId, UserId, historyCount: 1);
+        var detail = await members.GetAsync(GuildId, _targetUserId, historyCount: 1);
         _displayName = detail.DisplayName;
         _avatarUrl = detail.AvatarUrl;
 
@@ -148,16 +164,16 @@ public partial class Wallet : IDisposable
         var to = DateTimeOffset.UtcNow;
         var from = to.AddDays(-30);
 
-        _kpis = await wallet.GetKpisAsync(GuildId, UserId, _sel, from, to);
-        var prev = await wallet.GetKpisAsync(GuildId, UserId, _sel, from.AddDays(-30), from);
+        _kpis = await wallet.GetKpisAsync(GuildId, _targetUserId, _sel, from, to);
+        var prev = await wallet.GetKpisAsync(GuildId, _targetUserId, _sel, from.AddDays(-30), from);
         _prevEarned = prev.Earned;
         _prevSpent = prev.Spent;
-        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, UserId, _sel) : 0;
-        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to);
+        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, _targetUserId, _sel) : 0;
+        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, _targetUserId, _sel, from, to);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(4).ToList();
-        _series = await wallet.GetBalanceSeriesAsync(GuildId, UserId, _sel, from, to);
-        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, UserId, _sel);
-        _parties = await wallet.GetCounterpartiesAsync(GuildId, UserId, _sel);
+        _series = await wallet.GetBalanceSeriesAsync(GuildId, _targetUserId, _sel, from, to);
+        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, _targetUserId, _sel);
+        _parties = await wallet.GetCounterpartiesAsync(GuildId, _targetUserId, _sel);
     }
 
     private async Task ReloadLedgerAsync()
@@ -176,7 +192,7 @@ public partial class Wallet : IDisposable
             // On-visit reconcile of any External/Hybrid balances (skipped for the seasonal points score).
             if (!SelIsPoints)
             {
-                await sp.GetRequiredService<CurrencyConnectorSyncService>().SyncMemberDueAsync(GuildId, UserId, force: false);
+                await sp.GetRequiredService<CurrencyConnectorSyncService>().SyncMemberDueAsync(GuildId, _targetUserId, force: false);
             }
 
             var (from, to) = ResolveRange(_preset);
@@ -186,16 +202,16 @@ public partial class Wallet : IDisposable
             {
                 var points = sp.GetRequiredService<PointsReadService>();
                 _activity = await points.GetHistoryPageAsync(
-                    GuildId, UserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
-                _totals = await points.GetHistoryTotalsAsync(GuildId, UserId, _searchBox, sources, from, to, _sign);
+                    GuildId, _targetUserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+                _totals = await points.GetHistoryTotalsAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign);
             }
             else
             {
                 var wallet = sp.GetRequiredService<WalletReadService>();
                 _activity = await wallet.GetHistoryPageAsync(
-                    GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size,
+                    GuildId, _targetUserId, _sel, _searchBox, _sortKey, _descending, _page, _size,
                     sources: sources, from: from, to: to, sign: _sign, withRunningBalance: _sortKey == "when", counterpartyId: _party);
-                _totals = await wallet.GetHistoryTotalsAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign, _party);
+                _totals = await wallet.GetHistoryTotalsAsync(GuildId, _targetUserId, _sel, _searchBox, sources, from, to, _sign, _party);
             }
         }
         finally
@@ -317,8 +333,8 @@ public partial class Wallet : IDisposable
         var sources = _source is { } s ? new[] { s } : null;
 
         IReadOnlyList<MemberLedgerRow> rows = SelIsPoints
-            ? await sp.GetRequiredService<PointsReadService>().GetHistoryForExportAsync(GuildId, UserId, _searchBox, sources, from, to, _sign)
-            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign, _party);
+            ? await sp.GetRequiredService<PointsReadService>().GetHistoryForExportAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign)
+            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, _targetUserId, _sel, _searchBox, sources, from, to, _sign, _party);
 
         var sb = new StringBuilder();
         sb.AppendLine("When (UTC),Currency,Source,Party,Amount,Reason");
@@ -484,6 +500,50 @@ public partial class Wallet : IDisposable
         }
     }
 
+    /// <summary>Admin / economy-manager mint or adjust on the viewed member's selected currency (signed delta).</summary>
+    private async Task AdjustAsync()
+    {
+        if (_adjusting || !_canManage || !_viewingOther)
+        {
+            return;
+        }
+
+        if (_adjustAmount == 0)
+        {
+            Message = "Amount must be non-zero.";
+            return;
+        }
+
+        _adjusting = true;
+        try
+        {
+            var reason = string.IsNullOrWhiteSpace(_adjustReason) ? "Wallet adjustment" : _adjustReason.Trim();
+            var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, UserId, _sel, _targetUserId, _adjustAmount, reason));
+
+            Message = result.Ok
+                ? $"Applied {_adjustAmount:+#,##0;-#,##0} {_sel} to {_displayName}."
+                : result.Status switch
+                {
+                    "Forbidden" => "You're not allowed to do that.",
+                    "CurrencyNotFound" => "That currency doesn't exist here.",
+                    "InsufficientFunds" => "That would take the member below zero.",
+                    var other => other,
+                };
+
+            if (result.Ok)
+            {
+                _adjustAmount = 0;
+                _adjustReason = "";
+                await LoadScopeAsync();
+                await ReloadLedgerAsync();
+            }
+        }
+        finally
+        {
+            _adjusting = false;
+        }
+    }
+
     private async Task ForceSyncAsync()
     {
         if (_syncing)
@@ -496,7 +556,7 @@ public partial class Wallet : IDisposable
         {
             await using var scope = Scopes.CreateAsyncScope();
             var sync = scope.ServiceProvider.GetRequiredService<CurrencyConnectorSyncService>();
-            var synced = await sync.SyncMemberDueAsync(GuildId, UserId, force: true);
+            var synced = await sync.SyncMemberDueAsync(GuildId, _targetUserId, force: true);
             Message = synced > 0 ? $"Synced {synced} balance(s) from connected economies." : "No connected balances to sync.";
         }
         finally

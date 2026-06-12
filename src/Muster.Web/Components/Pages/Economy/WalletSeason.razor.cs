@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Domain;
 using Muster.Infrastructure.Services.Currencies;
@@ -10,6 +11,10 @@ namespace Muster.Web.Components.Pages.Economy;
 
 public partial class WalletSeason
 {
+    [SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
+    private ulong _targetUserId;
+    private bool _viewingOther;
+
     private string _displayName = "";
     private string? _avatarUrl;
     private bool _hasPoints = true;
@@ -37,26 +42,30 @@ public partial class WalletSeason
         var wallet = sp.GetRequiredService<WalletReadService>();
         var members = sp.GetRequiredService<WebMemberService>();
 
+        var canManage = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        _targetUserId = ulong.TryParse(MemberRaw, out var mid) && canManage ? mid : UserId;
+        _viewingOther = _targetUserId != UserId;
+
         var code = CurrencyCodes.PointsCode;
         var to = DateTimeOffset.UtcNow;
         var from = to.AddDays(-30);
 
-        var snap = await points.GetSnapshotAsync(GuildId, UserId);
+        var snap = await points.GetSnapshotAsync(GuildId, _targetUserId);
         _balance = snap.Balance;
         _seasonal = snap.Seasonal;
         _hasPoints = (await points.GetSupplyAsync(GuildId)) is not null;
         _seasonName = (await points.GetSeasonsAsync(GuildId)).FirstOrDefault(s => s.IsActive)?.Name;
 
-        var kpis = await wallet.GetKpisAsync(GuildId, UserId, code, from, to);
+        var kpis = await wallet.GetKpisAsync(GuildId, _targetUserId, code, from, to);
         _earned30d = kpis.Earned;
-        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, UserId, code);
-        _earned = (await wallet.GetSourceBreakdownAsync(GuildId, UserId, code, from, to)).Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(5).ToList();
-        _balSpark = Spark((await wallet.GetBalanceSeriesAsync(GuildId, UserId, code, from, to)).Select(p => (double)p.Balance));
+        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, _targetUserId, code);
+        _earned = (await wallet.GetSourceBreakdownAsync(GuildId, _targetUserId, code, from, to)).Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(5).ToList();
+        _balSpark = Spark((await wallet.GetBalanceSeriesAsync(GuildId, _targetUserId, code, from, to)).Select(p => (double)p.Balance));
 
-        _seasonTotals = await points.GetMemberSeasonTotalsAsync(GuildId, UserId);
+        _seasonTotals = await points.GetMemberSeasonTotalsAsync(GuildId, _targetUserId);
         _lifetime = _seasonTotals.Sum(s => s.Total);
 
-        var detail = await members.GetAsync(GuildId, UserId, historyCount: 1);
+        var detail = await members.GetAsync(GuildId, _targetUserId, historyCount: 1);
         _displayName = detail.DisplayName;
         _avatarUrl = detail.AvatarUrl;
     }

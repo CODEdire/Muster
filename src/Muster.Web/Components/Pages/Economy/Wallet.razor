@@ -34,7 +34,7 @@ else if (State == AccessState.Ready)
         </div>
     </div>
 
-    <WalletTabs GuildId="GuildId" Active="account" Cur="@_sel" HasPoints="_hasPoints" />
+    <WalletTabs GuildId="GuildId" Active="account" Cur="@_sel" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" />
 
     @if (Message is not null)
     {
@@ -164,6 +164,20 @@ else if (State == AccessState.Ready)
         </div>
 
         <div class="panel glass">
+            @if (_viewingOther && _canManage)
+            {
+                <div class="panel-head"><h2>Mint / adjust</h2></div>
+                <p class="subtitle">Apply a signed correction to @_displayName's <strong>@_sel</strong> balance. Positive mints; negative deducts. Audited.</p>
+                <div class="send-amt">
+                    <label>Amount (signed) <input type="number" class="dg-select" @bind="_adjustAmount" /></label>
+                </div>
+                <label>Reason <input type="text" class="dg-search" @bind="_adjustReason" placeholder="e.g. correction, event prize" /></label>
+                <div class="btn-row">
+                    <button type="button" disabled="@_adjusting" @onclick="AdjustAsync">@(_adjustAmount >= 0 ? "Mint" : "Deduct") @(_adjustAmount == 0 ? "" : Math.Abs(_adjustAmount).ToString("N0"))</button>
+                </div>
+            }
+            else
+            {
             <div class="panel-head">
                 <h2>Quick transfer</h2>
                 @if (_kpis.Held > 0)
@@ -205,6 +219,7 @@ else if (State == AccessState.Ready)
                     <label>Note <InputText @bind-Value="Send.Reason" placeholder="optional" /></label>
                     <div class="btn-row"><button type="submit" disabled="@_sending">Send</button></div>
                 </EditForm>
+            }
             }
         </div>
     </div>
