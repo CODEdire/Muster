@@ -315,7 +315,7 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
     public async Task<PagedResult<MovementRow>> GetMovementsPageAsync(
         ulong guildId, string? search, string sortKey, bool descending,
         int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken ct = default)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? season = null, CancellationToken ct = default)
     {
         var points = await db.FindPointsAsync(guildId, ct);
         if (points is null)
@@ -329,7 +329,7 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
 
         var (rows, total) = await db.GuildLedgerPagedAsync(
             guildId, points.Id, search, sortKey, descending, skip, size, ct,
-            sources: sources, from: from, to: to);
+            sources: sources, from: from, to: to, seasonScope: season);
 
         var ids = rows.Select(r => r.UserId).Distinct().ToList();
         var users = await db.UserDisplayMapAsync(ids, ct);

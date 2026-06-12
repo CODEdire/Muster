@@ -1,0 +1,66 @@
+/* Header */
+.t-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.p-title { display: flex; align-items: center; gap: 0.7rem; }
+.p-title > .material-symbols-outlined { font-size: 1.9rem; color: #EF9F27; }
+.p-name { font-size: 1.35rem; font-weight: 600; line-height: 1.1; }
+.p-sub { font-size: 0.82rem; color: var(--text-muted); }
+.p-members { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--glass-border); border-radius: 0.6rem; padding: 0.4rem 0.7rem; }
+.p-members .material-symbols-outlined { font-size: 1.05rem; }
+
+/* Season sub-heading */
+.p-seasonhead { display: flex; align-items: center; gap: 0.6rem; margin: 0.4rem 0 1rem; }
+.p-seasonname { font-size: 1.05rem; font-weight: 600; }
+.p-tag { font-size: 0.7rem; background: rgba(239, 159, 39, 0.18); color: #EF9F27; padding: 2px 8px; border-radius: 0.5rem;
+    text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* KPI accents */
+.stat .num.accent-green { color: #4ade80; }
+.stat .num.accent-amber { color: #EF9F27; }
+
+/* Cards */
+.p-card { background: rgba(255, 255, 255, 0.025); border: 1px solid var(--glass-border); border-radius: var(--radius);
+    padding: 1rem 1.2rem; margin-bottom: 1rem; }
+.p-card .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.9rem; }
+.p-card h2 { margin: 0; font-size: 1rem; }
+.p-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 760px) { .p-cols { grid-template-columns: 1fr; } }
+
+/* Combo chart legend */
+.p-card .legend { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--text-muted); }
+.p-card .legend > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.legend .sw.bar { width: 10px; height: 10px; border-radius: 2px; background: #1D9E75; }
+.legend .ln.rate { width: 14px; height: 2px; background: #EF9F27; }
+
+/* Engagement-by-season combo chart */
+.p-combo { width: 100%; height: 168px; }
+.p-combo .axis { stroke: rgba(255, 255, 255, 0.1); }
+.p-combo .p-cbar { fill: #1D9E75; }
+.p-combo .p-rate { fill: none; stroke: #EF9F27; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.p-combo .p-dot { fill: #EF9F27; }
+
+/* Weekly velocity bars */
+.p-bars { display: flex; align-items: flex-end; gap: 10px; height: 112px; }
+.p-bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.p-bar { width: 100%; max-width: 46px; background: #1D9E75; border-radius: 3px 3px 0 0; min-height: 2px; }
+.p-bar-labels { display: flex; gap: 10px; margin-top: 6px; font-size: 0.72rem; color: var(--text-muted); text-align: center; }
+.p-bar-labels > span { flex: 1; }
+.p-bar-labels .cnt { color: var(--text-muted); opacity: 0.8; }
+
+/* Source bars */
+.src-row { display: flex; align-items: center; gap: 0.7rem; margin: 0.5rem 0; font-size: 0.88rem; }
+.src-name { width: 120px; display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text); flex: none; }
+.src-name .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); }
+.src-bar { flex: 1; height: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 5px; overflow: hidden; }
+.src-bar .fill { height: 100%; background: #1D9E75; border-radius: 5px; }
+.src-val { width: 60px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); flex: none; }
+
+/* Podium */
+.hold-row { display: flex; align-items: center; gap: 0.6rem; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 0.9rem; }
+.hold-row .rank { width: 22px; color: var(--text-muted); flex: none; text-align: center; }
+.hold-row .rank.gold, .hold-row .rank.silver, .hold-row .rank.bronze {
+    height: 22px; line-height: 22px; border-radius: 50%; font-weight: 700; font-size: 0.78rem; color: #1c1606; }
+.hold-row .rank.gold { background: linear-gradient(145deg, #fde68a, #f59e0b); }
+.hold-row .rank.silver { background: linear-gradient(145deg, #f1f5f9, #94a3b8); }
+.hold-row .rank.bronze { background: linear-gradient(145deg, #f7c08a, #b45309); color: #fff; }
+.hold-row .hold-val { margin-left: auto; font-variant-numeric: tabular-nums; }

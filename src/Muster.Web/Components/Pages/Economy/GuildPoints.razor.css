@@ -3,24 +3,11 @@
 .t-crumb a:hover { color: var(--text); }
 .t-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
 
-/* Participation overview */
-.part-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.part-head .subtitle { margin: 0; }
-.part-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem 1.5rem; margin-bottom: 1.25rem; align-items: start; }
-@media (max-width: 760px) { .part-cols { grid-template-columns: 1fr; } }
-.part-card h2 { margin: 0 0 0.6rem; }
-
-.src-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.55rem; font-size: 0.9rem; }
-.src-row .src-name { width: 96px; color: var(--text-muted); flex: none; }
-.src-row .src-bar { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
-.src-row .src-bar .fill { height: 100%; background: #1D9E75; }
-.src-row .src-val { width: 64px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
-
-.season-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.4rem; border-radius: 0.4rem; cursor: pointer; font-size: 0.9rem; }
-.season-row:hover { background: rgba(255, 255, 255, 0.04); }
-.season-row.sel { background: rgba(96, 165, 250, 0.12); }
-.season-row .season-name { width: 150px; flex: none; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.season-row.sel .season-name { color: var(--text); }
-.season-row .season-bar { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
-.season-row .season-bar .fill { height: 100%; background: #4ade80; }
-.season-row .season-val { width: 64px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+/* Top-holders rank — podium medals for 1-3, plain numbers beyond. */
+.lb-rank .rank { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+    color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.lb-rank .rank.gold, .lb-rank .rank.silver, .lb-rank .rank.bronze {
+    border-radius: 50%; font-weight: 700; font-size: 0.78rem; color: #1c1606; }
+.lb-rank .rank.gold { background: linear-gradient(145deg, #fde68a, #f59e0b); }
+.lb-rank .rank.silver { background: linear-gradient(145deg, #f1f5f9, #94a3b8); }
+.lb-rank .rank.bronze { background: linear-gradient(145deg, #f7c08a, #b45309); color: #fff; }

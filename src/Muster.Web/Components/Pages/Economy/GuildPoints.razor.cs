@@ -27,14 +27,11 @@ public partial class GuildPoints : IDisposable
     private PagedResult<LeaderboardRow>? _holders;
     private int _holdersPage = 1;
 
-    // Participation overview (season-scoped).
+    // Season context: the tab bar's current + previous, and the movement season filter.
     private IReadOnlyList<SeasonInfo> _seasons = [];
-    private Guid? _season;
-    private ParticipationOverview? _part;
-    private IReadOnlyList<(SeasonInfo Season, long Total)> _seasonTotals = [];
-
-    private long SourceMax => _part is { BySource.Count: > 0 } p ? Math.Max(1, p.BySource.Max(s => s.Total)) : 1;
-    private long SeasonTotalMax => _seasonTotals.Count == 0 ? 1 : Math.Max(1, _seasonTotals.Max(s => s.Total));
+    private SeasonInfo? _current;
+    private SeasonInfo? _previous;
+    private Guid? _moveSeason;
 
     private PagedResult<MovementRow>? _movement;
     private int _movePage = 1;
@@ -64,19 +61,16 @@ public partial class GuildPoints : IDisposable
             _holders = await points.GetTopHoldersPageAsync(GuildId, _holdersPage, PageSize);
 
             _seasons = await points.GetSeasonsAsync(GuildId);
-            if (_season is null || _seasons.All(s => s.Id != _season))
-            {
-                _season = _seasons.FirstOrDefault(s => s.IsActive)?.Id ?? _seasons.FirstOrDefault()?.Id;
-            }
-
-            _part = await points.GetParticipationAsync(GuildId, _season);
-            _seasonTotals = await points.GetSeasonTotalsAsync(GuildId);
+            // Seasons come newest-first; current = active (or newest), previous = the one immediately older.
+            _current = _seasons.FirstOrDefault(s => s.IsActive) ?? _seasons.FirstOrDefault();
+            var ci = _current is null ? -1 : _seasons.ToList().FindIndex(s => s.Id == _current.Id);
+            _previous = ci >= 0 && ci + 1 < _seasons.Count ? _seasons[ci + 1] : null;
 
             var (from, to) = ResolveRange(_movePreset);
             var sources = _moveSource is { } s ? new[] { s } : null;
             _movement = await points.GetMovementsPageAsync(
                 GuildId, _moveSearchBox, _moveSortKey, _moveDescending, _movePage, PageSize,
-                sources: sources, from: from, to: to);
+                sources: sources, from: from, to: to, season: _moveSeason);
         }
         finally
         {
@@ -165,24 +159,12 @@ public partial class GuildPoints : IDisposable
 
     private string MoveInd(string column) => _moveSortKey == column ? (_moveDescending ? "▼" : "▲") : "";
 
-    private async Task OnSeason(ChangeEventArgs e)
+    private async Task OnMoveSeason(ChangeEventArgs e)
     {
-        _season = Guid.TryParse(e.Value as string, out var id) ? id : null;
+        _moveSeason = Guid.TryParse(e.Value as string, out var id) ? id : null;
+        _movePage = 1;
         await ReloadAsync();
     }
-
-    private async Task SelectSeason(Guid id)
-    {
-        if (_season == id)
-        {
-            return;
-        }
-
-        _season = id;
-        await ReloadAsync();
-    }
-
-    private static string Medal(int rank) => rank switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => rank.ToString() };
 
     public void Dispose()
     {

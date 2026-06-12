@@ -120,6 +120,7 @@
             if (_isAdmin)
             {
                 guild.Add(new("Treasury", "account_balance", $"/guilds/{_guildId}/treasury", "/treasury"));
+                guild.Add(new("Participation", "trophy", $"/guilds/{_guildId}/participation", "/participation"));
             }
 
             var management = new List<NavItem>();

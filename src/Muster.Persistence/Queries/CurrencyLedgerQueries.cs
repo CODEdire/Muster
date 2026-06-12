@@ -511,7 +511,8 @@ public static class CurrencyLedgerQueries
     public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> GuildLedgerPagedAsync(
         this MusterDbContext db, ulong guildId, Guid? currencyId, string? search,
         string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null)
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        Guid? seasonScope = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && (currencyId == null || e.CurrencyId == currencyId));
@@ -519,6 +520,11 @@ public static class CurrencyLedgerQueries
         if (excludeCurrencyId is { } x)
         {
             q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
         }
 
         if (sources is { Count: > 0 })
