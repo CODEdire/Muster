@@ -1,0 +1,186 @@
+@page "/guilds/{GuildIdRaw}/wallet/analytics"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+<PageTitle>Wallet analytics — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="an-head">
+        <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/wallet">Wallet</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <span class="avatar" aria-hidden="true">@Initials()</span>
+            <a href="/guilds/@GuildId/wallet">@_displayName</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <span class="who">Analytics</span>
+        </nav>
+        <div class="an-controls">
+            @if (_currencies.Count > 1)
+            {
+                <div class="wallet-switch" role="tablist">
+                    @foreach (var c in _currencies)
+                    {
+                        <button type="button" role="tab" class="cur-tab @(c.Code == _sel ? "active" : "")"
+                                aria-selected="@(c.Code == _sel)" @onclick="() => SelectCurrency(c.Code)">
+                            @if (c.Primary)
+                            {
+                                <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
+                            }
+                            @c.Name
+                        </button>
+                    }
+                </div>
+            }
+            <select class="dg-select" @onchange="OnPeriod">
+                @foreach (var (val, lbl) in Periods)
+                {
+                    <option value="@val" selected="@(val == _period)">@lbl</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat glass">
+            <div class="label">Available</div>
+            <div class="num">@_kpis.Available.ToString("N0") <span class="unit">@SelUnit</span></div>
+            <p class="subtitle">of @_kpis.Balance.ToString("N0") total@(_kpis.Held > 0 ? $" · {_kpis.Held:N0} held" : "")</p>
+        </div>
+        <div class="stat glass">
+            <div class="label">Income</div>
+            <div class="num pos">+@_kpis.Earned.ToString("N0")</div>
+            <p class="subtitle">@(_earned.Count > 0 ? $"top: {SourceLabel(_earned[0].Source)}" : "—")</p>
+        </div>
+        <div class="stat glass">
+            <div class="label">Spending</div>
+            <div class="num neg">@(_kpis.Spent > 0 ? "−" : "")@_kpis.Spent.ToString("N0")</div>
+            <p class="subtitle">@(_spent.Count > 0 ? $"top: {SourceLabel(_spent[0].Source)}" : "—")</p>
+        </div>
+        <div class="stat glass">
+            <div class="label">Wealth rank</div>
+            <div class="num">@(_rank > 0 ? $"#{_rank}" : "—")</div>
+            <p class="subtitle">@(_holders > 0 ? $"of {_holders} holders" : "—")</p>
+        </div>
+    </div>
+
+    <div class="panel glass">
+        <div class="panel-head"><h2>Balance over time</h2></div>
+        @if (string.IsNullOrEmpty(BalanceLine()))
+        {
+            <p class="subtitle">Not enough history in this window yet.</p>
+        }
+        else
+        {
+            <svg class="an-line" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+                <path class="area" d="@BalanceArea()" />
+                <polyline class="line" points="@BalanceLine()" />
+            </svg>
+        }
+    </div>
+
+    <div class="panel glass">
+        <div class="panel-head">
+            <h2>Cash flow by month</h2>
+            <span class="legend"><span class="sw earned"></span>earned <span class="sw spent"></span>spent</span>
+        </div>
+        @if (_months.Count == 0)
+        {
+            <p class="subtitle">No activity in this window.</p>
+        }
+        else
+        {
+            <svg class="an-bars" viewBox="0 0 600 175" aria-hidden="true">
+                <line x1="0" y1="150" x2="600" y2="150" class="axis" />
+                @{
+                    var n = _months.Count;
+                    var gw = 600.0 / n;
+                    var bw = Math.Min(20.0, gw * 0.3);
+                }
+                @for (var i = 0; i < n; i++)
+                {
+                    var m = _months[i];
+                    var cx = i * gw + gw / 2;
+                    var eh = BarHeight(m.Earned);
+                    var sh = BarHeight(m.Spent);
+                    <rect class="bar earned" x="@Fmt(cx - bw - 1)" y="@Fmt(150 - eh)" width="@Fmt(bw)" height="@Fmt(eh)" rx="2" />
+                    <rect class="bar spent" x="@Fmt(cx + 1)" y="@Fmt(150 - sh)" width="@Fmt(bw)" height="@Fmt(sh)" rx="2" />
+                }
+            </svg>
+            <div class="an-mlabels">
+                @foreach (var m in _months)
+                {
+                    <span>@MonthLabel(m)</span>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="wallet-cols">
+        <div class="panel glass">
+            <div class="panel-head"><h2>Earned by source</h2></div>
+            @if (_earned.Count == 0)
+            {
+                <p class="subtitle">No earnings in this window.</p>
+            }
+            else
+            {
+                @foreach (var s in _earned)
+                {
+                    <div class="src-row">
+                        <span class="src-name">@SourceLabel(s.Source)</span>
+                        <div class="src-bar"><div class="fill earned" style="width:@(s.Earned * 100 / EarnedMax)%"></div></div>
+                        <span class="src-val">+@s.Earned.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+        <div class="panel glass">
+            <div class="panel-head"><h2>Spent by source</h2></div>
+            @if (_spent.Count == 0)
+            {
+                <p class="subtitle">No spending in this window.</p>
+            }
+            else
+            {
+                @foreach (var s in _spent)
+                {
+                    <div class="src-row">
+                        <span class="src-name">@SourceLabel(s.Source)</span>
+                        <div class="src-bar"><div class="fill spent" style="width:@(s.Spent * 100 / SpentMax)%"></div></div>
+                        <span class="src-val">−@s.Spent.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    @if (_months.Count > 0 || _earned.Count > 0)
+    {
+        <div class="panel glass">
+            <div class="panel-head"><h2>Trends</h2></div>
+            @if (_earned.Count > 0)
+            {
+                <div class="trend"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(_earned[0].Source)</span> @SourceLabel(_earned[0].Source) drives @PercentOfEarned(_earned[0]) of your earnings</div>
+            }
+            @if (_spent.Count > 0)
+            {
+                <div class="trend"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(_spent[0].Source)</span> @SourceLabel(_spent[0].Source) is your biggest spend</div>
+            }
+            @if (_months.Count > 0)
+            {
+                <div class="trend"><span class="material-symbols-outlined" aria-hidden="true">trending_up</span> Net positive @NetPositiveMonths of @_months.Count month@(_months.Count == 1 ? "" : "s")</div>
+            }
+        </div>
+    }
+}

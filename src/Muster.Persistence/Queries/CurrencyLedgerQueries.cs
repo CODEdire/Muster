@@ -446,4 +446,25 @@ public static class CurrencyLedgerQueries
 
         return rows.Select(r => (r.Source, r.Earned, r.Spent)).ToList();
     }
+
+    /// <summary>A member's wealth rank for a currency/season scope (1-based) plus the holder count, from the wallet
+    /// cache. Rank = members with a strictly higher balance, + 1; the escrow/house account is excluded.</summary>
+    public static async Task<(int Rank, int Holders)> BalanceRankAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, ulong userId, ulong escrowUserId, CancellationToken ct = default)
+    {
+        var mine = await db.Wallets
+            .Where(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId && w.UserId == userId)
+            .Select(w => (long?)w.Balance)
+            .FirstOrDefaultAsync(ct) ?? 0;
+
+        var higher = await db.Wallets
+            .CountAsync(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId
+                && w.UserId != escrowUserId && w.Balance > mine, ct);
+
+        var holders = await db.Wallets
+            .CountAsync(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId
+                && w.UserId != escrowUserId && w.Balance > 0, ct);
+
+        return (higher + 1, holders);
+    }
 }

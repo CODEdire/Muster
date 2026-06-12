@@ -267,4 +267,11 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         var rows = await db.SourceBreakdownAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
         return rows.Select(r => new SourceFlow(r.Source, r.Earned, r.Spent)).ToList();
     }
+
+    /// <summary>A member's wealth rank for one currency (1-based) and the total holder count — the analytics
+    /// "wealth rank" tile. Returns (0, 0) when the currency doesn't exist.</summary>
+    public async Task<(int Rank, int Holders)> GetWealthRankAsync(ulong guildId, ulong userId, string code, CancellationToken ct = default)
+        => await ResolveScopeAsync(guildId, code, ct) is { } scope
+            ? await db.BalanceRankAsync(guildId, scope.Id, scope.SeasonId, userId, CurrencyService.EscrowAccountUserId, ct)
+            : (0, 0);
 }
