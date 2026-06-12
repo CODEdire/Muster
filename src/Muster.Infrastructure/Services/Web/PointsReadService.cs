@@ -19,6 +19,25 @@ public record SourceEarned(CurrencyLedgerSource Source, long Total);
 /// <summary>Guild participation overview for a season: total awarded, distinct active earners, and the by-source split.</summary>
 public record ParticipationOverview(long Awarded, int Earners, IReadOnlyList<SourceEarned> BySource);
 
+/// <summary>Engagement metrics for one season: volume, reach, and the acquisition/retention split. Participation rate
+/// is earners ÷ current member count; retention is returning ÷ the previous season's earners.</summary>
+public record SeasonEngagement(
+    SeasonInfo Season, long Awarded, int Earners, int MemberCount,
+    int NewEarners, int ReturningEarners, int PriorEarners)
+{
+    public int ParticipationPct => MemberCount > 0 ? (int)Math.Round(Earners * 100.0 / MemberCount) : 0;
+    public int RetentionPct => PriorEarners > 0 ? (int)Math.Round(ReturningEarners * 100.0 / PriorEarners) : 0;
+}
+
+/// <summary>The Participation home aggregate: cross-season health plus the per-season engagement breakdown
+/// (oldest → newest), with the current + previous seasons resolved for the dedicated tabs.</summary>
+public record ParticipationHome(
+    long LifetimeAwarded, int MembersEverEarned, int MemberCount,
+    IReadOnlyList<SeasonEngagement> Seasons, SeasonEngagement? Current, SeasonEngagement? Previous);
+
+/// <summary>One point on the weekly-velocity chart for a season.</summary>
+public record WeeklyPoint(string Label, long Total);
+
 /// <summary>
 /// The Points surface: only POINTS. Same storage as other currencies but a dedicated read service so callers
 /// can never accidentally surface points on the wallet (or vice versa). Wraps <see cref="ICurrencyReadService"/>
@@ -77,6 +96,120 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         var seasons = await db.SeasonsAsync(guildId, ct);
         var totals = await db.GuildSeasonEarnedAsync(guildId, points.Id, ct);
         return seasons.OrderBy(s => s.StartsAt).Select(s => (s, totals.GetValueOrDefault(s.Id, 0L))).ToList();
+    }
+
+    /// <summary>The Participation home aggregate: lifetime + per-season engagement (volume, participation rate,
+    /// new vs returning earners, retention). Empty when POINTS isn't seasonal.</summary>
+    public async Task<ParticipationHome> GetEngagementAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is not { IsSeasonal: true })
+        {
+            return new ParticipationHome(0, 0, 0, [], null, null);
+        }
+
+        var seasons = (await db.SeasonsAsync(guildId, ct)).OrderBy(s => s.StartsAt).ToList();
+        var totals = await db.GuildSeasonEarnedAsync(guildId, points.Id, ct);
+        var earnerIds = await db.GuildSeasonEarnerIdsAsync(guildId, points.Id, ct);
+        var memberCount = await db.GuildMembers.CountAsync(m => m.GuildId == guildId, ct);
+
+        var rows = new List<SeasonEngagement>(seasons.Count);
+        var seenBefore = new HashSet<ulong>();
+        HashSet<ulong> prevIds = [];
+        foreach (var s in seasons)
+        {
+            var ids = earnerIds.GetValueOrDefault(s.Id, []);
+            var newCount = ids.Count(id => !seenBefore.Contains(id));
+            var returning = ids.Count(prevIds.Contains);
+            rows.Add(new SeasonEngagement(
+                s, totals.GetValueOrDefault(s.Id, 0L), ids.Count, memberCount,
+                newCount, returning, prevIds.Count));
+
+            seenBefore.UnionWith(ids);
+            prevIds = ids;
+        }
+
+        var lifetime = rows.Sum(r => r.Awarded);
+        var current = rows.LastOrDefault(r => r.Season.IsActive) ?? rows.LastOrDefault();
+        SeasonEngagement? previous = null;
+        if (current is not null)
+        {
+            var idx = rows.FindIndex(r => r.Season.Id == current.Season.Id);
+            if (idx > 0)
+            {
+                previous = rows[idx - 1];
+            }
+        }
+
+        return new ParticipationHome(lifetime, seenBefore.Count, memberCount, rows, current, previous);
+    }
+
+    /// <summary>Weekly points-awarded series for one season (week 1 = the season's first 7 days), for the velocity chart.</summary>
+    public async Task<IReadOnlyList<WeeklyPoint>> GetSeasonWeeklyAsync(ulong guildId, Guid seasonId, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return [];
+        }
+
+        var season = (await db.SeasonsAsync(guildId, ct)).FirstOrDefault(s => s.Id == seasonId);
+        if (season is null)
+        {
+            return [];
+        }
+
+        var daily = await db.GuildSeasonDailyEarnedAsync(guildId, points.Id, seasonId, ct);
+        if (daily.Count == 0)
+        {
+            return [];
+        }
+
+        var start = DateOnly.FromDateTime(season.StartsAt.UtcDateTime);
+        var lastDay = daily.Keys.Max();
+        var weeks = Math.Max(1, (lastDay.DayNumber - start.DayNumber) / 7 + 1);
+        var buckets = new long[weeks];
+        foreach (var (day, total) in daily)
+        {
+            var w = Math.Clamp((day.DayNumber - start.DayNumber) / 7, 0, weeks - 1);
+            buckets[w] += total;
+        }
+
+        return buckets.Select((t, i) => new WeeklyPoint($"W{i + 1}", t)).ToList();
+    }
+
+    /// <summary>Top points earners — season-scoped when <paramref name="seasonId"/> is set, else summed across all seasons.</summary>
+    public async Task<IReadOnlyList<LeaderboardRow>> GetTopEarnersAsync(ulong guildId, Guid? seasonId, int take, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return [];
+        }
+
+        var raw = seasonId is { } sid
+            ? await db.GuildTopHoldersLedgerAsync(guildId, points.Id, sid, take, ct)
+            : await db.GuildTopEarnersAllSeasonsAsync(guildId, points.Id, take, ct);
+
+        var users = await db.UserDisplayMapAsync(raw.Select(r => r.UserId).ToList(), ct);
+        return raw.Select((r, i) =>
+        {
+            var u = users.GetValueOrDefault(r.UserId);
+            return new LeaderboardRow(i + 1, r.UserId, u.Name ?? r.UserId.ToString(), r.Total, DiscordCdn.AvatarUrl(r.UserId, u.AvatarHash));
+        }).ToList();
+    }
+
+    /// <summary>Points-by-source split — season-scoped when <paramref name="seasonId"/> is set, else all-time.</summary>
+    public async Task<IReadOnlyList<SourceEarned>> GetSourcesAsync(ulong guildId, Guid? seasonId, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return [];
+        }
+
+        var map = await db.GuildSourceEarnedAsync(guildId, points.Id, seasonId, ct);
+        return map.OrderByDescending(kv => kv.Value).Select(kv => new SourceEarned(kv.Key, kv.Value)).ToList();
     }
 
     /// <summary>Paged points history for the Personal Points tab.</summary>

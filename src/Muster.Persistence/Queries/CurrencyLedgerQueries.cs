@@ -702,6 +702,22 @@ public static class CurrencyLedgerQueries
         return rows.Select(r => (r.UserId, r.Total)).ToList();
     }
 
+    /// <summary>Top member earners across every season (sum of positive amounts per member, all seasons combined) —
+    /// the all-time participation podium. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<List<(ulong UserId, long Total)>> GuildTopEarnersAllSeasonsAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, int take, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
+            .OrderByDescending(x => x.Total)
+            .Take(Math.Clamp(take, 1, 100))
+            .ToListAsync(ct);
+
+        return rows.Select(r => (r.UserId, r.Total)).ToList();
+    }
+
     /// <summary>Every member's positive balance for a currency, summed straight from the ledger (excludes the escrow
     /// account 0 and burn sink 1) — the raw input for the wealth-distribution stats and histogram. Ledger-derived so
     /// it stays consistent with the rest of the treasury even when the wallet cache is stale.</summary>
@@ -834,6 +850,36 @@ public static class CurrencyLedgerQueries
         }
 
         return await q.Select(e => e.UserId).Distinct().CountAsync(ct);
+    }
+
+    /// <summary>Distinct earner user-ids per season (members with a positive entry that season) — the basis for
+    /// new-vs-returning earner and retention math. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<Guid, HashSet<ulong>>> GuildSeasonEarnerIdsAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId != null
+                && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .Select(e => new { Season = e.SeasonId!.Value, e.UserId })
+            .Distinct()
+            .ToListAsync(ct);
+
+        return rows.GroupBy(r => r.Season).ToDictionary(g => g.Key, g => g.Select(x => x.UserId).ToHashSet());
+    }
+
+    /// <summary>Positive points earned per calendar day within one season — bucketed into the weekly velocity chart.
+    /// Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<DateOnly, long>> GuildSeasonDailyEarnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid seasonId, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month, e.OccurredAt.Day })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => new DateOnly(r.Year, r.Month, r.Day), r => r.Total);
     }
 
     /// <summary>Circulating supply (member-held only — excludes the escrow account 0 and burn sink 1) just before
