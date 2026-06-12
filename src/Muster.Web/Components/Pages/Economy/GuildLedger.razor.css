@@ -7,46 +7,89 @@
 
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 
-/* Supply reconciliation banner */
-.recon { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; background: rgba(255, 255, 255, 0.035);
-    border-radius: var(--radius); padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; }
-.recon .recon-label { color: var(--text-muted); }
-.recon .op { color: var(--text-muted); opacity: 0.6; }
-.recon .recon-ok { margin-left: auto; color: #4ade80; font-weight: 500; display: inline-flex; align-items: center; gap: 0.2rem; }
-.recon .recon-off { margin-left: auto; color: var(--danger); font-weight: 500; display: inline-flex; align-items: center; gap: 0.2rem; }
-.recon .material-symbols-outlined { font-size: 1.05rem; }
+/* ---- Top summary: trial balance + supply composition ---- */
+.jr-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem; align-items: stretch; }
+@media (max-width: 720px) { .jr-summary { grid-template-columns: 1fr; } }
+.jr-card { background: rgba(255, 255, 255, 0.025); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 1rem 1.15rem; }
+.jr-card .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; }
+.jr-card h2 { margin: 0; font-size: 1rem; }
+
+.tb-ok, .tb-off { font-size: 0.78rem; font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.55rem; border-radius: 1rem; }
+.tb-ok { color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+.tb-off { color: var(--danger); background: rgba(220, 38, 38, 0.12); }
+.tb-ok .material-symbols-outlined, .tb-off .material-symbols-outlined { font-size: 1rem; }
+
+.jr-auditlink { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+.jr-auditlink:hover { color: var(--text); }
+
+/* Trial-balance table */
+.jr-tb { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.jr-tb td { padding: 7px 0; border-top: 0.5px solid var(--border); }
+.jr-tb tr:first-child td { border-top: none; }
+.jr-tb td.num { text-align: right; }
+.jr-tb tr.tb-total td { border-top: 1px solid var(--border); font-weight: 600; }
+
+/* Supply-composition donut */
+.comp { display: flex; align-items: center; gap: 1.25rem; }
+.comp-legend { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.88rem; }
+.comp-legend > div { display: flex; align-items: center; gap: 0.45rem; }
+.comp-legend b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dot { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; flex: 0 0 auto; }
+.dot.circ { background: #1D9E75; }
+.dot.escrow { background: #EF9F27; }
+.dot.burned { background: #888780; }
+
+/* ---- Grid frame: flat, subtle (no heavy glass) ---- */
+.jr-grid { background: rgba(255, 255, 255, 0.018); border: 1px solid var(--glass-border); border-radius: var(--radius); }
+
+/* Direction toggle (All / Debit / Credit) */
+.dir-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 0.55rem; overflow: hidden; }
+.dir-toggle button { appearance: none; background: transparent; border: none; border-left: 1px solid var(--border); color: var(--text-muted); font: inherit; font-size: 0.82rem; padding: 0.38rem 0.7rem; cursor: pointer; transition: background 0.12s, color 0.12s; }
+.dir-toggle button:first-child { border-left: none; }
+.dir-toggle button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.dir-toggle button.active { background: var(--accent); color: #fff; }
 
 /* Journal table */
 .jr-table .jr-when { color: var(--text-muted); font-size: 0.82rem; white-space: nowrap; }
+.jr-table .jr-when .exp { font-size: 1rem; vertical-align: -3px; margin-right: 0.15rem; color: var(--text-muted); }
 .jr-table td.num.debit { color: var(--danger); }
 .jr-table td.num.credit { color: #4ade80; }
 .jr-table .src-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
 .jr-table .src-chip .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); }
 .jr-table ::deep .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
 .jr-table ::deep .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
+
+/* Day group header + daily subtotals */
 .jr-table tr.dg-group td { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); font-size: 0.78rem;
     text-transform: uppercase; letter-spacing: 0.03em; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.grp-net { float: right; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.grp-net .debit { color: var(--danger); }
+.grp-net .credit { color: #4ade80; }
+
+/* Clickable rows + detail drawer (mirrors Wallet ledger) */
+.led-row { cursor: pointer; }
+.led-row.open > td { background: var(--surface); }
+.led-detail > td { background: rgba(255, 255, 255, 0.02); }
+.ld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem 1.5rem; padding: 0.6rem 0.4rem; white-space: normal; }
+.ld-grid > div { display: flex; flex-direction: column; gap: 0.1rem; }
+.ld-grid .ld-reason { grid-column: 1 / -1; }
+.ld-grid .k { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.ld-grid .v { font-size: 0.88rem; }
+.ld-grid .v.mono { font-size: 0.8rem; word-break: break-all; }
+.ld-grid .v.debit { color: var(--danger); }
+.ld-grid .v.credit { color: #4ade80; }
+
+/* Account chips (escrow / burn / system counter) */
 .acct { font-size: 0.72rem; padding: 2px 8px; border-radius: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
 .acct-escrow { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
 .acct-burn { background: rgba(220, 38, 38, 0.14); color: var(--danger); }
 .acct-sys { color: var(--text-muted); }
 
+/* Footer totals */
 .dg-footer-left { display: flex; align-items: center; gap: 1rem; }
 .jr-totals { font-size: 0.82rem; color: var(--text-muted); }
 .jr-totals .debit { color: var(--danger); }
 .jr-totals .credit { color: #4ade80; }
-
-/* Trial balance + audit */
-.jr-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem 1.5rem; margin: 1.25rem 0; align-items: start; }
-@media (max-width: 720px) { .jr-cols { grid-template-columns: 1fr; } }
-.jr-card .panel-head { margin-bottom: 0.5rem; }
-.jr-card h2 { margin: 0; }
-.jr-tb { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.jr-tb td { padding: 7px 0; border-top: 0.5px solid var(--border); }
-.jr-tb td.num { text-align: right; }
-.jr-tb tr.tb-total td { border-top: 1px solid var(--border); font-weight: 600; }
-.jr-audit { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; color: var(--text-muted); line-height: 2; }
-.jr-audit .material-symbols-outlined { font-size: 1.05rem; vertical-align: -3px; margin-right: 0.3rem; }
 
 /* Bulk award (collapsible) */
 .jr-bulk { padding: 0.5rem 1.25rem 1.25rem; }

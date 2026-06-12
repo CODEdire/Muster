@@ -1,5 +1,8 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
@@ -36,10 +39,20 @@ public partial class GuildLedger : IDisposable
     private CurrencyLedgerSource? _source;
     private int? _sign;
     private string? _account;
+    private string _sortKey = "when";
+    private bool _descending = true;
+    private long? _expandedId;
     private CancellationTokenSource? _searchDebounce;
 
     private int TotalPages => _journal?.TotalPages ?? 1;
+    private bool Grouped => _sortKey == "when";
     private bool Reconciles => _supply is { } s && s.Minted == s.Circulating + s.Escrow + s.Removed;
+    private int Pct(long part) => _supply is { Minted: > 0 } s ? (int)(part * 100 / s.Minted) : 0;
+
+    // Donut geometry for the supply-composition ring (r = 48, circumference ≈ 301.593).
+    private double Seg(long part) => _supply is { Minted: > 0 } s ? (double)part / s.Minted * 301.593 : 0;
+    private string Dash(long part) => $"{Seg(part).ToString("0.##", CultureInfo.InvariantCulture)} 301.593";
+    private static string Off(double v) => (-v).ToString("0.##", CultureInfo.InvariantCulture);
 
     // Bulk award (admin only).
     private bool _isAdmin;
@@ -114,7 +127,7 @@ public partial class GuildLedger : IDisposable
 
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
-            _journal = await wallet.GetJournalAsync(GuildId, _code, _searchBox, _page, PageSize, sources, from, to, _sign, _account);
+            _journal = await wallet.GetJournalAsync(GuildId, _code, _searchBox, _page, PageSize, sources, from, to, _sign, _account, _sortKey, _descending);
             _totals = await wallet.GetJournalTotalsAsync(GuildId, _code, _searchBox, sources, from, to, _sign, _account);
         }
         finally
@@ -198,25 +211,79 @@ public partial class GuildLedger : IDisposable
         }
     }
 
-    /// <summary>Day-grouped journal rows for rendering (date header before each new day).</summary>
-    private IReadOnlyList<(DateOnly? Header, JournalRow Row)> Lines()
+    private record Line(string? Header, long HeaderDebit, long HeaderCredit, JournalRow Row);
+
+    /// <summary>Journal rows for rendering. When date-sorted, a day header (with that day's debit/credit subtotals)
+    /// precedes each new day; otherwise a flat list.</summary>
+    private IReadOnlyList<Line> Lines()
     {
         if (_journal is null)
         {
             return [];
         }
 
-        var list = new List<(DateOnly?, JournalRow)>(_journal.Items.Count);
+        var byDay = Grouped
+            ? _journal.Items.GroupBy(r => DateOnly.FromDateTime(r.OccurredAt.UtcDateTime))
+                .ToDictionary(g => g.Key, g => (Debit: g.Sum(x => x.Amount < 0 ? -x.Amount : 0L), Credit: g.Sum(x => x.Amount > 0 ? x.Amount : 0L)))
+            : null;
+
+        var list = new List<Line>(_journal.Items.Count);
         DateOnly? last = null;
         foreach (var r in _journal.Items)
         {
-            var d = DateOnly.FromDateTime(r.OccurredAt.UtcDateTime);
-            list.Add((last != d ? d : null, r));
-            last = d;
+            if (Grouped)
+            {
+                var d = DateOnly.FromDateTime(r.OccurredAt.UtcDateTime);
+                if (last != d)
+                {
+                    last = d;
+                    var t = byDay![d];
+                    list.Add(new Line(DateLabel(d), t.Debit, t.Credit, r));
+                    continue;
+                }
+            }
+
+            list.Add(new Line(null, 0, 0, r));
         }
 
         return list;
     }
+
+    private async Task SetSort(string column)
+    {
+        _descending = _sortKey == column ? !_descending : true;
+        _sortKey = column;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    private void ToggleDetail(long id) => _expandedId = _expandedId == id ? null : id;
+
+    private async Task ExportCsvAsync()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
+        var (from, to) = ResolveRange(_preset);
+        var sources = _source is { } s ? new[] { s } : null;
+        var rows = await wallet.GetJournalForExportAsync(GuildId, _code, _searchBox, sources, from, to, _sign, _account);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("When (UTC),Account,Counter-account,Source,Debit,Credit,Reference,Reason");
+        foreach (var r in rows)
+        {
+            sb.Append(r.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(',')
+              .Append(Csv(r.AccountName)).Append(',').Append(Csv(r.CounterName)).Append(',').Append(Csv(SourceLabel(r.Source))).Append(',')
+              .Append(r.Amount < 0 ? (-r.Amount).ToString(CultureInfo.InvariantCulture) : "").Append(',')
+              .Append(r.Amount > 0 ? r.Amount.ToString(CultureInfo.InvariantCulture) : "").Append(',')
+              .Append(Csv(r.Reference ?? "")).Append(',').AppendLine(Csv(r.Reason));
+        }
+
+        await JS.InvokeVoidAsync("musterDownload", $"ledger-{_code}-{DateTimeOffset.UtcNow.UtcDateTime:yyyyMMdd}.csv", sb.ToString(), "text/csv;charset=utf-8");
+    }
+
+    private static string Csv(string s) => s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
 
     private static string DateLabel(DateOnly d)
     {

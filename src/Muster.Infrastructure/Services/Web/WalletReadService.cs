@@ -358,7 +358,8 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     /// (mint/issuance, shop/escrow, burn) at read time — no extra ledger writes.</summary>
     public async Task<PagedResult<JournalRow>> GetJournalAsync(
         ulong guildId, string code, string? search, int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null, CancellationToken ct = default)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null,
+        string sortKey = "when", bool descending = true, CancellationToken ct = default)
     {
         if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
         {
@@ -368,8 +369,28 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         var size = Math.Clamp(pageSize, 1, 100);
         var p = Math.Max(page, 1);
         var (rows, total) = await db.GuildJournalPagedAsync(
-            guildId, scope.Id, search, (p - 1) * size, size, ct, sources, from, to, sign, account);
+            guildId, scope.Id, search, (p - 1) * size, size, ct, sources, from, to, sign, account, sortKey, descending);
 
+        return new PagedResult<JournalRow>(await BuildJournalRowsAsync(rows, ct), p, size, total);
+    }
+
+    /// <summary>All filtered journal rows (capped) for a CSV export of the current view.</summary>
+    public async Task<IReadOnlyList<JournalRow>> GetJournalForExportAsync(
+        ulong guildId, string code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null, int cap = 10000, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.GuildJournalAllAsync(guildId, scope.Id, search, cap, ct, sources, from, to, sign, account);
+        return await BuildJournalRowsAsync(rows, ct);
+    }
+
+    /// <summary>Resolve journal postings to display rows — account + (real or synthesised) counter-account.</summary>
+    private async Task<List<JournalRow>> BuildJournalRowsAsync(List<JournalPosting> rows, CancellationToken ct)
+    {
         var ids = rows.Where(r => r.UserId is not 0 and not 1).Select(r => r.UserId)
             .Concat(rows.Where(r => r.CounterpartyId is not null).Select(r => r.CounterpartyId!.Value))
             .Distinct().ToList();
@@ -428,7 +449,7 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
                 r.SourceType, r.Amount, r.SourceId, r.OccurredAt, r.Reason);
         }).ToList();
 
-        return new PagedResult<JournalRow>(items, p, size, total);
+        return items;
     }
 
     /// <summary>Σ credited (in) / Σ debited (out) for the journal under the same filters — the footer totals.</summary>

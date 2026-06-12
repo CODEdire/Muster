@@ -411,16 +411,26 @@ public static class CurrencyLedgerQueries
         return q;
     }
 
+    private static IOrderedQueryable<CurrencyLedgerEntry> JournalOrder(IQueryable<CurrencyLedgerEntry> q, string sortKey, bool descending) =>
+        (sortKey, descending) switch
+        {
+            ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
+            ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            (_, false) => q.OrderBy(e => e.OccurredAt).ThenBy(e => e.Id),
+            _ => q.OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id),
+        };
+
     public static async Task<(List<JournalPosting> Rows, int Total)> GuildJournalPagedAsync(
         this MusterDbContext db, ulong guildId, Guid currencyId, string? search, int skip, int take, CancellationToken ct = default,
         IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
-        int? sign = null, string? account = null)
+        int? sign = null, string? account = null, string sortKey = "when", bool descending = true)
     {
         var q = GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account);
         var total = await q.CountAsync(ct);
 
-        var rows = await q
-            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
+        var rows = await JournalOrder(q, sortKey, descending)
             .Skip(Math.Max(skip, 0))
             .Take(Math.Clamp(take, 1, 100))
             .Select(e => new JournalPosting(e.Id, e.UserId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
@@ -428,6 +438,17 @@ public static class CurrencyLedgerQueries
 
         return (rows, total);
     }
+
+    /// <summary>All filtered journal postings (newest first, capped) for an export.</summary>
+    public static async Task<List<JournalPosting>> GuildJournalAllAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, int cap, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, string? account = null)
+        => await GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account)
+            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
+            .Take(Math.Clamp(cap, 1, 50000))
+            .Select(e => new JournalPosting(e.Id, e.UserId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
+            .ToListAsync(ct);
 
     /// <summary>Σ credited (in) / Σ debited (out) for the journal under the same filters — the footer totals.</summary>
     public static async Task<(long In, long Out)> GuildJournalTotalsAsync(

@@ -5,6 +5,8 @@
 @inherits GuildAdminComponentBase
 @implements IDisposable
 @inject IServiceScopeFactory Scopes
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Platform
@@ -40,26 +42,51 @@ else if (State == AccessState.Ready)
     {
         @if (_supply is not null)
         {
-            <div class="recon">
-                <span class="recon-label">Supply reconciliation</span>
-                <span class="mono">Minted <b>@_supply.Minted.ToString("N0")</b></span><span class="op">=</span>
-                <span class="mono">Circulating <b>@_supply.Circulating.ToString("N0")</b></span><span class="op">+</span>
-                <span class="mono">Escrow <b>@_supply.Escrow.ToString("N0")</b></span><span class="op">+</span>
-                <span class="mono">Burned <b>@_supply.Removed.ToString("N0")</b></span>
-                @if (Reconciles)
-                {
-                    <span class="recon-ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span> balances</span>
-                }
-                else
-                {
-                    <span class="recon-off"><span class="material-symbols-outlined" aria-hidden="true">error</span> off by @((_supply.Minted - _supply.Circulating - _supply.Escrow - _supply.Removed).ToString("N0"))</span>
-                }
+            <div class="jr-summary">
+                <div class="jr-card">
+                    <div class="panel-head">
+                        <h2>Trial balance</h2>
+                        @if (Reconciles)
+                        {
+                            <span class="tb-ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span> balances</span>
+                        }
+                        else
+                        {
+                            <span class="tb-off"><span class="material-symbols-outlined" aria-hidden="true">error</span> off by @((_supply.Minted - _supply.Circulating - _supply.Escrow - _supply.Removed).ToString("N0"))</span>
+                        }
+                    </div>
+                    <table class="jr-tb mono">
+                        <tbody>
+                            <tr><td><span class="dot circ"></span>Members (holders)</td><td class="num">@_supply.Circulating.ToString("N0")</td></tr>
+                            <tr><td><span class="dot escrow"></span>Escrow (house)</td><td class="num">@_supply.Escrow.ToString("N0")</td></tr>
+                            <tr><td><span class="dot burned"></span>Burn sink</td><td class="num">@_supply.Removed.ToString("N0")</td></tr>
+                            <tr class="tb-total"><td>Total issued</td><td class="num">@_supply.Minted.ToString("N0")</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="jr-card">
+                    <div class="panel-head"><h2>Supply composition</h2><a class="jr-auditlink" href="/guilds/@GuildId/audit">Audit log ↗</a></div>
+                    <div class="comp">
+                        <svg width="112" height="112" viewBox="0 0 120 120" aria-hidden="true">
+                            <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16" />
+                            <circle cx="60" cy="60" r="48" fill="none" stroke="#1D9E75" stroke-width="16" stroke-dasharray="@Dash(_supply.Circulating)" transform="rotate(-90 60 60)" />
+                            <circle cx="60" cy="60" r="48" fill="none" stroke="#EF9F27" stroke-width="16" stroke-dasharray="@Dash(_supply.Escrow)" stroke-dashoffset="@Off(Seg(_supply.Circulating))" transform="rotate(-90 60 60)" />
+                            <circle cx="60" cy="60" r="48" fill="none" stroke="#888780" stroke-width="16" stroke-dasharray="@Dash(_supply.Removed)" stroke-dashoffset="@Off(Seg(_supply.Circulating) + Seg(_supply.Escrow))" transform="rotate(-90 60 60)" />
+                        </svg>
+                        <div class="comp-legend">
+                            <div><span class="dot circ"></span>Circulating <b>@Pct(_supply.Circulating)%</b></div>
+                            <div><span class="dot escrow"></span>Escrow <b>@Pct(_supply.Escrow)%</b></div>
+                            <div><span class="dot burned"></span>Burned <b>@Pct(_supply.Removed)%</b></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         }
 
-        <div class="panel glass dg-frame dg-fill">
+        <div class="jr-grid dg-frame dg-fill">
             <div class="dg-toolbar">
                 <div class="dg-filters">
+                    <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
                     <select class="dg-select" value="@_account" @onchange="OnAccount">
                         <option value="">Any account</option>
                         <option value="member">Members</option>
@@ -84,11 +111,13 @@ else if (State == AccessState.Ready)
                         <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Debit</button>
                         <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">Credit</button>
                     </div>
-                    <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
                     @if (_loading)
                     {
                         <span class="dg-loading" aria-hidden="true"></span>
                     }
+                </div>
+                <div class="dg-actions">
+                    <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
                 </div>
             </div>
 
@@ -96,12 +125,12 @@ else if (State == AccessState.Ready)
                 <table class="dg-table jr-table">
                     <thead>
                         <tr>
-                            <th>When</th>
+                            <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
                             <th>Account</th>
                             <th>Counter-account</th>
-                            <th>Source</th>
-                            <th class="num">Debit</th>
-                            <th class="num">Credit</th>
+                            <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
+                            <th class="num sortable" @onclick='() => SetSort("amount")'>Debit @Ind("amount")</th>
+                            <th class="num sortable" @onclick='() => SetSort("amount")'>Credit</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -111,14 +140,17 @@ else if (State == AccessState.Ready)
                         }
                         else
                         {
-                            @foreach (var (header, r) in Lines())
+                            @foreach (var line in Lines())
                             {
-                                @if (header is { } d)
+                                var r = line.Row;
+                                @if (line.Header is { } h)
                                 {
-                                    <tr class="dg-group"><td colspan="6">@DateLabel(d)</td></tr>
+                                    <tr class="dg-group">
+                                        <td colspan="6">@h <span class="grp-net">debit <span class="debit">@line.HeaderDebit.ToString("N0")</span> · credit <span class="credit">@line.HeaderCredit.ToString("N0")</span></span></td>
+                                    </tr>
                                 }
-                                <tr title="@(string.IsNullOrEmpty(r.Reference) ? "" : $"ref {r.Reference}")">
-                                    <td class="jr-when"><LocalTime Value="r.OccurredAt" /></td>
+                                <tr class="led-row @(_expandedId == r.Id ? "open" : "")" @onclick="() => ToggleDetail(r.Id)">
+                                    <td class="jr-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == r.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="r.OccurredAt" /></td>
                                     <td>@AccountCell(r.AccountKind, r.AccountName, r.AccountAvatar, r.AccountUserId)</td>
                                     <td>
                                         @if (r.CounterIsMember)
@@ -134,6 +166,22 @@ else if (State == AccessState.Ready)
                                     <td class="num debit">@(r.Amount < 0 ? (-r.Amount).ToString("N0") : "—")</td>
                                     <td class="num credit">@(r.Amount > 0 ? r.Amount.ToString("N0") : "—")</td>
                                 </tr>
+                                @if (_expandedId == r.Id)
+                                {
+                                    <tr class="led-detail">
+                                        <td colspan="6">
+                                            <div class="ld-grid">
+                                                <div><span class="k">Reference</span><span class="v mono">@(string.IsNullOrEmpty(r.Reference) ? "—" : r.Reference)</span></div>
+                                                <div><span class="k">Account</span><span class="v">@r.AccountName</span></div>
+                                                <div><span class="k">Counter-account</span><span class="v">@r.CounterName</span></div>
+                                                <div><span class="k">Source</span><span class="v">@SourceLabel(r.Source)</span></div>
+                                                <div><span class="k">Posted</span><span class="v"><LocalTime Value="r.OccurredAt" /></span></div>
+                                                <div><span class="k">Amount</span><span class="v @(r.Amount < 0 ? "debit" : "credit")">@(r.Amount < 0 ? "−" : "+")@System.Math.Abs(r.Amount).ToString("N0")</span></div>
+                                                <div class="ld-reason"><span class="k">Reason</span><span class="v">@r.Reason</span></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
                             }
                         }
                     </tbody>
@@ -152,32 +200,6 @@ else if (State == AccessState.Ready)
                 </div>
             </div>
         </div>
-
-        @if (_supply is not null)
-        {
-            <div class="jr-cols">
-                <div class="jr-card">
-                    <div class="panel-head"><h2>Trial balance</h2></div>
-                    <table class="jr-tb mono">
-                        <tbody>
-                            <tr><td>Members (holders)</td><td class="num">@_supply.Circulating.ToString("N0")</td></tr>
-                            <tr><td>Escrow (house)</td><td class="num">@_supply.Escrow.ToString("N0")</td></tr>
-                            <tr><td>Burn sink</td><td class="num">@_supply.Removed.ToString("N0")</td></tr>
-                            <tr class="tb-total"><td>Total issued</td><td class="num">@_supply.Minted.ToString("N0")</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="jr-card">
-                    <div class="panel-head"><h2>Audit trail</h2></div>
-                    <ul class="jr-audit">
-                        <li><span class="material-symbols-outlined" aria-hidden="true">verified_user</span> Counterparty recorded on every transfer</li>
-                        <li><span class="material-symbols-outlined" aria-hidden="true">tag</span> Reference id per transaction (hover a row)</li>
-                        <li><span class="material-symbols-outlined" aria-hidden="true">lock</span> Append-only — no edits or deletes</li>
-                        <li><a href="/guilds/@GuildId/audit">View full audit log →</a></li>
-                    </ul>
-                </div>
-            </div>
-        }
 
         @if (_isAdmin)
         {
