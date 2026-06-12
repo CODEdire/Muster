@@ -577,6 +577,57 @@ public static class CurrencyLedgerQueries
             .ToList();
     }
 
+    /// <summary>Guild-wide earned (positive amounts) per ledger source for a currency, optionally season-scoped —
+    /// the participation "points by source" chart. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildSourceEarnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonScope, CancellationToken ct = default)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1);
+
+        if (seasonScope is { } s)
+        {
+            q = q.Where(e => e.SeasonId == s);
+        }
+
+        var rows = await q
+            .GroupBy(e => e.SourceType)
+            .Select(g => new { Source = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.Source, r => r.Total);
+    }
+
+    /// <summary>Guild-wide total earned per season for a currency (sum of positive amounts grouped by season) — the
+    /// season-over-season chart. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<Guid, long>> GuildSeasonEarnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId != null && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.SeasonId!.Value)
+            .Select(g => new { SeasonId = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.SeasonId, r => r.Total);
+    }
+
+    /// <summary>Distinct members who earned (positive amount) of a currency, optionally season-scoped — "active
+    /// earners". Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<int> GuildActiveEarnersAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonScope, CancellationToken ct = default)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1);
+
+        if (seasonScope is { } s)
+        {
+            q = q.Where(e => e.SeasonId == s);
+        }
+
+        return await q.Select(e => e.UserId).Distinct().CountAsync(ct);
+    }
+
     /// <summary>Circulating supply (member-held only — excludes the escrow account 0 and burn sink 1) just before
     /// <paramref name="asOf"/>: the opening point for the guild supply-over-time / candle chart.</summary>
     public static async Task<long> GuildCirculatingAsOfAsync(

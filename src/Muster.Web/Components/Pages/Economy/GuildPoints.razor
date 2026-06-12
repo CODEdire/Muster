@@ -36,13 +36,63 @@ else if (State == AccessState.Ready)
     }
     else
     {
-        <div class="stat-grid">
-            <div class="card glass stat"><span class="label">In circulation</span><span class="num">@_supply.Circulating.ToString("N0")</span><span class="subtitle">member-held</span></div>
-            <div class="card glass stat"><span class="label">Held in escrow</span><span class="num">@_supply.Escrow.ToString("N0")</span><span class="subtitle">house account</span></div>
-            <div class="card glass stat"><span class="label">Holders</span><span class="num">@_supply.Holders.ToString("N0")</span><span class="subtitle">members with a balance</span></div>
-            <div class="card glass stat"><span class="label">Total minted</span><span class="num">@_supply.Minted.ToString("N0")</span><span class="subtitle">all-time inflow</span></div>
-            <div class="card glass stat"><span class="label">Total removed</span><span class="num">@_supply.Removed.ToString("N0")</span><span class="subtitle">all-time outflow</span></div>
+        <div class="part-head">
+            <p class="subtitle">Season engagement and where points come from across the server.</p>
+            @if (_seasons.Count > 0)
+            {
+                <select class="dg-select" @onchange="OnSeason">
+                    @foreach (var s in _seasons)
+                    {
+                        <option value="@s.Id" selected="@(s.Id == _season)">@s.Name@(s.IsActive ? " (active)" : "")</option>
+                    }
+                </select>
+            }
         </div>
+
+        @if (_part is not null)
+        {
+            <div class="stat-grid">
+                <div class="card glass stat"><span class="label">Points awarded</span><span class="num">@_part.Awarded.ToString("N0")</span><span class="subtitle">@(_seasons.Count > 0 ? "this season" : "all time")</span></div>
+                <div class="card glass stat"><span class="label">Active earners</span><span class="num">@_part.Earners.ToString("N0")</span><span class="subtitle">@(_supply.Holders > 0 ? $"{_part.Earners * 100 / Math.Max(1, _supply.Holders)}% of holders" : "earning members")</span></div>
+                <div class="card glass stat"><span class="label">Holders</span><span class="num">@_supply.Holders.ToString("N0")</span><span class="subtitle">with a points balance</span></div>
+                <div class="card glass stat"><span class="label">Total minted</span><span class="num">@_supply.Minted.ToString("N0")</span><span class="subtitle">all-time</span></div>
+            </div>
+
+            <div class="part-cols">
+                <div class="part-card">
+                    <h2>Points by source</h2>
+                    @if (_part.BySource.Count == 0)
+                    {
+                        <p class="subtitle">No points awarded in this window.</p>
+                    }
+                    else
+                    {
+                        @foreach (var s in _part.BySource)
+                        {
+                            <div class="src-row">
+                                <span class="src-name">@SourceLabel(s.Source)</span>
+                                <div class="src-bar"><div class="fill" style="width:@(s.Total * 100 / SourceMax)%"></div></div>
+                                <span class="src-val">@s.Total.ToString("N0")</span>
+                            </div>
+                        }
+                    }
+                </div>
+                @if (_seasonTotals.Count > 0)
+                {
+                    <div class="part-card">
+                        <h2>Season over season</h2>
+                        @foreach (var st in _seasonTotals)
+                        {
+                            <div class="season-row @(st.Season.Id == _season ? "sel" : "")" @onclick="() => SelectSeason(st.Season.Id)">
+                                <span class="season-name">@st.Season.Name@(st.Season.IsActive ? " · active" : "")</span>
+                                <div class="season-bar"><div class="fill" style="width:@(st.Total * 100 / SeasonTotalMax)%"></div></div>
+                                <span class="season-val">@st.Total.ToString("N0")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
 
         <TabFrame ActiveId="@_tab" ActiveIdChanged="t => _tab = t">
             <TabPane Id="holders" Label="Top holders" Icon="leaderboard">

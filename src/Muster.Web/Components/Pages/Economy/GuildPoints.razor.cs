@@ -5,6 +5,7 @@ using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
+using Muster.Persistence.Queries;
 using Muster.Web.Components.Shared;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
@@ -25,6 +26,15 @@ public partial class GuildPoints : IDisposable
     private CurrencySupply? _supply;
     private PagedResult<LeaderboardRow>? _holders;
     private int _holdersPage = 1;
+
+    // Participation overview (season-scoped).
+    private IReadOnlyList<SeasonInfo> _seasons = [];
+    private Guid? _season;
+    private ParticipationOverview? _part;
+    private IReadOnlyList<(SeasonInfo Season, long Total)> _seasonTotals = [];
+
+    private long SourceMax => _part is { BySource.Count: > 0 } p ? Math.Max(1, p.BySource.Max(s => s.Total)) : 1;
+    private long SeasonTotalMax => _seasonTotals.Count == 0 ? 1 : Math.Max(1, _seasonTotals.Max(s => s.Total));
 
     private PagedResult<MovementRow>? _movement;
     private int _movePage = 1;
@@ -52,6 +62,15 @@ public partial class GuildPoints : IDisposable
             var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
             _supply = await points.GetSupplyAsync(GuildId);
             _holders = await points.GetTopHoldersPageAsync(GuildId, _holdersPage, PageSize);
+
+            _seasons = await points.GetSeasonsAsync(GuildId);
+            if (_season is null || _seasons.All(s => s.Id != _season))
+            {
+                _season = _seasons.FirstOrDefault(s => s.IsActive)?.Id ?? _seasons.FirstOrDefault()?.Id;
+            }
+
+            _part = await points.GetParticipationAsync(GuildId, _season);
+            _seasonTotals = await points.GetSeasonTotalsAsync(GuildId);
 
             var (from, to) = ResolveRange(_movePreset);
             var sources = _moveSource is { } s ? new[] { s } : null;
@@ -145,6 +164,23 @@ public partial class GuildPoints : IDisposable
     }
 
     private string MoveInd(string column) => _moveSortKey == column ? (_moveDescending ? "▼" : "▲") : "";
+
+    private async Task OnSeason(ChangeEventArgs e)
+    {
+        _season = Guid.TryParse(e.Value as string, out var id) ? id : null;
+        await ReloadAsync();
+    }
+
+    private async Task SelectSeason(Guid id)
+    {
+        if (_season == id)
+        {
+            return;
+        }
+
+        _season = id;
+        await ReloadAsync();
+    }
 
     private static string Medal(int rank) => rank switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => rank.ToString() };
 

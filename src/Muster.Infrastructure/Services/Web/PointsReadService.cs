@@ -13,6 +13,12 @@ namespace Muster.Infrastructure.Services.Web;
 /// <summary>A member's points snapshot for the Points page (current balance + voice context).</summary>
 public record PointsSnapshot(long Balance, bool Seasonal, MemberVoiceStats Voice);
 
+/// <summary>Points earned guild-wide for one ledger source — the participation "points by source" rows.</summary>
+public record SourceEarned(CurrencyLedgerSource Source, long Total);
+
+/// <summary>Guild participation overview for a season: total awarded, distinct active earners, and the by-source split.</summary>
+public record ParticipationOverview(long Awarded, int Earners, IReadOnlyList<SourceEarned> BySource);
+
 /// <summary>
 /// The Points surface: only POINTS. Same storage as other currencies but a dedicated read service so callers
 /// can never accidentally surface points on the wallet (or vice versa). Wraps <see cref="ICurrencyReadService"/>
@@ -33,6 +39,44 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         Guid? seasonId = points.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
         var balance = await db.BalanceAsync(guildId, userId, points.Id, seasonId, ct);
         return new PointsSnapshot(balance, points.IsSeasonal, voice);
+    }
+
+    /// <summary>Guild seasons for the participation season picker — empty when POINTS isn't seasonal.</summary>
+    public async Task<IReadOnlyList<SeasonInfo>> GetSeasonsAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        return points is { IsSeasonal: true } ? await db.SeasonsAsync(guildId, ct) : [];
+    }
+
+    /// <summary>Guild-wide participation overview for a season (default active): points awarded, active earners, and
+    /// the points-by-source breakdown.</summary>
+    public async Task<ParticipationOverview> GetParticipationAsync(ulong guildId, Guid? season, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return new ParticipationOverview(0, 0, []);
+        }
+
+        var scope = points.IsSeasonal ? (season ?? await db.ActiveSeasonIdAsync(guildId, ct)) : null;
+        var bySourceMap = await db.GuildSourceEarnedAsync(guildId, points.Id, scope, ct);
+        var bySource = bySourceMap.OrderByDescending(kv => kv.Value).Select(kv => new SourceEarned(kv.Key, kv.Value)).ToList();
+        var earners = await db.GuildActiveEarnersAsync(guildId, points.Id, scope, ct);
+        return new ParticipationOverview(bySourceMap.Values.Sum(), earners, bySource);
+    }
+
+    /// <summary>Guild-wide points awarded per season (season-over-season chart), oldest first.</summary>
+    public async Task<IReadOnlyList<(SeasonInfo Season, long Total)>> GetSeasonTotalsAsync(ulong guildId, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is not { IsSeasonal: true })
+        {
+            return [];
+        }
+
+        var seasons = await db.SeasonsAsync(guildId, ct);
+        var totals = await db.GuildSeasonEarnedAsync(guildId, points.Id, ct);
+        return seasons.OrderBy(s => s.StartsAt).Select(s => (s, totals.GetValueOrDefault(s.Id, 0L))).ToList();
     }
 
     /// <summary>Paged points history for the Personal Points tab.</summary>
