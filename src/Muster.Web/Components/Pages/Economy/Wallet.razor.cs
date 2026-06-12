@@ -63,6 +63,9 @@ public partial class Wallet : IDisposable
     private string _preset = "";
     private CurrencyLedgerSource? _source;
     private int? _sign;
+    private ulong? _party;
+    private IReadOnlyList<(ulong UserId, string Name, string? AvatarUrl)> _parties = [];
+    private long? _expandedId;
     private (long In, long Out) _totals;
     private const int SearchDebounceMs = 350;
     private string? _searchBox;
@@ -118,6 +121,8 @@ public partial class Wallet : IDisposable
         _sel = code;
         _page = 1;
         _source = null;
+        _party = null;
+        _expandedId = null;
         await LoadScopeAsync();
         await ReloadLedgerAsync();
     }
@@ -145,6 +150,7 @@ public partial class Wallet : IDisposable
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(4).ToList();
         _series = await wallet.GetBalanceSeriesAsync(GuildId, UserId, _sel, from, to);
         (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, UserId, _sel);
+        _parties = await wallet.GetCounterpartiesAsync(GuildId, UserId, _sel);
     }
 
     private async Task ReloadLedgerAsync()
@@ -181,8 +187,8 @@ public partial class Wallet : IDisposable
                 var wallet = sp.GetRequiredService<WalletReadService>();
                 _activity = await wallet.GetHistoryPageAsync(
                     GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size,
-                    sources: sources, from: from, to: to, sign: _sign, withRunningBalance: _sortKey == "when");
-                _totals = await wallet.GetHistoryTotalsAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign);
+                    sources: sources, from: from, to: to, sign: _sign, withRunningBalance: _sortKey == "when", counterpartyId: _party);
+                _totals = await wallet.GetHistoryTotalsAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign, _party);
             }
         }
         finally
@@ -279,7 +285,21 @@ public partial class Wallet : IDisposable
     /// <summary>The running-balance column shows only when the read path returned it (single non-seasonal currency,
     /// date-sorted).</summary>
     private bool ShowBalanceCol => _activity is { Items.Count: > 0 } && _activity.Items[0].BalanceAfter.HasValue;
-    private int LedgerCols => ShowBalanceCol ? 5 : 4;
+    private int LedgerCols => ShowBalanceCol ? 6 : 5;
+
+    private async Task OnParty(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _party = string.IsNullOrEmpty(raw) || !ulong.TryParse(raw, out var v) ? null : v;
+        _page = 1;
+        await ReloadLedgerAsync();
+    }
+
+    private void ToggleDetail(long id) => _expandedId = _expandedId == id ? null : id;
+
+    /// <summary>Generic counterparty label for entries with no member counterparty (shop / system awards).</summary>
+    private static string PartyLabel(MemberLedgerRow r) =>
+        r.Source is CurrencyLedgerSource.Shop or CurrencyLedgerSource.ShopFee ? "Shop" : "Guild";
 
     /// <summary>Export the current filtered ledger view to CSV (whole filtered set, not just the page).</summary>
     private async Task ExportCsvAsync()
@@ -291,15 +311,16 @@ public partial class Wallet : IDisposable
 
         IReadOnlyList<MemberLedgerRow> rows = SelIsPoints
             ? await sp.GetRequiredService<PointsReadService>().GetHistoryForExportAsync(GuildId, UserId, _searchBox, sources, from, to, _sign)
-            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign);
+            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign, _party);
 
         var sb = new StringBuilder();
-        sb.AppendLine("When (UTC),Currency,Source,Amount,Reason");
+        sb.AppendLine("When (UTC),Currency,Source,Party,Amount,Reason");
         foreach (var r in rows)
         {
             sb.Append(r.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append(',')
               .Append(Csv(r.Currency)).Append(',')
               .Append(Csv(SourceLabel(r.Source))).Append(',')
+              .Append(Csv(r.CounterpartyName ?? PartyLabel(r))).Append(',')
               .Append(r.Amount.ToString(CultureInfo.InvariantCulture)).Append(',')
               .AppendLine(Csv(r.Reason));
         }
@@ -323,6 +344,41 @@ public partial class Wallet : IDisposable
             .GroupBy(r => DateOnly.FromDateTime(r.OccurredAt.UtcDateTime))
             .Select(g => (g.Key, g.Sum(x => x.Amount), g.ToList()))
             .ToList();
+    }
+
+    /// <summary>One rendered ledger line: the row, plus a day-group header to emit before it when the day changes.</summary>
+    private record LedgerLine(MemberLedgerRow Row, string? GroupLabel, long GroupNet);
+
+    /// <summary>The page's rows flattened for rendering, with day-group headers inlined when date-sorted.</summary>
+    private IReadOnlyList<LedgerLine> LedgerLines()
+    {
+        if (_activity is null)
+        {
+            return [];
+        }
+
+        var net = Grouped ? LedgerGroups().ToDictionary(g => g.Date, g => g.Net) : null;
+        var lines = new List<LedgerLine>(_activity.Items.Count);
+        DateOnly? last = null;
+        foreach (var h in _activity.Items)
+        {
+            string? label = null;
+            long groupNet = 0;
+            if (Grouped)
+            {
+                var d = DateOnly.FromDateTime(h.OccurredAt.UtcDateTime);
+                if (last != d)
+                {
+                    last = d;
+                    label = DateLabel(d);
+                    groupNet = net![d];
+                }
+            }
+
+            lines.Add(new LedgerLine(h, label, groupNet));
+        }
+
+        return lines;
     }
 
     private static string DateLabel(DateOnly d)

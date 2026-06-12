@@ -100,6 +100,25 @@
 .dg-table tr.dg-group .grp-net.pos { color: #4ade80; }
 .dg-table tr.dg-group .grp-net.neg { color: var(--danger); }
 .dg-table td.num.bal { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Counterparty column + transaction drill-in */
+.led-row { cursor: pointer; }
+.led-row .whence { display: inline-flex; align-items: center; gap: 0.2rem; }
+.led-row .whence .exp { font-size: 1rem; color: var(--text-muted); }
+.led-row.open > td { background: var(--surface); }
+.dg-table td.party { white-space: nowrap; }
+.party ::deep .user-chip { gap: 0.35rem; }
+.party ::deep .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
+.party ::deep .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
+.party-sys { color: var(--text-muted); font-size: 0.85rem; }
+.led-detail > td { background: rgba(255, 255, 255, 0.02); }
+.ld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem 1.5rem; padding: 0.6rem 0.4rem; }
+.ld-grid > div { display: flex; flex-direction: column; gap: 0.1rem; }
+.ld-grid .k { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.ld-grid .v { font-size: 0.88rem; }
+.ld-grid .v.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; word-break: break-all; }
+.ld-grid .v.pos { color: #4ade80; }
+.ld-grid .v.neg { color: var(--danger); }
 .dg-totals { font-size: 0.82rem; color: var(--text-muted); margin-left: 1rem; }
 .dg-totals .pos { color: #4ade80; }
 .dg-totals .neg { color: var(--danger); }

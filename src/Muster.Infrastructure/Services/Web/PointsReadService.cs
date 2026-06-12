@@ -56,7 +56,7 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
             sources: sources, from: from, to: to, sign: sign);
 
         var items = rows
-            .Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason))
+            .Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason, null, r.Id, r.SourceId))
             .ToList();
 
         return new PagedResult<MemberLedgerRow>(items, p, size, total);
@@ -85,7 +85,7 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         }
 
         var rows = await db.MemberLedgerAllAsync(guildId, userId, points.Id, search, cap, ct, sources: sources, from: from, to: to, sign: sign);
-        return rows.Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason)).ToList();
+        return rows.Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason, null, r.Id, r.SourceId)).ToList();
     }
 
     /// <summary>Supply analytics for POINTS (or null when POINTS isn't configured in this guild).</summary>

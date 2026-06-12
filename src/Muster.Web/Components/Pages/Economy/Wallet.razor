@@ -231,6 +231,16 @@ else if (State == AccessState.Ready)
                     <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">In</button>
                     <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
                 </div>
+                @if (_parties.Count > 0)
+                {
+                    <select class="dg-select" value="@(_party?.ToString() ?? "")" @onchange="OnParty">
+                        <option value="">Anyone</option>
+                        @foreach (var pp in _parties)
+                        {
+                            <option value="@pp.UserId">@pp.Name</option>
+                        }
+                    </select>
+                }
                 <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
                 @if (_loading)
                 {
@@ -249,6 +259,7 @@ else if (State == AccessState.Ready)
                     <tr>
                         <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
                         <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
+                        <th>Party</th>
                         <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
                         @if (ShowBalanceCol)
                         {
@@ -262,35 +273,30 @@ else if (State == AccessState.Ready)
                     {
                         <tr class="dg-empty"><td colspan="@LedgerCols">@(_activity is null ? "Loading…" : "No activity matches these filters.")</td></tr>
                     }
-                    else if (Grouped)
-                    {
-                        @foreach (var g in LedgerGroups())
-                        {
-                            <tr class="dg-group">
-                                <td colspan="@LedgerCols">@DateLabel(g.Date) <span class="grp-net @(g.Net >= 0 ? "pos" : "neg")">@(g.Net > 0 ? "+" : "")@g.Net.ToString("N0")</span></td>
-                            </tr>
-                            @foreach (var h in g.Rows)
-                            {
-                                <tr>
-                                    <td><LocalTime Value="h.OccurredAt" /></td>
-                                    <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
-                                    <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
-                                    @if (ShowBalanceCol)
-                                    {
-                                        <td class="num bal">@(h.BalanceAfter?.ToString("N0"))</td>
-                                    }
-                                    <td>@h.Reason</td>
-                                </tr>
-                            }
-                        }
-                    }
                     else
                     {
-                        @foreach (var h in _activity.Items)
+                        @foreach (var line in LedgerLines())
                         {
-                            <tr>
-                                <td><LocalTime Value="h.OccurredAt" /></td>
+                            var h = line.Row;
+                            @if (line.GroupLabel is not null)
+                            {
+                                <tr class="dg-group">
+                                    <td colspan="@LedgerCols">@line.GroupLabel <span class="grp-net @(line.GroupNet >= 0 ? "pos" : "neg")">@(line.GroupNet > 0 ? "+" : "")@line.GroupNet.ToString("N0")</span></td>
+                                </tr>
+                            }
+                            <tr class="led-row @(_expandedId == h.Id ? "open" : "")" @onclick="() => ToggleDetail(h.Id)">
+                                <td class="whence"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == h.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="h.OccurredAt" /></td>
                                 <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
+                                <td class="party">
+                                    @if (h.CounterpartyName is not null)
+                                    {
+                                        <UserChip Name="@h.CounterpartyName" AvatarUrl="@h.CounterpartyAvatar" />
+                                    }
+                                    else
+                                    {
+                                        <span class="party-sys">@PartyLabel(h)</span>
+                                    }
+                                </td>
                                 <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
                                 @if (ShowBalanceCol)
                                 {
@@ -298,6 +304,24 @@ else if (State == AccessState.Ready)
                                 }
                                 <td>@h.Reason</td>
                             </tr>
+                            @if (_expandedId == h.Id)
+                            {
+                                <tr class="led-detail">
+                                    <td colspan="@LedgerCols">
+                                        <div class="ld-grid">
+                                            <div><span class="k">Reference</span><span class="v mono">@(string.IsNullOrEmpty(h.SourceId) ? "—" : h.SourceId)</span></div>
+                                            <div><span class="k">Counterparty</span><span class="v">@(h.CounterpartyName ?? PartyLabel(h))</span></div>
+                                            <div><span class="k">Posted</span><span class="v"><LocalTime Value="h.OccurredAt" /></span></div>
+                                            @if (h.BalanceAfter is { } b)
+                                            {
+                                                <div><span class="k">Balance after</span><span class="v">@b.ToString("N0") @SelUnit</span></div>
+                                            }
+                                            <div><span class="k">Source</span><span class="v">@SourceLabel(h.Source)</span></div>
+                                            <div><span class="k">Amount</span><span class="v @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</span></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                         }
                     }
                 </tbody>

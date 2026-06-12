@@ -16,6 +16,12 @@ public record LedgerTotal(ulong UserId, Guid CurrencyId, Guid? SeasonId, long To
 /// <see cref="GrossCredited"/>/<see cref="GrossDebited"/> are all-time inflow/outflow (both non-negative).</summary>
 public record CurrencySupplyTotals(long GrossCredited, long GrossDebited, long Circulating, long Escrow, int Holders);
 
+/// <summary>One member-ledger row projected for the web datagrid (incl. id, source id, counterparty and an optional
+/// running balance) — richer than the plain history tuple so the grid can show "who" and drill into a transaction.</summary>
+public record MemberLedgerProjection(
+    long Id, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, string? SourceId, ulong? CounterpartyId,
+    DateTimeOffset OccurredAt, string Reason, long? BalanceAfter = null);
+
 /// <summary>Read queries over the ledger (balances and leaderboards) plus the write-path's own lookups.</summary>
 public static class CurrencyLedgerQueries
 {
@@ -151,7 +157,8 @@ public static class CurrencyLedgerQueries
     /// <paramref name="sign"/>: 1 = credits (amount &gt; 0), -1 = debits (amount &lt; 0), null = both.</summary>
     private static IQueryable<CurrencyLedgerEntry> MemberLedgerFiltered(
         MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, Guid? excludeCurrencyId,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign)
+        IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign,
+        ulong? counterpartyId = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && e.UserId == userId && (currencyId == null || e.CurrencyId == currencyId));
@@ -159,6 +166,11 @@ public static class CurrencyLedgerQueries
         if (excludeCurrencyId is { } x)
         {
             q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (counterpartyId is { } cp)
+        {
+            q = q.Where(e => e.CounterpartyId == cp);
         }
 
         if (sources is { Count: > 0 })
@@ -199,9 +211,9 @@ public static class CurrencyLedgerQueries
     public static async Task<(long In, long Out)> MemberLedgerTotalsAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, CancellationToken ct = default,
         Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null)
     {
-        var agg = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign)
+        var agg = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId)
             .GroupBy(_ => 1)
             .Select(g => new
             {
@@ -219,12 +231,13 @@ public static class CurrencyLedgerQueries
     /// <paramref name="excludeCurrencyId"/> drops a currency at the SQL level — used by the wallet surface to keep
     /// POINTS out without relying on every caller to remember to filter.
     /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
-    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> MemberLedgerPagedAsync(
+    public static async Task<(List<MemberLedgerProjection> Rows, int Total)> MemberLedgerPagedAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
         string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, ulong? counterpartyId = null)
     {
-        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign);
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId);
 
         var total = await q.CountAsync(ct);
 
@@ -243,21 +256,22 @@ public static class CurrencyLedgerQueries
         var rows = await q
             .Skip(Math.Max(skip, 0))
             .Take(Math.Clamp(take, 1, 100))
-            .Select(e => new { e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .Select(e => new MemberLedgerProjection(e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
             .ToListAsync(ct);
 
-        return (rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
+        return (rows, total);
     }
 
     /// <summary>Like <see cref="MemberLedgerPagedAsync"/> but also returns each row's <b>running balance</b> (the
     /// member's balance for this currency after that entry), computed over the full history via a correlated sum so
     /// display filters don't distort it. Single non-seasonal currency only (season scope is null).</summary>
-    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason, long BalanceAfter)> Rows, int Total)> MemberLedgerPagedWithBalanceAsync(
+    public static async Task<(List<MemberLedgerProjection> Rows, int Total)> MemberLedgerPagedWithBalanceAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, string? search,
         string sortKey, bool descending, int skip, int take, CancellationToken ct = default,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, ulong? counterpartyId = null)
     {
-        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, null, sources, from, to, sign);
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, null, sources, from, to, sign, counterpartyId);
         var total = await q.CountAsync(ct);
 
         q = (sortKey, descending) switch
@@ -275,36 +289,41 @@ public static class CurrencyLedgerQueries
         var rows = await q
             .Skip(Math.Max(skip, 0))
             .Take(Math.Clamp(take, 1, 100))
-            .Select(e => new
-            {
-                e.CurrencyId,
-                e.Amount,
-                e.SourceType,
-                e.OccurredAt,
-                e.Reason,
-                Bal = db.CurrencyLedgerEntries
+            .Select(e => new MemberLedgerProjection(
+                e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason,
+                db.CurrencyLedgerEntries
                     .Where(x => x.GuildId == guildId && x.UserId == userId && x.CurrencyId == currencyId && x.SeasonId == null
                         && (x.OccurredAt < e.OccurredAt || (x.OccurredAt == e.OccurredAt && x.Id <= e.Id)))
-                    .Sum(x => (long?)x.Amount) ?? 0,
-            })
+                    .Sum(x => (long?)x.Amount) ?? 0))
             .ToListAsync(ct);
 
-        return (rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.Bal)).ToList(), total);
+        return (rows, total);
     }
 
     /// <summary>All filtered member-ledger rows (newest first, capped) for an export. Same filter as the datagrid.</summary>
-    public static async Task<List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)>> MemberLedgerAllAsync(
+    public static async Task<List<MemberLedgerProjection>> MemberLedgerAllAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, int cap, CancellationToken ct = default,
         Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
-    {
-        var rows = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null)
+        => await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId)
             .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
             .Take(Math.Clamp(cap, 1, 50000))
-            .Select(e => new { e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .Select(e => new MemberLedgerProjection(e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
             .ToListAsync(ct);
 
-        return rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList();
+    /// <summary>Distinct counterparty user ids a member has transacted with for a currency (their transfer partners) —
+    /// the party-filter dropdown. <paramref name="currencyId"/> null = across all currencies.</summary>
+    public static async Task<List<ulong>> MemberCounterpartiesAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, CancellationToken ct = default)
+    {
+        var ids = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CounterpartyId != null
+                && (currencyId == null || e.CurrencyId == currencyId))
+            .Select(e => e.CounterpartyId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return ids;
     }
 
     /// <summary>A user's most recent ledger entries across all currencies (newest first), projected for display.</summary>
