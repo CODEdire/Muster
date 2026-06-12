@@ -49,4 +49,9 @@
 /* Holder rows */
 .hold-row { display: flex; align-items: center; gap: 0.6rem; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 0.9rem; }
 .hold-row .rank { width: 22px; color: var(--text-muted); flex: none; text-align: center; }
+.hold-row .rank.gold, .hold-row .rank.silver, .hold-row .rank.bronze {
+    height: 22px; line-height: 22px; border-radius: 50%; font-weight: 700; font-size: 0.78rem; color: #1c1606; }
+.hold-row .rank.gold { background: linear-gradient(145deg, #fde68a, #f59e0b); }
+.hold-row .rank.silver { background: linear-gradient(145deg, #f1f5f9, #94a3b8); }
+.hold-row .rank.bronze { background: linear-gradient(145deg, #f7c08a, #b45309); color: #fff; }
 .hold-row .hold-val { margin-left: auto; font-variant-numeric: tabular-nums; }

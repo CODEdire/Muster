@@ -1360,6 +1360,9 @@ img.avatar-sm { object-fit: cover; }
     }
     .app-main:has(.tabframe-fill) .tabframe { flex: 1 1 auto; min-height: 0; }
     .app-main:has(.dg-fill) .dg-fill { flex: 1 1 auto; min-height: 0; margin-bottom: 0; }
+    /* Width-only full-bleed: treasury read pages (overview/distribution/flow) drop the column cap but keep
+       natural page-height scrolling. Marked by the .t-wide sentinel on the page header. */
+    .app-main:has(.t-wide) { max-width: none; }
 }
 
 /* The strip overlaps the frame's top border by 1px; the active tab carries its own top/side borders +

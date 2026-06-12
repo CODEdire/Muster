@@ -18,7 +18,7 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="t-head">
+    <div class="t-head t-wide">
         <nav class="t-crumb" aria-label="Breadcrumb">
             <a href="/guilds/@GuildId/admin">Guild</a>
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
@@ -138,7 +138,7 @@ else if (State == AccessState.Ready)
                     @foreach (var h in _topHolders)
                     {
                         <div class="hold-row">
-                            <span class="rank">@h.Rank</span>
+                            <span class="rank @RankClass(h.Rank)">@h.Rank</span>
                             <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
                             <span class="hold-val">@h.Total.ToString("N0")</span>
                         </div>

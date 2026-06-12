@@ -124,8 +124,8 @@ public partial class GuildTreasury
 
             _supply = await wallet.GetSupplyAsync(GuildId, _code);
             _series = await wallet.GetSupplySeriesAsync(GuildId, _code, from, to);
-            _topHolders = await wallet.GetTopHoldersLedgerAsync(GuildId, _code, 5);
-            _recent = (await wallet.GetMovementsPageAsync(GuildId, _code, null, "when", true, 1, 5)).Items;
+            _topHolders = await wallet.GetTopHoldersLedgerAsync(GuildId, _code, 10);
+            _recent = (await wallet.GetMovementsPageAsync(GuildId, _code, null, "when", true, 1, 10)).Items;
             ComputeCandles();
         }
         finally
