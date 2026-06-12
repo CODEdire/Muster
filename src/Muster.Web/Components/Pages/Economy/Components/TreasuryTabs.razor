@@ -12,12 +12,17 @@
     [Parameter, EditorRequired] public ulong GuildId { get; set; }
     [Parameter] public string Active { get; set; } = "overview";
 
+    /// <summary>The selected currency code, carried across tabs as ?cur= so the choice survives navigation.</summary>
+    [Parameter] public string? Cur { get; set; }
+
+    private string Q => string.IsNullOrWhiteSpace(Cur) ? "" : $"?cur={Uri.EscapeDataString(Cur)}";
+
     private IEnumerable<(string Key, string Label, string Icon, string Href)> Tabs =>
     [
-        ("overview", "Overview", "account_balance", $"/guilds/{GuildId}/treasury"),
-        ("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger"),
-        ("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution"),
-        ("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow"),
-        ("participation", "Participation", "trophy", $"/guilds/{GuildId}/treasury/participation"),
+        ("overview", "Overview", "account_balance", $"/guilds/{GuildId}/treasury{Q}"),
+        ("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{Q}"),
+        ("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{Q}"),
+        ("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{Q}"),
+        ("participation", "Participation", "trophy", $"/guilds/{GuildId}/treasury/participation{Q}"),
     ];
 }

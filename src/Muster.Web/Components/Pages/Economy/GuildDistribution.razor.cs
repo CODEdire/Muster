@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
@@ -13,6 +14,8 @@ public partial class GuildDistribution
     // Read-only treasury view — EconomyManager + Auditor. Admin passes implicitly.
     protected override GuildAccessTier RequiredAccess =>
         GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
+
+    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
 
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private string _code = "";
@@ -62,7 +65,11 @@ public partial class GuildDistribution
         await using var scope = Scopes.CreateAsyncScope();
         var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
         _currencies = await wallet.GetCurrenciesAsync(GuildId);
-        if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
+        if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
+        {
+            _code = Cur!;
+        }
+        else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
         {
             _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
         }

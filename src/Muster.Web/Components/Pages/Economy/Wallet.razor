@@ -11,6 +11,7 @@
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
 @using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
 <PageTitle>Wallet — Muster</PageTitle>
@@ -28,22 +29,7 @@ else if (State == AccessState.Ready)
             <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
         </nav>
         <div class="wallet-controls">
-            @if (_currencies.Count > 1)
-            {
-                <div class="wallet-switch" role="tablist">
-                    @foreach (var c in _currencies)
-                    {
-                        <button type="button" role="tab" class="cur-tab @(c.Code == _sel ? "active" : "")"
-                                aria-selected="@(c.Code == _sel)" @onclick="() => SelectCurrency(c.Code)">
-                            @if (c.Primary)
-                            {
-                                <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
-                            }
-                            @c.Name
-                        </button>
-                    }
-                </div>
-            }
+            <CurrencySwitcher Currencies="_currencies" Selected="_sel" SelectedChanged="SelectCurrency" />
             <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet/analytics"><span class="material-symbols-outlined" aria-hidden="true">monitoring</span> Analytics</a>
         </div>
     </div>

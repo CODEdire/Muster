@@ -22,25 +22,10 @@ else if (State == AccessState.Ready)
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
             <span class="who">Flow</span>
         </nav>
-        @if (_currencies.Count > 1)
-        {
-            <div class="t-switch" role="tablist">
-                @foreach (var c in _currencies)
-                {
-                    <button type="button" role="tab" class="cur-tab @(c.Code == _code ? "active" : "")"
-                            aria-selected="@(c.Code == _code)" @onclick="() => SelectCurrency(c.Code)">
-                        @if (c.Primary)
-                        {
-                            <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
-                        }
-                        @c.Code
-                    </button>
-                }
-            </div>
-        }
+        <CurrencySwitcher Currencies="_currencies" Selected="_code" SelectedChanged="SelectCurrency" />
     </div>
 
-    <TreasuryTabs GuildId="GuildId" Active="flow" />
+    <TreasuryTabs GuildId="GuildId" Active="flow" Cur="_code" />
 
     @if (_currencies.Count == 0)
     {

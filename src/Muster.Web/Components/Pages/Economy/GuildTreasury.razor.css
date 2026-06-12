@@ -40,10 +40,11 @@
 .t-stat .num.neg { color: var(--danger); }
 .t-stat .mini-num { font-size: 1.3rem; font-weight: 700; margin-top: 0.1rem; }
 .t-mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.net-bars { width: 100%; height: 26px; margin-top: 0.4rem; display: block; }
-.net-bars .zero { stroke: var(--border); stroke-width: 1; }
-.net-bars rect.up { fill: #4ade80; }
-.net-bars rect.down { fill: var(--danger); }
+.net-spark { width: 100%; height: 26px; margin-top: 0.4rem; display: block; }
+.net-spark .zero { stroke: var(--border); stroke-width: 1; }
+.net-spark polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.net-spark polyline.pos { stroke: #4ade80; }
+.net-spark polyline.neg { stroke: var(--danger); }
 
 /* Frameless cards */
 .t-card { padding: 0.25rem 0.1rem 1rem; margin-bottom: 1.25rem; }

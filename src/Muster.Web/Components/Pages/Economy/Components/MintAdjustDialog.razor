@@ -1,0 +1,124 @@
+@inject IServiceScopeFactory Scopes
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+
+<div class="ma-backdrop" @onclick="Close">
+    <div class="ma-card panel glass" @onclick:stopPropagation="true">
+        <div class="ma-head">
+            <h2>Mint / adjust</h2>
+            <button type="button" class="ma-x" @onclick="Close" aria-label="Close"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="subtitle">Apply a signed correction to one member's balance. Positive mints new currency; negative deducts. Audited.</p>
+
+        <label>Member
+            <select class="dg-select" @bind="_targetId">
+                <option value="">— select member —</option>
+                @foreach (var m in _members)
+                {
+                    <option value="@m.UserId">@m.DisplayName</option>
+                }
+            </select>
+        </label>
+
+        <div class="ma-row">
+            @if (Currencies.Count > 1)
+            {
+                <label>Currency
+                    <select class="dg-select" @bind="_code">
+                        @foreach (var c in Currencies)
+                        {
+                            <option value="@c.Code">@c.Code</option>
+                        }
+                    </select>
+                </label>
+            }
+            <label>Amount (signed)
+                <input type="number" class="dg-select" @bind="_amount" />
+            </label>
+        </div>
+
+        <label>Reason
+            <input type="text" class="dg-search" @bind="_reason" placeholder="e.g. event prize, correction" />
+        </label>
+
+        @if (_message is not null)
+        {
+            <p class="message @(_ok ? "ok" : "err")">@_message</p>
+        }
+
+        <div class="btn-row">
+            <button type="button" class="btn" disabled="@(_busy || !CanApply)" @onclick="ApplyAsync">
+                @(_amount >= 0 ? "Mint" : "Deduct") @(_amount == 0 ? "" : System.Math.Abs(_amount).ToString("N0"))
+            </button>
+            <button type="button" class="btn btn-ghost" @onclick="Close">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ulong GuildId { get; set; }
+    [Parameter, EditorRequired] public ulong ActorId { get; set; }
+    [Parameter] public string Code { get; set; } = "";
+    [Parameter] public IReadOnlyList<CurrencyInfo> Currencies { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnApplied { get; set; }
+
+    private IReadOnlyList<MemberOption> _members = [];
+    private string _targetId = "";
+    private string _code = "";
+    private long _amount;
+    private string _reason = "";
+    private bool _busy;
+    private string? _message;
+    private bool _ok;
+
+    private bool CanApply => ulong.TryParse(_targetId, out _) && _amount != 0 && !string.IsNullOrWhiteSpace(_code);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _code = string.IsNullOrWhiteSpace(Code) ? (Currencies.FirstOrDefault()?.Code ?? "") : Code;
+        await using var scope = Scopes.CreateAsyncScope();
+        _members = await scope.ServiceProvider.GetRequiredService<WebMemberService>().GetRecipientsAsync(GuildId, 0);
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (_busy || !CanApply)
+        {
+            return;
+        }
+
+        _busy = true;
+        _message = null;
+        try
+        {
+            var target = ulong.Parse(_targetId);
+            var reason = string.IsNullOrWhiteSpace(_reason) ? "Treasury adjustment" : _reason.Trim();
+            var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, ActorId, _code, target, _amount, reason));
+
+            _ok = result.Ok;
+            _message = result.Ok
+                ? $"Applied {_amount:+#,##0;-#,##0} {_code}."
+                : result.Status switch
+                {
+                    "Forbidden" => "You're not allowed to do that.",
+                    "CurrencyNotFound" => "That currency doesn't exist here.",
+                    "InsufficientFunds" => "That would take the member below zero.",
+                    var other => other,
+                };
+
+            if (result.Ok)
+            {
+                await OnApplied.InvokeAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+}

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
@@ -14,9 +15,12 @@ public partial class GuildTreasury
     protected override GuildAccessTier RequiredAccess =>
         GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
 
+    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
+
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private string _code = "";
     private bool _loading;
+    private bool _mintOpen;
 
     private CurrencySupply? _supply;
     private IReadOnlyList<LeaderboardRow> _topHolders = [];
@@ -55,16 +59,20 @@ public partial class GuildTreasury
     private string _maLine = "";
     private (double X1, double Y1, double X2, double Y2)? _trend;
 
-    // Per-month net supply change for the net-supply mini bars (green up / red down around zero).
+    // Per-month net supply change → dual +/- sparklines (green for the positive side, red for the negative).
     private IReadOnlyList<long> _monthlyNet = [];
-    private long NetBarMax => _monthlyNet.Count == 0 ? 1 : Math.Max(1, _monthlyNet.Max(v => Math.Abs(v)));
+    private string _netPosSpark = "", _netNegSpark = "";
 
     protected override async Task LoadAsync()
     {
         await using var scope = Scopes.CreateAsyncScope();
         var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
         _currencies = await wallet.GetCurrenciesAsync(GuildId);
-        if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
+        if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
+        {
+            _code = Cur!;
+        }
+        else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
         {
             _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
         }
@@ -88,6 +96,12 @@ public partial class GuildTreasury
         }
 
         _code = code;
+        await ReloadAsync();
+    }
+
+    private async Task OnMintApplied()
+    {
+        _mintOpen = false;
         await ReloadAsync();
     }
 
@@ -127,6 +141,7 @@ public partial class GuildTreasury
         _maLine = "";
         _trend = null;
         _monthlyNet = [];
+        _netPosSpark = _netNegSpark = "";
         if (_series.Count == 0)
         {
             return;
@@ -189,6 +204,22 @@ public partial class GuildTreasury
         _closeLine = closePts.ToString().TrimEnd();
         _maLine = maPts.ToString().TrimEnd();
         _monthlyNet = ohlc.Select(o => o.Close - o.Open).ToList();
+        if (_monthlyNet.Count >= 2)
+        {
+            var maxAbs = Math.Max(1, _monthlyNet.Max(v => Math.Abs(v)));
+            var pos = new StringBuilder();
+            var neg = new StringBuilder();
+            for (var i = 0; i < _monthlyNet.Count; i++)
+            {
+                var x = i * (100.0 / (_monthlyNet.Count - 1));
+                var v = _monthlyNet[i];
+                pos.Append(Fmt(x)).Append(',').Append(Fmt(14 - Math.Max(0, v) / (double)maxAbs * 13)).Append(' ');
+                neg.Append(Fmt(x)).Append(',').Append(Fmt(14 - Math.Min(0, v) / (double)maxAbs * 13)).Append(' ');
+            }
+
+            _netPosSpark = pos.ToString().TrimEnd();
+            _netNegSpark = neg.ToString().TrimEnd();
+        }
 
         double sx = 0, sy = 0, sxy = 0, sxx = 0;
         for (var i = 0; i < n; i++)

@@ -25,27 +25,12 @@ else if (State == AccessState.Ready)
             <span class="who">Treasury</span>
         </nav>
         <div class="t-controls">
-            @if (_currencies.Count > 1)
-            {
-                <div class="t-switch" role="tablist">
-                    @foreach (var c in _currencies)
-                    {
-                        <button type="button" role="tab" class="cur-tab @(c.Code == _code ? "active" : "")"
-                                aria-selected="@(c.Code == _code)" @onclick="() => SelectCurrency(c.Code)">
-                            @if (c.Primary)
-                            {
-                                <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
-                            }
-                            @c.Code
-                        </button>
-                    }
-                </div>
-            }
-            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/treasury/ledger"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</a>
+            <CurrencySwitcher Currencies="_currencies" Selected="_code" SelectedChanged="SelectCurrency" />
+            <button class="btn btn-ghost btn-sm" @onclick="() => _mintOpen = true"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</button>
         </div>
     </div>
 
-    <TreasuryTabs GuildId="GuildId" Active="overview" />
+    <TreasuryTabs GuildId="GuildId" Active="overview" Cur="_code" />
 
     <p class="t-note">Currency configuration lives in <a href="/guilds/@GuildId/currencies">Admin · Currencies</a> — here you read the economy and mint / adjust / sync.</p>
 
@@ -86,23 +71,12 @@ else if (State == AccessState.Ready)
                 <div class="t-stat">
                     <div class="label">Net supply · 6mo</div>
                     <div class="num @(NetSupply >= 0 ? "pos" : "neg")">@(NetSupply > 0 ? "+" : "")@NetSupply.ToString("N0")</div>
-                    @if (_monthlyNet.Count > 0)
+                    @if (!string.IsNullOrEmpty(_netPosSpark))
                     {
-                        <svg class="net-bars" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+                        <svg class="net-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
                             <line x1="0" y1="14" x2="100" y2="14" class="zero" />
-                            @{
-                                var n = _monthlyNet.Count;
-                                var gw = 100.0 / n;
-                                var bw = gw * 0.6;
-                            }
-                            @for (var i = 0; i < n; i++)
-                            {
-                                var v = _monthlyNet[i];
-                                var h = System.Math.Abs(v) * 13.0 / NetBarMax;
-                                var x = i * gw + (gw - bw) / 2;
-                                var y = v >= 0 ? 14 - h : 14;
-                                <rect class="@(v >= 0 ? "up" : "down")" x="@x.ToString("0.#")" y="@y.ToString("0.#")" width="@bw.ToString("0.#")" height="@h.ToString("0.#")" rx="0.5" />
-                            }
+                            <polyline class="neg" points="@_netNegSpark" />
+                            <polyline class="pos" points="@_netPosSpark" />
                         </svg>
                     }
                 </div>
@@ -190,5 +164,11 @@ else if (State == AccessState.Ready)
                 }
             </div>
         </div>
+    }
+
+    @if (_mintOpen)
+    {
+        <MintAdjustDialog GuildId="GuildId" ActorId="UserId" Code="_code" Currencies="_currencies"
+                          OnClose="() => _mintOpen = false" OnApplied="OnMintApplied" />
     }
 }

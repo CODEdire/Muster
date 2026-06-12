@@ -1,0 +1,15 @@
+.ma-backdrop { position: fixed; inset: 0; background: rgba(0, 8, 28, 0.55); display: flex; align-items: center;
+    justify-content: center; z-index: 1000; padding: 1rem; }
+.ma-card { width: 100%; max-width: 420px; padding: 1.25rem 1.4rem; display: flex; flex-direction: column; gap: 0.7rem; }
+.ma-head { display: flex; align-items: center; justify-content: space-between; }
+.ma-head h2 { margin: 0; }
+.ma-x { border: none; background: transparent; color: var(--text-muted); cursor: pointer; display: inline-flex; }
+.ma-x:hover { color: var(--text); }
+.ma-card .subtitle { margin: 0; }
+.ma-card label { display: block; font-size: 0.85rem; color: var(--text-muted); }
+.ma-card label .dg-select, .ma-card label .dg-search, .ma-card label input { width: 100%; margin-top: 0.25rem; }
+.ma-row { display: flex; gap: 0.7rem; }
+.ma-row label { flex: 1; }
+.ma-card .message.ok { color: #4ade80; }
+.ma-card .message.err { color: var(--danger); }
+.ma-card .btn-row { margin-top: 0.3rem; }
