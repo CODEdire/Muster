@@ -590,7 +590,8 @@ public static class CurrencyLedgerQueries
     /// <summary>Guild-wide earned (positive amounts) per ledger source for a currency, optionally season-scoped —
     /// the participation "points by source" chart. Excludes the escrow account 0 and burn sink 1.</summary>
     public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildSourceEarnedAsync(
-        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonScope, CancellationToken ct = default)
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonScope, CancellationToken ct = default,
+        DateTimeOffset? from = null, DateTimeOffset? to = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1);
@@ -600,7 +601,32 @@ public static class CurrencyLedgerQueries
             q = q.Where(e => e.SeasonId == s);
         }
 
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
         var rows = await q
+            .GroupBy(e => e.SourceType)
+            .Select(g => new { Source = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.Source, r => r.Total);
+    }
+
+    /// <summary>Currency burned per source over a window — positive entries parked in the burn sink (UserId 1):
+    /// shop fees and guild-store consumes. The sink side of the faucets/sinks view.</summary>
+    public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildBurnBySourceAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.UserId == 1 && e.Amount > 0
+                && e.OccurredAt >= from && e.OccurredAt < to)
             .GroupBy(e => e.SourceType)
             .Select(g => new { Source = g.Key, Total = g.Sum(x => x.Amount) })
             .ToListAsync(ct);

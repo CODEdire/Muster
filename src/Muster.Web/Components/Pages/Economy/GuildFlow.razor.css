@@ -1,0 +1,42 @@
+/* Header (shared treasury look) */
+.t-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.t-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.t-crumb a { color: var(--text-muted); font-weight: 600; }
+.t-crumb a:hover { color: var(--text); }
+.t-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+.t-switch { display: inline-flex; gap: 0.25rem; padding: 0.3rem; border-radius: 0.6rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border); }
+.cur-tab { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.9rem; border: none; background: transparent; color: var(--text-muted); border-radius: 0.45rem; cursor: pointer; font: inherit; font-size: 0.88rem; }
+.cur-tab:hover { color: var(--text); }
+.cur-tab.active { background: var(--accent); color: #fff; font-weight: 600; }
+.cur-tab .star { font-size: 1rem; color: #fde047; }
+.f-note { font-size: 12px; color: var(--text-muted); margin: -0.3rem 0 1rem; }
+
+.stat .num.pos { color: #4ade80; }
+.stat .num.neg { color: var(--danger); }
+
+/* Frameless cards */
+.f-card { padding: 0.25rem 0.1rem 1rem; margin-bottom: 1.25rem; }
+.f-card .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.f-card h2 { margin: 0; }
+.legend { font-size: 0.8rem; color: var(--text-muted); }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+.legend .sw.mint { background: #4ade80; }
+.legend .sw.burn { background: var(--danger); }
+
+/* Diverging by-source bars */
+.flow-row { display: grid; grid-template-columns: 92px 1fr 1fr 64px; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; }
+.flow-row .fname { color: var(--text-muted); }
+.flow-row .fbar { height: 13px; }
+.flow-row .fbar.left { display: flex; justify-content: flex-end; }
+.flow-row .fbar .fill { height: 100%; border-radius: 2px; }
+.flow-row .fbar .fill.mint { background: #4ade80; }
+.flow-row .fbar .fill.burn { background: var(--danger); }
+.flow-row .fval { text-align: right; font-variant-numeric: tabular-nums; }
+.flow-row .fval.pos { color: #4ade80; }
+.flow-row .fval.neg { color: var(--danger); }
+
+/* Inflation gauge */
+.gauge { position: relative; height: 8px; border-radius: 4px; margin-top: 0.5rem;
+    background: linear-gradient(90deg, var(--danger), #4ade80 30%, #4ade80 60%, #fbbf24); }
+.gauge .needle { position: absolute; top: -3px; width: 3px; height: 14px; background: var(--text); border-radius: 2px; transform: translateX(-50%); }
+.gauge-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px; }

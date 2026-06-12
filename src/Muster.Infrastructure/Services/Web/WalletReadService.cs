@@ -22,6 +22,15 @@ public record MonthFlow(int Year, int Month, long Earned, long Spent);
 /// <summary>Earned/spent totals for one ledger source over a window — the by-source breakdowns.</summary>
 public record SourceFlow(CurrencyLedgerSource Source, long Earned, long Spent);
 
+/// <summary>One source's contribution to the faucets (mint) or sinks (burn) side of the flow view.</summary>
+public record FlowSource(CurrencyLedgerSource Source, long Total);
+
+/// <summary>Faucets vs sinks over a window: mint (net-new currency from system awards) by source, burn (currency
+/// destroyed in the sink) by source, the totals, net supply change and the resulting monthly inflation %.</summary>
+public record FlowView(
+    IReadOnlyList<FlowSource> Faucets, IReadOnlyList<FlowSource> Sinks,
+    long Minted, long Burned, long Net, long Circulating, double InflationPct);
+
 /// <summary>One balance-bracket bucket for the wealth-distribution histogram.</summary>
 public record DistributionBracket(string Label, int Count);
 
@@ -443,6 +452,47 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     }
 
     private static string Kfmt(long v) => v >= 1000 ? $"{v / 1000.0:0.#}k" : v.ToString();
+
+    /// <summary>Mint sources — system awards that create net-new currency. Transfers and shop payouts are
+    /// redistribution (not minting); checkpoints are carry-forward openings; all are excluded from the faucet total.</summary>
+    private static readonly HashSet<CurrencyLedgerSource> MintSources =
+    [
+        CurrencyLedgerSource.TrackingSession, CurrencyLedgerSource.Quest, CurrencyLedgerSource.Muster,
+        CurrencyLedgerSource.Event, CurrencyLedgerSource.Background, CurrencyLedgerSource.ManualAward,
+        CurrencyLedgerSource.Connector, CurrencyLedgerSource.Adjustment,
+    ];
+
+    /// <summary>Faucets (minted, by source) vs sinks (burned, by source) over the window, with net supply change and
+    /// the resulting monthly inflation %. Net-new vs destroyed: redistribution (transfers, shop payouts) is excluded.</summary>
+    public async Task<FlowView> GetFlowAsync(ulong guildId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new FlowView([], [], 0, 0, 0, 0, 0);
+        }
+
+        var mintMap = await db.GuildSourceEarnedAsync(guildId, scope.Id, scope.SeasonId, ct, from, to);
+        var faucets = mintMap
+            .Where(kv => MintSources.Contains(kv.Key))
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new FlowSource(kv.Key, kv.Value))
+            .ToList();
+
+        var burnMap = await db.GuildBurnBySourceAsync(guildId, scope.Id, from, to, ct);
+        var sinks = burnMap
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new FlowSource(kv.Key, kv.Value))
+            .ToList();
+
+        var minted = faucets.Sum(f => f.Total);
+        var burned = sinks.Sum(s => s.Total);
+        var net = minted - burned;
+        var circulating = await db.GuildCirculatingAsOfAsync(guildId, scope.Id, scope.SeasonId, to, ct);
+        var prior = circulating - net;
+        var inflation = prior > 0 ? Math.Round(net * 100.0 / prior, 1) : 0;
+
+        return new FlowView(faucets, sinks, minted, burned, net, circulating, inflation);
+    }
 
     /// <summary>Circulating supply (member-held) at the end of each day with movement in the window — the guild
     /// treasury supply-over-time / candle chart. Seeded from the opening circulating balance before the window.</summary>
