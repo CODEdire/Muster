@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Web;
+using Muster.Web.Components.Shared;
 
 namespace Muster.Web.Components.Pages.Economy;
 
@@ -52,6 +53,26 @@ public partial class GuildTreasury
 
     /// <summary>Auditors (read-only) are pinned to the Ledger tab regardless of the requested tab.</summary>
     private string EffectiveTab(string? tab) => _canManage ? Normalize(tab) : "ledger";
+
+    /// <summary>Tab bar for the treasury sections — auditors see only the Ledger; the selected currency rides along
+    /// as ?cur= so the choice survives navigation.</summary>
+    private IReadOnlyList<TabBar.TabItem> TabItems()
+    {
+        var q = string.IsNullOrWhiteSpace(_code) ? "" : $"?cur={Uri.EscapeDataString(_code)}";
+        var ledger = new TabBar.TabItem("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{q}");
+        if (!_canManage)
+        {
+            return [ledger];
+        }
+
+        return
+        [
+            new("overview", "Overview", "dashboard", $"/guilds/{GuildId}/treasury{q}"),
+            ledger,
+            new("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{q}"),
+            new("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{q}"),
+        ];
+    }
 
     private void ResolveCode()
     {

@@ -4,6 +4,7 @@ using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Web;
 using Muster.Persistence.Queries;
+using Muster.Web.Components.Shared;
 
 namespace Muster.Web.Components.Pages.Economy;
 
@@ -35,6 +36,33 @@ public partial class GuildParticipation
                 "ledger" => "ledger",
                 _ => "overview",
             };
+
+    /// <summary>Tab bar for the participation sections — auditors see only the Ledger; managers get Overview, the
+    /// current + previous season, Ranking and the full Ledger.</summary>
+    private IReadOnlyList<TabBar.TabItem> TabItems()
+    {
+        var ledger = new TabBar.TabItem("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/participation/ledger");
+        if (!_canManage)
+        {
+            return [ledger];
+        }
+
+        var items = new List<TabBar.TabItem>
+        {
+            new("overview", "Overview", "dashboard", $"/guilds/{GuildId}/participation"),
+        };
+        if (Current is { } c)
+        {
+            items.Add(new(c.Id.ToString(), c.Name, "local_fire_department", $"/guilds/{GuildId}/participation/season/{c.Id}"));
+        }
+        if (Previous is { } p)
+        {
+            items.Add(new(p.Id.ToString(), p.Name, "history", $"/guilds/{GuildId}/participation/season/{p.Id}"));
+        }
+        items.Add(new("ranking", "Ranking", "leaderboard", $"/guilds/{GuildId}/participation/ranking"));
+        items.Add(ledger);
+        return items;
+    }
 
     protected override async Task LoadAsync()
     {

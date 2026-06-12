@@ -37,7 +37,7 @@ else if (State == AccessState.Ready)
         </div>
     </div>
 
-    <TreasuryTabs GuildId="GuildId" Active="@_tab" Cur="@_code" LedgerOnly="@(!_canManage)" />
+    <TabBar Tabs="TabItems()" Active="@_tab" AriaLabel="Treasury sections" />
 
     @if (_currencies.Count == 0)
     {
