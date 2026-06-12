@@ -55,6 +55,10 @@ public partial class GuildTreasury
     private string _maLine = "";
     private (double X1, double Y1, double X2, double Y2)? _trend;
 
+    // Per-month net supply change for the net-supply mini bars (green up / red down around zero).
+    private IReadOnlyList<long> _monthlyNet = [];
+    private long NetBarMax => _monthlyNet.Count == 0 ? 1 : Math.Max(1, _monthlyNet.Max(v => Math.Abs(v)));
+
     protected override async Task LoadAsync()
     {
         await using var scope = Scopes.CreateAsyncScope();
@@ -122,6 +126,7 @@ public partial class GuildTreasury
         _closeLine = "";
         _maLine = "";
         _trend = null;
+        _monthlyNet = [];
         if (_series.Count == 0)
         {
             return;
@@ -183,6 +188,7 @@ public partial class GuildTreasury
         _candles = vms;
         _closeLine = closePts.ToString().TrimEnd();
         _maLine = maPts.ToString().TrimEnd();
+        _monthlyNet = ohlc.Select(o => o.Close - o.Open).ToList();
 
         double sx = 0, sy = 0, sxy = 0, sxx = 0;
         for (var i = 0; i < n; i++)

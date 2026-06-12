@@ -622,6 +622,38 @@ public static class CurrencyLedgerQueries
         return rows.ToDictionary(r => r.Source, r => r.Total);
     }
 
+    /// <summary>Minted per calendar month over a window — positive member entries (excludes escrow 0 / burn 1)
+    /// whose source is one of <paramref name="mintSources"/>. The faucet side of the flow-over-time chart.</summary>
+    public static async Task<Dictionary<(int Year, int Month), long>> GuildMonthlyMintedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, DateTimeOffset from, DateTimeOffset to,
+        IReadOnlyCollection<CurrencyLedgerSource> mintSources, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.Amount > 0 && mintSources.Contains(e.SourceType)
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => (r.Year, r.Month), r => r.Total);
+    }
+
+    /// <summary>Burned per calendar month over a window — positive entries parked in the burn sink (UserId 1). The
+    /// sink side of the flow-over-time chart.</summary>
+    public static async Task<Dictionary<(int Year, int Month), long>> GuildMonthlyBurnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.UserId == 1 && e.Amount > 0
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => (r.Year, r.Month), r => r.Total);
+    }
+
     /// <summary>Currency burned per source over a window — positive entries parked in the burn sink (UserId 1):
     /// shop fees and guild-store consumes. The sink side of the faucets/sinks view.</summary>
     public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildBurnBySourceAsync(

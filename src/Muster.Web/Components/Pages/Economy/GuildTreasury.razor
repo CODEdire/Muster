@@ -83,7 +83,29 @@ else if (State == AccessState.Ready)
                 </div>
             </div>
             <div class="t-side">
-                <div class="t-stat"><div class="label">Net supply · 6mo</div><div class="num @(NetSupply >= 0 ? "pos" : "neg")">@(NetSupply > 0 ? "+" : "")@NetSupply.ToString("N0")</div></div>
+                <div class="t-stat">
+                    <div class="label">Net supply · 6mo</div>
+                    <div class="num @(NetSupply >= 0 ? "pos" : "neg")">@(NetSupply > 0 ? "+" : "")@NetSupply.ToString("N0")</div>
+                    @if (_monthlyNet.Count > 0)
+                    {
+                        <svg class="net-bars" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+                            <line x1="0" y1="14" x2="100" y2="14" class="zero" />
+                            @{
+                                var n = _monthlyNet.Count;
+                                var gw = 100.0 / n;
+                                var bw = gw * 0.6;
+                            }
+                            @for (var i = 0; i < n; i++)
+                            {
+                                var v = _monthlyNet[i];
+                                var h = System.Math.Abs(v) * 13.0 / NetBarMax;
+                                var x = i * gw + (gw - bw) / 2;
+                                var y = v >= 0 ? 14 - h : 14;
+                                <rect class="@(v >= 0 ? "up" : "down")" x="@x.ToString("0.#")" y="@y.ToString("0.#")" width="@bw.ToString("0.#")" height="@h.ToString("0.#")" rx="0.5" />
+                            }
+                        </svg>
+                    }
+                </div>
                 <div class="t-mini-grid">
                     <div class="t-stat"><div class="label">Holders</div><div class="mini-num">@_supply.Holders.ToString("N0")</div></div>
                     <div class="t-stat"><div class="label">In escrow</div><div class="mini-num">@_supply.Escrow.ToString("N0")</div></div>

@@ -31,6 +31,9 @@ public record FlowView(
     IReadOnlyList<FlowSource> Faucets, IReadOnlyList<FlowSource> Sinks,
     long Minted, long Burned, long Net, long Circulating, double InflationPct);
 
+/// <summary>One month of mint/burn/net for the flow-over-time chart and KPI sparklines.</summary>
+public record FlowMonth(int Year, int Month, long Minted, long Burned, long Net);
+
 /// <summary>One balance-bracket bucket for the wealth-distribution histogram.</summary>
 public record DistributionBracket(string Label, int Count);
 
@@ -523,6 +526,32 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         var inflation = prior > 0 ? Math.Round(net * 100.0 / prior, 1) : 0;
 
         return new FlowView(faucets, sinks, minted, burned, net, circulating, inflation);
+    }
+
+    /// <summary>Minted / burned / net per calendar month across the window (zero-filled) — the flow-over-time chart,
+    /// KPI sparklines and inflation-over-time line.</summary>
+    public async Task<IReadOnlyList<FlowMonth>> GetFlowSeriesAsync(ulong guildId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var mint = await db.GuildMonthlyMintedAsync(guildId, scope.Id, scope.SeasonId, from, to, MintSources, ct);
+        var burn = await db.GuildMonthlyBurnedAsync(guildId, scope.Id, from, to, ct);
+
+        var list = new List<FlowMonth>();
+        var cur = new DateTime(from.Year, from.Month, 1);
+        var end = new DateTime(to.Year, to.Month, 1);
+        while (cur <= end)
+        {
+            var m = mint.GetValueOrDefault((cur.Year, cur.Month), 0);
+            var b = burn.GetValueOrDefault((cur.Year, cur.Month), 0);
+            list.Add(new FlowMonth(cur.Year, cur.Month, m, b, m - b));
+            cur = cur.AddMonths(1);
+        }
+
+        return list;
     }
 
     /// <summary>Circulating supply (member-held) at the end of each day with movement in the window — the guild
