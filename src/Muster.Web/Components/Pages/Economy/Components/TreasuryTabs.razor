@@ -1,6 +1,6 @@
 @* Treasury-specific configuration of the shared TabBar: builds the section list + carries the selected currency
    across tabs as ?cur=. The responsive behaviour lives in TabBar. *@
-<TabBar Tabs="Items" Active="Active" AriaLabel="Treasury sections" />
+<TabBar Tabs="Items" Active="@Active" AriaLabel="Treasury sections" />
 
 @code {
     [Parameter, EditorRequired] public ulong GuildId { get; set; }
