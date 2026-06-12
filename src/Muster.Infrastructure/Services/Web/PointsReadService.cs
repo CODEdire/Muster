@@ -50,10 +50,11 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         var size = Math.Clamp(pageSize, 1, 100);
         var p = Math.Max(page, 1);
         var skip = (p - 1) * size;
+        var season = points.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
 
         var (rows, total) = await db.MemberLedgerPagedAsync(
             guildId, userId, points.Id, search, sortKey, descending, skip, size, ct,
-            sources: sources, from: from, to: to, sign: sign);
+            sources: sources, from: from, to: to, sign: sign, seasonScope: season);
 
         var items = rows
             .Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason, null, r.Id, r.SourceId))
@@ -68,9 +69,13 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, CancellationToken ct = default)
     {
         var points = await db.FindPointsAsync(guildId, ct);
-        return points is null
-            ? (0, 0)
-            : await db.MemberLedgerTotalsAsync(guildId, userId, points.Id, search, ct, sources: sources, from: from, to: to, sign: sign);
+        if (points is null)
+        {
+            return (0, 0);
+        }
+
+        var season = points.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
+        return await db.MemberLedgerTotalsAsync(guildId, userId, points.Id, search, ct, sources: sources, from: from, to: to, sign: sign, seasonScope: season);
     }
 
     /// <summary>All filtered POINTS rows (capped) for a CSV export of the current view.</summary>
@@ -84,7 +89,8 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
             return [];
         }
 
-        var rows = await db.MemberLedgerAllAsync(guildId, userId, points.Id, search, cap, ct, sources: sources, from: from, to: to, sign: sign);
+        var season = points.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
+        var rows = await db.MemberLedgerAllAsync(guildId, userId, points.Id, search, cap, ct, sources: sources, from: from, to: to, sign: sign, seasonScope: season);
         return rows.Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason, null, r.Id, r.SourceId)).ToList();
     }
 

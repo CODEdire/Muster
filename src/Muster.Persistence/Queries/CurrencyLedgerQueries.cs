@@ -158,7 +158,7 @@ public static class CurrencyLedgerQueries
     private static IQueryable<CurrencyLedgerEntry> MemberLedgerFiltered(
         MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, Guid? excludeCurrencyId,
         IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign,
-        ulong? counterpartyId = null)
+        ulong? counterpartyId = null, Guid? seasonScope = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && e.UserId == userId && (currencyId == null || e.CurrencyId == currencyId));
@@ -166,6 +166,12 @@ public static class CurrencyLedgerQueries
         if (excludeCurrencyId is { } x)
         {
             q = q.Where(e => e.CurrencyId != x);
+        }
+
+        // Scope to one season (e.g. the active season for a seasonal points ledger). Null = no season filter.
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
         }
 
         if (counterpartyId is { } cp)
@@ -211,9 +217,9 @@ public static class CurrencyLedgerQueries
     public static async Task<(long In, long Out)> MemberLedgerTotalsAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, CancellationToken ct = default,
         Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null, Guid? seasonScope = null)
     {
-        var agg = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId)
+        var agg = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId, seasonScope)
             .GroupBy(_ => 1)
             .Select(g => new
             {
@@ -235,9 +241,9 @@ public static class CurrencyLedgerQueries
         this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
         string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
         IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
-        int? sign = null, ulong? counterpartyId = null)
+        int? sign = null, ulong? counterpartyId = null, Guid? seasonScope = null)
     {
-        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId);
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId, seasonScope);
 
         var total = await q.CountAsync(ct);
 
@@ -304,8 +310,8 @@ public static class CurrencyLedgerQueries
     public static async Task<List<MemberLedgerProjection>> MemberLedgerAllAsync(
         this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, int cap, CancellationToken ct = default,
         Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null)
-        => await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null, Guid? seasonScope = null)
+        => await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId, seasonScope)
             .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
             .Take(Math.Clamp(cap, 1, 50000))
             .Select(e => new MemberLedgerProjection(e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))

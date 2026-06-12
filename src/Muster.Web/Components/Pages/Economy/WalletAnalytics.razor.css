@@ -68,6 +68,17 @@
 .src-row .src-bar .fill.spent { height: 100%; background: var(--danger); }
 .src-row .src-val { width: 70px; text-align: right; flex: none; }
 
+/* Season-over-season bars (clickable to scope the page to that season) */
+.season-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.4rem; border-radius: 0.4rem;
+    cursor: pointer; font-size: 0.9rem; }
+.season-row:hover { background: rgba(255, 255, 255, 0.04); }
+.season-row.sel { background: rgba(96, 165, 250, 0.12); }
+.season-row .season-name { width: 150px; flex: none; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.season-row.sel .season-name { color: var(--text); }
+.season-row .season-bar { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
+.season-row .season-bar .fill { height: 100%; background: #4ade80; }
+.season-row .season-val { width: 64px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+
 /* Trends / insights */
 .insight { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; font-size: 0.9rem; border-top: 1px solid var(--border); }
 .insight:first-of-type { border-top: none; }

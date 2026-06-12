@@ -6,6 +6,7 @@ using Muster.Domain;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
 using Muster.Infrastructure.Services.Web;
+using Muster.Persistence.Queries;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
 namespace Muster.Web.Components.Pages.Economy;
@@ -36,6 +37,11 @@ public partial class WalletAnalytics
     private IReadOnlyList<SourceFlow> _earned = [];
     private IReadOnlyList<SourceFlow> _spent = [];
     private PointsSnapshot? _points;
+    private IReadOnlyList<SeasonInfo> _seasons = [];
+    private IReadOnlyList<(SeasonInfo Season, long Total)> _seasonTotals = [];
+    private Guid? _season;
+
+    private long SeasonMax => _seasonTotals.Count == 0 ? 1 : Math.Max(1, _seasonTotals.Max(s => s.Total));
 
     // Candle chart (spendable currencies): per-month OHLC of balance, a close line and a regression trend line,
     // all pre-scaled to the 600x180 viewbox so the markup just draws them.
@@ -97,20 +103,57 @@ public partial class WalletAnalytics
         var wallet = sp.GetRequiredService<WalletReadService>();
         var (from, to) = Window();
 
-        _kpis = await wallet.GetKpisAsync(GuildId, UserId, _sel, from, to);
+        // Seasonal currencies (POINTS) get a season picker + season-over-season chart; resolve the scope first so the
+        // rest of the view follows it. Default to the active season.
+        if (IsScore)
+        {
+            _seasons = await wallet.GetSeasonsAsync(GuildId, _sel);
+            _seasonTotals = await wallet.GetSeasonTotalsAsync(GuildId, UserId, _sel);
+            if (_season is null || _seasons.All(s => s.Id != _season))
+            {
+                _season = _seasons.FirstOrDefault(s => s.IsActive)?.Id ?? _seasons.FirstOrDefault()?.Id;
+            }
+        }
+        else
+        {
+            _seasons = [];
+            _seasonTotals = [];
+            _season = null;
+        }
+
+        _kpis = await wallet.GetKpisAsync(GuildId, UserId, _sel, from, to, _season);
         _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, UserId, _sel) : 0;
-        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, UserId, _sel);
-        _series = await wallet.GetBalanceSeriesAsync(GuildId, UserId, _sel, from, to);
-        _months = await wallet.GetCashFlowAsync(GuildId, UserId, _sel, from, to);
+        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, UserId, _sel, _season);
+        _series = await wallet.GetBalanceSeriesAsync(GuildId, UserId, _sel, from, to, _season);
+        _months = await wallet.GetCashFlowAsync(GuildId, UserId, _sel, from, to, _season);
         ComputeCandles();
 
-        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to);
+        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to, _season);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).ToList();
         _spent = breakdown.Where(s => s.Spent > 0).OrderByDescending(s => s.Spent).ToList();
 
         // Score currencies (POINTS) get a participation framing — season standing + voice, not money.
         _points = IsScore ? await sp.GetRequiredService<PointsReadService>().GetSnapshotAsync(GuildId, UserId) : null;
     }
+
+    private async Task OnSeason(ChangeEventArgs e)
+    {
+        _season = Guid.TryParse(e.Value as string, out var id) ? id : null;
+        await LoadDataAsync();
+    }
+
+    private async Task SelectSeason(Guid id)
+    {
+        if (_season == id)
+        {
+            return;
+        }
+
+        _season = id;
+        await LoadDataAsync();
+    }
+
+    private string SeasonName(Guid? id) => _seasons.FirstOrDefault(s => s.Id == id)?.Name ?? "season";
 
     /// <summary>Voice minutes as a short "Xh Ym" (or "Ym") label.</summary>
     private static string Hm(int minutes) => minutes >= 60 ? $"{minutes / 60}h {minutes % 60}m" : $"{minutes}m";

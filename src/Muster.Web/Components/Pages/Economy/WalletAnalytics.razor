@@ -41,6 +41,15 @@ else if (State == AccessState.Ready)
                     }
                 </div>
             }
+            @if (IsScore && _seasons.Count > 0)
+            {
+                <select class="dg-select" @onchange="OnSeason">
+                    @foreach (var s in _seasons)
+                    {
+                        <option value="@s.Id" selected="@(s.Id == _season)">@s.Name@(s.IsActive ? " (active)" : "")</option>
+                    }
+                </select>
+            }
             <select class="dg-select" @onchange="OnPeriod">
                 @foreach (var (val, lbl) in Periods)
                 {
@@ -154,6 +163,24 @@ else if (State == AccessState.Ready)
             </div>
         }
     </div>
+
+    @if (IsScore && _seasonTotals.Count > 0)
+    {
+        <div class="an-card">
+            <div class="panel-head">
+                <h2>Season over season</h2>
+                <span class="legend">@SelUnit earned per season · click to view</span>
+            </div>
+            @foreach (var st in _seasonTotals)
+            {
+                <div class="season-row @(st.Season.Id == _season ? "sel" : "")" @onclick="() => SelectSeason(st.Season.Id)">
+                    <span class="season-name">@st.Season.Name@(st.Season.IsActive ? " · active" : "")</span>
+                    <div class="season-bar"><div class="fill" style="width:@(st.Total * 100 / SeasonMax)%"></div></div>
+                    <span class="season-val">@st.Total.ToString("N0")</span>
+                </div>
+            }
+        </div>
+    }
 
     <div class="wallet-cols @(IsScore ? "single" : "")">
         <div class="an-card">

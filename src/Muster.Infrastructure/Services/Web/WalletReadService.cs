@@ -296,7 +296,7 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     // --- Wallet analytics (KPIs, balance-over-time, cash flow, source breakdown, escrow split) ---
 
     /// <summary>Resolve a currency code to its id + active-season scope. Null when the currency doesn't exist.</summary>
-    private async Task<(Guid Id, Guid? SeasonId)?> ResolveScopeAsync(ulong guildId, string code, CancellationToken ct)
+    private async Task<(Guid Id, Guid? SeasonId)?> ResolveScopeAsync(ulong guildId, string code, CancellationToken ct, Guid? seasonOverride = null)
     {
         var currency = await db.FindCurrencyAsync(guildId, code, ct);
         if (currency is null)
@@ -304,16 +304,17 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
             return null;
         }
 
-        Guid? seasonId = currency.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
+        // Seasonal currencies scope to a chosen season (the season picker) or, by default, the active one.
+        Guid? seasonId = currency.IsSeasonal ? (seasonOverride ?? await db.ActiveSeasonIdAsync(guildId, ct)) : null;
         return (currency.Id, seasonId);
     }
 
     /// <summary>Headline figures for one currency over <paramref name="from"/>..<paramref name="to"/>: balance,
     /// shop-escrow held, available (= balance − held), and earned/spent/net for the window.</summary>
     public async Task<WalletKpis> GetKpisAsync(
-        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
     {
-        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
         {
             return new WalletKpis(0, 0, 0, 0, 0, 0);
         }
@@ -333,9 +334,9 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     /// <summary>Balance-over-time: running balance at the end of each day that had movement in the window, seeded
     /// from the opening balance just before <paramref name="from"/>.</summary>
     public async Task<IReadOnlyList<BalancePoint>> GetBalanceSeriesAsync(
-        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
     {
-        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
         {
             return [];
         }
@@ -355,9 +356,9 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
     /// <summary>Earned/spent per calendar month over the window — the cash-flow-by-month chart.</summary>
     public async Task<IReadOnlyList<MonthFlow>> GetCashFlowAsync(
-        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
     {
-        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
         {
             return [];
         }
@@ -368,9 +369,9 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
     /// <summary>Earned/spent per ledger source over the window — the earned-by-source / spent-by-source breakdowns.</summary>
     public async Task<IReadOnlyList<SourceFlow>> GetSourceBreakdownAsync(
-        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
     {
-        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
         {
             return [];
         }
@@ -381,8 +382,32 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
     /// <summary>A member's wealth rank for one currency (1-based) and the total holder count — the analytics
     /// "wealth rank" tile. Returns (0, 0) when the currency doesn't exist.</summary>
-    public async Task<(int Rank, int Holders)> GetWealthRankAsync(ulong guildId, ulong userId, string code, CancellationToken ct = default)
-        => await ResolveScopeAsync(guildId, code, ct) is { } scope
+    public async Task<(int Rank, int Holders)> GetWealthRankAsync(ulong guildId, ulong userId, string code, Guid? season = null, CancellationToken ct = default)
+        => await ResolveScopeAsync(guildId, code, ct, season) is { } scope
             ? await db.BalanceRankAsync(guildId, scope.Id, scope.SeasonId, userId, CurrencyService.EscrowAccountUserId, ct)
             : (0, 0);
+
+    /// <summary>Seasons for the picker — empty unless the currency is seasonal (POINTS-style). Newest first.</summary>
+    public async Task<IReadOnlyList<SeasonInfo>> GetSeasonsAsync(ulong guildId, string code, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        return currency is { IsSeasonal: true } ? await db.SeasonsAsync(guildId, ct) : [];
+    }
+
+    /// <summary>A member's per-season totals for a seasonal currency (season-over-season chart), oldest season first.</summary>
+    public async Task<IReadOnlyList<(SeasonInfo Season, long Total)>> GetSeasonTotalsAsync(ulong guildId, ulong userId, string code, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is not { IsSeasonal: true })
+        {
+            return [];
+        }
+
+        var seasons = await db.SeasonsAsync(guildId, ct);
+        var totals = await db.MemberSeasonTotalsAsync(guildId, userId, currency.Id, ct);
+        return seasons
+            .OrderBy(s => s.StartsAt)
+            .Select(s => (s, totals.GetValueOrDefault(s.Id, 0L)))
+            .ToList();
+    }
 }
