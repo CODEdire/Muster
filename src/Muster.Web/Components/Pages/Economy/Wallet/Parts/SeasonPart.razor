@@ -1,38 +1,14 @@
-@page "/guilds/{GuildIdRaw}/wallet/season"
-@layout GuildLayout
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@inherits GuildMemberComponentBase
-@inject IServiceScopeFactory Scopes
+@inherits WalletPart
 @using Muster.Infrastructure.Services.Web
 @using Muster.Web.Components.Shared
-@using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<PageTitle>Season — Muster</PageTitle>
-
-@if (State == AccessState.Forbidden)
+@if (!_hasPoints)
 {
-    <div class="panel glass empty">You don't have access to this server.</div>
+    <div class="panel glass empty">Points isn't configured in this server.</div>
 }
-else if (State == AccessState.Ready)
+else
 {
-    <div class="wallet-head t-wide">
-        <nav class="wallet-crumb" aria-label="Breadcrumb">
-            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
-            <a href="/guilds/@GuildId/wallet">Wallet</a>
-            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
-            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
-        </nav>
-    </div>
-
-    <WalletTabs GuildId="GuildId" Active="season" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" LedgerOnly="@(_viewingOther && !_canManage)" />
-
-    @if (!_hasPoints)
-    {
-        <div class="panel glass empty">Points isn't configured in this server.</div>
-    }
-    else
-    {
         <div class="stat-grid">
             <div class="card glass stat">
                 <span class="kpi-ico material-symbols-outlined" aria-hidden="true">trophy</span>
@@ -173,4 +149,3 @@ else if (State == AccessState.Ready)
             </div>
         </div>
     }
-}

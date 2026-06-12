@@ -1,65 +1,42 @@
-@page "/guilds/{GuildIdRaw}/wallet/analytics"
-@layout GuildLayout
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@inherits GuildMemberComponentBase
-@inject IServiceScopeFactory Scopes
+@inherits WalletPart
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
-@using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<PageTitle>Wallet analytics — Muster</PageTitle>
-
-@if (State == AccessState.Forbidden)
-{
-    <div class="panel glass empty">You don't have access to this server.</div>
-}
-else if (State == AccessState.Ready)
-{
-    <div class="an-head full-bleed">
-        <nav class="wallet-crumb" aria-label="Breadcrumb">
-            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
-            <a href="/guilds/@GuildId/wallet">Wallet</a>
-            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
-            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
-        </nav>
-        <div class="an-controls">
-            @if (_currencies.Count > 1)
+<div class="an-controls">
+    @if (_currencies.Count > 1)
+    {
+        <div class="wallet-switch" role="tablist">
+            @foreach (var c in _currencies)
             {
-                <div class="wallet-switch" role="tablist">
-                    @foreach (var c in _currencies)
+                <button type="button" role="tab" class="cur-tab @(c.Code == _sel ? "active" : "")"
+                        aria-selected="@(c.Code == _sel)" @onclick="() => SelectCurrency(c.Code)">
+                    @if (c.Primary)
                     {
-                        <button type="button" role="tab" class="cur-tab @(c.Code == _sel ? "active" : "")"
-                                aria-selected="@(c.Code == _sel)" @onclick="() => SelectCurrency(c.Code)">
-                            @if (c.Primary)
-                            {
-                                <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
-                            }
-                            @c.Name
-                        </button>
+                        <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
                     }
-                </div>
+                    @c.Name
+                </button>
             }
-            @if (IsScore && _seasons.Count > 0)
-            {
-                <select class="dg-select" @onchange="OnSeason">
-                    @foreach (var s in _seasons)
-                    {
-                        <option value="@s.Id" selected="@(s.Id == _season)">@s.Name@(s.IsActive ? " (active)" : "")</option>
-                    }
-                </select>
-            }
-            <select class="dg-select" @onchange="OnPeriod">
-                @foreach (var (val, lbl) in Periods)
-                {
-                    <option value="@val" selected="@(val == _period)">@lbl</option>
-                }
-            </select>
         </div>
-    </div>
-
-    <WalletTabs GuildId="GuildId" Active="analytics" Cur="@_sel" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" LedgerOnly="@(_viewingOther && !_canManage)" />
+    }
+    @if (IsScore && _seasons.Count > 0)
+    {
+        <select class="dg-select" @onchange="OnSeason">
+            @foreach (var s in _seasons)
+            {
+                <option value="@s.Id" selected="@(s.Id == _season)">@s.Name@(s.IsActive ? " (active)" : "")</option>
+            }
+        </select>
+    }
+    <select class="dg-select" @onchange="OnPeriod">
+        @foreach (var (val, lbl) in Periods)
+        {
+            <option value="@val" selected="@(val == _period)">@lbl</option>
+        }
+    </select>
+</div>
 
     <div class="stat-grid">
         @if (IsScore)
@@ -248,4 +225,3 @@ else if (State == AccessState.Ready)
             }
         </div>
     }
-}

@@ -1,0 +1,56 @@
+@page "/guilds/{GuildIdRaw}/wallet"
+@page "/guilds/{GuildIdRaw}/wallet/{Section}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+@using Muster.Web.Components.Pages.Economy.Wallet.Parts
+
+<PageTitle>Wallet — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="wallet-head @(_section is "season" or "analytics" ? "t-wide" : "")">
+        <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
+            <a href="/guilds/@GuildId/me">Wallet</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
+        </nav>
+        @if (_section == "account" && _walletCurrencies.Count > 0)
+        {
+            <div class="wallet-controls">
+                <CurrencySwitcher Currencies="_walletCurrencies" Selected="@_sel" SelectedChanged="SelectCurrency" />
+            </div>
+        }
+    </div>
+
+    <TabBar Tabs="TabItems()" Active="@_section" AriaLabel="Wallet sections" />
+
+    @if (_section == "analytics")
+    {
+        <AnalyticsPart GuildId="GuildId" TargetUserId="_targetUserId" />
+    }
+    else if (_section == "season")
+    {
+        <SeasonPart GuildId="GuildId" TargetUserId="_targetUserId" />
+    }
+    else if (_section == "points")
+    {
+        <PointsPart GuildId="GuildId" TargetUserId="_targetUserId" />
+    }
+    else if (_walletCurrencies.Count == 0)
+    {
+        <div class="panel glass empty">No spendable wallet currencies here yet. @(_hasPoints ? "Points live in the Season and Points tabs." : "")</div>
+    }
+    else
+    {
+        <AccountPart GuildId="GuildId" TargetUserId="_targetUserId" ActorId="UserId" Code="@_sel" CanManage="_canManage" ViewingOther="_viewingOther" />
+    }
+}

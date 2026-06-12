@@ -1,9 +1,5 @@
-@page "/guilds/{GuildIdRaw}/wallet"
-@layout GuildLayout
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@inherits GuildMemberComponentBase
+@inherits WalletPart
 @implements IDisposable
-@inject IServiceScopeFactory Scopes
 @inject Wolverine.IMessageBus Bus
 @inject IJSRuntime JS
 @using Microsoft.JSInterop
@@ -11,44 +7,14 @@
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Web
 @using Muster.Web.Components.Shared
-@using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<PageTitle>Wallet — Muster</PageTitle>
-
-@if (State == AccessState.Forbidden)
+@if (_message is not null)
 {
-    <div class="panel glass empty">You don't have access to this server.</div>
+    <p class="message">@_message</p>
 }
-else if (State == AccessState.Ready)
-{
-    <div class="wallet-head">
-        <nav class="wallet-crumb" aria-label="Breadcrumb">
-            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
-            <a href="/guilds/@GuildId/me">Wallet</a>
-            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
-            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
-        </nav>
-        <div class="wallet-controls">
-            <CurrencySwitcher Currencies="_walletCurrencies" Selected="@_sel" SelectedChanged="SelectCurrency" />
-        </div>
-    </div>
 
-    <WalletTabs GuildId="GuildId" Active="account" Cur="@_sel" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" LedgerOnly="@(_viewingOther && !_canManage)" />
-
-    @if (Message is not null)
-    {
-        <p class="message">@Message</p>
-    }
-
-    @if (_walletCurrencies.Count == 0)
-    {
-        <div class="panel glass empty">No spendable wallet currencies here yet. @(_hasPoints ? "Your points live in the Season and Points tabs." : "")</div>
-    }
-    else
-    {
-
-    <div class="kpi-band">
+<div class="kpi-band">
         <div class="kpi-hero">
             <div class="kpi-hero-top">
                 <div>
@@ -163,13 +129,13 @@ else if (State == AccessState.Ready)
             }
         </div>
 
-        @if (!_viewingOther || _canManage)
+        @if (!ViewingOther || CanManage)
         {
         <div class="panel glass">
-            @if (_viewingOther && _canManage)
+            @if (ViewingOther && CanManage)
             {
                 <div class="panel-head"><h2>Mint / adjust</h2></div>
-                <p class="subtitle">Apply a signed correction to @_displayName's <strong>@_sel</strong> balance. Positive mints; negative deducts. Audited.</p>
+                <p class="subtitle">Apply a signed correction to this member's <strong>@Code</strong> balance. Positive mints; negative deducts. Audited.</p>
                 <div class="send-amt">
                     <label>Amount (signed) <input type="number" class="dg-select" @bind="_adjustAmount" /></label>
                 </div>
@@ -359,5 +325,3 @@ else if (State == AccessState.Ready)
                 </div>
         </FooterLeft>
     </LedgerFrame>
-    }
-}

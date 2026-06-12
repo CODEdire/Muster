@@ -8,19 +8,12 @@ using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
-namespace Muster.Web.Components.Pages.Economy;
+namespace Muster.Web.Components.Pages.Economy.Wallet.Parts;
 
-public partial class WalletPoints : IDisposable
+public partial class PointsPart : WalletPart, IDisposable
 {
     private const int SearchDebounceMs = 350;
 
-    [SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
-    private ulong _targetUserId;
-    private bool _viewingOther;
-    private bool _canManage;
-
-    private string _displayName = "";
-    private string? _avatarUrl;
     private long _balance;
     private bool _seasonal;
     private string? _seasonName;
@@ -38,39 +31,28 @@ public partial class WalletPoints : IDisposable
     private string _sortKey = "when";
     private bool _descending = true;
     private long? _expandedId;
-    private bool _loading;
     private CancellationTokenSource? _searchDebounce;
 
     private int TotalPages => _activity?.TotalPages ?? 1;
     private string PagerLabel => $"Page {_page} of {TotalPages} · {(_activity?.Total ?? 0)} total";
     private bool Grouped => _sortKey == "when";
 
-    protected override async Task LoadAsync()
+    protected override async Task ReloadAsync()
     {
-        await using var scope = Scopes.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
-        var points = sp.GetRequiredService<PointsReadService>();
-        var members = sp.GetRequiredService<WebMemberService>();
+        await using (var scope = Scopes.CreateAsyncScope())
+        {
+            var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
+            var snap = await points.GetSnapshotAsync(GuildId, TargetUserId);
+            _balance = snap.Balance;
+            _seasonal = snap.Seasonal;
+            _hasPoints = (await points.GetSupplyAsync(GuildId)) is not null;
+            _seasonName = (await points.GetSeasonsAsync(GuildId)).FirstOrDefault(s => s.IsActive)?.Name;
+        }
 
-        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
-        var canViewOthers = _canManage || await Auth.IsAuditorAsync(GuildId, UserId);
-        _targetUserId = ulong.TryParse(MemberRaw, out var m) && canViewOthers ? m : UserId;
-        _viewingOther = _targetUserId != UserId;
-
-        var snap = await points.GetSnapshotAsync(GuildId, _targetUserId);
-        _balance = snap.Balance;
-        _seasonal = snap.Seasonal;
-        _hasPoints = (await points.GetSupplyAsync(GuildId)) is not null;
-        _seasonName = (await points.GetSeasonsAsync(GuildId)).FirstOrDefault(s => s.IsActive)?.Name;
-
-        var detail = await members.GetAsync(GuildId, _targetUserId, historyCount: 1);
-        _displayName = detail.DisplayName;
-        _avatarUrl = detail.AvatarUrl;
-
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
-    private async Task ReloadAsync()
+    private async Task ReloadLedgerAsync()
     {
         _loading = true;
         try
@@ -79,8 +61,8 @@ public partial class WalletPoints : IDisposable
             var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
-            _activity = await points.GetHistoryPageAsync(GuildId, _targetUserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
-            _totals = await points.GetHistoryTotalsAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign);
+            _activity = await points.GetHistoryPageAsync(GuildId, TargetUserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+            _totals = await points.GetHistoryTotalsAsync(GuildId, TargetUserId, _searchBox, sources, from, to, _sign);
         }
         finally
         {
@@ -92,7 +74,7 @@ public partial class WalletPoints : IDisposable
     {
         _preset = (e.Value as string) ?? "";
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task OnSource(ChangeEventArgs e)
@@ -100,7 +82,7 @@ public partial class WalletPoints : IDisposable
         var raw = e.Value as string;
         _source = string.IsNullOrEmpty(raw) || !Enum.TryParse<CurrencyLedgerSource>(raw, out var v) ? null : v;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task SetDirection(int? sign)
@@ -112,7 +94,7 @@ public partial class WalletPoints : IDisposable
 
         _sign = sign;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task DebouncedSearchAsync()
@@ -131,7 +113,7 @@ public partial class WalletPoints : IDisposable
         if (!cts.IsCancellationRequested)
         {
             _page = 1;
-            await ReloadAsync();
+            await ReloadLedgerAsync();
             StateHasChanged();
         }
     }
@@ -141,7 +123,7 @@ public partial class WalletPoints : IDisposable
         _descending = _sortKey == column ? !_descending : true;
         _sortKey = column;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
@@ -150,7 +132,7 @@ public partial class WalletPoints : IDisposable
     {
         _size = int.TryParse(e.Value as string, out var v) ? v : 25;
         _page = 1;
-        await ReloadAsync();
+        await ReloadLedgerAsync();
     }
 
     private async Task Prev()
@@ -158,7 +140,7 @@ public partial class WalletPoints : IDisposable
         if (_page > 1)
         {
             _page--;
-            await ReloadAsync();
+            await ReloadLedgerAsync();
         }
     }
 
@@ -167,7 +149,7 @@ public partial class WalletPoints : IDisposable
         if (_page < TotalPages)
         {
             _page++;
-            await ReloadAsync();
+            await ReloadLedgerAsync();
         }
     }
 
@@ -213,7 +195,7 @@ public partial class WalletPoints : IDisposable
         var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
         var (from, to) = ResolveRange(_preset);
         var sources = _source is { } s ? new[] { s } : null;
-        var rows = await points.GetHistoryForExportAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign);
+        var rows = await points.GetHistoryForExportAsync(GuildId, TargetUserId, _searchBox, sources, from, to, _sign);
 
         var sb = new StringBuilder();
         sb.AppendLine("When (UTC),Amount,Source,Reason");

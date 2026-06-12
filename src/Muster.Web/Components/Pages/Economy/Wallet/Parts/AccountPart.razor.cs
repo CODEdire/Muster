@@ -13,35 +13,36 @@ using Muster.Infrastructure.Services.Web;
 using Wolverine;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
-namespace Muster.Web.Components.Pages.Economy;
+namespace Muster.Web.Components.Pages.Economy.Wallet.Parts;
 
-public partial class Wallet : IDisposable
+public partial class AccountPart : WalletPart, IDisposable
 {
-    // --- Target member (admin / economy-manager can view another member's wallet via ?member=) ---
-    [SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
-    private ulong _targetUserId;
-    private bool _canManage;     // viewer is admin / economy-manager
-    private bool _viewingOther;  // target != the signed-in user
+    /// <summary>The signed-in user — the transfer sender / mint actor, distinct from the wallet owner TargetUserId.</summary>
+    [Parameter, EditorRequired] public ulong ActorId { get; set; }
+    /// <summary>The selected (non-points) wallet currency, owned by the shell's switcher.</summary>
+    [Parameter] public string Code { get; set; } = "";
+    /// <summary>Viewer is economy manager / admin — may mint/adjust the viewed member.</summary>
+    [Parameter] public bool CanManage { get; set; }
+    /// <summary>Viewing another member's wallet (vs the signed-in user's own).</summary>
+    [Parameter] public bool ViewingOther { get; set; }
+
+    protected override object? ReloadKey => (TargetUserId, Code);
+
+    private string? _message;
 
     // Admin mint/adjust (shown in the transfer frame when viewing another member's wallet).
     private long _adjustAmount;
     private string _adjustReason = "";
     private bool _adjusting;
 
-    // --- Currencies + selection ---
+    // Currency directory — for the transferable-currency dropdown + the connector-sync flag.
     private IReadOnlyList<CurrencyInfo> _currencies = [];
-    // Account shows spendable wallet currencies only; points live in the dedicated Season + Points tabs.
-    private IReadOnlyList<CurrencyInfo> _walletCurrencies = [];
-    private bool _hasPoints;
-    private string _sel = "";
-    private string _displayName = "";
-    private string? _avatarUrl;
 
-    private CurrencyInfo? Selected => _currencies.FirstOrDefault(c => c.Code == _sel);
-    private string SelUnit => Selected?.Code ?? "";
-    private bool SelIsPoints => string.Equals(_sel, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase);
+    private CurrencyInfo? Selected => _currencies.FirstOrDefault(c => c.Code == Code);
+    private string SelUnit => Code;
+    private bool SelIsPoints => false;
 
-    /// <summary>A non-spendable score currency (e.g. POINTS) only accrues — no spend tile, no out-flow.</summary>
+    /// <summary>A non-spendable score currency only accrues — no spend tile, no out-flow.</summary>
     private bool IsScore => Selected is { Spendable: false };
     private int _rank;
     private int _holders;
@@ -88,61 +89,20 @@ public partial class Wallet : IDisposable
     private bool _descending = true;
     private int _page = 1;
     private int _size = 25;
-    private bool _loading;
     private PagedResult<MemberLedgerRow>? _activity;
 
     private int TotalPages => _activity?.TotalPages ?? 1;
     private string PagerLabel => $"Page {_page} of {TotalPages} · {(_activity?.Total ?? 0)} total";
 
-    protected override async Task LoadAsync()
+    protected override async Task ReloadAsync()
     {
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
-        var currencies = sp.GetRequiredService<ICurrencyReadService>();
-        var members = sp.GetRequiredService<WebMemberService>();
-
-        // Economy managers (admin implied) may view AND adjust any member's wallet; auditors may view (read-only).
-        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
-        var canViewOthers = _canManage || await Auth.IsAuditorAsync(GuildId, UserId);
-        _targetUserId = ulong.TryParse(MemberRaw, out var m) && canViewOthers ? m : UserId;
-        _viewingOther = _targetUserId != UserId;
-
-        _currencies = await currencies.GetCurrenciesAsync(GuildId);
-        _recipients = await members.GetRecipientsAsync(GuildId, UserId);
-
-        _hasPoints = _currencies.Any(c => string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase));
-        _walletCurrencies = _currencies.Where(c => !string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        // Open on the guild's primary/default wallet currency; fall back to the first spendable, then any.
-        _sel = _walletCurrencies.FirstOrDefault(c => c.Primary)?.Code
-            ?? _walletCurrencies.FirstOrDefault(c => c.Spendable)?.Code
-            ?? _walletCurrencies.FirstOrDefault()?.Code
-            ?? "";
+        _currencies = await sp.GetRequiredService<ICurrencyReadService>().GetCurrenciesAsync(GuildId);
+        _recipients = await sp.GetRequiredService<WebMemberService>().GetRecipientsAsync(GuildId, ActorId);
         Send.Currency ??= Sendable.FirstOrDefault()?.Code;
 
-        var detail = await members.GetAsync(GuildId, _targetUserId, historyCount: 1);
-        _displayName = detail.DisplayName;
-        _avatarUrl = detail.AvatarUrl;
-
-        await LoadScopeAsync();
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (State == AccessState.Ready && _activity is null && !string.IsNullOrEmpty(_sel))
-        {
-            await ReloadLedgerAsync();
-        }
-    }
-
-    private async Task SelectCurrency(string code)
-    {
-        if (code == _sel)
-        {
-            return;
-        }
-
-        _sel = code;
+        // Currency / member switch resets the ledger view.
         _page = 1;
         _source = null;
         _party = null;
@@ -154,7 +114,7 @@ public partial class Wallet : IDisposable
     /// <summary>Load the KPI bundle, earned-by-source and balance sparkline for the selected currency (30-day window).</summary>
     private async Task LoadScopeAsync()
     {
-        if (string.IsNullOrEmpty(_sel))
+        if (string.IsNullOrEmpty(Code))
         {
             return;
         }
@@ -165,21 +125,21 @@ public partial class Wallet : IDisposable
         var to = DateTimeOffset.UtcNow;
         var from = to.AddDays(-30);
 
-        _kpis = await wallet.GetKpisAsync(GuildId, _targetUserId, _sel, from, to);
-        var prev = await wallet.GetKpisAsync(GuildId, _targetUserId, _sel, from.AddDays(-30), from);
+        _kpis = await wallet.GetKpisAsync(GuildId, TargetUserId, Code, from, to);
+        var prev = await wallet.GetKpisAsync(GuildId, TargetUserId, Code, from.AddDays(-30), from);
         _prevEarned = prev.Earned;
         _prevSpent = prev.Spent;
-        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, _targetUserId, _sel) : 0;
-        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, _targetUserId, _sel, from, to);
+        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, TargetUserId, Code) : 0;
+        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, TargetUserId, Code, from, to);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(4).ToList();
-        _series = await wallet.GetBalanceSeriesAsync(GuildId, _targetUserId, _sel, from, to);
-        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, _targetUserId, _sel);
-        _parties = await wallet.GetCounterpartiesAsync(GuildId, _targetUserId, _sel);
+        _series = await wallet.GetBalanceSeriesAsync(GuildId, TargetUserId, Code, from, to);
+        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, TargetUserId, Code);
+        _parties = await wallet.GetCounterpartiesAsync(GuildId, TargetUserId, Code);
     }
 
     private async Task ReloadLedgerAsync()
     {
-        if (string.IsNullOrEmpty(_sel))
+        if (string.IsNullOrEmpty(Code))
         {
             return;
         }
@@ -193,7 +153,7 @@ public partial class Wallet : IDisposable
             // On-visit reconcile of any External/Hybrid balances (skipped for the seasonal points score).
             if (!SelIsPoints)
             {
-                await sp.GetRequiredService<CurrencyConnectorSyncService>().SyncMemberDueAsync(GuildId, _targetUserId, force: false);
+                await sp.GetRequiredService<CurrencyConnectorSyncService>().SyncMemberDueAsync(GuildId, TargetUserId, force: false);
             }
 
             var (from, to) = ResolveRange(_preset);
@@ -203,16 +163,16 @@ public partial class Wallet : IDisposable
             {
                 var points = sp.GetRequiredService<PointsReadService>();
                 _activity = await points.GetHistoryPageAsync(
-                    GuildId, _targetUserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
-                _totals = await points.GetHistoryTotalsAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign);
+                    GuildId, TargetUserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+                _totals = await points.GetHistoryTotalsAsync(GuildId, TargetUserId, _searchBox, sources, from, to, _sign);
             }
             else
             {
                 var wallet = sp.GetRequiredService<WalletReadService>();
                 _activity = await wallet.GetHistoryPageAsync(
-                    GuildId, _targetUserId, _sel, _searchBox, _sortKey, _descending, _page, _size,
+                    GuildId, TargetUserId, Code, _searchBox, _sortKey, _descending, _page, _size,
                     sources: sources, from: from, to: to, sign: _sign, withRunningBalance: _sortKey == "when", counterpartyId: _party);
-                _totals = await wallet.GetHistoryTotalsAsync(GuildId, _targetUserId, _sel, _searchBox, sources, from, to, _sign, _party);
+                _totals = await wallet.GetHistoryTotalsAsync(GuildId, TargetUserId, Code, _searchBox, sources, from, to, _sign, _party);
             }
         }
         finally
@@ -334,8 +294,8 @@ public partial class Wallet : IDisposable
         var sources = _source is { } s ? new[] { s } : null;
 
         IReadOnlyList<MemberLedgerRow> rows = SelIsPoints
-            ? await sp.GetRequiredService<PointsReadService>().GetHistoryForExportAsync(GuildId, _targetUserId, _searchBox, sources, from, to, _sign)
-            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, _targetUserId, _sel, _searchBox, sources, from, to, _sign, _party);
+            ? await sp.GetRequiredService<PointsReadService>().GetHistoryForExportAsync(GuildId, TargetUserId, _searchBox, sources, from, to, _sign)
+            : await sp.GetRequiredService<WalletReadService>().GetHistoryForExportAsync(GuildId, TargetUserId, Code, _searchBox, sources, from, to, _sign, _party);
 
         var sb = new StringBuilder();
         sb.AppendLine("When (UTC),Currency,Source,Party,Amount,Reason");
@@ -349,7 +309,7 @@ public partial class Wallet : IDisposable
               .AppendLine(Csv(r.Reason));
         }
 
-        var name = $"wallet-{_sel}-{DateTimeOffset.UtcNow.UtcDateTime:yyyyMMdd}.csv";
+        var name = $"wallet-{Code}-{DateTimeOffset.UtcNow.UtcDateTime:yyyyMMdd}.csv";
         await JS.InvokeVoidAsync("musterDownload", name, sb.ToString(), "text/csv;charset=utf-8");
     }
 
@@ -450,19 +410,19 @@ public partial class Wallet : IDisposable
 
         if (Send.RecipientId == 0)
         {
-            Message = "Choose who to send to.";
+            _message = "Choose who to send to.";
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Send.Currency))
         {
-            Message = "Choose a currency.";
+            _message = "Choose a currency.";
             return;
         }
 
         if (Send.Amount <= 0)
         {
-            Message = "Amount must be greater than zero.";
+            _message = "Amount must be greater than zero.";
             return;
         }
 
@@ -475,9 +435,9 @@ public partial class Wallet : IDisposable
             var reason = string.IsNullOrWhiteSpace(Send.Reason) ? "Wallet transfer" : Send.Reason!.Trim();
 
             var result = await Bus.InvokeAsync<Result>(
-                new TransferCurrency(GuildId, UserId, code, UserId, Send.RecipientId, amount, reason));
+                new TransferCurrency(GuildId, ActorId, code, ActorId, Send.RecipientId, amount, reason));
 
-            Message = result.Ok
+            _message = result.Ok
                 ? $"Sent {amount:N0} {code} to {toName}."
                 : result.Status switch
                 {
@@ -504,14 +464,14 @@ public partial class Wallet : IDisposable
     /// <summary>Admin / economy-manager mint or adjust on the viewed member's selected currency (signed delta).</summary>
     private async Task AdjustAsync()
     {
-        if (_adjusting || !_canManage || !_viewingOther)
+        if (_adjusting || !CanManage || !ViewingOther)
         {
             return;
         }
 
         if (_adjustAmount == 0)
         {
-            Message = "Amount must be non-zero.";
+            _message = "Amount must be non-zero.";
             return;
         }
 
@@ -519,10 +479,10 @@ public partial class Wallet : IDisposable
         try
         {
             var reason = string.IsNullOrWhiteSpace(_adjustReason) ? "Wallet adjustment" : _adjustReason.Trim();
-            var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, UserId, _sel, _targetUserId, _adjustAmount, reason));
+            var result = await Bus.InvokeAsync<Result>(new AdjustCurrency(GuildId, ActorId, Code, TargetUserId, _adjustAmount, reason));
 
-            Message = result.Ok
-                ? $"Applied {_adjustAmount:+#,##0;-#,##0} {_sel} to {_displayName}."
+            _message = result.Ok
+                ? $"Applied {_adjustAmount:+#,##0;-#,##0} {Code}."
                 : result.Status switch
                 {
                     "Forbidden" => "You're not allowed to do that.",
@@ -557,8 +517,8 @@ public partial class Wallet : IDisposable
         {
             await using var scope = Scopes.CreateAsyncScope();
             var sync = scope.ServiceProvider.GetRequiredService<CurrencyConnectorSyncService>();
-            var synced = await sync.SyncMemberDueAsync(GuildId, _targetUserId, force: true);
-            Message = synced > 0 ? $"Synced {synced} balance(s) from connected economies." : "No connected balances to sync.";
+            var synced = await sync.SyncMemberDueAsync(GuildId, TargetUserId, force: true);
+            _message = synced > 0 ? $"Synced {synced} balance(s) from connected economies." : "No connected balances to sync.";
         }
         finally
         {

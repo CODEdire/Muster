@@ -1,41 +1,18 @@
-@page "/guilds/{GuildIdRaw}/wallet/points"
-@layout GuildLayout
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@inherits GuildMemberComponentBase
+@inherits WalletPart
 @implements IDisposable
-@inject IServiceScopeFactory Scopes
 @inject IJSRuntime JS
 @using Microsoft.JSInterop
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Services.Web
 @using Muster.Web.Components.Shared
-@using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<PageTitle>Points ledger — Muster</PageTitle>
+<div class="wp-bal">
+    <span class="material-symbols-outlined" aria-hidden="true">trophy</span>
+    <b>@_balance.ToString("N0")</b> points@(_seasonal && _seasonName is not null ? $" · {_seasonName}" : "")
+</div>
 
-@if (State == AccessState.Forbidden)
-{
-    <div class="panel glass empty">You don't have access to this server.</div>
-}
-else if (State == AccessState.Ready)
-{
-    <div class="wallet-head">
-        <nav class="wallet-crumb" aria-label="Breadcrumb">
-            <span class="material-symbols-outlined wallet-ico" aria-hidden="true">account_balance_wallet</span>
-            <a href="/guilds/@GuildId/wallet">Wallet</a>
-            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
-            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
-        </nav>
-        <div class="wp-bal">
-            <span class="material-symbols-outlined" aria-hidden="true">trophy</span>
-            <b>@_balance.ToString("N0")</b> points@(_seasonal && _seasonName is not null ? $" · {_seasonName}" : "")
-        </div>
-    </div>
-
-    <WalletTabs GuildId="GuildId" Active="points" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" LedgerOnly="@(_viewingOther && !_canManage)" />
-
-    <LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">
+<LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">
         <Filters>
             <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
             <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
@@ -128,4 +105,3 @@ else if (State == AccessState.Ready)
             <span class="dg-totals">Σ earned <span class="pos">+@_totals.In.ToString("N0")</span></span>
         </FooterLeft>
     </LedgerFrame>
-}

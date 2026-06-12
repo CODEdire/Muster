@@ -9,23 +9,15 @@ using Muster.Infrastructure.Services.Web;
 using Muster.Persistence.Queries;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
-namespace Muster.Web.Components.Pages.Economy;
+namespace Muster.Web.Components.Pages.Economy.Wallet.Parts;
 
-public partial class WalletAnalytics
+public partial class AnalyticsPart : WalletPart
 {
     private static readonly string[] MonthNames =
         ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    [Microsoft.AspNetCore.Components.SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
-    private ulong _targetUserId;
-    private bool _viewingOther;
-    private bool _canManage;
-
     private IReadOnlyList<CurrencyInfo> _currencies = [];
-    private bool _hasPoints;
     private string _sel = "";
-    private string _displayName = "";
-    private string? _avatarUrl;
     private string _period = "6mo";
 
     private CurrencyInfo? Selected => _currencies.FirstOrDefault(c => c.Code == _sel);
@@ -68,20 +60,12 @@ public partial class WalletAnalytics
     private static readonly (string Value, string Label)[] Periods =
         [("30d", "Last 30 days"), ("90d", "Last 90 days"), ("6mo", "Last 6 months"), ("1y", "Last year")];
 
-    protected override async Task LoadAsync()
+    protected override async Task ReloadAsync()
     {
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
-        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
-        var canViewOthers = _canManage || await Auth.IsAuditorAsync(GuildId, UserId);
-        _targetUserId = ulong.TryParse(MemberRaw, out var mid) && canViewOthers ? mid : UserId;
-        _viewingOther = _targetUserId != UserId;
 
         _currencies = await sp.GetRequiredService<ICurrencyReadService>().GetCurrenciesAsync(GuildId);
-        _hasPoints = _currencies.Any(c => string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase));
-        var detail = await sp.GetRequiredService<WebMemberService>().GetAsync(GuildId, _targetUserId, historyCount: 1);
-        _displayName = detail.DisplayName;
-        _avatarUrl = detail.AvatarUrl;
         _sel = _currencies.FirstOrDefault(c => c.Primary)?.Code
             ?? _currencies.FirstOrDefault(c => c.Spendable)?.Code
             ?? _currencies.FirstOrDefault()?.Code
@@ -120,7 +104,7 @@ public partial class WalletAnalytics
         if (IsScore)
         {
             _seasons = await wallet.GetSeasonsAsync(GuildId, _sel);
-            _seasonTotals = await wallet.GetSeasonTotalsAsync(GuildId, _targetUserId, _sel);
+            _seasonTotals = await wallet.GetSeasonTotalsAsync(GuildId, TargetUserId, _sel);
             if (_season is null || _seasons.All(s => s.Id != _season))
             {
                 _season = _seasons.FirstOrDefault(s => s.IsActive)?.Id ?? _seasons.FirstOrDefault()?.Id;
@@ -133,19 +117,19 @@ public partial class WalletAnalytics
             _season = null;
         }
 
-        _kpis = await wallet.GetKpisAsync(GuildId, _targetUserId, _sel, from, to, _season);
-        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, _targetUserId, _sel) : 0;
-        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, _targetUserId, _sel, _season);
-        _series = await wallet.GetBalanceSeriesAsync(GuildId, _targetUserId, _sel, from, to, _season);
-        _months = await wallet.GetCashFlowAsync(GuildId, _targetUserId, _sel, from, to, _season);
+        _kpis = await wallet.GetKpisAsync(GuildId, TargetUserId, _sel, from, to, _season);
+        _heldOrders = _kpis.Held > 0 ? await wallet.GetHeldOrderCountAsync(GuildId, TargetUserId, _sel) : 0;
+        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, TargetUserId, _sel, _season);
+        _series = await wallet.GetBalanceSeriesAsync(GuildId, TargetUserId, _sel, from, to, _season);
+        _months = await wallet.GetCashFlowAsync(GuildId, TargetUserId, _sel, from, to, _season);
         ComputeCandles();
 
-        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, _targetUserId, _sel, from, to, _season);
+        var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, TargetUserId, _sel, from, to, _season);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).ToList();
         _spent = breakdown.Where(s => s.Spent > 0).OrderByDescending(s => s.Spent).ToList();
 
         // Score currencies (POINTS) get a participation framing — season standing + voice, not money.
-        _points = IsScore ? await sp.GetRequiredService<PointsReadService>().GetSnapshotAsync(GuildId, _targetUserId) : null;
+        _points = IsScore ? await sp.GetRequiredService<PointsReadService>().GetSnapshotAsync(GuildId, TargetUserId) : null;
     }
 
     private async Task OnSeason(ChangeEventArgs e)
