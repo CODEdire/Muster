@@ -1,0 +1,41 @@
+    .field-group { border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem;
+        padding: 0.85rem 1rem 1rem; margin-bottom: 1rem; }
+    .field-group legend { padding: 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
+        letter-spacing: 0.05em; color: var(--text-muted); }
+
+    .kind-picker { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        margin-bottom: 1.25rem; }
+    .kind-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem;
+        padding: 0.85rem 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 0.5rem; color: var(--text); cursor: pointer; transition: all 0.1s; text-align: left; }
+    .kind-btn:hover { background: rgba(255,255,255,0.06); }
+    .kind-btn.active { background: rgba(74,222,128,0.1); border-color: #4ade80; color: #4ade80; }
+    .kind-btn .material-symbols-outlined { font-size: 1.4rem; }
+    .kind-btn .kind-desc { font-size: 0.75rem; color: var(--text-muted); font-weight: normal; }
+    .kind-btn.active .kind-desc { color: rgba(74,222,128,0.7); }
+
+    .scope-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .scope-btn { padding: 0.4rem 0.85rem; background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; color: var(--text);
+        cursor: pointer; transition: all 0.1s; font-size: 0.85rem; }
+    .scope-btn:hover { background: rgba(255,255,255,0.06); }
+    .scope-btn.active { background: rgba(74,222,128,0.15); border-color: #4ade80; color: #4ade80; }
+
+    .day-picker { display: flex; gap: 0.4rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .day-pill { width: 3rem; padding: 0.45rem 0; background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem; color: var(--text);
+        cursor: pointer; text-align: center; font-size: 0.85rem; transition: all 0.1s; }
+    .day-pill:hover { background: rgba(255,255,255,0.06); }
+    .day-pill.active { background: rgba(96,165,250,0.15); border-color: #60a5fa; color: #60a5fa; font-weight: 600; }
+
+    .preview-box { display: flex; gap: 0.6rem; align-items: flex-start;
+        background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.3);
+        border-radius: 0.5rem; padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.9rem; }
+    .preview-box .material-symbols-outlined { color: #60a5fa; }
+
+    .scope-pills .pill { display: inline-block; padding: 0.05rem 0.4rem; margin-right: 0.25rem;
+        font-size: 0.7rem; background: rgba(74,222,128,0.12); color: #4ade80; border-radius: 0.25rem; }
+    .mult-table tr.off { opacity: 0.6; }
+    .mult-table .factor { font-weight: 600; }
+    .mult-table .row-actions { white-space: nowrap; text-align: right; }
+    .mult-table .row-actions .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; margin-left: 0.35rem; }

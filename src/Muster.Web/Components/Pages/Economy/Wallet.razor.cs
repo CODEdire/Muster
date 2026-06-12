@@ -1,176 +1,18 @@
-@page "/guilds/{GuildIdRaw}/wallet"
-@layout GuildLayout
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@inherits GuildMemberComponentBase
-@implements IDisposable
-@inject IServiceScopeFactory Scopes
-@inject Wolverine.IMessageBus Bus
-@using Muster.Contracts
-@using Muster.Domain.Enums
-@using Muster.Infrastructure.Connectors
-@using Muster.Infrastructure.Services.Currencies
-@using Muster.Infrastructure.Services.Tracking
-@using Muster.Infrastructure.Services.Web
-@using Muster.Web.Components.Shared
-@using static Muster.Web.Components.Shared.LedgerMeta
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Muster.Contracts;
+using Muster.Domain.Enums;
+using Muster.Infrastructure.Connectors;
+using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Tracking;
+using Muster.Infrastructure.Services.Web;
+using Wolverine;
+using static Muster.Web.Components.Shared.LedgerMeta;
 
-<PageTitle>Wallet — Muster</PageTitle>
+namespace Muster.Web.Components.Pages.Economy;
 
-@if (State == AccessState.Forbidden)
+public partial class Wallet : IDisposable
 {
-    <div class="panel glass empty">You don't have access to this server.</div>
-}
-else if (State == AccessState.Ready)
-{
-    <div class="page-head">
-        <a class="back-link" href="/guilds/@GuildId/me">← Me</a>
-        <h1>Wallet</h1>
-        <p class="subtitle">@_displayName</p>
-    </div>
-
-    @if (Message is not null)
-    {
-        <p class="message">@Message</p>
-    }
-
-    <div class="stat-grid">
-        @if (_wallets.Count == 0)
-        {
-            <div class="stat glass"><div class="label">Balance</div><div class="num">0</div></div>
-        }
-        else
-        {
-            @foreach (var w in _wallets)
-            {
-                <div class="stat glass">
-                    <div class="label">@w.CurrencyName@(w.IsSeasonal ? " (season)" : "")</div>
-                    <div class="num">@w.Balance.ToString("N0")</div>
-                </div>
-            }
-        }
-    </div>
-
-    <div class="balance-sync-row">
-        <button type="button" class="btn btn-sm btn-ghost" disabled="@_syncing" @onclick="ForceSyncAsync">Sync balances</button>
-        <span class="subtitle">Pull your latest balances from connected economies (auto-refreshes every few minutes).</span>
-    </div>
-
-    <div class="panel glass dg-frame dg-fill">
-    <div class="dg-toolbar">
-        <div class="dg-filters">
-            <select class="dg-select" value="@(_code ?? "")" @onchange="OnCode">
-                <option value="">All currencies</option>
-                @foreach (var c in _currencies)
-                {
-                    <option value="@c.Code">@c.Code — @c.Name</option>
-                }
-            </select>
-            <select class="dg-select" value="@_preset" @onchange="OnRange">
-                @foreach (var (val, lbl) in RangePresets)
-                {
-                    <option value="@val">@lbl</option>
-                }
-            </select>
-            <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
-                <option value="">Any source</option>
-                @foreach (var s in AllSources)
-                {
-                    <option value="@s">@SourceLabel(s)</option>
-                }
-            </select>
-            <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
-            @if (_loading)
-            {
-                <span class="dg-loading" aria-hidden="true"></span>
-            }
-        </div>
-    </div>
-
-    <div class="dg-scroll">
-        <table class="dg-table">
-            <thead>
-                <tr>
-                    <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
-                    <th>Currency</th>
-                    <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
-                    <th>Source</th>
-                    <th>Reason</th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (_activity is null || _activity.Items.Count == 0)
-                {
-                    <tr class="dg-empty"><td colspan="5">@(_activity is null ? "Loading…" : "No activity matches these filters.")</td></tr>
-                }
-                else
-                {
-                    @foreach (var h in _activity.Items)
-                    {
-                        <tr>
-                            <td><LocalTime Value="h.OccurredAt" /></td>
-                            <td>@h.Currency</td>
-                            <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
-                            <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
-                            <td>@h.Reason</td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-    </div>
-
-    <div class="dg-footer">
-        <div class="dg-footer-left">
-            <div class="dg-pagesize">
-                Rows
-                <select class="dg-select" value="@_size" @onchange="OnSize">
-                    <option value="10">10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
-            </div>
-        </div>
-        <div class="dg-pager">
-            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
-            <span>Page @_page of @TotalPages · @(_activity?.Total ?? 0) total</span>
-            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
-        </div>
-    </div>
-    </div>
-
-    @if (_spendable.Count > 0 && _recipients.Count > 0)
-    {
-        <div class="panel glass">
-            <h2>Send currency</h2>
-            <p class="subtitle">Transfer some of your own balance to another member.</p>
-            <EditForm class="form-grid" Model="Send" OnValidSubmit="SendAsync">
-                <label>To
-                    <InputSelect @bind-Value="Send.RecipientId">
-                        <option value="0">— select —</option>
-                        @foreach (var r in _recipients)
-                        {
-                            <option value="@r.UserId">@r.DisplayName</option>
-                        }
-                    </InputSelect>
-                </label>
-                <label>Currency
-                    <InputSelect @bind-Value="Send.Currency">
-                        @foreach (var c in _spendable)
-                        {
-                            <option value="@c.Code">@c.Code — @c.Name</option>
-                        }
-                    </InputSelect>
-                </label>
-                <label>Amount <InputNumber @bind-Value="Send.Amount" /></label>
-                <label>Note <InputText @bind-Value="Send.Reason" /></label>
-                <div class="btn-row"><button type="submit" disabled="@_sending">Send</button></div>
-            </EditForm>
-        </div>
-    }
-}
-
-@code {
     // Activity grid local state.
     private string? _code;
     private string _preset = "";
