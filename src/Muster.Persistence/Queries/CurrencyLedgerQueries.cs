@@ -469,7 +469,7 @@ public static class CurrencyLedgerQueries
     public static async Task<(long In, long Out)> GuildLedgerTotalsAsync(
         this MusterDbContext db, ulong guildId, Guid? currencyId, string? search, CancellationToken ct = default,
         Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? seasonScope = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && (currencyId == null || e.CurrencyId == currencyId));
@@ -477,6 +477,11 @@ public static class CurrencyLedgerQueries
         if (excludeCurrencyId is { } x)
         {
             q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
         }
 
         if (sources is { Count: > 0 })
@@ -508,7 +513,7 @@ public static class CurrencyLedgerQueries
         return agg is null ? (0, 0) : (agg.In, agg.Out);
     }
 
-    public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> GuildLedgerPagedAsync(
+    public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason, Guid? SeasonId)> Rows, int Total)> GuildLedgerPagedAsync(
         this MusterDbContext db, ulong guildId, Guid? currencyId, string? search,
         string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
         IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
@@ -565,10 +570,53 @@ public static class CurrencyLedgerQueries
         var rows = await q
             .Skip(Math.Max(skip, 0))
             .Take(Math.Clamp(take, 1, 100))
-            .Select(e => new { e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .Select(e => new { e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId })
             .ToListAsync(ct);
 
-        return (rows.Select(e => (e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
+        return (rows.Select(e => (e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId)).ToList(), total);
+    }
+
+    /// <summary>All filtered guild-ledger rows (capped) for a CSV export of the current movement view — same filters as
+    /// <see cref="GuildLedgerPagedAsync"/> but without paging.</summary>
+    public static async Task<List<(ulong UserId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason, Guid? SeasonId)>> GuildLedgerExportAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, string sortKey, bool descending,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        Guid? seasonScope = null, int cap = 10000, CancellationToken ct = default)
+    {
+        var q = db.CurrencyLedgerEntries.Where(e => e.GuildId == guildId && e.CurrencyId == currencyId);
+
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
+        }
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        var rows = await JournalOrder(q, sortKey, descending)
+            .Take(Math.Clamp(cap, 1, 100000))
+            .Select(e => new { e.UserId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId })
+            .ToListAsync(ct);
+
+        return rows.Select(e => (e.UserId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId)).ToList();
     }
 
     /// <summary>Paged top holders for a currency/season scope, sorted by cached wallet balance (highest first).

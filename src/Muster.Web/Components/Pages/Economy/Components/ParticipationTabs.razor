@@ -1,6 +1,6 @@
 @using Muster.Persistence.Queries
 @* Participation-section configuration of the shared TabBar: Overview, the current + previous season (resolved by the
-   page), and the full Ledger. Older seasons are reachable from the Ledger's season filter. *@
+   shell), plus Ranking and the full Ledger. Older seasons are reachable from the Ledger's season filter. *@
 <TabBar Tabs="Items" Active="@Active" AriaLabel="Participation sections" />
 
 @code {
@@ -19,12 +19,13 @@
             };
             if (Current is not null)
             {
-                items.Add(new(Current.Id.ToString(), Current.Name, "local_fire_department", $"/guilds/{GuildId}/participation?season={Current.Id}"));
+                items.Add(new(Current.Id.ToString(), Current.Name, "local_fire_department", $"/guilds/{GuildId}/participation/season/{Current.Id}"));
             }
             if (Previous is not null)
             {
-                items.Add(new(Previous.Id.ToString(), Previous.Name, "history", $"/guilds/{GuildId}/participation?season={Previous.Id}"));
+                items.Add(new(Previous.Id.ToString(), Previous.Name, "history", $"/guilds/{GuildId}/participation/season/{Previous.Id}"));
             }
+            items.Add(new("ranking", "Ranking", "leaderboard", $"/guilds/{GuildId}/participation/ranking"));
             items.Add(new("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/participation/ledger"));
             return items;
         }

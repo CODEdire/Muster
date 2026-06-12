@@ -38,6 +38,11 @@ public record ParticipationHome(
 /// <summary>One point on the weekly-velocity chart for a season.</summary>
 public record WeeklyPoint(string Label, long Total);
 
+/// <summary>One row of the full points ledger — a member movement tagged with the season it landed in.</summary>
+public record PointsLedgerRow(
+    ulong UserId, string DisplayName, string? AvatarUrl, long Amount,
+    CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason, Guid? SeasonId, string SeasonName);
+
 /// <summary>
 /// The Points surface: only POINTS. Same storage as other currencies but a dedicated read service so callers
 /// can never accidentally surface points on the wallet (or vice versa). Wraps <see cref="ICurrencyReadService"/>
@@ -275,9 +280,10 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
     public Task<CurrencySupply?> GetSupplyAsync(ulong guildId, CancellationToken ct = default)
         => scores.GetSupplyAsync(guildId, CurrencyCodes.PointsCode, ct);
 
-    /// <summary>Paged top holders of POINTS (escrow excluded).</summary>
+    /// <summary>Paged top holders of POINTS (escrow excluded). <paramref name="season"/> scopes the ranking to a
+    /// specific season; null falls back to the active season for seasonal points.</summary>
     public async Task<PagedResult<LeaderboardRow>> GetTopHoldersPageAsync(
-        ulong guildId, int page, int pageSize, CancellationToken ct = default)
+        ulong guildId, int page, int pageSize, Guid? season = null, CancellationToken ct = default)
     {
         var points = await db.FindPointsAsync(guildId, ct);
         if (points is null)
@@ -285,7 +291,7 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
             return new PagedResult<LeaderboardRow>([], page, pageSize, 0);
         }
 
-        Guid? seasonId = points.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
+        Guid? seasonId = season ?? (points.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null);
         var size = Math.Clamp(pageSize, 1, 100);
         var p = Math.Max(page, 1);
         var skip = (p - 1) * size;
@@ -347,5 +353,80 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
             .ToList();
 
         return new PagedResult<MovementRow>(items, p, size, total);
+    }
+
+    /// <summary>Paged full points ledger (season-tagged) for the Ledger tab — sortable / filterable / season-scoped.</summary>
+    public async Task<PagedResult<PointsLedgerRow>> GetLedgerPageAsync(
+        ulong guildId, string? search, string sortKey, bool descending, int page, int pageSize,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null,
+        DateTimeOffset? to = null, Guid? season = null, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return new PagedResult<PointsLedgerRow>([], page, pageSize, 0);
+        }
+
+        var size = Math.Clamp(pageSize, 1, 100);
+        var p = Math.Max(page, 1);
+        var skip = (p - 1) * size;
+
+        var (rows, total) = await db.GuildLedgerPagedAsync(
+            guildId, points.Id, search, sortKey, descending, skip, size, ct,
+            sources: sources, from: from, to: to, seasonScope: season);
+
+        var items = await BuildLedgerRowsAsync(
+            guildId, rows.Select(r => (r.UserId, r.Amount, r.SourceType, r.OccurredAt, r.Reason, r.SeasonId)).ToList(), ct);
+        return new PagedResult<PointsLedgerRow>(items, p, size, total);
+    }
+
+    /// <summary>Σ earned / Σ spent for the points ledger under the same filter — the Ledger footer totals.</summary>
+    public async Task<(long In, long Out)> GetLedgerTotalsAsync(
+        ulong guildId, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? season = null, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        return points is null
+            ? (0, 0)
+            : await db.GuildLedgerTotalsAsync(guildId, points.Id, search, ct, sources: sources, from: from, to: to, seasonScope: season);
+    }
+
+    /// <summary>All filtered points-ledger rows (capped) for a CSV export of the current view.</summary>
+    public async Task<IReadOnlyList<PointsLedgerRow>> GetLedgerForExportAsync(
+        ulong guildId, string? search, string sortKey, bool descending,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null,
+        DateTimeOffset? to = null, Guid? season = null, int cap = 10000, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return [];
+        }
+
+        var rows = await db.GuildLedgerExportAsync(
+            guildId, points.Id, search, sortKey, descending,
+            sources: sources, from: from, to: to, seasonScope: season, cap: cap, ct: ct);
+        return await BuildLedgerRowsAsync(guildId, rows, ct);
+    }
+
+    private async Task<List<PointsLedgerRow>> BuildLedgerRowsAsync(
+        ulong guildId,
+        List<(ulong UserId, long Amount, CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason, Guid? SeasonId)> rows,
+        CancellationToken ct)
+    {
+        var ids = rows.Select(r => r.UserId).Distinct().ToList();
+        var users = await db.UserDisplayMapAsync(ids, ct);
+        var seasons = (await db.SeasonsAsync(guildId, ct)).ToDictionary(s => s.Id, s => s.Name);
+
+        string Name(ulong id) => id == CurrencyService.EscrowAccountUserId
+            ? "Escrow (house)"
+            : users.TryGetValue(id, out var u) ? u.Name : id.ToString();
+        string? Avatar(ulong id) => id == CurrencyService.EscrowAccountUserId
+            ? null
+            : users.TryGetValue(id, out var u) ? DiscordCdn.AvatarUrl(id, u.AvatarHash) : null;
+
+        return rows.Select(r => new PointsLedgerRow(
+            r.UserId, Name(r.UserId), Avatar(r.UserId), r.Amount, r.Source, r.OccurredAt, r.Reason,
+            r.SeasonId, r.SeasonId is { } sid && seasons.TryGetValue(sid, out var sn) ? sn : "—")).ToList();
     }
 }

@@ -1,0 +1,60 @@
+@page "/guilds/{GuildIdRaw}/participation"
+@page "/guilds/{GuildIdRaw}/participation/{Section}"
+@page "/guilds/{GuildIdRaw}/participation/season/{SeasonId:guid}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+@using Muster.Web.Components.Pages.Economy.Participation.Parts
+
+<PageTitle>Participation — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="t-head t-wide">
+        <div class="p-title">
+            <span class="material-symbols-outlined" aria-hidden="true">trophy</span>
+            <div>
+                <div class="p-name">Participation</div>
+                <div class="p-sub">points engagement across the server</div>
+            </div>
+        </div>
+        @if (_supply is not null)
+        {
+            <span class="p-members"><span class="material-symbols-outlined" aria-hidden="true">group</span> @(_home?.MemberCount.ToString("N0") ?? "0") members</span>
+        }
+    </div>
+
+    <ParticipationTabs GuildId="GuildId" Active="@ActiveTab" Current="Current" Previous="Previous" />
+
+    @if (_supply is null)
+    {
+        <div class="panel glass empty">Points isn't configured in this server.</div>
+    }
+    else if (ActiveTab == "ranking")
+    {
+        <RankingPart GuildId="GuildId" />
+    }
+    else if (ActiveTab == "ledger")
+    {
+        <PointsLedgerPart GuildId="GuildId" />
+    }
+    else if (SeasonId is { } sid && HasSeasons)
+    {
+        <SeasonPart GuildId="GuildId" SeasonId="sid" Home="_home" />
+    }
+    else if (!HasSeasons)
+    {
+        <div class="panel glass empty">Participation insights need seasonal points. <a href="/guilds/@GuildId/participation/ledger">Open the points ledger ↗</a></div>
+    }
+    else
+    {
+        <PointsOverviewPart GuildId="GuildId" Home="_home" />
+    }
+}

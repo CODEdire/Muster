@@ -1,0 +1,166 @@
+@inherits ParticipationPart
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+@if (_seg is { } seg)
+{
+    <div class="pp-seasonhead">
+        <span class="pp-seasonname">@seg.Season.Name</span>
+        @if (seg.Season.IsActive)
+        {
+            <span class="pp-tag">current</span>
+        }
+    </div>
+
+    <div class="stat-grid">
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+            <span class="label">Points awarded</span><span class="num">@seg.Awarded.ToString("N0")</span><span class="subtitle">this season</span>
+            @if (!string.IsNullOrEmpty(_awardedSpark))
+            {
+                <svg class="pp-spark green" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_awardedSpark" /></svg>
+            }
+        </div>
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">bolt</span>
+            <span class="label">Participation</span><span class="num accent-green">@seg.ParticipationPct%</span><span class="subtitle">@seg.Earners.ToString("N0") of @seg.MemberCount.ToString("N0") members</span>
+            @if (!string.IsNullOrEmpty(_partSpark))
+            {
+                <svg class="pp-spark green" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_partSpark" /></svg>
+            }
+        </div>
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">person_add</span>
+            <span class="label">New earners</span><span class="num">@seg.NewEarners.ToString("N0")</span><span class="subtitle">first-time</span>
+            @if (!string.IsNullOrEmpty(_newSpark))
+            {
+                <svg class="pp-spark blue" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_newSpark" /></svg>
+            }
+        </div>
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">cached</span>
+            <span class="label">Returning</span><span class="num accent-amber">@seg.ReturningEarners.ToString("N0")</span>
+            <span class="subtitle">@(seg.PriorEarners > 0 ? $"{seg.RetentionPct}% of prior season" : "no prior season")</span>
+            @if (!string.IsNullOrEmpty(_retSpark))
+            {
+                <svg class="pp-spark amber" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_retSpark" /></svg>
+            }
+        </div>
+    </div>
+
+    <div class="pp-card">
+        <div class="panel-head"><h2>Points awarded · weekly</h2></div>
+        @if (_weekly.Count == 0)
+        {
+            <p class="subtitle">No points awarded yet this season.</p>
+        }
+        else
+        {
+            <div class="pp-bars">
+                @foreach (var w in _weekly)
+                {
+                    <div class="pp-bar-col"><div class="pp-bar" style="height:@(Math.Round(w.Total * 108.0 / WeeklyMax))px"></div></div>
+                }
+            </div>
+            <div class="pp-axis-labels">
+                @foreach (var w in _weekly)
+                {
+                    <span>@w.Label</span>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="pp-cols">
+        <div class="pp-card">
+            <div class="panel-head"><h2>Earner mix</h2><span class="legend">@Churn.ToString("N0") churned</span></div>
+            <div class="pp-donut">
+                <svg width="112" height="112" viewBox="0 0 120 120" aria-hidden="true">
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16" />
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="#60a5fa" stroke-width="16" stroke-dasharray="@Dash(seg.ReturningEarners, seg.Earners)" transform="rotate(-90 60 60)" />
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="#1D9E75" stroke-width="16" stroke-dasharray="@Dash(seg.NewEarners, seg.Earners)" stroke-dashoffset="@Off(Seg(seg.ReturningEarners, seg.Earners))" transform="rotate(-90 60 60)" />
+                </svg>
+                <div class="pp-donut-legend">
+                    <div><span class="pp-dot ret"></span>Returning <b>@seg.ReturningEarners.ToString("N0")</b></div>
+                    <div><span class="pp-dot new"></span>New <b>@seg.NewEarners.ToString("N0")</b></div>
+                    <div><span class="pp-dot churn"></span>Churned <b>@Churn.ToString("N0")</b></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pp-card">
+            <div class="panel-head"><h2>Cumulative points</h2><span class="legend">running total this season</span></div>
+            @{
+                var rc = _cumWeekly;
+                var rn = rc.Count;
+                var line = new System.Text.StringBuilder();
+                for (var i = 0; i < rn; i++)
+                {
+                    var x = rn == 1 ? 0 : i * (600.0 / (rn - 1));
+                    var y = 140 - rc[i] / (double)CumMax * 122;
+                    line.Append(Fmt(x)).Append(',').Append(Fmt(y)).Append(' ');
+                }
+                var linePts = line.ToString().Trim();
+                var fillPts = rn > 0 ? $"0,140 {linePts} 600,140" : "";
+            }
+            @if (rn > 1)
+            {
+                <svg class="pp-area" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+                    <line x1="0" y1="140" x2="600" y2="140" class="axis" />
+                    <polygon class="fill" points="@fillPts" />
+                    <polyline class="line" points="@linePts" />
+                </svg>
+                <div class="pp-axis-labels">
+                    @foreach (var w in _weekly)
+                    {
+                        <span>@w.Label</span>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="subtitle">Not enough weeks yet to plot a curve.</p>
+            }
+        </div>
+    </div>
+
+    <div class="pp-cols">
+        <div class="pp-card">
+            <div class="panel-head"><h2>Where points come from</h2></div>
+            @if (_sources.Count == 0)
+            {
+                <p class="subtitle">No points awarded this season.</p>
+            }
+            else
+            {
+                @foreach (var s in _sources)
+                {
+                    <div class="pp-src">
+                        <span class="name"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(s.Source)</span>@SourceLabel(s.Source)</span>
+                        <div class="bar"><div class="fill" style="width:@(s.Total * 100 / SourceMax)%"></div></div>
+                        <span class="val">@s.Total.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+        <div class="pp-card">
+            <div class="panel-head"><h2>@seg.Season.Name leaders</h2></div>
+            @if (_podium.Count == 0)
+            {
+                <p class="subtitle">No earners yet.</p>
+            }
+            else
+            {
+                @foreach (var h in _podium)
+                {
+                    <div class="pp-pod">
+                        <span class="rank @RankClass(h.Rank)">@h.Rank</span>
+                        <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
+                        <span class="val">@h.Total.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}

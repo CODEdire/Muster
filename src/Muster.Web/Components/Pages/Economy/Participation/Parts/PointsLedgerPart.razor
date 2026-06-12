@@ -1,0 +1,109 @@
+@inherits ParticipationPart
+@implements IDisposable
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+<div class="pl-grid dg-frame dg-fill">
+    <div class="dg-toolbar">
+        <div class="dg-filters">
+            <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+            @if (_seasons.Count > 0)
+            {
+                <select class="dg-select" value="@(_season?.ToString() ?? "")" @onchange="OnSeason">
+                    <option value="">All seasons</option>
+                    @foreach (var s in _seasons)
+                    {
+                        <option value="@s.Id">@s.Name@(s.IsActive ? " (active)" : "")</option>
+                    }
+                </select>
+            }
+            <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+                <option value="">Any source</option>
+                @foreach (var s in AllSources)
+                {
+                    <option value="@s">@SourceLabel(s)</option>
+                }
+            </select>
+            <select class="dg-select" value="@_preset" @onchange="OnRange">
+                @foreach (var (val, lbl) in RangePresets)
+                {
+                    <option value="@val">@lbl</option>
+                }
+            </select>
+            @if (_loading)
+            {
+                <span class="dg-loading" aria-hidden="true"></span>
+            }
+        </div>
+        <div class="dg-actions">
+            <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
+        </div>
+    </div>
+
+    <div class="dg-scroll">
+        <table class="dg-table pl-table">
+            <thead>
+                <tr>
+                    <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
+                    <th>Member</th>
+                    <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
+                    <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
+                    <th>Season</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_ledger is null || _ledger.Items.Count == 0)
+                {
+                    <tr class="dg-empty"><td colspan="6">@(_ledger is null ? "Loading…" : "No movement matches these filters.")</td></tr>
+                }
+                else
+                {
+                    @foreach (var line in Lines())
+                    {
+                        var r = line.Row;
+                        @if (line.Header is { } h)
+                        {
+                            <tr class="dg-group">
+                                <td colspan="6">@h <span class="grp-net">earned <span class="pos">+@line.HeaderIn.ToString("N0")</span> · spent <span class="neg">−@line.HeaderOut.ToString("N0")</span></span></td>
+                            </tr>
+                        }
+                        <tr>
+                            <td class="pl-when"><LocalTime Value="r.OccurredAt" /></td>
+                            <td>
+                                @if (r.UserId == CurrencyService.EscrowAccountUserId)
+                                {
+                                    <span class="pl-sys">@r.DisplayName</span>
+                                }
+                                else
+                                {
+                                    <UserChip Name="@r.DisplayName" AvatarUrl="@r.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, r.UserId)" />
+                                }
+                            </td>
+                            <td class="num @(r.Amount < 0 ? "neg" : "pos")">@(r.Amount >= 0 ? "+" : "")@r.Amount.ToString("N0")</td>
+                            <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(r.Source)</span>@SourceLabel(r.Source)</span></td>
+                            <td><span class="pl-season">@r.SeasonName</span></td>
+                            <td>@r.Reason</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="dg-footer">
+        <div class="dg-footer-left">
+            <span class="dg-tz">@(_ledger?.Total ?? 0) entries</span>
+            <span class="pl-totals">Σ earned <b class="pos">+@_totals.In.ToString("N0")</b> · Σ spent <b class="neg">−@_totals.Out.ToString("N0")</b></span>
+        </div>
+        <div class="dg-pager">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+            <span>Page @_page of @TotalPages</span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,9 @@
+/* Header: trophy icon + name on the left, members chip on the right */
+.t-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.p-title { display: flex; align-items: center; gap: 0.7rem; }
+.p-title > .material-symbols-outlined { font-size: 1.9rem; color: #EF9F27; }
+.p-name { font-size: 1.35rem; font-weight: 600; line-height: 1.1; }
+.p-sub { font-size: 0.82rem; color: var(--text-muted); }
+.p-members { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--glass-border); border-radius: 0.6rem; padding: 0.4rem 0.7rem; }
+.p-members .material-symbols-outlined { font-size: 1.05rem; }
