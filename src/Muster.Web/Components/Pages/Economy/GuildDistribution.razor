@@ -22,10 +22,10 @@ else if (State == AccessState.Ready)
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
             <span class="who">Distribution</span>
         </nav>
-        <CurrencySwitcher Currencies="_currencies" Selected="_code" SelectedChanged="SelectCurrency" />
+        <CurrencySwitcher Currencies="_currencies" Selected="@_code" SelectedChanged="SelectCurrency" />
     </div>
 
-    <TreasuryTabs GuildId="GuildId" Active="distribution" Cur="_code" />
+    <TreasuryTabs GuildId="GuildId" Active="distribution" Cur="@_code" />
 
     @if (_currencies.Count == 0)
     {

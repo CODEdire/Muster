@@ -29,7 +29,7 @@ else if (State == AccessState.Ready)
             <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
         </nav>
         <div class="wallet-controls">
-            <CurrencySwitcher Currencies="_currencies" Selected="_sel" SelectedChanged="SelectCurrency" />
+            <CurrencySwitcher Currencies="_currencies" Selected="@_sel" SelectedChanged="SelectCurrency" />
             <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet/analytics"><span class="material-symbols-outlined" aria-hidden="true">monitoring</span> Analytics</a>
         </div>
     </div>
