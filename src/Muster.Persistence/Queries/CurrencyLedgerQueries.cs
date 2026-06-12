@@ -607,6 +607,18 @@ public static class CurrencyLedgerQueries
             .Where(sum => sum > 0)
             .ToListAsync(ct);
 
+    /// <summary>Every member's positive balance for a currency as of <paramref name="asOf"/> (excludes escrow 0 /
+    /// burn 1) — for the distribution-over-time series (each month-end's wealth spread).</summary>
+    public static async Task<List<long>> GuildMemberBalancesAsOfAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, DateTimeOffset asOf, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.OccurredAt < asOf)
+            .GroupBy(e => e.UserId)
+            .Select(g => g.Sum(x => x.Amount))
+            .Where(sum => sum > 0)
+            .ToListAsync(ct);
+
     /// <summary>Guild-wide earned (positive amounts) per ledger source for a currency, optionally season-scoped —
     /// the participation "points by source" chart. Excludes the escrow account 0 and burn sink 1.</summary>
     public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildSourceEarnedAsync(

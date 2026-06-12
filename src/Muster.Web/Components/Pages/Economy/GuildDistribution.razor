@@ -56,20 +56,76 @@ else if (State == AccessState.Ready)
             <div class="card glass stat">
                 <span class="kpi-ico material-symbols-outlined" aria-hidden="true">groups</span>
                 <span class="label">Top 10% hold</span><span class="num">@_dist.Top10Pct%</span><span class="subtitle">@Concentration(_dist.Top10Pct)</span>
+                @if (!string.IsNullOrEmpty(_top10Spark))
+                {
+                    <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_top10Spark" /></svg>
+                }
             </div>
             <div class="card glass stat">
                 <span class="kpi-ico material-symbols-outlined" aria-hidden="true">straighten</span>
                 <span class="label">Median</span><span class="num">@_dist.Median.ToString("N0")</span><span class="subtitle">mean @_dist.Mean.ToString("N0")</span>
+                @if (!string.IsNullOrEmpty(_medianSpark))
+                {
+                    <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_medianSpark" /></svg>
+                }
             </div>
             <div class="card glass stat" title="Gini coefficient — wealth inequality from 0 (everyone holds the same) to 1 (one member holds everything). ~0.2 even · ~0.4 moderate · 0.6+ concentrated.">
                 <span class="kpi-ico material-symbols-outlined" aria-hidden="true">balance</span>
                 <span class="label">Gini</span><span class="num">@_dist.Gini.ToString("0.00")</span><span class="subtitle">0 = equal · 1 = one whale</span>
+                @if (!string.IsNullOrEmpty(_giniSpark))
+                {
+                    <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_giniSpark" /></svg>
+                }
             </div>
             <div class="card glass stat">
                 <span class="kpi-ico material-symbols-outlined" aria-hidden="true">group</span>
                 <span class="label">Holders</span><span class="num">@_dist.Holders.ToString("N0")</span><span class="subtitle">with a balance</span>
+                @if (!string.IsNullOrEmpty(_holdersSpark))
+                {
+                    <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_holdersSpark" /></svg>
+                }
             </div>
         </div>
+
+        @if (_series is { Points.Count: > 1 })
+        {
+            <div class="d-card">
+                <div class="panel-head">
+                    <h2>Distribution over time</h2>
+                    <span class="legend">poorer <span class="ramp"></span> richer</span>
+                </div>
+                <svg class="d-stack" viewBox="0 0 600 180" aria-hidden="true">
+                    <line x1="0" y1="160" x2="600" y2="160" class="axis" />
+                    @{
+                        var pts = _series.Points;
+                        var sn = pts.Count;
+                        var sgw = 600.0 / sn;
+                        var sbw = System.Math.Min(46.0, sgw * 0.6);
+                    }
+                    @for (var i = 0; i < sn; i++)
+                    {
+                        var p = pts[i];
+                        var cx = i * sgw + sgw / 2;
+                        var y = 160.0;
+                        @for (var j = 0; j < p.Buckets.Count; j++)
+                        {
+                            var segh = p.Buckets[j] * 150.0 / _stackMax;
+                            if (segh > 0)
+                            {
+                                <rect x="@((cx - sbw / 2).ToString("0.#"))" y="@((y - segh).ToString("0.#"))" width="@sbw.ToString("0.#")" height="@segh.ToString("0.#")" fill="@BucketColors[j]" />
+                                y -= segh;
+                            }
+                        }
+                    }
+                </svg>
+                <div class="d-labels">
+                    @foreach (var p in _series.Points)
+                    {
+                        <span>@MonthNames[p.Month]<br /><span class="cnt">@p.Holders</span></span>
+                    }
+                </div>
+            </div>
+        }
 
         <div class="d-card">
             <div class="panel-head"><h2>Members by balance bracket</h2></div>

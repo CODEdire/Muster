@@ -40,6 +40,13 @@ public record DistributionBracket(string Label, int Count);
 /// <summary>Wealth-distribution stats for a currency: holders, median/mean, top-10% share, Gini, and the histogram.</summary>
 public record DistributionView(int Holders, long Median, long Mean, int Top10Pct, double Gini, long Max, IReadOnlyList<DistributionBracket> Brackets);
 
+/// <summary>One month-end's distribution: headline stats + per-bucket counts (buckets are fixed across the series).</summary>
+public record DistributionPoint(int Year, int Month, int Holders, int Top10Pct, double Gini, long Median, IReadOnlyList<int> Buckets);
+
+/// <summary>Distribution over time — fixed bucket labels plus a point per month (oldest first). Powers the KPI
+/// sparklines and the buckets-over-time chart.</summary>
+public record DistributionSeries(IReadOnlyList<string> BucketLabels, IReadOnlyList<DistributionPoint> Points);
+
 /// <summary>
 /// The Wallet surface: every currency in the guild <b>except POINTS</b>. POINTS lives behind
 /// <see cref="PointsReadService"/>. Filter is applied at SQL where possible (paged ledger reads); list reads
@@ -457,6 +464,84 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     }
 
     private static string Kfmt(long v) => v >= 1000 ? $"{v / 1000.0:0.#}k" : v.ToString();
+
+    /// <summary>Median, top-10% share and Gini for an ascending-sorted balance list.</summary>
+    private static (long Median, int Top10, double Gini) Stats(List<long> b)
+    {
+        var n = b.Count;
+        var total = b.Sum();
+        var median = n % 2 == 1 ? b[n / 2] : (b[n / 2 - 1] + b[n / 2]) / 2;
+
+        var topCount = Math.Max(1, (int)Math.Ceiling(n * 0.1));
+        long topSum = 0;
+        for (var i = n - topCount; i < n; i++)
+        {
+            topSum += b[i];
+        }
+
+        var top10 = total > 0 ? (int)(topSum * 100 / total) : 0;
+
+        double weighted = 0;
+        for (var i = 0; i < n; i++)
+        {
+            weighted += (i + 1) * (double)b[i];
+        }
+
+        var gini = total > 0 ? Math.Round((2 * weighted) / (n * (double)total) - (n + 1.0) / n, 2) : 0;
+        return (median, top10, gini);
+    }
+
+    /// <summary>Distribution over the last <paramref name="months"/> month-ends: per-month holders / top-10% / Gini /
+    /// median plus per-bucket counts. Buckets are fixed (0..current max, 10 steps) so they line up across months.</summary>
+    public async Task<DistributionSeries> GetDistributionSeriesAsync(ulong guildId, string code, int months, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new DistributionSeries([], []);
+        }
+
+        var nowBalances = await db.GuildMemberBalancesAsync(guildId, scope.Id, scope.SeasonId, ct);
+        if (nowBalances.Count == 0)
+        {
+            return new DistributionSeries([], []);
+        }
+
+        const int buckets = 10;
+        var max = nowBalances.Max();
+        var size = Math.Max(1, (long)Math.Ceiling(max / (double)buckets));
+        var labels = new List<string>(buckets);
+        for (var i = 0; i < buckets; i++)
+        {
+            var lo = i * size;
+            labels.Add(i == buckets - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size)}");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var firstOfMonth = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var points = new List<DistributionPoint>(months);
+        for (var k = months - 1; k >= 0; k--)
+        {
+            var monthStart = firstOfMonth.AddMonths(-k);
+            var bal = await db.GuildMemberBalancesAsOfAsync(guildId, scope.Id, scope.SeasonId, monthStart.AddMonths(1), ct);
+            var counts = new int[buckets];
+            if (bal.Count == 0)
+            {
+                points.Add(new DistributionPoint(monthStart.Year, monthStart.Month, 0, 0, 0, 0, counts));
+                continue;
+            }
+
+            bal.Sort();
+            foreach (var v in bal)
+            {
+                counts[(int)Math.Min(buckets - 1, v / size)]++;
+            }
+
+            var (median, top10, gini) = Stats(bal);
+            points.Add(new DistributionPoint(monthStart.Year, monthStart.Month, bal.Count, top10, gini, median, counts));
+        }
+
+        return new DistributionSeries(labels, points);
+    }
 
     /// <summary>Ledger-derived top holders for a currency (escrow/burn excluded), resolved to name + avatar — stays
     /// correct even when the wallet cache is stale.</summary>
