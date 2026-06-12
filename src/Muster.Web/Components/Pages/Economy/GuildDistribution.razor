@@ -53,10 +53,22 @@ else if (State == AccessState.Ready)
     else
     {
         <div class="stat-grid">
-            <div class="card glass stat"><span class="label">Top 10% hold</span><span class="num">@_dist.Top10Pct%</span><span class="subtitle">@Concentration(_dist.Top10Pct)</span></div>
-            <div class="card glass stat"><span class="label">Median</span><span class="num">@_dist.Median.ToString("N0")</span><span class="subtitle">mean @_dist.Mean.ToString("N0")</span></div>
-            <div class="card glass stat"><span class="label">Gini</span><span class="num">@_dist.Gini.ToString("0.00")</span><span class="subtitle">0 = equal · 1 = one whale</span></div>
-            <div class="card glass stat"><span class="label">Holders</span><span class="num">@_dist.Holders.ToString("N0")</span><span class="subtitle">with a balance</span></div>
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">groups</span>
+                <span class="label">Top 10% hold</span><span class="num">@_dist.Top10Pct%</span><span class="subtitle">@Concentration(_dist.Top10Pct)</span>
+            </div>
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">straighten</span>
+                <span class="label">Median</span><span class="num">@_dist.Median.ToString("N0")</span><span class="subtitle">mean @_dist.Mean.ToString("N0")</span>
+            </div>
+            <div class="card glass stat" title="Gini coefficient — wealth inequality from 0 (everyone holds the same) to 1 (one member holds everything). ~0.2 even · ~0.4 moderate · 0.6+ concentrated.">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">balance</span>
+                <span class="label">Gini</span><span class="num">@_dist.Gini.ToString("0.00")</span><span class="subtitle">0 = equal · 1 = one whale</span>
+            </div>
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">group</span>
+                <span class="label">Holders</span><span class="num">@_dist.Holders.ToString("N0")</span><span class="subtitle">with a balance</span>
+            </div>
         </div>
 
         <div class="d-card">

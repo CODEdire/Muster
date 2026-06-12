@@ -577,6 +577,23 @@ public static class CurrencyLedgerQueries
             .ToList();
     }
 
+    /// <summary>Top member holders of a currency, summed straight from the ledger (excludes escrow 0 / burn 1) — the
+    /// ledger-derived leaderboard that stays correct even when the wallet cache is stale.</summary>
+    public static async Task<List<(ulong UserId, long Total)>> GuildTopHoldersLedgerAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, int take, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
+            .Where(x => x.Total > 0)
+            .OrderByDescending(x => x.Total)
+            .Take(Math.Clamp(take, 1, 100))
+            .ToListAsync(ct);
+
+        return rows.Select(r => (r.UserId, r.Total)).ToList();
+    }
+
     /// <summary>Every member's positive balance for a currency, summed straight from the ledger (excludes the escrow
     /// account 0 and burn sink 1) — the raw input for the wealth-distribution stats and histogram. Ledger-derived so
     /// it stays consistent with the rest of the treasury even when the wallet cache is stale.</summary>

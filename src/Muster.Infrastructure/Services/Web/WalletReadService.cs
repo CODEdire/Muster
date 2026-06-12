@@ -435,31 +435,22 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
         var gini = total > 0 ? Math.Round((2 * weighted) / (n * (double)total) - (n + 1.0) / n, 2) : 0;
 
-        // Histogram buckets auto-fit the actual spread: span the min..max range in ~6 nicely-rounded steps (1/2/2.5/5
-        // ×10ⁿ) so labels stay clean and the top "+" bucket only ever catches the extreme tail, whatever the scale.
-        var min = balances[0];
+        // Always 10 buckets from 0 to the richest holder, so the histogram has a consistent shape even with a single
+        // member. The step auto-scales with the top balance; the last bucket is the "+" overflow.
+        const int buckets = 10;
         var max = balances[^1];
-        var brackets = new List<DistributionBracket>();
-        if (min == max)
+        var size = Math.Max(1, (long)Math.Ceiling(max / (double)buckets));
+        var counts = new int[buckets];
+        foreach (var b in balances)
         {
-            brackets.Add(new DistributionBracket(Kfmt(min), n));
+            counts[(int)Math.Min(buckets - 1, b / size)]++;
         }
-        else
-        {
-            var size = NiceBucketSize((max - min) / 6.0);
-            var start = min / size * size;
-            var count = (int)Math.Clamp((max - start) / size + 1, 1, 8);
-            var counts = new int[count];
-            foreach (var b in balances)
-            {
-                counts[(int)Math.Min(count - 1, (b - start) / size)]++;
-            }
 
-            for (var i = 0; i < count; i++)
-            {
-                var lo = start + i * size;
-                brackets.Add(new DistributionBracket(i == count - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size)}", counts[i]));
-            }
+        var brackets = new List<DistributionBracket>(buckets);
+        for (var i = 0; i < buckets; i++)
+        {
+            var lo = i * size;
+            brackets.Add(new DistributionBracket(i == buckets - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size)}", counts[i]));
         }
 
         return new DistributionView(n, median, mean, top10, gini, max, brackets);
@@ -467,24 +458,29 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
     private static string Kfmt(long v) => v >= 1000 ? $"{v / 1000.0:0.#}k" : v.ToString();
 
-    /// <summary>Round a raw bucket width up to a "nice" value: 1, 2, 2.5 or 5 × a power of ten.</summary>
-    private static long NiceBucketSize(double raw)
+    /// <summary>Ledger-derived top holders for a currency (escrow/burn excluded), resolved to name + avatar — stays
+    /// correct even when the wallet cache is stale.</summary>
+    public async Task<IReadOnlyList<LeaderboardRow>> GetTopHoldersLedgerAsync(ulong guildId, string code, int take, CancellationToken ct = default)
     {
-        if (raw <= 1)
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
         {
-            return 1;
+            return [];
         }
 
-        var mag = Math.Pow(10, Math.Floor(Math.Log10(raw)));
-        foreach (var m in new[] { 1.0, 2.0, 2.5, 5.0 })
+        var rows = await db.GuildTopHoldersLedgerAsync(guildId, scope.Id, scope.SeasonId, take, ct);
+        if (rows.Count == 0)
         {
-            if (m * mag >= raw)
-            {
-                return (long)Math.Max(1, m * mag);
-            }
+            return [];
         }
 
-        return (long)(10 * mag);
+        var users = await db.UserDisplayMapAsync(rows.Select(r => r.UserId).ToList(), ct);
+        return rows
+            .Select((r, i) => new LeaderboardRow(
+                i + 1, r.UserId,
+                users.TryGetValue(r.UserId, out var u) ? u.Name : r.UserId.ToString(),
+                r.Total,
+                users.TryGetValue(r.UserId, out var u2) ? DiscordCdn.AvatarUrl(r.UserId, u2.AvatarHash) : null))
+            .ToList();
     }
 
     /// <summary>Mint sources — system awards that create net-new currency. Transfers and shop payouts are

@@ -10,6 +10,9 @@
 .cur-tab.active { background: var(--accent); color: #fff; font-weight: 600; }
 .cur-tab .star { font-size: 1rem; color: #fde047; }
 
+.stat { position: relative; overflow: hidden; }
+.kpi-ico { position: absolute; top: 0.4rem; right: 0.5rem; font-size: 2.8rem; opacity: 0.09; pointer-events: none; }
+
 /* Frameless cards */
 .d-card { padding: 0.25rem 0.1rem 1rem; margin-bottom: 1.25rem; }
 .d-card .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }

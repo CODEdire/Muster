@@ -66,7 +66,7 @@ public partial class GuildDistribution
             await using var scope = Scopes.CreateAsyncScope();
             var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
             _dist = await wallet.GetDistributionAsync(GuildId, _code);
-            _topHolders = (await wallet.GetTopHoldersPageAsync(GuildId, _code, 1, 10)).Items;
+            _topHolders = await wallet.GetTopHoldersLedgerAsync(GuildId, _code, 10);
         }
         finally
         {
