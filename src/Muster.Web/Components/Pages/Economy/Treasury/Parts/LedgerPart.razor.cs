@@ -1,32 +1,19 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.AspNetCore.Components;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
-using Muster.Infrastructure.Services.Membership;
-using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
-namespace Muster.Web.Components.Pages.Economy;
+namespace Muster.Web.Components.Pages.Economy.Treasury.Parts;
 
-public partial class GuildLedger : IDisposable
+public partial class LedgerPart : TreasuryPart, IDisposable
 {
-    // Read-only ledger view — EconomyManager + Auditor. Admin passes implicitly. Bulk award is admin-only.
-    protected override GuildAccessTier RequiredAccess =>
-        GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
-
     private const int PageSize = 25;
     private const int SearchDebounceMs = 350;
-
-    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
-
-    private IReadOnlyList<CurrencyInfo> _currencies = [];
-    private string _code = "";
-    private bool _loading;
 
     private CurrencySupply? _supply;
 
@@ -59,45 +46,9 @@ public partial class GuildLedger : IDisposable
     private string Dash(long part) => $"{Seg(part).ToString("0.##", CultureInfo.InvariantCulture)} 301.593";
     private static string Off(double v) => (-v).ToString("0.##", CultureInfo.InvariantCulture);
 
-    protected override async Task LoadAsync()
+    protected override async Task ReloadAsync()
     {
-        await using var scope = Scopes.CreateAsyncScope();
-        _currencies = await scope.ServiceProvider.GetRequiredService<WalletReadService>().GetCurrenciesAsync(GuildId);
-        if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
-        {
-            _code = Cur!;
-        }
-        else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
-        {
-            _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
-        }
-
-        await ReloadAsync();
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (State == AccessState.Ready && _journal is null && !string.IsNullOrWhiteSpace(_code))
-        {
-            await ReloadAsync();
-        }
-    }
-
-    private async Task SelectCurrency(string code)
-    {
-        if (code == _code)
-        {
-            return;
-        }
-
-        _code = code;
-        _page = 1;
-        await ReloadAsync();
-    }
-
-    private async Task ReloadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_code))
+        if (string.IsNullOrWhiteSpace(Code))
         {
             return;
         }
@@ -107,13 +58,13 @@ public partial class GuildLedger : IDisposable
         {
             await using var scope = Scopes.CreateAsyncScope();
             var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
-            _supply = await wallet.GetSupplyAsync(GuildId, _code);
-            BuildTrend(await wallet.GetSupplySeriesAsync(GuildId, _code, DateTimeOffset.UtcNow.AddDays(-90), DateTimeOffset.UtcNow));
+            _supply = await wallet.GetSupplyAsync(GuildId, Code);
+            BuildTrend(await wallet.GetSupplySeriesAsync(GuildId, Code, DateTimeOffset.UtcNow.AddDays(-90), DateTimeOffset.UtcNow));
 
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
-            _journal = await wallet.GetJournalAsync(GuildId, _code, _searchBox, _page, PageSize, sources, from, to, _sign, _account, _sortKey, _descending);
-            _totals = await wallet.GetJournalTotalsAsync(GuildId, _code, _searchBox, sources, from, to, _sign, _account);
+            _journal = await wallet.GetJournalAsync(GuildId, Code, _searchBox, _page, PageSize, sources, from, to, _sign, _account, _sortKey, _descending);
+            _totals = await wallet.GetJournalTotalsAsync(GuildId, Code, _searchBox, sources, from, to, _sign, _account);
         }
         finally
         {
@@ -175,6 +126,7 @@ public partial class GuildLedger : IDisposable
         {
             _page = 1;
             await ReloadAsync();
+            StateHasChanged();
         }
     }
 
@@ -252,7 +204,7 @@ public partial class GuildLedger : IDisposable
         var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
         var (from, to) = ResolveRange(_preset);
         var sources = _source is { } s ? new[] { s } : null;
-        var rows = await wallet.GetJournalForExportAsync(GuildId, _code, _searchBox, sources, from, to, _sign, _account);
+        var rows = await wallet.GetJournalForExportAsync(GuildId, Code, _searchBox, sources, from, to, _sign, _account);
 
         var sb = new StringBuilder();
         sb.AppendLine("When (UTC),Account,Counter-account,Source,Debit,Credit,Reference,Reason");
@@ -265,10 +217,21 @@ public partial class GuildLedger : IDisposable
               .Append(Csv(r.Reference ?? "")).Append(',').AppendLine(Csv(r.Reason));
         }
 
-        await JS.InvokeVoidAsync("musterDownload", $"ledger-{_code}-{DateTimeOffset.UtcNow.UtcDateTime:yyyyMMdd}.csv", sb.ToString(), "text/csv;charset=utf-8");
+        await JS.InvokeVoidAsync("musterDownload", $"ledger-{Code}-{DateTimeOffset.UtcNow.UtcDateTime:yyyyMMdd}.csv", sb.ToString(), "text/csv;charset=utf-8");
     }
 
     private static string Csv(string s) => s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+
+    private static string DateLabel(DateOnly d)
+    {
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        if (d == today)
+        {
+            return "Today";
+        }
+
+        return d == today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, d MMM yyyy");
+    }
 
     /// <summary>Scale a 90-day circulating-supply series into a 100×30 sparkline plus the net delta / % over the window.</summary>
     private void BuildTrend(IReadOnlyList<BalancePoint> series)
@@ -299,17 +262,6 @@ public partial class GuildLedger : IDisposable
         }
 
         _trendSpark = sb.ToString().TrimEnd();
-    }
-
-    private static string DateLabel(DateOnly d)
-    {
-        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
-        if (d == today)
-        {
-            return "Today";
-        }
-
-        return d == today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, d MMM yyyy");
     }
 
     public void Dispose()

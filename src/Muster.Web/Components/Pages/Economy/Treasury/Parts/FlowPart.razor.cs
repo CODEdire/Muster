@@ -1,26 +1,11 @@
 using System.Globalization;
 using System.Text;
-using Microsoft.AspNetCore.Components;
-using Microsoft.Extensions.DependencyInjection;
-using Muster.Domain.Enums;
-using Muster.Infrastructure.Services.Currencies;
-using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Web;
 
-namespace Muster.Web.Components.Pages.Economy;
+namespace Muster.Web.Components.Pages.Economy.Treasury.Parts;
 
-public partial class GuildFlow
+public partial class FlowPart : TreasuryPart
 {
-    // Read-only treasury view — EconomyManager + Auditor. Admin passes implicitly.
-    protected override GuildAccessTier RequiredAccess =>
-        GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
-
-    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
-
-    private IReadOnlyList<CurrencyInfo> _currencies = [];
-    private string _code = "";
-    private bool _loading;
-
     private FlowView? _flow;
     private IReadOnlyList<FlowMonth> _series = [];
 
@@ -63,57 +48,16 @@ public partial class GuildFlow
     /// <summary>Inflation needle position (0–100%) across a -10%..+10% band.</summary>
     private int InflationPos => _flow is null ? 50 : (int)Math.Clamp(50 + _flow.InflationPct * 5, 0, 100);
 
-    protected override async Task LoadAsync()
+    protected override async Task ReloadAsync()
     {
-        await using var scope = Scopes.CreateAsyncScope();
-        var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
-        _currencies = await wallet.GetCurrenciesAsync(GuildId);
-        if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
-        {
-            _code = Cur!;
-        }
-        else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
-        {
-            _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
-        }
-
-        await ReloadAsync();
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (State == AccessState.Ready && _flow is null && !string.IsNullOrWhiteSpace(_code))
-        {
-            await ReloadAsync();
-        }
-    }
-
-    private async Task SelectCurrency(string code)
-    {
-        if (code == _code)
-        {
-            return;
-        }
-
-        _code = code;
-        await ReloadAsync();
-    }
-
-    private async Task ReloadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_code))
-        {
-            return;
-        }
-
         _loading = true;
         try
         {
             await using var scope = Scopes.CreateAsyncScope();
             var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
             var to = DateTimeOffset.UtcNow;
-            _flow = await wallet.GetFlowAsync(GuildId, _code, to.AddDays(-30), to);
-            _series = await wallet.GetFlowSeriesAsync(GuildId, _code, to.AddMonths(-6), to);
+            _flow = await wallet.GetFlowAsync(GuildId, Code, to.AddDays(-30), to);
+            _series = await wallet.GetFlowSeriesAsync(GuildId, Code, to.AddMonths(-6), to);
             BuildVisuals();
         }
         finally

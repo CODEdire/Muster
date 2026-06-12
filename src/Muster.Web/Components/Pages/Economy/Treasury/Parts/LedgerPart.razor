@@ -1,0 +1,195 @@
+@inherits TreasuryPart
+@implements IDisposable
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+@if (_supply is not null)
+{
+    <div class="jr-summary">
+        <div class="jr-card">
+            <div class="panel-head">
+                <h2>Trial balance</h2>
+                @if (Reconciles)
+                {
+                    <span class="tb-ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span> balances</span>
+                }
+                else
+                {
+                    <span class="tb-off"><span class="material-symbols-outlined" aria-hidden="true">error</span> off by @((_supply.Minted - _supply.Circulating - _supply.Escrow - _supply.Removed).ToString("N0"))</span>
+                }
+            </div>
+            <table class="jr-tb mono">
+                <tbody>
+                    <tr><td><span class="dot circ"></span>Members (holders)</td><td class="num">@_supply.Circulating.ToString("N0")</td></tr>
+                    <tr><td><span class="dot escrow"></span>Escrow (house)</td><td class="num">@_supply.Escrow.ToString("N0")</td></tr>
+                    <tr><td><span class="dot burned"></span>Burn sink</td><td class="num">@_supply.Removed.ToString("N0")</td></tr>
+                    <tr class="tb-total"><td>Total issued</td><td class="num">@_supply.Minted.ToString("N0")</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="jr-card opt">
+            <div class="panel-head"><h2>Supply composition</h2><a class="jr-auditlink" href="/guilds/@GuildId/audit">Audit log ↗</a></div>
+            <div class="comp">
+                <svg width="112" height="112" viewBox="0 0 120 120" aria-hidden="true">
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16" />
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="#1D9E75" stroke-width="16" stroke-dasharray="@Dash(_supply.Circulating)" transform="rotate(-90 60 60)" />
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="#EF9F27" stroke-width="16" stroke-dasharray="@Dash(_supply.Escrow)" stroke-dashoffset="@Off(Seg(_supply.Circulating))" transform="rotate(-90 60 60)" />
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="#888780" stroke-width="16" stroke-dasharray="@Dash(_supply.Removed)" stroke-dashoffset="@Off(Seg(_supply.Circulating) + Seg(_supply.Escrow))" transform="rotate(-90 60 60)" />
+                </svg>
+                <div class="comp-legend">
+                    <div><span class="dot circ"></span>Circulating <b>@Pct(_supply.Circulating)%</b></div>
+                    <div><span class="dot escrow"></span>Escrow <b>@Pct(_supply.Escrow)%</b></div>
+                    <div><span class="dot burned"></span>Burned <b>@Pct(_supply.Removed)%</b></div>
+                </div>
+            </div>
+        </div>
+        <div class="jr-card opt">
+            <div class="panel-head"><h2>Supply trend</h2><span class="tr-win">90 days</span></div>
+            <div class="tr-body">
+                <div class="tr-net @(_trendNet >= 0 ? "pos" : "neg")">
+                    @(_trendNet > 0 ? "+" : "")@_trendNet.ToString("N0")
+                    @if (_trendPct != 0)
+                    {
+                        <span class="tr-pct">@(_trendPct > 0 ? "+" : "")@_trendPct%</span>
+                    }
+                </div>
+                <div class="tr-cap">net circulating change</div>
+                @if (!string.IsNullOrEmpty(_trendSpark))
+                {
+                    <svg class="tr-spark @(_trendNet >= 0 ? "pos" : "neg")" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+                        <polyline points="@_trendSpark" />
+                    </svg>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<div class="jr-grid dg-frame dg-fill">
+    <div class="dg-toolbar">
+        <div class="dg-filters">
+            <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+            <select class="dg-select" value="@_account" @onchange="OnAccount">
+                <option value="">Any account</option>
+                <option value="member">Members</option>
+                <option value="escrow">Escrow (house)</option>
+                <option value="burn">Burn sink</option>
+            </select>
+            <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+                <option value="">Any source</option>
+                @foreach (var s in AllSources)
+                {
+                    <option value="@s">@SourceLabel(s)</option>
+                }
+            </select>
+            <select class="dg-select" value="@_preset" @onchange="OnRange">
+                @foreach (var (val, lbl) in RangePresets)
+                {
+                    <option value="@val">@lbl</option>
+                }
+            </select>
+            @if (_loading)
+            {
+                <span class="dg-loading" aria-hidden="true"></span>
+            }
+        </div>
+        <div class="dg-actions">
+            <div class="dir-toggle" role="group" aria-label="Direction">
+                <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
+                <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Debit</button>
+                <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">Credit</button>
+            </div>
+            <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
+        </div>
+    </div>
+
+    <div class="dg-scroll">
+        <table class="dg-table jr-table">
+            <thead>
+                <tr>
+                    <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
+                    <th>Account</th>
+                    <th>Counter-account</th>
+                    <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
+                    <th class="num sortable" @onclick='() => SetSort("amount")'>Debit @Ind("amount")</th>
+                    <th class="num sortable" @onclick='() => SetSort("amount")'>Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_journal is null || _journal.Items.Count == 0)
+                {
+                    <tr class="dg-empty"><td colspan="6">@(_journal is null ? "Loading…" : "No postings match these filters.")</td></tr>
+                }
+                else
+                {
+                    @foreach (var line in Lines())
+                    {
+                        var r = line.Row;
+                        @if (line.Header is { } h)
+                        {
+                            <tr class="dg-group">
+                                <td colspan="6">@h <span class="grp-net">debit <span class="debit">@line.HeaderDebit.ToString("N0")</span> · credit <span class="credit">@line.HeaderCredit.ToString("N0")</span></span></td>
+                            </tr>
+                        }
+                        <tr class="led-row @(_expandedId == r.Id ? "open" : "")" @onclick="() => ToggleDetail(r.Id)">
+                            <td class="jr-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == r.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="r.OccurredAt" /></td>
+                            <td>@AccountCell(r.AccountKind, r.AccountName, r.AccountAvatar, r.AccountUserId)</td>
+                            <td>
+                                @if (r.CounterIsMember)
+                                {
+                                    <UserChip Name="@r.CounterName" AvatarUrl="@r.CounterAvatar" Href="@MusterLinks.MemberDetail(GuildId, r.CounterUserId)" />
+                                }
+                                else
+                                {
+                                    <span class="acct-sys">@r.CounterName</span>
+                                }
+                            </td>
+                            <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(r.Source)</span>@SourceLabel(r.Source)</span></td>
+                            <td class="num debit">@(r.Amount < 0 ? (-r.Amount).ToString("N0") : "—")</td>
+                            <td class="num credit">@(r.Amount > 0 ? r.Amount.ToString("N0") : "—")</td>
+                        </tr>
+                        @if (_expandedId == r.Id)
+                        {
+                            <tr class="led-detail">
+                                <td colspan="6">
+                                    <div class="ld-grid">
+                                        <div><span class="k">Reference</span><span class="v mono">@(string.IsNullOrEmpty(r.Reference) ? "—" : r.Reference)</span></div>
+                                        <div><span class="k">Account</span><span class="v">@r.AccountName</span></div>
+                                        <div><span class="k">Counter-account</span><span class="v">@r.CounterName</span></div>
+                                        <div><span class="k">Source</span><span class="v">@SourceLabel(r.Source)</span></div>
+                                        <div><span class="k">Posted</span><span class="v"><LocalTime Value="r.OccurredAt" /></span></div>
+                                        <div><span class="k">Amount</span><span class="v @(r.Amount < 0 ? "debit" : "credit")">@(r.Amount < 0 ? "−" : "+")@System.Math.Abs(r.Amount).ToString("N0")</span></div>
+                                        <div class="ld-reason"><span class="k">Reason</span><span class="v">@r.Reason</span></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="dg-footer">
+        <div class="dg-footer-left">
+            <span class="dg-tz">@(_journal?.Total ?? 0) postings</span>
+            <span class="jr-totals mono">Σ debit <b class="debit">@_totals.Out.ToString("N0")</b> · Σ credit <b class="credit">@_totals.In.ToString("N0")</b></span>
+        </div>
+        <div class="dg-pager">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+            <span>Page @_page of @TotalPages</span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private RenderFragment AccountCell(string kind, string name, string? avatar, ulong userId) => kind == "member"
+        ? @<UserChip Name="@name" AvatarUrl="@avatar" Href="@MusterLinks.MemberDetail(GuildId, userId)" />
+        : @<span class="acct @($"acct-{kind}")">@name</span>;
+}
