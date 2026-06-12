@@ -177,7 +177,7 @@ else if (State == AccessState.Ready)
 
     @if (_mintOpen)
     {
-        <MintAdjustDialog GuildId="GuildId" ActorId="UserId" Code="@_code" Currencies="_currencies"
+        <MintAdjustDialog GuildId="GuildId" ActorId="UserId" Code="@_code" Currencies="_currencies" AllowBulk="_isAdmin"
                           OnClose="() => _mintOpen = false" OnApplied="OnMintApplied" />
     }
 }

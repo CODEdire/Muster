@@ -21,6 +21,7 @@ public partial class GuildTreasury
     private string _code = "";
     private bool _loading;
     private bool _mintOpen;
+    private bool _isAdmin;
 
     private CurrencySupply? _supply;
     private IReadOnlyList<LeaderboardRow> _topHolders = [];
@@ -65,6 +66,7 @@ public partial class GuildTreasury
 
     protected override async Task LoadAsync()
     {
+        _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
         await using var scope = Scopes.CreateAsyncScope();
         var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
         _currencies = await wallet.GetCurrenciesAsync(GuildId);

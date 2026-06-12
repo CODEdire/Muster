@@ -30,6 +30,11 @@ public partial class GuildLedger : IDisposable
 
     private CurrencySupply? _supply;
 
+    // Supply-trend mini panel (90d circulating-supply sparkline + net delta).
+    private string _trendSpark = "";
+    private long _trendNet;
+    private int _trendPct;
+
     // Journal state.
     private PagedResult<JournalRow>? _journal;
     private (long In, long Out) _totals;
@@ -54,26 +59,10 @@ public partial class GuildLedger : IDisposable
     private string Dash(long part) => $"{Seg(part).ToString("0.##", CultureInfo.InvariantCulture)} 301.593";
     private static string Off(double v) => (-v).ToString("0.##", CultureInfo.InvariantCulture);
 
-    // Bulk award (admin only).
-    private bool _isAdmin;
-    private IReadOnlyList<BulkRoleOption> _roles = [];
-    private string _bulkRoleId = "";
-    private long _bulkDelta;
-    private string _bulkReason = "";
-    private bool _bulkPreviewing;
-    private bool _bulkQueuing;
-    private bool _bulkConfirm;
-    private int _bulkConfirmCount;
-    private string? _bulkMessage;
-    private CurrencyBulkBatch? _bulkBatch;
-
     protected override async Task LoadAsync()
     {
         await using var scope = Scopes.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
-
-        _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
-        _currencies = await sp.GetRequiredService<WalletReadService>().GetCurrenciesAsync(GuildId);
+        _currencies = await scope.ServiceProvider.GetRequiredService<WalletReadService>().GetCurrenciesAsync(GuildId);
         if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
         {
             _code = Cur!;
@@ -81,11 +70,6 @@ public partial class GuildLedger : IDisposable
         else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
         {
             _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
-        }
-
-        if (_isAdmin)
-        {
-            _roles = await sp.GetRequiredService<WebMemberService>().GetRoleOptionsAsync(GuildId);
         }
 
         await ReloadAsync();
@@ -124,6 +108,7 @@ public partial class GuildLedger : IDisposable
             await using var scope = Scopes.CreateAsyncScope();
             var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
             _supply = await wallet.GetSupplyAsync(GuildId, _code);
+            BuildTrend(await wallet.GetSupplySeriesAsync(GuildId, _code, DateTimeOffset.UtcNow.AddDays(-90), DateTimeOffset.UtcNow));
 
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
@@ -285,6 +270,37 @@ public partial class GuildLedger : IDisposable
 
     private static string Csv(string s) => s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
 
+    /// <summary>Scale a 90-day circulating-supply series into a 100×30 sparkline plus the net delta / % over the window.</summary>
+    private void BuildTrend(IReadOnlyList<BalancePoint> series)
+    {
+        _trendSpark = "";
+        _trendNet = 0;
+        _trendPct = 0;
+        if (series.Count < 2)
+        {
+            return;
+        }
+
+        _trendNet = series[^1].Balance - series[0].Balance;
+        if (series[0].Balance != 0)
+        {
+            _trendPct = (int)((series[^1].Balance - series[0].Balance) * 100 / Math.Abs(series[0].Balance));
+        }
+
+        long min = series.Min(p => p.Balance), max = series.Max(p => p.Balance);
+        var span = Math.Max(1, max - min);
+        var sb = new StringBuilder();
+        for (var i = 0; i < series.Count; i++)
+        {
+            var x = i * (100.0 / (series.Count - 1));
+            var y = 28 - (series[i].Balance - min) / (double)span * 26;
+            sb.Append(x.ToString("0.#", CultureInfo.InvariantCulture)).Append(',')
+              .Append(y.ToString("0.#", CultureInfo.InvariantCulture)).Append(' ');
+        }
+
+        _trendSpark = sb.ToString().TrimEnd();
+    }
+
     private static string DateLabel(DateOnly d)
     {
         var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
@@ -294,102 +310,6 @@ public partial class GuildLedger : IDisposable
         }
 
         return d == today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, d MMM yyyy");
-    }
-
-    // ---- Bulk handlers ----
-
-    private void OnBulkRole(ChangeEventArgs e)
-    {
-        _bulkRoleId = (e.Value as string) ?? "";
-        _bulkConfirm = false;
-        _bulkMessage = null;
-    }
-
-    private void OnBulkDelta(ChangeEventArgs e)
-    {
-        _bulkDelta = long.TryParse(e.Value as string, out var v) ? v : 0;
-        _bulkConfirm = false;
-        _bulkMessage = null;
-    }
-
-    private void OnBulkReason(ChangeEventArgs e)
-    {
-        _bulkReason = (e.Value as string) ?? "";
-        _bulkConfirm = false;
-        _bulkMessage = null;
-    }
-
-    private async Task PreviewBulkAsync()
-    {
-        _bulkMessage = null;
-        if (_bulkDelta == 0) { _bulkMessage = "Amount must be non-zero."; return; }
-        if (string.IsNullOrWhiteSpace(_bulkReason)) { _bulkMessage = "A reason is required."; return; }
-        if (!ulong.TryParse(_bulkRoleId, out var roleId)) { _bulkMessage = "Pick a role."; return; }
-
-        _bulkPreviewing = true;
-        try
-        {
-            await using var scope = Scopes.CreateAsyncScope();
-            var members = scope.ServiceProvider.GetRequiredService<WebMemberService>();
-            var targets = await members.GetRoleTargetsAsync(GuildId, roleId);
-            if (targets.Count == 0)
-            {
-                _bulkMessage = "That role has no members.";
-                _bulkConfirm = false;
-                return;
-            }
-
-            _bulkConfirmCount = targets.Count;
-            _bulkConfirm = true;
-        }
-        finally
-        {
-            _bulkPreviewing = false;
-        }
-    }
-
-    private async Task QueueBulkAsync()
-    {
-        if (!ulong.TryParse(_bulkRoleId, out var roleId))
-        {
-            _bulkMessage = "Pick a role.";
-            return;
-        }
-
-        _bulkQueuing = true;
-        try
-        {
-            await using var scope = Scopes.CreateAsyncScope();
-            var sp = scope.ServiceProvider;
-            var members = sp.GetRequiredService<WebMemberService>();
-            var bulk = sp.GetRequiredService<ICurrencyBulkService>();
-
-            var targets = await members.GetRoleTargetsAsync(GuildId, roleId);
-            var result = await bulk.QueueAsync(GuildId, UserId, _code, _bulkDelta, _bulkReason, targets);
-            _bulkMessage = result.Message;
-            _bulkConfirm = false;
-
-            if (result.Ok && result.BatchId is { } batchId)
-            {
-                await sp.GetRequiredService<AuditService>()
-                    .RecordBulkQueueAsync(GuildId, UserId, _code, _bulkDelta, targets.Count, _bulkReason, batchId);
-                _bulkBatch = await bulk.GetAsync(GuildId, batchId);
-                _bulkDelta = 0;
-                _bulkReason = "";
-                await ReloadAsync();
-            }
-        }
-        finally
-        {
-            _bulkQueuing = false;
-        }
-    }
-
-    private async Task RefreshBatchAsync()
-    {
-        if (_bulkBatch is null) return;
-        await using var scope = Scopes.CreateAsyncScope();
-        _bulkBatch = await scope.ServiceProvider.GetRequiredService<ICurrencyBulkService>().GetAsync(GuildId, _bulkBatch.Id);
     }
 
     public void Dispose()

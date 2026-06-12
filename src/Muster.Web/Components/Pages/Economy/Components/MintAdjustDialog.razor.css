@@ -13,3 +13,14 @@
 .ma-card .message.ok { color: #4ade80; }
 .ma-card .message.err { color: var(--danger); }
 .ma-card .btn-row { margin-top: 0.3rem; }
+
+/* Target mode toggle (One member / By role) */
+.ma-modes { align-self: flex-start; display: inline-flex; border: 1px solid var(--border); border-radius: 0.55rem; overflow: hidden; }
+.ma-modes button { appearance: none; background: transparent; border: none; border-left: 1px solid var(--border); color: var(--text-muted);
+    font: inherit; font-size: 0.82rem; padding: 0.34rem 0.8rem; cursor: pointer; transition: background 0.12s, color 0.12s; }
+.ma-modes button:first-child { border-left: none; }
+.ma-modes button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.ma-modes button.active { background: var(--accent); color: #fff; }
+
+.ma-confirm { margin: 0; font-size: 0.85rem; color: var(--text); background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius); padding: 0.55rem 0.7rem; }
