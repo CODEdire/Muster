@@ -69,7 +69,7 @@
                         @if (line.Header is { } h)
                         {
                             <tr class="dg-group">
-                                <td colspan="6">@h <span class="grp-net">earned <span class="pos">+@line.HeaderIn.ToString("N0")</span> · spent <span class="neg">−@line.HeaderOut.ToString("N0")</span></span></td>
+                                <td colspan="6">@h <span class="grp-net">earned <span class="pos">+@line.HeaderIn.ToString("N0")</span></span></td>
                             </tr>
                         }
                         <tr>
@@ -106,7 +106,7 @@
                 </select>
             </div>
             <span class="dg-tz">@(_ledger?.Total ?? 0) entries</span>
-            <span class="pl-totals">Σ earned <b class="pos">+@_totals.In.ToString("N0")</b> · Σ spent <b class="neg">−@_totals.Out.ToString("N0")</b></span>
+            <span class="pl-totals">Σ earned <b class="pos">+@_totals.In.ToString("N0")</b></span>
         </div>
         <div class="dg-pager">
             <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>

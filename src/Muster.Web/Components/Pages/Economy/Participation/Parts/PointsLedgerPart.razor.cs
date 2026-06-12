@@ -131,10 +131,10 @@ public partial class PointsLedgerPart : ParticipationPart, IDisposable
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
 
-    private record Line(string? Header, long HeaderIn, long HeaderOut, PointsLedgerRow Row);
+    private record Line(string? Header, long HeaderIn, PointsLedgerRow Row);
 
-    /// <summary>Ledger rows for rendering. When date-sorted, a day header (with that day's earned/spent subtotals)
-    /// precedes each new day; otherwise a flat list.</summary>
+    /// <summary>Ledger rows for rendering. When date-sorted, a day header (with that day's earned subtotal) precedes
+    /// each new day; otherwise a flat list.</summary>
     private IReadOnlyList<Line> Lines()
     {
         if (_ledger is null)
@@ -144,7 +144,7 @@ public partial class PointsLedgerPart : ParticipationPart, IDisposable
 
         var byDay = Grouped
             ? _ledger.Items.GroupBy(r => DateOnly.FromDateTime(r.OccurredAt.UtcDateTime))
-                .ToDictionary(g => g.Key, g => (In: g.Sum(x => x.Amount > 0 ? x.Amount : 0L), Out: g.Sum(x => x.Amount < 0 ? -x.Amount : 0L)))
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount > 0 ? x.Amount : 0L))
             : null;
 
         var list = new List<Line>(_ledger.Items.Count);
@@ -157,13 +157,12 @@ public partial class PointsLedgerPart : ParticipationPart, IDisposable
                 if (last != d)
                 {
                     last = d;
-                    var t = byDay![d];
-                    list.Add(new Line(DateLabel(d), t.In, t.Out, r));
+                    list.Add(new Line(DateLabel(d), byDay![d], r));
                     continue;
                 }
             }
 
-            list.Add(new Line(null, 0, 0, r));
+            list.Add(new Line(null, 0, r));
         }
 
         return list;
