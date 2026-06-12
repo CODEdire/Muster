@@ -25,6 +25,7 @@ else if (State == AccessState.Ready)
         <a href="/guilds/@GuildId/me">Wallet</a>
         <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
         <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
+        <a class="btn btn-ghost btn-sm an-link" href="/guilds/@GuildId/wallet/analytics"><span class="material-symbols-outlined" aria-hidden="true">monitoring</span> Analytics</a>
     </nav>
 
     @if (Message is not null)
@@ -94,11 +95,14 @@ else if (State == AccessState.Ready)
                     <div class="flow-bar"><div class="fill in" style="width:@(_kpis.Earned * 100 / FlowMax)%"></div></div>
                     <span class="fv">@_kpis.Earned.ToString("N0")</span>
                 </div>
-                <div class="flow-row">
-                    <span class="dir">out</span>
-                    <div class="flow-bar"><div class="fill out" style="width:@(_kpis.Spent * 100 / FlowMax)%"></div></div>
-                    <span class="fv">@_kpis.Spent.ToString("N0")</span>
-                </div>
+                @if (!IsScore)
+                {
+                    <div class="flow-row">
+                        <span class="dir">out</span>
+                        <div class="flow-bar"><div class="fill out" style="width:@(_kpis.Spent * 100 / FlowMax)%"></div></div>
+                        <span class="fv">@_kpis.Spent.ToString("N0")</span>
+                    </div>
+                }
             </div>
             <div class="kpi-mini-grid">
                 <div class="kpi-mini">
@@ -110,15 +114,30 @@ else if (State == AccessState.Ready)
                         }
                     </div>
                 </div>
-                <div class="kpi-mini">
-                    <div class="label">Spent · 30d</div>
-                    <div class="mini-num">@_kpis.Spent.ToString("N0")
-                        @if (_prevSpent > 0)
-                        {
-                            <span class="delta @(SpentDelta <= 0 ? "up" : "down")">@(SpentDelta >= 0 ? "▲" : "▼")@Math.Abs(SpentDelta)%</span>
-                        }
+                @if (IsScore)
+                {
+                    <div class="kpi-mini">
+                        <div class="label">Rank</div>
+                        <div class="mini-num">@(_rank > 0 ? $"#{_rank}" : "—")
+                            @if (_holders > 0)
+                            {
+                                <span class="delta">of @_holders</span>
+                            }
+                        </div>
                     </div>
-                </div>
+                }
+                else
+                {
+                    <div class="kpi-mini">
+                        <div class="label">Spent · 30d</div>
+                        <div class="mini-num">@_kpis.Spent.ToString("N0")
+                            @if (_prevSpent > 0)
+                            {
+                                <span class="delta @(SpentDelta <= 0 ? "up" : "down")">@(SpentDelta >= 0 ? "▲" : "▼")@Math.Abs(SpentDelta)%</span>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -226,13 +245,13 @@ else if (State == AccessState.Ready)
                 <thead>
                     <tr>
                         <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
-                        <th>Source</th>
+                        <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
                         <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
                         @if (ShowBalanceCol)
                         {
                             <th class="num">Balance</th>
                         }
-                        <th>Reason</th>
+                        <th class="sortable" @onclick='() => SetSort("reason")'>Reason @Ind("reason")</th>
                     </tr>
                 </thead>
                 <tbody>

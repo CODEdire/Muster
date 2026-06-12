@@ -27,6 +27,11 @@ public partial class Wallet : IDisposable
     private string SelUnit => Selected?.Code ?? "";
     private bool SelIsPoints => string.Equals(_sel, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>A non-spendable score currency (e.g. POINTS) only accrues — no spend tile, no out-flow.</summary>
+    private bool IsScore => Selected is { Spendable: false };
+    private int _rank;
+    private int _holders;
+
     // --- KPIs / breakdown / sparkline (scoped to the selected currency, 30-day window) ---
     private WalletKpis _kpis = new(0, 0, 0, 0, 0, 0);
     private long _prevEarned;
@@ -139,6 +144,7 @@ public partial class Wallet : IDisposable
         var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).Take(4).ToList();
         _series = await wallet.GetBalanceSeriesAsync(GuildId, UserId, _sel, from, to);
+        (_rank, _holders) = await wallet.GetWealthRankAsync(GuildId, UserId, _sel);
     }
 
     private async Task ReloadLedgerAsync()

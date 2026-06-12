@@ -6,6 +6,18 @@
 .wallet-crumb ::deep .user-chip { gap: 0.5rem; }
 .wallet-crumb ::deep .user-chip .avatar-sm { width: 30px; height: 30px; font-size: 0.85rem; }
 .wallet-crumb ::deep .user-chip-name b { font-size: 1.35rem; font-weight: 600; }
+.wallet-crumb .an-link { margin-left: auto; font-size: 0.85rem; font-weight: 500; }
+
+/* Currency switcher (segmented pill) */
+.wallet-switch { display: inline-flex; gap: 0.25rem; padding: 0.3rem; margin-bottom: 1rem; border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); flex-wrap: wrap; }
+.cur-tab { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 1rem; border: none;
+    background: transparent; color: var(--text-muted); border-radius: 0.45rem; cursor: pointer; font: inherit;
+    font-size: 0.9rem; transition: background 0.1s, color 0.1s; }
+.cur-tab:hover { color: var(--text); }
+.cur-tab.active { background: var(--accent); color: #fff; font-weight: 600; }
+.cur-tab.active .star { color: #fde047; }
+.cur-tab .star { font-size: 1rem; color: #fbbf24; }
 
 /* KPI band: a wide balance hero + a side column of flow + mini stats. No frames. */
 .kpi-band { display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }

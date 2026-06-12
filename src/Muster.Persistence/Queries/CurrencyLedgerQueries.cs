@@ -232,6 +232,10 @@ public static class CurrencyLedgerQueries
         {
             ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
             ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            ("reason", true) => q.OrderByDescending(e => e.Reason).ThenByDescending(e => e.Id),
+            ("reason", false) => q.OrderBy(e => e.Reason).ThenBy(e => e.Id),
             (_, false) => q.OrderBy(e => e.Id),
             _ => q.OrderByDescending(e => e.Id),
         };
@@ -260,6 +264,10 @@ public static class CurrencyLedgerQueries
         {
             ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
             ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            ("reason", true) => q.OrderByDescending(e => e.Reason).ThenByDescending(e => e.Id),
+            ("reason", false) => q.OrderBy(e => e.Reason).ThenBy(e => e.Id),
             (_, false) => q.OrderBy(e => e.Id),
             _ => q.OrderByDescending(e => e.Id),
         };
@@ -363,6 +371,10 @@ public static class CurrencyLedgerQueries
         {
             ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
             ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            ("reason", true) => q.OrderByDescending(e => e.Reason).ThenByDescending(e => e.Id),
+            ("reason", false) => q.OrderBy(e => e.Reason).ThenBy(e => e.Id),
             (_, false) => q.OrderBy(e => e.Id),
             _ => q.OrderByDescending(e => e.Id),
         };
