@@ -1,0 +1,51 @@
+@* Shared chrome for the economy ledger grids (treasury journal, participation points, member wallet): the flat
+   frame, the filters/actions toolbar, the scrolling table area and the footer + pager. Callers supply their own
+   columns/rows/filters via the slots so each ledger keeps its own schema while sharing one look. *@
+<div class="ledger-frame dg-frame @(Fill ? "dg-fill" : null)">
+    <div class="dg-toolbar">
+        <div class="dg-filters">@Filters</div>
+        @if (Actions is not null)
+        {
+            <div class="dg-actions">@Actions</div>
+        }
+    </div>
+
+    <div class="dg-scroll">
+        @ChildContent
+    </div>
+
+    <div class="dg-footer">
+        <div class="dg-footer-left">@FooterLeft</div>
+        <div class="dg-pager">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(Page <= 1)" @onclick="OnPrev">← Prev</button>
+            <span>@(PagerText ?? $"Page {Page} of {TotalPages}")</span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(Page >= TotalPages)" @onclick="OnNext">Next →</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Left side of the toolbar — search box + filter selects.</summary>
+    [Parameter] public RenderFragment? Filters { get; set; }
+
+    /// <summary>Right side of the toolbar — export / sync / direction toggle, etc. Omit to hide.</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    /// <summary>The grid body — the caller's full <c>&lt;table class="dg-table"&gt;</c>.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Left side of the footer — row counts, totals, page-size selector.</summary>
+    [Parameter] public RenderFragment? FooterLeft { get; set; }
+
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int TotalPages { get; set; } = 1;
+
+    /// <summary>Override the centre pager label (defaults to "Page X of Y").</summary>
+    [Parameter] public string? PagerText { get; set; }
+
+    [Parameter] public EventCallback OnPrev { get; set; }
+    [Parameter] public EventCallback OnNext { get; set; }
+
+    /// <summary>Fill the remaining viewport height (footer pinned to the bottom). Default true.</summary>
+    [Parameter] public bool Fill { get; set; } = true;
+}

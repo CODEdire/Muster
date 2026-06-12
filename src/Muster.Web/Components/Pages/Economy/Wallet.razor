@@ -196,15 +196,9 @@ else if (State == AccessState.Ready)
         </div>
     </div>
 
-    <div class="panel glass dg-frame dg-fill">
-        <div class="dg-toolbar">
-            <div class="dg-filters">
-                <select class="dg-select" value="@_preset" @onchange="OnRange">
-                    @foreach (var (val, lbl) in RangePresets)
-                    {
-                        <option value="@val">@lbl</option>
-                    }
-                </select>
+    <LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">
+        <Filters>
+                <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
                 <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
                     <option value="">Any source</option>
                     @foreach (var s in AllSources)
@@ -212,11 +206,12 @@ else if (State == AccessState.Ready)
                         <option value="@s">@SourceLabel(s)</option>
                     }
                 </select>
-                <div class="dir-toggle" role="group" aria-label="Direction">
-                    <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
-                    <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">In</button>
-                    <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
-                </div>
+                <select class="dg-select" value="@_preset" @onchange="OnRange">
+                    @foreach (var (val, lbl) in RangePresets)
+                    {
+                        <option value="@val">@lbl</option>
+                    }
+                </select>
                 @if (_parties.Count > 0)
                 {
                     <select class="dg-select" value="@(_party?.ToString() ?? "")" @onchange="OnParty">
@@ -227,19 +222,21 @@ else if (State == AccessState.Ready)
                         }
                     </select>
                 }
-                <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
                 @if (_loading)
                 {
                     <span class="dg-loading" aria-hidden="true"></span>
                 }
-            </div>
-            <div class="dg-actions">
+        </Filters>
+        <Actions>
+                <div class="dir-toggle" role="group" aria-label="Direction">
+                    <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
+                    <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">In</button>
+                    <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
+                </div>
                 <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
                 <button type="button" class="btn btn-sm btn-ghost" disabled="@_syncing" @onclick="ForceSyncAsync">Sync</button>
-            </div>
-        </div>
-
-        <div class="dg-scroll">
+        </Actions>
+        <ChildContent>
             <table class="dg-table">
                 <thead>
                     <tr>
@@ -271,7 +268,7 @@ else if (State == AccessState.Ready)
                                 </tr>
                             }
                             <tr class="led-row @(_expandedId == h.Id ? "open" : "")" @onclick="() => ToggleDetail(h.Id)">
-                                <td class="whence"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == h.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="h.OccurredAt" /></td>
+                                <td class="led-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == h.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="h.OccurredAt" /></td>
                                 <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
                                 <td class="party">
                                     @if (h.CounterpartyName is not null)
@@ -312,10 +309,8 @@ else if (State == AccessState.Ready)
                     }
                 </tbody>
             </table>
-        </div>
-
-        <div class="dg-footer">
-            <div class="dg-footer-left">
+        </ChildContent>
+        <FooterLeft>
                 <div class="dg-pagesize">
                     Rows
                     <select class="dg-select" value="@_size" @onchange="OnSize">
@@ -328,12 +323,6 @@ else if (State == AccessState.Ready)
                 <div class="dg-totals" title="Totals for the current filter">
                     Σ <span class="pos">+@_totals.In.ToString("N0")</span> / <span class="neg">−@_totals.Out.ToString("N0")</span>
                 </div>
-            </div>
-            <div class="dg-pager">
-                <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
-                <span>Page @_page of @TotalPages · @(_activity?.Total ?? 0) total</span>
-                <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
-            </div>
-        </div>
-    </div>
+        </FooterLeft>
+    </LedgerFrame>
 }

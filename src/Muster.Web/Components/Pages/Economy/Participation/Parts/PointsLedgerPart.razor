@@ -7,44 +7,41 @@
 @using Muster.Web.Components.Shared
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<div class="pl-grid dg-frame dg-fill">
-    <div class="dg-toolbar">
-        <div class="dg-filters">
-            <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
-            @if (_seasons.Count > 0)
-            {
-                <select class="dg-select" value="@(_season?.ToString() ?? "")" @onchange="OnSeason">
-                    <option value="">All seasons</option>
-                    @foreach (var s in _seasons)
-                    {
-                        <option value="@s.Id">@s.Name@(s.IsActive ? " (active)" : "")</option>
-                    }
-                </select>
-            }
-            <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
-                <option value="">Any source</option>
-                @foreach (var s in AllSources)
+<LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next">
+    <Filters>
+        <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+        @if (_seasons.Count > 0)
+        {
+            <select class="dg-select" value="@(_season?.ToString() ?? "")" @onchange="OnSeason">
+                <option value="">All seasons</option>
+                @foreach (var s in _seasons)
                 {
-                    <option value="@s">@SourceLabel(s)</option>
+                    <option value="@s.Id">@s.Name@(s.IsActive ? " (active)" : "")</option>
                 }
             </select>
-            <select class="dg-select" value="@_preset" @onchange="OnRange">
-                @foreach (var (val, lbl) in RangePresets)
-                {
-                    <option value="@val">@lbl</option>
-                }
-            </select>
-            @if (_loading)
+        }
+        <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+            <option value="">Any source</option>
+            @foreach (var s in AllSources)
             {
-                <span class="dg-loading" aria-hidden="true"></span>
+                <option value="@s">@SourceLabel(s)</option>
             }
-        </div>
-        <div class="dg-actions">
-            <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
-        </div>
-    </div>
-
-    <div class="dg-scroll">
+        </select>
+        <select class="dg-select" value="@_preset" @onchange="OnRange">
+            @foreach (var (val, lbl) in RangePresets)
+            {
+                <option value="@val">@lbl</option>
+            }
+        </select>
+        @if (_loading)
+        {
+            <span class="dg-loading" aria-hidden="true"></span>
+        }
+    </Filters>
+    <Actions>
+        <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
+    </Actions>
+    <ChildContent>
         <table class="dg-table pl-table">
             <thead>
                 <tr>
@@ -73,7 +70,7 @@
                             </tr>
                         }
                         <tr>
-                            <td class="pl-when"><LocalTime Value="r.OccurredAt" /></td>
+                            <td class="led-when"><LocalTime Value="r.OccurredAt" /></td>
                             <td>
                                 @if (r.UserId == CurrencyService.EscrowAccountUserId)
                                 {
@@ -93,25 +90,17 @@
                 }
             </tbody>
         </table>
-    </div>
-
-    <div class="dg-footer">
-        <div class="dg-footer-left">
-            <div class="dg-pagesize">
-                Rows
-                <select class="dg-select" value="@_pageSize" @onchange="OnSize">
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
-            </div>
-            <span class="dg-tz">@(_ledger?.Total ?? 0) entries</span>
-            <span class="pl-totals">Σ earned <b class="pos">+@_totals.In.ToString("N0")</b></span>
+    </ChildContent>
+    <FooterLeft>
+        <div class="dg-pagesize">
+            Rows
+            <select class="dg-select" value="@_pageSize" @onchange="OnSize">
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
         </div>
-        <div class="dg-pager">
-            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
-            <span>Page @_page of @TotalPages</span>
-            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
-        </div>
-    </div>
-</div>
+        <span class="dg-tz">@(_ledger?.Total ?? 0) entries</span>
+        <span class="pl-totals">Σ earned <b class="pos">+@_totals.In.ToString("N0")</b></span>
+    </FooterLeft>
+</LedgerFrame>

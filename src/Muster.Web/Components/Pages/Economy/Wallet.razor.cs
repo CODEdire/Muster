@@ -78,6 +78,7 @@ public partial class Wallet : IDisposable
     private PagedResult<MemberLedgerRow>? _activity;
 
     private int TotalPages => _activity?.TotalPages ?? 1;
+    private string PagerLabel => $"Page {_page} of {TotalPages} · {(_activity?.Total ?? 0)} total";
 
     protected override async Task LoadAsync()
     {

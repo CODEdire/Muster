@@ -80,18 +80,6 @@
 /* Ledger datagrid colours */
 .dg-table td.num.pos { color: #4ade80; }
 .dg-table td.num.neg { color: var(--danger); }
-.src-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
-.src-chip .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); }
-
-.dg-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-.dg-actions { flex: none; }
-
-/* Credit/Debit/All toggle */
-.dir-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden; }
-.dir-toggle button { border: none; background: transparent; color: var(--text-muted); font-size: 0.82rem; padding: 0.32rem 0.7rem; cursor: pointer; }
-.dir-toggle button + button { border-left: 1px solid var(--border); }
-.dir-toggle button:hover { color: var(--text); }
-.dir-toggle button.active { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }
 
 /* Day-group header rows + totals */
 .dg-table tr.dg-group td { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); font-size: 0.78rem;
@@ -103,8 +91,6 @@
 
 /* Counterparty column + transaction drill-in */
 .led-row { cursor: pointer; }
-.led-row .whence { display: inline-flex; align-items: center; gap: 0.2rem; }
-.led-row .whence .exp { font-size: 1rem; color: var(--text-muted); }
 .led-row.open > td { background: var(--surface); }
 .dg-table td.party { white-space: nowrap; }
 .party ::deep .user-chip { gap: 0.35rem; }

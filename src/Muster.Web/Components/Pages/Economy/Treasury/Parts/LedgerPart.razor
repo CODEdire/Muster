@@ -70,9 +70,8 @@
     </div>
 }
 
-<div class="jr-grid dg-frame dg-fill">
-    <div class="dg-toolbar">
-        <div class="dg-filters">
+<LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next">
+    <Filters>
             <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
             <select class="dg-select" value="@_account" @onchange="OnAccount">
                 <option value="">Any account</option>
@@ -97,18 +96,16 @@
             {
                 <span class="dg-loading" aria-hidden="true"></span>
             }
-        </div>
-        <div class="dg-actions">
+    </Filters>
+    <Actions>
             <div class="dir-toggle" role="group" aria-label="Direction">
                 <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
                 <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Debit</button>
                 <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">Credit</button>
             </div>
             <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
-        </div>
-    </div>
-
-    <div class="dg-scroll">
+    </Actions>
+    <ChildContent>
         <table class="dg-table jr-table">
             <thead>
                 <tr>
@@ -137,7 +134,7 @@
                             </tr>
                         }
                         <tr class="led-row @(_expandedId == r.Id ? "open" : "")" @onclick="() => ToggleDetail(r.Id)">
-                            <td class="jr-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == r.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="r.OccurredAt" /></td>
+                            <td class="led-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == r.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="r.OccurredAt" /></td>
                             <td>@AccountCell(r.AccountKind, r.AccountName, r.AccountAvatar, r.AccountUserId)</td>
                             <td>
                                 @if (r.CounterIsMember)
@@ -173,20 +170,12 @@
                 }
             </tbody>
         </table>
-    </div>
-
-    <div class="dg-footer">
-        <div class="dg-footer-left">
+    </ChildContent>
+    <FooterLeft>
             <span class="dg-tz">@(_journal?.Total ?? 0) postings</span>
             <span class="jr-totals mono">Σ debit <b class="debit">@_totals.Out.ToString("N0")</b> · Σ credit <b class="credit">@_totals.In.ToString("N0")</b></span>
-        </div>
-        <div class="dg-pager">
-            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
-            <span>Page @_page of @TotalPages</span>
-            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
-        </div>
-    </div>
-</div>
+    </FooterLeft>
+</LedgerFrame>
 
 @code {
     private RenderFragment AccountCell(string kind, string name, string? avatar, ulong userId) => kind == "member"

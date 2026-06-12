@@ -1329,6 +1329,21 @@ img.avatar-sm { object-fit: cover; }
    with all four corners rounded. Strips the panel's own padding so dg-toolbar/footer borders span edge-to-edge. */
 .dg-frame { padding: 0; overflow: hidden; margin-bottom: 1rem; display: flex; flex-direction: column; min-height: 0; }
 .dg-frame .dg-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Flat, subtle frame shared by the economy ledger grids (LedgerFrame) — replaces the heavier .panel.glass look. */
+.ledger-frame { background: rgba(255, 255, 255, 0.018); border: 1px solid var(--glass-border); border-radius: var(--radius); }
+/* Shared ledger cell bits (treasury / participation / wallet grids). */
+.dg-table .led-when { color: var(--text-muted); font-size: 0.82rem; white-space: nowrap; }
+.dg-table .led-when .exp { font-size: 1rem; vertical-align: -3px; margin-right: 0.15rem; color: var(--text-muted); }
+.dg-table .src-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
+.dg-table .src-chip .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); opacity: 1; }
+.dg-table ::deep .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
+.dg-table ::deep .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
+/* Direction toggle (All / In-Out / Debit-Credit) shared across the ledger toolbars. */
+.dir-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 0.55rem; overflow: hidden; }
+.dir-toggle button { appearance: none; background: transparent; border: none; border-left: 1px solid var(--border); color: var(--text-muted); font: inherit; font-size: 0.82rem; padding: 0.38rem 0.7rem; cursor: pointer; transition: background 0.12s, color 0.12s; }
+.dir-toggle button:first-child { border-left: none; }
+.dir-toggle button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.dir-toggle button.active { background: var(--accent); color: #fff; }
 /* Make a standalone datagrid fill the viewport height (full-frame pages like shop disputes). */
 .dg-fill { min-height: 68vh; }
 
