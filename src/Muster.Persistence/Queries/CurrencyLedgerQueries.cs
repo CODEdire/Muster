@@ -352,4 +352,98 @@ public static class CurrencyLedgerQueries
 
         return rows.Select(r => (r.UserId, r.Total)).ToList();
     }
+
+    // --- Wallet analytics: per-member aggregates over a currency/season scope, summed from the ledger. ---
+
+    /// <summary>A member's running balance as of an instant (sum of amounts strictly before <paramref name="asOf"/>) —
+    /// the opening balance a balance-over-time series builds on.</summary>
+    public static async Task<long> BalanceAsOfAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId, DateTimeOffset asOf, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt < asOf)
+            .SumAsync(e => (long?)e.Amount, ct) ?? 0;
+
+    /// <summary>Earned (positive) and spent (absolute of negative) totals for a member over a window.</summary>
+    public static async Task<(long Earned, long Spent)> PeriodFlowAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var agg = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Earned = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Spent = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.Earned, agg.Spent);
+    }
+
+    /// <summary>Net delta per day for a member over a window (days with no movement are omitted) — the caller adds the
+    /// opening balance from <see cref="BalanceAsOfAsync"/> and accumulates to plot balance-over-time.</summary>
+    public static async Task<List<(int Year, int Month, int Day, long Net)>> DailyNetSeriesAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month, e.OccurredAt.Day })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Net = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows
+            .OrderBy(r => r.Year).ThenBy(r => r.Month).ThenBy(r => r.Day)
+            .Select(r => (r.Year, r.Month, r.Day, r.Net))
+            .ToList();
+    }
+
+    /// <summary>Earned/spent totals per calendar month for a member over a window — the cash-flow-by-month chart.</summary>
+    public static async Task<List<(int Year, int Month, long Earned, long Spent)>> MonthlyCashFlowAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month })
+            .Select(g => new
+            {
+                g.Key.Year,
+                g.Key.Month,
+                Earned = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Spent = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .OrderBy(r => r.Year).ThenBy(r => r.Month)
+            .Select(r => (r.Year, r.Month, r.Earned, r.Spent))
+            .ToList();
+    }
+
+    /// <summary>Earned/spent totals per ledger source for a member over a window — the earned-by-source and
+    /// spent-by-source breakdowns. Transfers split naturally (in = positive amounts, out = negative).</summary>
+    public static async Task<List<(CurrencyLedgerSource Source, long Earned, long Spent)>> SourceBreakdownAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => e.SourceType)
+            .Select(g => new
+            {
+                Source = g.Key,
+                Earned = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Spent = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .ToListAsync(ct);
+
+        return rows.Select(r => (r.Source, r.Earned, r.Spent)).ToList();
+    }
 }

@@ -9,6 +9,19 @@ using Muster.Persistence.Queries;
 
 namespace Muster.Infrastructure.Services.Web;
 
+/// <summary>Headline wallet figures for one currency over a window: <see cref="Available"/> = <see cref="Balance"/>
+/// − <see cref="Held"/> (shop escrow); <see cref="Net"/> = <see cref="Earned"/> − <see cref="Spent"/>.</summary>
+public record WalletKpis(long Balance, long Held, long Available, long Earned, long Spent, long Net);
+
+/// <summary>A point on the balance-over-time series (running balance at the end of <see cref="Date"/>).</summary>
+public record BalancePoint(DateTimeOffset Date, long Balance);
+
+/// <summary>Earned/spent totals for one calendar month — the cash-flow-by-month chart.</summary>
+public record MonthFlow(int Year, int Month, long Earned, long Spent);
+
+/// <summary>Earned/spent totals for one ledger source over a window — the by-source breakdowns.</summary>
+public record SourceFlow(CurrencyLedgerSource Source, long Earned, long Spent);
+
 /// <summary>
 /// The Wallet surface: every currency in the guild <b>except POINTS</b>. POINTS lives behind
 /// <see cref="PointsReadService"/>. Filter is applied at SQL where possible (paged ledger reads); list reads
@@ -167,5 +180,91 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
             .ToList();
 
         return new PagedResult<MovementRow>(items, p, size, total);
+    }
+
+    // --- Wallet analytics (KPIs, balance-over-time, cash flow, source breakdown, escrow split) ---
+
+    /// <summary>Resolve a currency code to its id + active-season scope. Null when the currency doesn't exist.</summary>
+    private async Task<(Guid Id, Guid? SeasonId)?> ResolveScopeAsync(ulong guildId, string code, CancellationToken ct)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is null)
+        {
+            return null;
+        }
+
+        Guid? seasonId = currency.IsSeasonal ? await db.ActiveSeasonIdAsync(guildId, ct) : null;
+        return (currency.Id, seasonId);
+    }
+
+    /// <summary>Headline figures for one currency over <paramref name="from"/>..<paramref name="to"/>: balance,
+    /// shop-escrow held, available (= balance − held), and earned/spent/net for the window.</summary>
+    public async Task<WalletKpis> GetKpisAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new WalletKpis(0, 0, 0, 0, 0, 0);
+        }
+
+        var balance = await db.BalanceAsync(guildId, userId, scope.Id, scope.SeasonId, ct);
+        var held = await db.MemberHeldFundsAsync(guildId, userId, scope.Id, ct);
+        var (earned, spent) = await db.PeriodFlowAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+        return new WalletKpis(balance, held, balance - held, earned, spent, earned - spent);
+    }
+
+    /// <summary>How many open shop orders are holding this currency for the member (the "N open orders" hint).</summary>
+    public async Task<int> GetHeldOrderCountAsync(ulong guildId, ulong userId, string code, CancellationToken ct = default)
+        => await ResolveScopeAsync(guildId, code, ct) is { } scope
+            ? await db.MemberHeldOrderCountAsync(guildId, userId, scope.Id, ct)
+            : 0;
+
+    /// <summary>Balance-over-time: running balance at the end of each day that had movement in the window, seeded
+    /// from the opening balance just before <paramref name="from"/>.</summary>
+    public async Task<IReadOnlyList<BalancePoint>> GetBalanceSeriesAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var running = await db.BalanceAsOfAsync(guildId, userId, scope.Id, scope.SeasonId, from, ct);
+        var daily = await db.DailyNetSeriesAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+
+        var points = new List<BalancePoint>(daily.Count);
+        foreach (var d in daily)
+        {
+            running += d.Net;
+            points.Add(new BalancePoint(new DateTimeOffset(d.Year, d.Month, d.Day, 0, 0, 0, TimeSpan.Zero), running));
+        }
+
+        return points;
+    }
+
+    /// <summary>Earned/spent per calendar month over the window — the cash-flow-by-month chart.</summary>
+    public async Task<IReadOnlyList<MonthFlow>> GetCashFlowAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.MonthlyCashFlowAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+        return rows.Select(r => new MonthFlow(r.Year, r.Month, r.Earned, r.Spent)).ToList();
+    }
+
+    /// <summary>Earned/spent per ledger source over the window — the earned-by-source / spent-by-source breakdowns.</summary>
+    public async Task<IReadOnlyList<SourceFlow>> GetSourceBreakdownAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.SourceBreakdownAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+        return rows.Select(r => new SourceFlow(r.Source, r.Earned, r.Spent)).ToList();
     }
 }

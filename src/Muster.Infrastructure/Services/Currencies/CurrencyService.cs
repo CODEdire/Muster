@@ -23,6 +23,7 @@ public enum CurrencyOperationStatus
     Ok,
     CurrencyNotFound,
     InsufficientFunds,
+    NotTransferable,
 }
 
 public record CurrencyOperationResult(CurrencyOperationStatus Status, long Balance);
@@ -116,6 +117,13 @@ public class CurrencyService(
         if (currency is null)
         {
             return new CurrencyOperationResult(CurrencyOperationStatus.CurrencyNotFound, 0);
+        }
+
+        // Member-to-member moves require the currency to be transferable (non-transferable score currencies like
+        // POINTS can't be gifted). Escrow/awards bypass this path and stage ledger legs directly.
+        if (!currency.IsTransferable)
+        {
+            return new CurrencyOperationResult(CurrencyOperationStatus.NotTransferable, 0);
         }
 
         // A retried transfer (same sourceId) must not move funds twice: if the debit leg already exists, no-op.

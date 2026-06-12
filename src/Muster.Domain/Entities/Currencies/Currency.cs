@@ -18,6 +18,14 @@ public class Currency
     public bool IsSeasonal { get; set; }
     public bool IsSpendable { get; set; }
 
+    /// <summary>Whether members may transfer this currency to each other (member-to-member sends). Seasonal score
+    /// currencies (e.g. POINTS) are typically non-transferable so standing can't be gifted.</summary>
+    public bool IsTransferable { get; set; }
+
+    /// <summary>The guild's default/primary currency — the one a member's wallet opens on and the default send
+    /// currency. At most one currency per guild has this set (enforced in the admin service).</summary>
+    public bool IsPrimary { get; set; }
+
     /// <summary>Where balance authority lives for this currency (see <see cref="CurrencyMode"/>).</summary>
     public CurrencyMode Mode { get; set; } = CurrencyMode.Internal;
 

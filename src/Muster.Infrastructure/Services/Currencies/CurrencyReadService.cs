@@ -11,7 +11,7 @@ public record WalletBalance(string CurrencyCode, string CurrencyName, long Balan
 public record LedgerHistoryEntry(string CurrencyCode, long Amount, string SourceType, DateTimeOffset OccurredAt, string Reason);
 
 /// <summary>A currency in the member-facing directory ("what exists / what's it for").</summary>
-public record CurrencyInfo(string Code, string Name, bool Spendable, bool Seasonal);
+public record CurrencyInfo(string Code, string Name, bool Spendable, bool Seasonal, bool Transferable = false, bool Primary = false);
 
 /// <summary>Supply analytics for one currency (admin overview). <see cref="Minted"/>/<see cref="Removed"/> are all-time
 /// gross inflow/outflow; <see cref="Circulating"/> is member-held; <see cref="Escrow"/> is held by the house account.</summary>
@@ -115,7 +115,7 @@ public class CurrencyReadService(MusterDbContext db) : ICurrencyReadService
         var currencies = await db.ListCurrenciesAsync(guildId, ct);
         return currencies
             .OrderBy(c => c.Code)
-            .Select(c => new CurrencyInfo(c.Code, c.Name, c.IsSpendable, c.IsSeasonal))
+            .Select(c => new CurrencyInfo(c.Code, c.Name, c.IsSpendable, c.IsSeasonal, c.IsTransferable, c.IsPrimary))
             .ToList();
     }
 

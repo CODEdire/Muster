@@ -29,10 +29,14 @@ public static class CurrencySeed
         var existing = (await db.Currencies.Where(c => c.GuildId == guildId).Select(c => c.Code).ToListAsync(ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // The guild's first spendable currency becomes the default/primary (wallet opens on it). Skip if one is set.
+        var hasPrimary = await db.Currencies.AnyAsync(c => c.GuildId == guildId && c.IsPrimary, ct);
+
         foreach (var s in Currencies)
         {
             if ((force || s.IntroducedIn > seedFrom) && existing.Add(s.Code))
             {
+                var makePrimary = s.Spendable && !hasPrimary;
                 db.Currencies.Add(new Currency
                 {
                     Id = Guid.NewGuid(),
@@ -41,8 +45,14 @@ public static class CurrencySeed
                     Name = s.Name,
                     IsSpendable = s.Spendable,
                     IsSeasonal = s.Seasonal,
+                    IsTransferable = s.Spendable,
+                    IsPrimary = makePrimary,
                     Mode = CurrencyMode.Internal,
                 });
+                if (makePrimary)
+                {
+                    hasPrimary = true;
+                }
                 added++;
             }
         }
