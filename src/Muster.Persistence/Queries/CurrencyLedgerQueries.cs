@@ -772,6 +772,27 @@ public static class CurrencyLedgerQueries
         return rows.Select(r => (r.UserId, r.Total)).ToList();
     }
 
+    /// <summary>Paged all-time earners (cumulative positive amounts per member across every season) with the total
+    /// count — the "All-time" hall-of-fame ranking. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<(List<(ulong UserId, long Total)> Rows, int Total)> GuildTopEarnersAllSeasonsPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, int skip, int take, CancellationToken ct = default)
+    {
+        var grouped = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
+            .Where(x => x.Total > 0);
+
+        var total = await grouped.CountAsync(ct);
+        var rows = await grouped
+            .OrderByDescending(x => x.Total)
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .ToListAsync(ct);
+
+        return (rows.Select(r => (r.UserId, r.Total)).ToList(), total);
+    }
+
     /// <summary>Every member's positive balance for a currency, summed straight from the ledger (excludes the escrow
     /// account 0 and burn sink 1) — the raw input for the wealth-distribution stats and histogram. Ledger-derived so
     /// it stays consistent with the rest of the treasury even when the wallet cache is stale.</summary>

@@ -12,13 +12,13 @@ namespace Muster.Web.Components.Pages.Economy.Participation.Parts;
 
 public partial class PointsLedgerPart : ParticipationPart, IDisposable
 {
-    private const int PageSize = 25;
     private const int SearchDebounceMs = 350;
 
     private IReadOnlyList<SeasonInfo> _seasons = [];
     private PagedResult<PointsLedgerRow>? _ledger;
     private (long In, long Out) _totals;
     private int _page = 1;
+    private int _pageSize = 25;
     private string? _searchBox;
     private string _preset = "";
     private CurrencyLedgerSource? _source;
@@ -44,7 +44,7 @@ public partial class PointsLedgerPart : ParticipationPart, IDisposable
 
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
-            _ledger = await points.GetLedgerPageAsync(GuildId, _searchBox, _sortKey, _descending, _page, PageSize, sources, from, to, _season);
+            _ledger = await points.GetLedgerPageAsync(GuildId, _searchBox, _sortKey, _descending, _page, _pageSize, sources, from, to, _season);
             _totals = await points.GetLedgerTotalsAsync(GuildId, _searchBox, sources, from, to, _season);
         }
         finally
@@ -94,6 +94,13 @@ public partial class PointsLedgerPart : ParticipationPart, IDisposable
             await ReloadAsync();
             StateHasChanged();
         }
+    }
+
+    private async Task OnSize(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value as string, out var v) ? Math.Clamp(v, 10, 100) : 25;
+        _page = 1;
+        await ReloadAsync();
     }
 
     private async Task Prev()

@@ -317,6 +317,32 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         return new PagedResult<LeaderboardRow>(items, p, size, total);
     }
 
+    /// <summary>Paged all-time points ranking — cumulative earned across every season (the hall-of-fame view).</summary>
+    public async Task<PagedResult<LeaderboardRow>> GetAllTimeRankingPageAsync(
+        ulong guildId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is null)
+        {
+            return new PagedResult<LeaderboardRow>([], page, pageSize, 0);
+        }
+
+        var size = Math.Clamp(pageSize, 1, 100);
+        var p = Math.Max(page, 1);
+        var skip = (p - 1) * size;
+
+        var (rows, total) = await db.GuildTopEarnersAllSeasonsPagedAsync(guildId, points.Id, skip, size, ct);
+        var users = await db.UserDisplayMapAsync(rows.Select(r => r.UserId).ToList(), ct);
+
+        var items = rows.Select((r, i) =>
+        {
+            var u = users.GetValueOrDefault(r.UserId);
+            return new LeaderboardRow(skip + i + 1, r.UserId, u.Name ?? r.UserId.ToString(), r.Total, DiscordCdn.AvatarUrl(r.UserId, u.AvatarHash));
+        }).ToList();
+
+        return new PagedResult<LeaderboardRow>(items, p, size, total);
+    }
+
     /// <summary>Paged guild-wide POINTS movements.</summary>
     public async Task<PagedResult<MovementRow>> GetMovementsPageAsync(
         ulong guildId, string? search, string sortKey, bool descending,

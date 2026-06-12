@@ -2,19 +2,16 @@
 @using Muster.Web.Components.Shared
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<div class="pp-card">
-    <div class="panel-head">
-        <h2>Top holders</h2>
-        <div class="pp-rankctl">
-            @if (_seasons.Count > 0)
-            {
-                <select class="dg-select" value="@(_season?.ToString() ?? "")" @onchange="OnSeason">
-                    @foreach (var s in _seasons)
-                    {
-                        <option value="@s.Id">@s.Name@(s.IsActive ? " (active)" : "")</option>
-                    }
-                </select>
-            }
+<div class="rk-grid dg-frame dg-fill">
+    <div class="dg-toolbar">
+        <div class="dg-filters">
+            <select class="dg-select" value="@_scope" @onchange="OnScope">
+                <option value="all">All-time</option>
+                @foreach (var s in _seasons)
+                {
+                    <option value="@s.Id">@s.Name@(s.IsActive ? " (active)" : "")</option>
+                }
+            </select>
             @if (_loading)
             {
                 <span class="dg-loading" aria-hidden="true"></span>
@@ -22,32 +19,42 @@
         </div>
     </div>
 
-    @if (_holders is null || _holders.Items.Count == 0)
-    {
-        <p class="subtitle">@(_holders is null ? "Loading…" : "No balances yet for this season.")</p>
-    }
-    else
-    {
-        @foreach (var h in _holders.Items)
+    <div class="dg-scroll">
+        @if (_holders is null || _holders.Items.Count == 0)
         {
-            <div class="pp-pod">
-                <span class="rank @RankClass(h.Rank)">@h.Rank</span>
-                <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
-                <span class="val">@h.Total.ToString("N0")</span>
+            <p class="rk-empty subtitle">@(_holders is null ? "Loading…" : "No balances yet for this scope.")</p>
+        }
+        else
+        {
+            <div class="rk-list">
+                @foreach (var h in _holders.Items)
+                {
+                    <div class="pp-pod">
+                        <span class="rank @RankClass(h.Rank)">@h.Rank</span>
+                        <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
+                        <span class="val">@h.Total.ToString("N0")</span>
+                    </div>
+                }
             </div>
         }
+    </div>
 
-        <div class="dg-footer">
-            <span class="dg-tz">@_holders.Total holders</span>
-            <div class="dg-pager">
-                <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
-                <span>Page @_page of @TotalPages</span>
-                <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+    <div class="dg-footer">
+        <div class="dg-footer-left">
+            <div class="dg-pagesize">
+                Rows
+                <select class="dg-select" value="@_pageSize" @onchange="OnSize">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
             </div>
+            <span class="dg-tz">@(_holders?.Total ?? 0) holders</span>
         </div>
-    }
+        <div class="dg-pager">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+            <span>Page @_page of @TotalPages</span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+        </div>
+    </div>
 </div>
-
-@code {
-    // pp-rankctl: keep the season picker + spinner tidy in the card head.
-}

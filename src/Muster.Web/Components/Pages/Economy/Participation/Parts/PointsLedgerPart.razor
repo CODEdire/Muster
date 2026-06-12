@@ -97,6 +97,14 @@
 
     <div class="dg-footer">
         <div class="dg-footer-left">
+            <div class="dg-pagesize">
+                Rows
+                <select class="dg-select" value="@_pageSize" @onchange="OnSize">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
             <span class="dg-tz">@(_ledger?.Total ?? 0) entries</span>
             <span class="pl-totals">Σ earned <b class="pos">+@_totals.In.ToString("N0")</b> · Σ spent <b class="neg">−@_totals.Out.ToString("N0")</b></span>
         </div>
