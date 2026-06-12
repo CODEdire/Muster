@@ -81,7 +81,11 @@
 .mv-row { display: flex; align-items: center; gap: 0.6rem; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 0.9rem; }
 .mv-row .mv-src { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text-muted); width: 130px; flex: none; }
 .mv-row .mv-src .material-symbols-outlined { font-size: 1.05rem; }
-.mv-row .mv-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv-row .mv-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mv-row .mv-who ::deep .user-chip { gap: 0.35rem; }
+.mv-row .mv-who ::deep .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
+.mv-row .mv-who ::deep .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
+.mv-row .mv-who .party-sys { color: var(--text-muted); }
 .mv-row .mv-amt { margin-left: auto; font-variant-numeric: tabular-nums; }
 .mv-row .mv-amt.pos { color: #4ade80; }
 .mv-row .mv-amt.neg { color: var(--danger); }

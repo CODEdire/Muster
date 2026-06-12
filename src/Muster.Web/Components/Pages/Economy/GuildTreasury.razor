@@ -157,7 +157,16 @@ else if (State == AccessState.Ready)
                     {
                         <div class="mv-row">
                             <span class="mv-src"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(m.Source)</span>@SourceLabel(m.Source)</span>
-                            <span class="mv-who">@(m.Account == "member" ? m.DisplayName : m.DisplayName)</span>
+                            <span class="mv-who">
+                                @if (m.Account == "member")
+                                {
+                                    <UserChip Name="@m.DisplayName" AvatarUrl="@m.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, m.UserId)" />
+                                }
+                                else
+                                {
+                                    <span class="party-sys">@m.DisplayName</span>
+                                }
+                            </span>
                             <span class="mv-amt @(m.Amount < 0 ? "neg" : "pos")">@(m.Amount >= 0 ? "+" : "")@m.Amount.ToString("N0")</span>
                         </div>
                     }
