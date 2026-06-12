@@ -29,6 +29,7 @@ public partial class GuildDistribution
     private int _stackMax = 1;
 
     private int BracketMax => _dist is { Brackets.Count: > 0 } d ? Math.Max(1, d.Brackets.Max(b => b.Count)) : 1;
+    private int Bracket5Max => _dist is { Brackets5.Count: > 0 } d ? Math.Max(1, d.Brackets5.Max(b => b.Count)) : 1;
 
     // Blue → amber ramp across the 10 wealth buckets (low to high) for the buckets-over-time chart.
     private static readonly string[] BucketColors =

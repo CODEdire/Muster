@@ -1,12 +1,6 @@
-@* Shared virtual tab bar across the guild Treasury pages. Active is one of: overview, ledger, participation. *@
-<nav class="treasury-tabs" aria-label="Treasury sections">
-    @foreach (var t in Tabs)
-    {
-        <a href="@t.Href" class="ttab @(t.Key == Active ? "active" : "")" aria-current="@(t.Key == Active ? "page" : null)">
-            <span class="material-symbols-outlined" aria-hidden="true">@t.Icon</span> @t.Label
-        </a>
-    }
-</nav>
+@* Treasury-specific configuration of the shared TabBar: builds the section list + carries the selected currency
+   across tabs as ?cur=. The responsive behaviour lives in TabBar. *@
+<TabBar Tabs="Items" Active="Active" AriaLabel="Treasury sections" />
 
 @code {
     [Parameter, EditorRequired] public ulong GuildId { get; set; }
@@ -17,12 +11,12 @@
 
     private string Q => string.IsNullOrWhiteSpace(Cur) ? "" : $"?cur={Uri.EscapeDataString(Cur)}";
 
-    private IEnumerable<(string Key, string Label, string Icon, string Href)> Tabs =>
+    private IReadOnlyList<TabBar.TabItem> Items =>
     [
-        ("overview", "Overview", "account_balance", $"/guilds/{GuildId}/treasury{Q}"),
-        ("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{Q}"),
-        ("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{Q}"),
-        ("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{Q}"),
-        ("participation", "Participation", "trophy", $"/guilds/{GuildId}/treasury/participation{Q}"),
+        new("overview", "Overview", "account_balance", $"/guilds/{GuildId}/treasury{Q}"),
+        new("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{Q}"),
+        new("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{Q}"),
+        new("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{Q}"),
+        new("participation", "Participation", "trophy", $"/guilds/{GuildId}/treasury/participation{Q}"),
     ];
 }

@@ -1,0 +1,25 @@
+@* Generic responsive tab bar of links. When space is tight it collapses non-active tabs to icon-only (with a
+   tooltip); the active tab always keeps its full label. Distinct from the in-page TabFrame/TabPane control. *@
+<nav class="tabbar" aria-label="@AriaLabel">
+    @foreach (var t in Tabs)
+    {
+        var active = t.Key == Active;
+        <a href="@t.Href" class="tabbar-tab @(active ? "active" : "")" title="@t.Label" aria-current="@(active ? "page" : null)">
+            @if (!string.IsNullOrEmpty(t.Icon))
+            {
+                <span class="material-symbols-outlined" aria-hidden="true">@t.Icon</span>
+            }
+            <span class="tab-label">@t.Label</span>
+        </a>
+    }
+</nav>
+
+@code {
+    /// <summary>One tab: a stable key (matched against <see cref="Active"/>), a label, an optional Material icon
+    /// name and the destination href.</summary>
+    public record TabItem(string Key, string Label, string Icon, string Href);
+
+    [Parameter, EditorRequired] public IReadOnlyList<TabItem> Tabs { get; set; } = [];
+    [Parameter] public string Active { get; set; } = "";
+    [Parameter] public string AriaLabel { get; set; } = "Sections";
+}

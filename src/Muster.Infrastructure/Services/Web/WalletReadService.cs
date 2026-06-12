@@ -37,8 +37,11 @@ public record FlowMonth(int Year, int Month, long Minted, long Burned, long Net)
 /// <summary>One balance-bracket bucket for the wealth-distribution histogram.</summary>
 public record DistributionBracket(string Label, int Count);
 
-/// <summary>Wealth-distribution stats for a currency: holders, median/mean, top-10% share, Gini, and the histogram.</summary>
-public record DistributionView(int Holders, long Median, long Mean, int Top10Pct, double Gini, long Max, IReadOnlyList<DistributionBracket> Brackets);
+/// <summary>Wealth-distribution stats for a currency: holders, median/mean, top-10% share, Gini, and the histogram
+/// (10 buckets, plus a merged 5-bucket version for narrow screens).</summary>
+public record DistributionView(
+    int Holders, long Median, long Mean, int Top10Pct, double Gini, long Max,
+    IReadOnlyList<DistributionBracket> Brackets, IReadOnlyList<DistributionBracket> Brackets5);
 
 /// <summary>One month-end's distribution: headline stats + per-bucket counts (buckets are fixed across the series).</summary>
 public record DistributionPoint(int Year, int Month, int Holders, int Top10Pct, double Gini, long Median, IReadOnlyList<int> Buckets);
@@ -410,13 +413,13 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     {
         if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
         {
-            return new DistributionView(0, 0, 0, 0, 0, 0, []);
+            return new DistributionView(0, 0, 0, 0, 0, 0, [], []);
         }
 
         var balances = await db.GuildMemberBalancesAsync(guildId, scope.Id, scope.SeasonId, ct);
         if (balances.Count == 0)
         {
-            return new DistributionView(0, 0, 0, 0, 0, 0, []);
+            return new DistributionView(0, 0, 0, 0, 0, 0, [], []);
         }
 
         balances.Sort();
@@ -460,7 +463,22 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
             brackets.Add(new DistributionBracket(i == buckets - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size)}", counts[i]));
         }
 
-        return new DistributionView(n, median, mean, top10, gini, max, brackets);
+        // Merged 5-bucket view (double-width steps) for narrow screens.
+        var size2 = size * 2;
+        var counts5 = new int[5];
+        foreach (var b in balances)
+        {
+            counts5[(int)Math.Min(4, b / size2)]++;
+        }
+
+        var brackets5 = new List<DistributionBracket>(5);
+        for (var i = 0; i < 5; i++)
+        {
+            var lo = i * size2;
+            brackets5.Add(new DistributionBracket(i == 4 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size2)}", counts5[i]));
+        }
+
+        return new DistributionView(n, median, mean, top10, gini, max, brackets, brackets5);
     }
 
     private static string Kfmt(long v) => v >= 1000 ? $"{v / 1000.0:0.#}k" : v.ToString();

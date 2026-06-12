@@ -114,26 +114,51 @@ else if (State == AccessState.Ready)
 
         <div class="d-card">
             <div class="panel-head"><h2>Members by balance bracket</h2></div>
-            <svg class="d-hist" viewBox="0 0 600 160" preserveAspectRatio="none" aria-hidden="true">
-                <line x1="0" y1="135" x2="600" y2="135" class="axis" />
-                @{
-                    var n = _dist.Brackets.Count;
-                    var gw = 600.0 / n;
-                    var bw = gw * 0.62;
-                }
-                @for (var i = 0; i < n; i++)
-                {
-                    var b = _dist.Brackets[i];
-                    var h = b.Count * 120.0 / BracketMax;
-                    var x = i * gw + (gw - bw) / 2;
-                    <rect class="bar @(i == n - 1 ? "top" : "")" x="@x.ToString("0.#")" y="@((135 - h).ToString("0.#"))" width="@bw.ToString("0.#")" height="@h.ToString("0.#")" rx="2" />
-                }
-            </svg>
-            <div class="d-labels">
-                @foreach (var b in _dist.Brackets)
-                {
-                    <span>@b.Label<br /><span class="cnt">@b.Count</span></span>
-                }
+            <div class="hist-full">
+                <svg class="d-hist" viewBox="0 0 600 160" preserveAspectRatio="none" aria-hidden="true">
+                    <line x1="0" y1="135" x2="600" y2="135" class="axis" />
+                    @{
+                        var n = _dist.Brackets.Count;
+                        var gw = 600.0 / n;
+                        var bw = gw * 0.62;
+                    }
+                    @for (var i = 0; i < n; i++)
+                    {
+                        var b = _dist.Brackets[i];
+                        var h = b.Count * 120.0 / BracketMax;
+                        var x = i * gw + (gw - bw) / 2;
+                        <rect class="bar @(i == n - 1 ? "top" : "")" x="@x.ToString("0.#")" y="@((135 - h).ToString("0.#"))" width="@bw.ToString("0.#")" height="@h.ToString("0.#")" rx="2" />
+                    }
+                </svg>
+                <div class="d-labels">
+                    @foreach (var b in _dist.Brackets)
+                    {
+                        <span>@b.Label<br /><span class="cnt">@b.Count</span></span>
+                    }
+                </div>
+            </div>
+            <div class="hist-mini">
+                <svg class="d-hist" viewBox="0 0 600 160" preserveAspectRatio="none" aria-hidden="true">
+                    <line x1="0" y1="135" x2="600" y2="135" class="axis" />
+                    @{
+                        var mn = _dist.Brackets5.Count;
+                        var mgw = 600.0 / mn;
+                        var mbw = mgw * 0.62;
+                    }
+                    @for (var i = 0; i < mn; i++)
+                    {
+                        var b = _dist.Brackets5[i];
+                        var h = b.Count * 120.0 / Bracket5Max;
+                        var x = i * mgw + (mgw - mbw) / 2;
+                        <rect class="bar @(i == mn - 1 ? "top" : "")" x="@x.ToString("0.#")" y="@((135 - h).ToString("0.#"))" width="@mbw.ToString("0.#")" height="@h.ToString("0.#")" rx="2" />
+                    }
+                </svg>
+                <div class="d-labels">
+                    @foreach (var b in _dist.Brackets5)
+                    {
+                        <span>@b.Label<br /><span class="cnt">@b.Count</span></span>
+                    }
+                </div>
             </div>
         </div>
 
