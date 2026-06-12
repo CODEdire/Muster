@@ -276,21 +276,46 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
             sources: sources, from: from, to: to);
         var ids = rows.Select(r => r.UserId).Distinct().ToList();
         var users = await db.UserDisplayMapAsync(ids, ct);
-        string Name(ulong id) => id == CurrencyService.EscrowAccountUserId
-            ? "Escrow (house)"
-            : users.TryGetValue(id, out var u) ? u.Name : id.ToString();
-        string? Avatar(ulong id) => id == CurrencyService.EscrowAccountUserId
+        string Name(ulong id) => id switch
+        {
+            CurrencyService.EscrowAccountUserId => "Escrow (house)",
+            CurrencyService.BurnAccountUserId => "Burn (sink)",
+            _ => users.TryGetValue(id, out var u) ? u.Name : id.ToString(),
+        };
+        string? Avatar(ulong id) => id is CurrencyService.EscrowAccountUserId or CurrencyService.BurnAccountUserId
             ? null
             : users.TryGetValue(id, out var u) ? DiscordCdn.AvatarUrl(id, u.AvatarHash) : null;
+        static string Account(ulong id) => id switch
+        {
+            CurrencyService.EscrowAccountUserId => "escrow",
+            CurrencyService.BurnAccountUserId => "burn",
+            _ => "member",
+        };
 
         var codes = await db.CurrencyCodeMapAsync(guildId, ct);
         var items = rows
             .Select(r => new MovementRow(
                 r.UserId, Name(r.UserId), Avatar(r.UserId), codes.GetValueOrDefault(r.CurrencyId, "?"),
-                r.Amount, r.SourceType, r.OccurredAt, r.Reason))
+                r.Amount, r.SourceType, r.OccurredAt, r.Reason, Account(r.UserId)))
             .ToList();
 
         return new PagedResult<MovementRow>(items, p, size, total);
+    }
+
+    /// <summary>Σ minted / Σ burned for the guild-ledger movement filter — the books footer totals.</summary>
+    public async Task<(long In, long Out)> GetMovementTotalsAsync(
+        ulong guildId, string code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken ct = default)
+    {
+        if (string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return (0, 0);
+        }
+
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        return currency is null
+            ? (0, 0)
+            : await db.GuildLedgerTotalsAsync(guildId, currency.Id, search, ct, sources: sources, from: from, to: to);
     }
 
     // --- Wallet analytics (KPIs, balance-over-time, cash flow, source breakdown, escrow split) ---

@@ -31,6 +31,14 @@ public partial class GuildLedger : IDisposable
     private int _holdersPage = 1;
 
     private PagedResult<MovementRow>? _movement;
+    private (long In, long Out) _moveTotals;
+
+    private static string AccountLabel(string account) => account switch
+    {
+        "escrow" => "escrow hold",
+        "burn" => "burn sink",
+        _ => "member",
+    };
     private int _movePage = 1;
     private string? _moveSearchBox;
     private string _movePreset = "";
@@ -198,6 +206,7 @@ public partial class GuildLedger : IDisposable
             _movement = await wallet.GetMovementsPageAsync(
                 GuildId, _code, _moveSearchBox, _moveSortKey, _moveDescending, _movePage, PageSize,
                 sources: sources, from: from, to: to);
+            _moveTotals = await wallet.GetMovementTotalsAsync(GuildId, _code, _moveSearchBox, sources, from, to);
         }
         finally
         {

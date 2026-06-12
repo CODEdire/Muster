@@ -189,6 +189,7 @@ else if (State == AccessState.Ready)
                             <tr>
                                 <th class="sortable" @onclick='() => SetMoveSort("when")'>When @MoveInd("when")</th>
                                 <th>Member</th>
+                                <th>Account</th>
                                 <th class="num sortable" @onclick='() => SetMoveSort("amount")'>Amount @MoveInd("amount")</th>
                                 <th>Source</th>
                                 <th>Reason</th>
@@ -197,7 +198,7 @@ else if (State == AccessState.Ready)
                         <tbody>
                             @if (_movement is null || _movement.Items.Count == 0)
                             {
-                                <tr class="dg-empty"><td colspan="5">@(_movement is null ? "Loading…" : "No movement matches.")</td></tr>
+                                <tr class="dg-empty"><td colspan="6">@(_movement is null ? "Loading…" : "No movement matches.")</td></tr>
                             }
                             else
                             {
@@ -205,7 +206,17 @@ else if (State == AccessState.Ready)
                                 {
                                     <tr>
                                         <td><LocalTime Value="m.OccurredAt" /></td>
-                                        <td><UserChip Name="@m.DisplayName" AvatarUrl="@m.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, m.UserId)" /></td>
+                                        <td>
+                                            @if (m.Account == "member")
+                                            {
+                                                <UserChip Name="@m.DisplayName" AvatarUrl="@m.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, m.UserId)" />
+                                            }
+                                            else
+                                            {
+                                                <span class="acct-sys">@m.DisplayName</span>
+                                            }
+                                        </td>
+                                        <td><span class="acct acct-@m.Account">@AccountLabel(m.Account)</span></td>
                                         <td class="num @(m.Amount < 0 ? "neg" : "pos")">@(m.Amount >= 0 ? "+" : "")@m.Amount.ToString("N0")</td>
                                         <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(m.Source)</span>@SourceLabel(m.Source)</span></td>
                                         <td>@m.Reason</td>
@@ -216,7 +227,7 @@ else if (State == AccessState.Ready)
                     </table>
                 </div>
                 <div class="dg-footer">
-                    <span class="dg-tz">@(_movement?.Total ?? 0) entries</span>
+                    <span class="dg-tz">@(_movement?.Total ?? 0) entries · Σ <span class="pos">+@_moveTotals.In.ToString("N0")</span> / <span class="neg">−@_moveTotals.Out.ToString("N0")</span></span>
                     <div class="dg-pager">
                         <button type="button" class="btn btn-ghost btn-sm" disabled="@(_movePage <= 1)" @onclick="MovePrev">← Prev</button>
                         <span>Page @_movePage of @MoveTotalPages</span>

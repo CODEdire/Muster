@@ -356,6 +356,50 @@ public static class CurrencyLedgerQueries
     /// <summary>Paged + sortable variant of <see cref="GuildLedgerAsync"/> for the web Guild ledger datagrid.
     /// <paramref name="excludeCurrencyId"/> drops a currency at SQL level (the wallet surface uses this for POINTS).
     /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
+    /// <summary>Minted (in) / removed (out, as a positive magnitude) totals for the guild ledger under the same
+    /// filter the movement grid shows — the Σ minted / Σ burned footer.</summary>
+    public static async Task<(long In, long Out)> GuildLedgerTotalsAsync(
+        this MusterDbContext db, ulong guildId, Guid? currencyId, string? search, CancellationToken ct = default,
+        Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && (currencyId == null || e.CurrencyId == currencyId));
+
+        if (excludeCurrencyId is { } x)
+        {
+            q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        var agg = await q
+            .GroupBy(_ => 1)
+            .Select(g => new { In = g.Sum(x => x.Amount > 0 ? x.Amount : 0L), Out = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L) })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.In, agg.Out);
+    }
+
     public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> GuildLedgerPagedAsync(
         this MusterDbContext db, ulong guildId, Guid? currencyId, string? search,
         string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
