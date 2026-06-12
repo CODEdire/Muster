@@ -19,6 +19,7 @@ public partial class WalletAnalytics
     [Microsoft.AspNetCore.Components.SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
     private ulong _targetUserId;
     private bool _viewingOther;
+    private bool _canManage;
 
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private bool _hasPoints;
@@ -71,8 +72,9 @@ public partial class WalletAnalytics
     {
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
-        var canManage = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsEconomyManagerAsync(GuildId, UserId);
-        _targetUserId = ulong.TryParse(MemberRaw, out var mid) && canManage ? mid : UserId;
+        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        var canViewOthers = _canManage || await Auth.IsAuditorAsync(GuildId, UserId);
+        _targetUserId = ulong.TryParse(MemberRaw, out var mid) && canViewOthers ? mid : UserId;
         _viewingOther = _targetUserId != UserId;
 
         _currencies = await sp.GetRequiredService<ICurrencyReadService>().GetCurrenciesAsync(GuildId);

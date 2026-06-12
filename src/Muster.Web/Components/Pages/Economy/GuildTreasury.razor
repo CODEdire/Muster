@@ -30,11 +30,14 @@ else if (State == AccessState.Ready)
             {
                 <CurrencySwitcher Currencies="_currencies" Selected="@_code" SelectedChanged="SelectCurrency" />
             }
-            <button class="btn btn-ghost btn-sm" @onclick="() => _mintOpen = true"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</button>
+            @if (_canManage)
+            {
+                <button class="btn btn-ghost btn-sm" @onclick="() => _mintOpen = true"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</button>
+            }
         </div>
     </div>
 
-    <TreasuryTabs GuildId="GuildId" Active="@_tab" Cur="@_code" />
+    <TreasuryTabs GuildId="GuildId" Active="@_tab" Cur="@_code" LedgerOnly="@(!_canManage)" />
 
     @if (_currencies.Count == 0)
     {

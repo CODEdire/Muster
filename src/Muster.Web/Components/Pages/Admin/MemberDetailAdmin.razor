@@ -83,7 +83,7 @@ else if (State == AccessState.Ready)
     </div>
 
     @* Page-level toolbar — actions that span the whole member, not one tab. *@
-    @if (_isAdmin)
+    @if (_canManage)
     {
         <div class="member-toolbar">
             <a class="btn btn-sm btn-ghost" href="/guilds/@GuildId/wallet?member=@UserIdRaw">
@@ -387,7 +387,7 @@ else if (State == AccessState.Ready)
 
     @* Award/adjust dialog — same backdrop+sheet pattern as AuditDetailSheet (responsive, ESC-close via shared helper).
        Renders only when open; submitting refreshes balances + ledger + audit. *@
-    @if (_awardOpen && _isAdmin)
+    @if (_awardOpen && _canManage)
     {
         <div class="audit-backdrop" @onclick="CloseAward"></div>
         <div class="audit-sheet" role="dialog" aria-modal="true" aria-label="Award or adjust currency">
@@ -438,7 +438,7 @@ else if (State == AccessState.Ready)
 
     private string _tab = "overview";
     private string _zoneId = TimeZoneService.Utc;
-    private bool _isAdmin;
+    private bool _canManage;   // economy manager (admin implied) — the page already gates on it
 
     private MemberSummary? _summary;
     private long _points;
@@ -499,7 +499,7 @@ else if (State == AccessState.Ready)
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
-        _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
+        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
 
         _zoneId = await sp.GetRequiredService<TimeZoneService>().ResolveZoneIdAsync(GuildId, UserId);
 

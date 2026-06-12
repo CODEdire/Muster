@@ -19,22 +19,26 @@ public partial class GuildParticipation
 
     private CurrencySupply? _supply;
     private ParticipationHome? _home;
+    private bool _canManage;   // economy manager (admin implied) — sees all tabs; auditors get the Ledger only
 
     private SeasonInfo? Current => _home?.Current?.Season;
     private SeasonInfo? Previous => _home?.Previous?.Season;
     private bool HasSeasons => _home is { Seasons.Count: > 0 };
 
-    private string ActiveTab => SeasonId is { } s
-        ? s.ToString()
-        : Section?.ToLowerInvariant() switch
-        {
-            "ranking" => "ranking",
-            "ledger" => "ledger",
-            _ => "overview",
-        };
+    private string ActiveTab => !_canManage
+        ? "ledger"
+        : SeasonId is { } s
+            ? s.ToString()
+            : Section?.ToLowerInvariant() switch
+            {
+                "ranking" => "ranking",
+                "ledger" => "ledger",
+                _ => "overview",
+            };
 
     protected override async Task LoadAsync()
     {
+        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
         await using var scope = Scopes.CreateAsyncScope();
         var points = scope.ServiceProvider.GetRequiredService<PointsReadService>();
         _supply = await points.GetSupplyAsync(GuildId);

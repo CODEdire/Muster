@@ -15,6 +15,9 @@
     /// <summary>Show the points Season + Points-ledger tabs (server runs a points score).</summary>
     [Parameter] public bool HasPoints { get; set; }
 
+    /// <summary>Auditor viewing another member (read-only) — show only the ledger-bearing tabs (Account + Points).</summary>
+    [Parameter] public bool LedgerOnly { get; set; }
+
     private string CurOnly => Query(includeCur: true, includeMember: true);
     private string MemberOnly => Query(includeCur: false, includeMember: true);
 
@@ -33,11 +36,17 @@
             var items = new List<TabBar.TabItem>
             {
                 new("account", "Account", "payments", $"/guilds/{GuildId}/wallet{CurOnly}"),
-                new("analytics", "Analytics", "monitoring", $"/guilds/{GuildId}/wallet/analytics{CurOnly}"),
             };
+            if (!LedgerOnly)
+            {
+                items.Add(new("analytics", "Analytics", "monitoring", $"/guilds/{GuildId}/wallet/analytics{CurOnly}"));
+            }
             if (HasPoints)
             {
-                items.Add(new("season", "Season", "local_fire_department", $"/guilds/{GuildId}/wallet/season{MemberOnly}"));
+                if (!LedgerOnly)
+                {
+                    items.Add(new("season", "Season", "local_fire_department", $"/guilds/{GuildId}/wallet/season{MemberOnly}"));
+                }
                 items.Add(new("points", "Points", "trophy", $"/guilds/{GuildId}/wallet/points{MemberOnly}"));
             }
             return items;

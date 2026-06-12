@@ -20,6 +20,7 @@ public partial class GuildTreasury
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private string _code = "";
     private bool _isAdmin;
+    private bool _canManage;   // economy manager (admin implied) — may use the non-ledger tabs + mint/adjust
     private bool _mintOpen;
 
     // Bumped after a mint/adjust to force the active part to reload without changing currency.
@@ -28,10 +29,11 @@ public partial class GuildTreasury
     protected override async Task LoadAsync()
     {
         _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
+        _canManage = _isAdmin || await Auth.IsEconomyManagerAsync(GuildId, UserId);
         await using var scope = Scopes.CreateAsyncScope();
         _currencies = await scope.ServiceProvider.GetRequiredService<WalletReadService>().GetCurrenciesAsync(GuildId);
         ResolveCode();
-        _tab = Normalize(Tab);
+        _tab = EffectiveTab(Tab);
     }
 
     protected override void OnParametersSet()
@@ -41,12 +43,15 @@ public partial class GuildTreasury
             return;
         }
 
-        _tab = Normalize(Tab);
+        _tab = EffectiveTab(Tab);
         if (!string.IsNullOrWhiteSpace(Cur) && Cur != _code && _currencies.Any(c => c.Code == Cur))
         {
             _code = Cur!;
         }
     }
+
+    /// <summary>Auditors (read-only) are pinned to the Ledger tab regardless of the requested tab.</summary>
+    private string EffectiveTab(string? tab) => _canManage ? Normalize(tab) : "ledger";
 
     private void ResolveCode()
     {

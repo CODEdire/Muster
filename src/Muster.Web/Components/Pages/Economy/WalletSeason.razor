@@ -25,7 +25,7 @@ else if (State == AccessState.Ready)
         </nav>
     </div>
 
-    <WalletTabs GuildId="GuildId" Active="season" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" />
+    <WalletTabs GuildId="GuildId" Active="season" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" LedgerOnly="@(_viewingOther && !_canManage)" />
 
     @if (!_hasPoints)
     {

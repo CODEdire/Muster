@@ -34,7 +34,7 @@ else if (State == AccessState.Ready)
         </div>
     </div>
 
-    <WalletTabs GuildId="GuildId" Active="account" Cur="@_sel" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" />
+    <WalletTabs GuildId="GuildId" Active="account" Cur="@_sel" Member="@(_viewingOther ? _targetUserId.ToString() : null)" HasPoints="_hasPoints" LedgerOnly="@(_viewingOther && !_canManage)" />
 
     @if (Message is not null)
     {
@@ -163,6 +163,8 @@ else if (State == AccessState.Ready)
             }
         </div>
 
+        @if (!_viewingOther || _canManage)
+        {
         <div class="panel glass">
             @if (_viewingOther && _canManage)
             {
@@ -222,6 +224,7 @@ else if (State == AccessState.Ready)
             }
             }
         </div>
+        }
     </div>
 
     <LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">

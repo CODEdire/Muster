@@ -31,7 +31,7 @@ else if (State == AccessState.Ready)
         }
     </div>
 
-    <ParticipationTabs GuildId="GuildId" Active="@ActiveTab" Current="Current" Previous="Previous" />
+    <ParticipationTabs GuildId="GuildId" Active="@ActiveTab" Current="Current" Previous="Previous" LedgerOnly="@(!_canManage)" />
 
     @if (_supply is null)
     {

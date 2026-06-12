@@ -101,9 +101,10 @@ public partial class Wallet : IDisposable
         var currencies = sp.GetRequiredService<ICurrencyReadService>();
         var members = sp.GetRequiredService<WebMemberService>();
 
-        // An admin / economy-manager may view (and adjust) another member's wallet via ?member=.
-        _canManage = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsEconomyManagerAsync(GuildId, UserId);
-        _targetUserId = ulong.TryParse(MemberRaw, out var m) && _canManage ? m : UserId;
+        // Economy managers (admin implied) may view AND adjust any member's wallet; auditors may view (read-only).
+        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        var canViewOthers = _canManage || await Auth.IsAuditorAsync(GuildId, UserId);
+        _targetUserId = ulong.TryParse(MemberRaw, out var m) && canViewOthers ? m : UserId;
         _viewingOther = _targetUserId != UserId;
 
         _currencies = await currencies.GetCurrenciesAsync(GuildId);

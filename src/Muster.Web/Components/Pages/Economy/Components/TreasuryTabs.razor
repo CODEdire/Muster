@@ -9,13 +9,21 @@
     /// <summary>The selected currency code, carried across tabs as ?cur= so the choice survives navigation.</summary>
     [Parameter] public string? Cur { get; set; }
 
+    /// <summary>Auditor (read-only) view — show just the Ledger tab.</summary>
+    [Parameter] public bool LedgerOnly { get; set; }
+
     private string Q => string.IsNullOrWhiteSpace(Cur) ? "" : $"?cur={Uri.EscapeDataString(Cur)}";
 
-    private IReadOnlyList<TabBar.TabItem> Items =>
-    [
-        new("overview", "Overview", "dashboard", $"/guilds/{GuildId}/treasury{Q}"),
-        new("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{Q}"),
-        new("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{Q}"),
-        new("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{Q}"),
-    ];
+    private IReadOnlyList<TabBar.TabItem> Items => LedgerOnly
+        ?
+        [
+            new("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{Q}"),
+        ]
+        :
+        [
+            new("overview", "Overview", "dashboard", $"/guilds/{GuildId}/treasury{Q}"),
+            new("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{Q}"),
+            new("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{Q}"),
+            new("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{Q}"),
+        ];
 }

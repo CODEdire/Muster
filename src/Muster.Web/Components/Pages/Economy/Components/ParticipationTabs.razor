@@ -9,10 +9,18 @@
     [Parameter] public SeasonInfo? Current { get; set; }
     [Parameter] public SeasonInfo? Previous { get; set; }
 
+    /// <summary>Auditor (read-only) view — show just the Ledger tab.</summary>
+    [Parameter] public bool LedgerOnly { get; set; }
+
     private IReadOnlyList<TabBar.TabItem> Items
     {
         get
         {
+            if (LedgerOnly)
+            {
+                return [new("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/participation/ledger")];
+            }
+
             var items = new List<TabBar.TabItem>
             {
                 new("overview", "Overview", "dashboard", $"/guilds/{GuildId}/participation"),

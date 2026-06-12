@@ -14,6 +14,7 @@ public partial class WalletSeason
     [SupplyParameterFromQuery(Name = "member")] private string? MemberRaw { get; set; }
     private ulong _targetUserId;
     private bool _viewingOther;
+    private bool _canManage;
 
     private string _displayName = "";
     private string? _avatarUrl;
@@ -42,8 +43,9 @@ public partial class WalletSeason
         var wallet = sp.GetRequiredService<WalletReadService>();
         var members = sp.GetRequiredService<WebMemberService>();
 
-        var canManage = await Auth.IsAdminAsync(GuildId, UserId) || await Auth.IsEconomyManagerAsync(GuildId, UserId);
-        _targetUserId = ulong.TryParse(MemberRaw, out var mid) && canManage ? mid : UserId;
+        _canManage = await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        var canViewOthers = _canManage || await Auth.IsAuditorAsync(GuildId, UserId);
+        _targetUserId = ulong.TryParse(MemberRaw, out var mid) && canViewOthers ? mid : UserId;
         _viewingOther = _targetUserId != UserId;
 
         var code = CurrencyCodes.PointsCode;
