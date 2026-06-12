@@ -5,17 +5,15 @@
 @inherits GuildAdminComponentBase
 @implements IDisposable
 @inject IServiceScopeFactory Scopes
-@using Muster.Domain.Entities
 @using Muster.Domain.Enums
 @using Muster.Infrastructure.Services.Currencies
 @using Muster.Infrastructure.Services.Platform
-@using Muster.Infrastructure.Services.Tracking
 @using Muster.Infrastructure.Services.Web
 @using Muster.Web.Components.Shared
 @using Muster.Web.Components.Pages.Economy.Components
 @using static Muster.Web.Components.Shared.LedgerMeta
 
-<PageTitle>Guild ledger — Muster</PageTitle>
+<PageTitle>Ledger — Muster</PageTitle>
 
 @if (State == AccessState.Forbidden)
 {
@@ -23,224 +21,227 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="page-head">
+    <div class="t-head">
         <nav class="t-crumb" aria-label="Breadcrumb">
             <a href="/guilds/@GuildId/treasury">Treasury</a>
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
             <span class="who">Ledger</span>
         </nav>
+        <CurrencySwitcher Currencies="_currencies" Selected="@_code" SelectedChanged="SelectCurrency" />
     </div>
 
-    <TreasuryTabs GuildId="GuildId" Active="ledger" />
+    <TreasuryTabs GuildId="GuildId" Active="ledger" Cur="@_code" />
 
     @if (_currencies.Count == 0)
     {
-        <div class="panel glass empty">No wallet currencies are configured in this server yet (Points lives on the Points page).</div>
+        <div class="panel glass empty">No wallet currencies are configured yet.</div>
     }
     else
     {
-        <div class="dg-toolbar">
-            <div class="dg-filters">
-                <select class="dg-select" value="@_code" @onchange="OnCode">
-                    @foreach (var c in _currencies)
-                    {
-                        <option value="@c.Code">@c.Code — @c.Name</option>
-                    }
-                </select>
-                @if (_loading)
+        @if (_supply is not null)
+        {
+            <div class="recon">
+                <span class="recon-label">Supply reconciliation</span>
+                <span class="mono">Minted <b>@_supply.Minted.ToString("N0")</b></span><span class="op">=</span>
+                <span class="mono">Circulating <b>@_supply.Circulating.ToString("N0")</b></span><span class="op">+</span>
+                <span class="mono">Escrow <b>@_supply.Escrow.ToString("N0")</b></span><span class="op">+</span>
+                <span class="mono">Burned <b>@_supply.Removed.ToString("N0")</b></span>
+                @if (Reconciles)
                 {
-                    <span class="dg-loading" aria-hidden="true"></span>
+                    <span class="recon-ok"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span> balances</span>
                 }
+                else
+                {
+                    <span class="recon-off"><span class="material-symbols-outlined" aria-hidden="true">error</span> off by @((_supply.Minted - _supply.Circulating - _supply.Escrow - _supply.Removed).ToString("N0"))</span>
+                }
+            </div>
+        }
+
+        <div class="panel glass dg-frame dg-fill">
+            <div class="dg-toolbar">
+                <div class="dg-filters">
+                    <select class="dg-select" value="@_account" @onchange="OnAccount">
+                        <option value="">Any account</option>
+                        <option value="member">Members</option>
+                        <option value="escrow">Escrow (house)</option>
+                        <option value="burn">Burn sink</option>
+                    </select>
+                    <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+                        <option value="">Any source</option>
+                        @foreach (var s in AllSources)
+                        {
+                            <option value="@s">@SourceLabel(s)</option>
+                        }
+                    </select>
+                    <select class="dg-select" value="@_preset" @onchange="OnRange">
+                        @foreach (var (val, lbl) in RangePresets)
+                        {
+                            <option value="@val">@lbl</option>
+                        }
+                    </select>
+                    <div class="dir-toggle" role="group" aria-label="Direction">
+                        <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
+                        <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Debit</button>
+                        <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">Credit</button>
+                    </div>
+                    <input type="search" class="dg-search" placeholder="Member or reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+                    @if (_loading)
+                    {
+                        <span class="dg-loading" aria-hidden="true"></span>
+                    }
+                </div>
+            </div>
+
+            <div class="dg-scroll">
+                <table class="dg-table jr-table">
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Account</th>
+                            <th>Counter-account</th>
+                            <th>Source</th>
+                            <th class="num">Debit</th>
+                            <th class="num">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_journal is null || _journal.Items.Count == 0)
+                        {
+                            <tr class="dg-empty"><td colspan="6">@(_journal is null ? "Loading…" : "No postings match these filters.")</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var (header, r) in Lines())
+                            {
+                                @if (header is { } d)
+                                {
+                                    <tr class="dg-group"><td colspan="6">@DateLabel(d)</td></tr>
+                                }
+                                <tr title="@(string.IsNullOrEmpty(r.Reference) ? "" : $"ref {r.Reference}")">
+                                    <td class="jr-when"><LocalTime Value="r.OccurredAt" /></td>
+                                    <td>@AccountCell(r.AccountKind, r.AccountName, r.AccountAvatar, r.AccountUserId)</td>
+                                    <td>
+                                        @if (r.CounterIsMember)
+                                        {
+                                            <UserChip Name="@r.CounterName" AvatarUrl="@r.CounterAvatar" Href="@MusterLinks.MemberDetail(GuildId, r.CounterUserId)" />
+                                        }
+                                        else
+                                        {
+                                            <span class="acct-sys">@r.CounterName</span>
+                                        }
+                                    </td>
+                                    <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(r.Source)</span>@SourceLabel(r.Source)</span></td>
+                                    <td class="num debit">@(r.Amount < 0 ? (-r.Amount).ToString("N0") : "—")</td>
+                                    <td class="num credit">@(r.Amount > 0 ? r.Amount.ToString("N0") : "—")</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="dg-footer">
+                <div class="dg-footer-left">
+                    <span class="dg-tz">@(_journal?.Total ?? 0) postings</span>
+                    <span class="jr-totals mono">Σ debit <b class="debit">@_totals.Out.ToString("N0")</b> · Σ credit <b class="credit">@_totals.In.ToString("N0")</b></span>
+                </div>
+                <div class="dg-pager">
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="Prev">← Prev</button>
+                    <span>Page @_page of @TotalPages</span>
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(_page >= TotalPages)" @onclick="Next">Next →</button>
+                </div>
             </div>
         </div>
 
         @if (_supply is not null)
         {
-            <div class="stat-grid">
-                <div class="card glass stat"><span class="label">In circulation</span><span class="num">@_supply.Circulating.ToString("N0")</span><span class="subtitle">member-held</span></div>
-                <div class="card glass stat"><span class="label">Held in escrow</span><span class="num">@_supply.Escrow.ToString("N0")</span><span class="subtitle">house account</span></div>
-                <div class="card glass stat"><span class="label">Holders</span><span class="num">@_supply.Holders.ToString("N0")</span><span class="subtitle">members with a balance</span></div>
-                <div class="card glass stat"><span class="label">Total minted</span><span class="num">@_supply.Minted.ToString("N0")</span><span class="subtitle">all-time inflow</span></div>
-                <div class="card glass stat"><span class="label">Total removed</span><span class="num">@_supply.Removed.ToString("N0")</span><span class="subtitle">all-time outflow</span></div>
+            <div class="jr-cols">
+                <div class="jr-card">
+                    <div class="panel-head"><h2>Trial balance</h2></div>
+                    <table class="jr-tb mono">
+                        <tbody>
+                            <tr><td>Members (holders)</td><td class="num">@_supply.Circulating.ToString("N0")</td></tr>
+                            <tr><td>Escrow (house)</td><td class="num">@_supply.Escrow.ToString("N0")</td></tr>
+                            <tr><td>Burn sink</td><td class="num">@_supply.Removed.ToString("N0")</td></tr>
+                            <tr class="tb-total"><td>Total issued</td><td class="num">@_supply.Minted.ToString("N0")</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="jr-card">
+                    <div class="panel-head"><h2>Audit trail</h2></div>
+                    <ul class="jr-audit">
+                        <li><span class="material-symbols-outlined" aria-hidden="true">verified_user</span> Counterparty recorded on every transfer</li>
+                        <li><span class="material-symbols-outlined" aria-hidden="true">tag</span> Reference id per transaction (hover a row)</li>
+                        <li><span class="material-symbols-outlined" aria-hidden="true">lock</span> Append-only — no edits or deletes</li>
+                        <li><a href="/guilds/@GuildId/audit">View full audit log →</a></li>
+                    </ul>
+                </div>
             </div>
         }
 
-        <TabFrame ActiveId="@_tab" ActiveIdChanged="t => _tab = t">
-            <TabPane Id="holders" Label="Top holders" Icon="leaderboard">
-                <div class="dg-scroll">
-                    <table class="dg-table lb-table">
-                        <thead>
-                            <tr>
-                                <th class="num lb-rank-col">#</th>
-                                <th>Member</th>
-                                <th class="num">Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (_holders is null || _holders.Items.Count == 0)
-                            {
-                                <tr class="dg-empty"><td colspan="3">@(_holders is null ? "Loading…" : "No balances yet.")</td></tr>
-                            }
-                            else
-                            {
-                                @foreach (var h in _holders.Items)
-                                {
-                                    <tr>
-                                        <td class="num lb-rank">@Medal(h.Rank)</td>
-                                        <td><UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" /></td>
-                                        <td class="num">@h.Total.ToString("N0")</td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-                <div class="dg-footer">
-                    <span class="dg-tz">@(_holders?.Total ?? 0) holders</span>
-                    <div class="dg-pager">
-                        <button type="button" class="btn btn-ghost btn-sm" disabled="@(_holdersPage <= 1)" @onclick="HoldersPrev">← Prev</button>
-                        <span>Page @_holdersPage of @HoldersTotalPages</span>
-                        <button type="button" class="btn btn-ghost btn-sm" disabled="@(_holdersPage >= HoldersTotalPages)" @onclick="HoldersNext">Next →</button>
-                    </div>
-                </div>
-            </TabPane>
+        @if (_isAdmin)
+        {
+            <details class="jr-bulk panel glass">
+                <summary><span class="material-symbols-outlined" aria-hidden="true">groups</span> Bulk mint / adjust by role</summary>
+                <p class="subtitle">Apply a signed delta of <strong>@_code</strong> to every member with the selected role. Positive mints; negative deducts.</p>
 
-            @if (_isAdmin)
-            {
-                <TabPane Id="bulk" Label="Bulk award" Icon="groups">
-                    <div class="member-detail-section">
-                        <h2>Bulk mint / adjust</h2>
-                        <p class="subtitle">Apply a signed delta of <strong>@_code</strong> to every member with the selected role. Positive mints; negative deducts.</p>
-
-                        @if (_bulkBatch is not null)
-                        {
-                            <div class="panel glass">
-                                <div class="panel-head">
-                                    <h3>Last batch</h3>
-                                    <span class="badge status-@_bulkBatch.Status.ToString().ToLowerInvariant()">@_bulkBatch.Status</span>
-                                </div>
-                                <p class="subtitle">
-                                    @_bulkBatch.Delta.ToString("+#,##0;-#,##0") @_bulkBatch.CurrencyCode to @_bulkBatch.TotalCount.ToString("N0") member(s)
-                                    — applied @_bulkBatch.AppliedCount.ToString("N0"), failed @_bulkBatch.FailedCount.ToString("N0").
-                                    @if (_bulkBatch.Error is not null) { <span class="neg">@_bulkBatch.Error</span> }
-                                </p>
-                                @if (_bulkBatch.Status is BulkBatchStatus.Pending or BulkBatchStatus.Running)
-                                {
-                                    <div class="btn-row">
-                                        <button type="button" class="btn btn-sm btn-ghost" @onclick="RefreshBatchAsync">Refresh status</button>
-                                    </div>
-                                }
-                            </div>
-                        }
-
-                        @if (_bulkConfirm)
-                        {
-                            <div class="panel glass confirm">
-                                <h3>Confirm bulk @(_bulkDelta >= 0 ? "mint" : "adjustment")</h3>
-                                <p>Apply <strong>@_bulkDelta.ToString("+#,##0;-#,##0") @_code</strong> to
-                                    <strong>@_bulkConfirmCount.ToString("N0") member(s)</strong> — reason: <em>@_bulkReason</em>.</p>
-                                <div class="btn-row">
-                                    <button type="button" class="btn" disabled="@_bulkQueuing" @onclick="QueueBulkAsync">Confirm &amp; queue</button>
-                                    <button type="button" class="btn btn-ghost" @onclick="() => _bulkConfirm = false">Cancel</button>
-                                </div>
-                            </div>
-                        }
-
-                        <div class="form-grid">
-                            <label>Role
-                                <select class="dg-select" value="@_bulkRoleId" @onchange="OnBulkRole">
-                                    <option value="">— select —</option>
-                                    @foreach (var r in _roles)
-                                    {
-                                        <option value="@r.RoleId">@r.Name</option>
-                                    }
-                                </select>
-                            </label>
-                            <label>Amount (signed) <input type="number" class="dg-select" value="@_bulkDelta" @onchange="OnBulkDelta" /></label>
-                            <label>Reason <input type="text" class="dg-search" value="@_bulkReason" @oninput="OnBulkReason" /></label>
-                            <div class="btn-row">
-                                <button type="button" class="btn" disabled="@_bulkPreviewing" @onclick="PreviewBulkAsync">Preview…</button>
-                            </div>
+                @if (_bulkBatch is not null)
+                {
+                    <div class="panel glass">
+                        <div class="panel-head">
+                            <h3>Last batch</h3>
+                            <span class="badge status-@_bulkBatch.Status.ToString().ToLowerInvariant()">@_bulkBatch.Status</span>
                         </div>
-                        @if (_bulkMessage is not null)
+                        <p class="subtitle">
+                            @_bulkBatch.Delta.ToString("+#,##0;-#,##0") @_bulkBatch.CurrencyCode to @_bulkBatch.TotalCount.ToString("N0") member(s)
+                            — applied @_bulkBatch.AppliedCount.ToString("N0"), failed @_bulkBatch.FailedCount.ToString("N0").
+                            @if (_bulkBatch.Error is not null) { <span class="neg">@_bulkBatch.Error</span> }
+                        </p>
+                        @if (_bulkBatch.Status is BulkBatchStatus.Pending or BulkBatchStatus.Running)
                         {
-                            <p class="message">@_bulkMessage</p>
+                            <div class="btn-row"><button type="button" class="btn btn-sm btn-ghost" @onclick="RefreshBatchAsync">Refresh status</button></div>
                         }
                     </div>
-                </TabPane>
-            }
+                }
 
-            <TabPane Id="movement" Label="Recent movement" Icon="receipt_long">
-                <div class="dg-toolbar">
-                    <div class="dg-filters">
-                        <select class="dg-select" value="@_movePreset" @onchange="OnMoveRange">
-                            @foreach (var (val, lbl) in RangePresets)
+                @if (_bulkConfirm)
+                {
+                    <div class="panel glass confirm">
+                        <h3>Confirm bulk @(_bulkDelta >= 0 ? "mint" : "adjustment")</h3>
+                        <p>Apply <strong>@_bulkDelta.ToString("+#,##0;-#,##0") @_code</strong> to
+                            <strong>@_bulkConfirmCount.ToString("N0") member(s)</strong> — reason: <em>@_bulkReason</em>.</p>
+                        <div class="btn-row">
+                            <button type="button" class="btn" disabled="@_bulkQueuing" @onclick="QueueBulkAsync">Confirm &amp; queue</button>
+                            <button type="button" class="btn btn-ghost" @onclick="() => _bulkConfirm = false">Cancel</button>
+                        </div>
+                    </div>
+                }
+
+                <div class="form-grid">
+                    <label>Role
+                        <select class="dg-select" value="@_bulkRoleId" @onchange="OnBulkRole">
+                            <option value="">— select —</option>
+                            @foreach (var r in _roles)
                             {
-                                <option value="@val">@lbl</option>
+                                <option value="@r.RoleId">@r.Name</option>
                             }
                         </select>
-                        <select class="dg-select" value="@(_moveSource?.ToString() ?? "")" @onchange="OnMoveSource">
-                            <option value="">Any source</option>
-                            @foreach (var s in AllSources)
-                            {
-                                <option value="@s">@SourceLabel(s)</option>
-                            }
-                        </select>
-                        <input type="search" class="dg-search" placeholder="Search reason…" @bind="_moveSearchBox" @bind:event="oninput" @bind:after="DebouncedMoveSearchAsync" />
-                    </div>
+                    </label>
+                    <label>Amount (signed) <input type="number" class="dg-select" value="@_bulkDelta" @onchange="OnBulkDelta" /></label>
+                    <label>Reason <input type="text" class="dg-search" value="@_bulkReason" @oninput="OnBulkReason" /></label>
+                    <div class="btn-row"><button type="button" class="btn" disabled="@_bulkPreviewing" @onclick="PreviewBulkAsync">Preview…</button></div>
                 </div>
-                <div class="dg-scroll">
-                    <table class="dg-table">
-                        <thead>
-                            <tr>
-                                <th class="sortable" @onclick='() => SetMoveSort("when")'>When @MoveInd("when")</th>
-                                <th>Member</th>
-                                <th>Account</th>
-                                <th class="num sortable" @onclick='() => SetMoveSort("amount")'>Amount @MoveInd("amount")</th>
-                                <th>Source</th>
-                                <th>Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (_movement is null || _movement.Items.Count == 0)
-                            {
-                                <tr class="dg-empty"><td colspan="6">@(_movement is null ? "Loading…" : "No movement matches.")</td></tr>
-                            }
-                            else
-                            {
-                                @foreach (var m in _movement.Items)
-                                {
-                                    <tr>
-                                        <td><LocalTime Value="m.OccurredAt" /></td>
-                                        <td>
-                                            @if (m.Account == "member")
-                                            {
-                                                <UserChip Name="@m.DisplayName" AvatarUrl="@m.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, m.UserId)" />
-                                            }
-                                            else
-                                            {
-                                                <span class="acct-sys">@m.DisplayName</span>
-                                            }
-                                        </td>
-                                        <td><span class="acct acct-@m.Account">@AccountLabel(m.Account)</span></td>
-                                        <td class="num @(m.Amount < 0 ? "neg" : "pos")">@(m.Amount >= 0 ? "+" : "")@m.Amount.ToString("N0")</td>
-                                        <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(m.Source)</span>@SourceLabel(m.Source)</span></td>
-                                        <td>@m.Reason</td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-                <div class="dg-footer">
-                    <span class="dg-tz">@(_movement?.Total ?? 0) entries · Σ <span class="pos">+@_moveTotals.In.ToString("N0")</span> / <span class="neg">−@_moveTotals.Out.ToString("N0")</span></span>
-                    <div class="dg-pager">
-                        <button type="button" class="btn btn-ghost btn-sm" disabled="@(_movePage <= 1)" @onclick="MovePrev">← Prev</button>
-                        <span>Page @_movePage of @MoveTotalPages</span>
-                        <button type="button" class="btn btn-ghost btn-sm" disabled="@(_movePage >= MoveTotalPages)" @onclick="MoveNext">Next →</button>
-                    </div>
-                </div>
-            </TabPane>
-        </TabFrame>
+                @if (_bulkMessage is not null)
+                {
+                    <p class="message">@_bulkMessage</p>
+                }
+            </details>
+        }
     }
+}
+
+@code {
+    private RenderFragment AccountCell(string kind, string name, string? avatar, ulong userId) => kind == "member"
+        ? @<UserChip Name="@name" AvatarUrl="@avatar" Href="@MusterLinks.MemberDetail(GuildId, userId)" />
+        : @<span class="acct @($"acct-{kind}")">@name</span>;
 }

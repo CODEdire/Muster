@@ -34,6 +34,13 @@ public record FlowView(
 /// <summary>One month of mint/burn/net for the flow-over-time chart and KPI sparklines.</summary>
 public record FlowMonth(int Year, int Month, long Minted, long Burned, long Net);
 
+/// <summary>One posting in the accountant journal: the account it hit, the resolved counter-account (the other side of
+/// the double entry), the source, the signed amount (negative = debit/out, positive = credit/in) and a reference.</summary>
+public record JournalRow(
+    long Id, ulong AccountUserId, string AccountName, string? AccountAvatar, string AccountKind,
+    ulong CounterUserId, string CounterName, string? CounterAvatar, bool CounterIsMember,
+    CurrencyLedgerSource Source, long Amount, string? Reference, DateTimeOffset OccurredAt, string Reason);
+
 /// <summary>One balance-bracket bucket for the wealth-distribution histogram.</summary>
 public record DistributionBracket(string Label, int Count);
 
@@ -344,6 +351,97 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         return currency is null
             ? (0, 0)
             : await db.GuildLedgerTotalsAsync(guildId, currency.Id, search, ct, sources: sources, from: from, to: to);
+    }
+
+    /// <summary>The accountant journal: paged guild postings resolved to account + counter-account (double-entry), for
+    /// the new ledger page. Counters come from the stored counterparty (transfers) or are synthesised by source
+    /// (mint/issuance, shop/escrow, burn) at read time — no extra ledger writes.</summary>
+    public async Task<PagedResult<JournalRow>> GetJournalAsync(
+        ulong guildId, string code, string? search, int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new PagedResult<JournalRow>([], page, pageSize, 0);
+        }
+
+        var size = Math.Clamp(pageSize, 1, 100);
+        var p = Math.Max(page, 1);
+        var (rows, total) = await db.GuildJournalPagedAsync(
+            guildId, scope.Id, search, (p - 1) * size, size, ct, sources, from, to, sign, account);
+
+        var ids = rows.Where(r => r.UserId is not 0 and not 1).Select(r => r.UserId)
+            .Concat(rows.Where(r => r.CounterpartyId is not null).Select(r => r.CounterpartyId!.Value))
+            .Distinct().ToList();
+        var users = ids.Count > 0 ? await db.UserDisplayMapAsync(ids, ct) : [];
+
+        string Name(ulong id) => users.TryGetValue(id, out var u) ? u.Name : id.ToString();
+        string? Avatar(ulong id) => users.TryGetValue(id, out var u) ? DiscordCdn.AvatarUrl(id, u.AvatarHash) : null;
+
+        var items = rows.Select(r =>
+        {
+            var (accName, accAvatar, kind) = r.UserId switch
+            {
+                CurrencyService.EscrowAccountUserId => ("Escrow (house)", (string?)null, "escrow"),
+                CurrencyService.BurnAccountUserId => ("Burn (sink)", null, "burn"),
+                _ => (Name(r.UserId), Avatar(r.UserId), "member"),
+            };
+
+            // The other side of the entry: a real member counterparty (transfers), else synthesised from the source.
+            string counterName;
+            string? counterAvatar = null;
+            ulong counterId = 0;
+            var counterIsMember = false;
+            if (r.CounterpartyId is { } cid)
+            {
+                counterName = Name(cid);
+                counterAvatar = Avatar(cid);
+                counterId = cid;
+                counterIsMember = true;
+            }
+            else if (r.SourceType is CurrencyLedgerSource.ShopFee)
+            {
+                counterName = "Burn sink";
+            }
+            else if (r.SourceType is CurrencyLedgerSource.Shop)
+            {
+                counterName = "Shop / escrow";
+            }
+            else if (r.UserId == CurrencyService.EscrowAccountUserId)
+            {
+                counterName = "Member / shop";
+            }
+            else if (r.UserId == CurrencyService.BurnAccountUserId)
+            {
+                counterName = "Escrow";
+            }
+            else if (MintSources.Contains(r.SourceType))
+            {
+                counterName = r.Amount >= 0 ? "Mint / issuance" : "Retired";
+            }
+            else
+            {
+                counterName = "System";
+            }
+
+            return new JournalRow(r.Id, r.UserId, accName, accAvatar, kind, counterId, counterName, counterAvatar, counterIsMember,
+                r.SourceType, r.Amount, r.SourceId, r.OccurredAt, r.Reason);
+        }).ToList();
+
+        return new PagedResult<JournalRow>(items, p, size, total);
+    }
+
+    /// <summary>Σ credited (in) / Σ debited (out) for the journal under the same filters — the footer totals.</summary>
+    public async Task<(long In, long Out)> GetJournalTotalsAsync(
+        ulong guildId, string code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return (0, 0);
+        }
+
+        return await db.GuildJournalTotalsAsync(guildId, scope.Id, search, ct, sources, from, to, sign, account);
     }
 
     // --- Wallet analytics (KPIs, balance-over-time, cash flow, source breakdown, escrow split) ---

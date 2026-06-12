@@ -22,6 +22,12 @@ public record MemberLedgerProjection(
     long Id, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, string? SourceId, ulong? CounterpartyId,
     DateTimeOffset OccurredAt, string Reason, long? BalanceAfter = null);
 
+/// <summary>One posting for the accountant journal — carries id, source id and counterparty so the read layer can
+/// resolve the account + counter-account and render the double-entry view.</summary>
+public record JournalPosting(
+    long Id, ulong UserId, long Amount, CurrencyLedgerSource SourceType, string? SourceId, ulong? CounterpartyId,
+    DateTimeOffset OccurredAt, string Reason);
+
 /// <summary>Read queries over the ledger (balances and leaderboards) plus the write-path's own lookups.</summary>
 public static class CurrencyLedgerQueries
 {
@@ -356,6 +362,87 @@ public static class CurrencyLedgerQueries
     /// <summary>Paged + sortable variant of <see cref="GuildLedgerAsync"/> for the web Guild ledger datagrid.
     /// <paramref name="excludeCurrencyId"/> drops a currency at SQL level (the wallet surface uses this for POINTS).
     /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
+    /// <summary>Paged guild journal postings (newest first) with the journal filters: currency, search, sources,
+    /// window, direction sign and account kind ("member" / "escrow" / "burn").</summary>
+    private static IQueryable<CurrencyLedgerEntry> GuildJournalFiltered(
+        MusterDbContext db, ulong guildId, Guid currencyId, string? search,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign, string? account)
+    {
+        var q = db.CurrencyLedgerEntries.Where(e => e.GuildId == guildId && e.CurrencyId == currencyId);
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (sign is 1)
+        {
+            q = q.Where(e => e.Amount > 0);
+        }
+        else if (sign is -1)
+        {
+            q = q.Where(e => e.Amount < 0);
+        }
+
+        q = account switch
+        {
+            "member" => q.Where(e => e.UserId != 0 && e.UserId != 1),
+            "escrow" => q.Where(e => e.UserId == 0),
+            "burn" => q.Where(e => e.UserId == 1),
+            _ => q,
+        };
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        return q;
+    }
+
+    public static async Task<(List<JournalPosting> Rows, int Total)> GuildJournalPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, int skip, int take, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, string? account = null)
+    {
+        var q = GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account);
+        var total = await q.CountAsync(ct);
+
+        var rows = await q
+            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new JournalPosting(e.Id, e.UserId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
+            .ToListAsync(ct);
+
+        return (rows, total);
+    }
+
+    /// <summary>Σ credited (in) / Σ debited (out) for the journal under the same filters — the footer totals.</summary>
+    public static async Task<(long In, long Out)> GuildJournalTotalsAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, string? account = null)
+    {
+        var agg = await GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account)
+            .GroupBy(_ => 1)
+            .Select(g => new { In = g.Sum(x => x.Amount > 0 ? x.Amount : 0L), Out = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L) })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.In, agg.Out);
+    }
+
     /// <summary>Minted (in) / removed (out, as a positive magnitude) totals for the guild ledger under the same
     /// filter the movement grid shows — the Σ minted / Σ burned footer.</summary>
     public static async Task<(long In, long Out)> GuildLedgerTotalsAsync(

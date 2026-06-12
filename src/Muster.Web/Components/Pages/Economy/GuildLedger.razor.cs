@@ -1,53 +1,47 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
-using Muster.Infrastructure.Services.Membership;
-using Muster.Domain.Entities;
 using Muster.Domain.Enums;
 using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Membership;
 using Muster.Infrastructure.Services.Platform;
 using Muster.Infrastructure.Services.Tracking;
 using Muster.Infrastructure.Services.Web;
-using Muster.Web.Components.Shared;
 using static Muster.Web.Components.Shared.LedgerMeta;
 
 namespace Muster.Web.Components.Pages.Economy;
 
 public partial class GuildLedger : IDisposable
 {
-    // Read-only ledger view — EconomyManager + Auditor. Admin passes implicitly.
+    // Read-only ledger view — EconomyManager + Auditor. Admin passes implicitly. Bulk award is admin-only.
     protected override GuildAccessTier RequiredAccess =>
         GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
 
     private const int PageSize = 25;
     private const int SearchDebounceMs = 350;
 
+    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
+
     private IReadOnlyList<CurrencyInfo> _currencies = [];
     private string _code = "";
-    private string _tab = "holders";
     private bool _loading;
 
     private CurrencySupply? _supply;
-    private PagedResult<LeaderboardRow>? _holders;
-    private int _holdersPage = 1;
 
-    private PagedResult<MovementRow>? _movement;
-    private (long In, long Out) _moveTotals;
+    // Journal state.
+    private PagedResult<JournalRow>? _journal;
+    private (long In, long Out) _totals;
+    private int _page = 1;
+    private string? _searchBox;
+    private string _preset = "";
+    private CurrencyLedgerSource? _source;
+    private int? _sign;
+    private string? _account;
+    private CancellationTokenSource? _searchDebounce;
 
-    private static string AccountLabel(string account) => account switch
-    {
-        "escrow" => "escrow hold",
-        "burn" => "burn sink",
-        _ => "member",
-    };
-    private int _movePage = 1;
-    private string? _moveSearchBox;
-    private string _movePreset = "";
-    private CurrencyLedgerSource? _moveSource;
-    private string _moveSortKey = "when";
-    private bool _moveDescending = true;
-    private CancellationTokenSource? _moveSearchDebounce;
+    private int TotalPages => _journal?.TotalPages ?? 1;
+    private bool Reconciles => _supply is { } s && s.Minted == s.Circulating + s.Escrow + s.Removed;
 
-    // Bulk tab state (admin only).
+    // Bulk award (admin only).
     private bool _isAdmin;
     private IReadOnlyList<BulkRoleOption> _roles = [];
     private string _bulkRoleId = "";
@@ -60,27 +54,179 @@ public partial class GuildLedger : IDisposable
     private string? _bulkMessage;
     private CurrencyBulkBatch? _bulkBatch;
 
-    private int HoldersTotalPages => _holders?.TotalPages ?? 1;
-    private int MoveTotalPages => _movement?.TotalPages ?? 1;
-
     protected override async Task LoadAsync()
     {
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
         _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
-
-        var wallet = sp.GetRequiredService<WalletReadService>();
-        _currencies = await wallet.GetCurrenciesAsync(GuildId);
-        if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
+        _currencies = await sp.GetRequiredService<WalletReadService>().GetCurrenciesAsync(GuildId);
+        if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
         {
-            _code = _currencies.FirstOrDefault()?.Code ?? "";
+            _code = Cur!;
+        }
+        else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
+        {
+            _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
         }
 
         if (_isAdmin)
         {
             _roles = await sp.GetRequiredService<WebMemberService>().GetRoleOptionsAsync(GuildId);
         }
+
+        await ReloadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (State == AccessState.Ready && _journal is null && !string.IsNullOrWhiteSpace(_code))
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private async Task SelectCurrency(string code)
+    {
+        if (code == _code)
+        {
+            return;
+        }
+
+        _code = code;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_code))
+        {
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
+            _supply = await wallet.GetSupplyAsync(GuildId, _code);
+
+            var (from, to) = ResolveRange(_preset);
+            var sources = _source is { } s ? new[] { s } : null;
+            _journal = await wallet.GetJournalAsync(GuildId, _code, _searchBox, _page, PageSize, sources, from, to, _sign, _account);
+            _totals = await wallet.GetJournalTotalsAsync(GuildId, _code, _searchBox, sources, from, to, _sign, _account);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ---- Journal filters ----
+
+    private async Task OnRange(ChangeEventArgs e)
+    {
+        _preset = (e.Value as string) ?? "";
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnSource(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _source = string.IsNullOrEmpty(raw) || !Enum.TryParse<CurrencyLedgerSource>(raw, out var v) ? null : v;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnAccount(ChangeEventArgs e)
+    {
+        var raw = e.Value as string;
+        _account = string.IsNullOrEmpty(raw) ? null : raw;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task SetDirection(int? sign)
+    {
+        if (_sign == sign)
+        {
+            return;
+        }
+
+        _sign = sign;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task DebouncedSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        var cts = _searchDebounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(SearchDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            _page = 1;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task Prev()
+    {
+        if (_page > 1)
+        {
+            _page--;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task Next()
+    {
+        if (_page < TotalPages)
+        {
+            _page++;
+            await ReloadAsync();
+        }
+    }
+
+    /// <summary>Day-grouped journal rows for rendering (date header before each new day).</summary>
+    private IReadOnlyList<(DateOnly? Header, JournalRow Row)> Lines()
+    {
+        if (_journal is null)
+        {
+            return [];
+        }
+
+        var list = new List<(DateOnly?, JournalRow)>(_journal.Items.Count);
+        DateOnly? last = null;
+        foreach (var r in _journal.Items)
+        {
+            var d = DateOnly.FromDateTime(r.OccurredAt.UtcDateTime);
+            list.Add((last != d ? d : null, r));
+            last = d;
+        }
+
+        return list;
+    }
+
+    private static string DateLabel(DateOnly d)
+    {
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        if (d == today)
+        {
+            return "Today";
+        }
+
+        return d == today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, d MMM yyyy");
     }
 
     // ---- Bulk handlers ----
@@ -163,6 +309,7 @@ public partial class GuildLedger : IDisposable
                 _bulkBatch = await bulk.GetAsync(GuildId, batchId);
                 _bulkDelta = 0;
                 _bulkReason = "";
+                await ReloadAsync();
             }
         }
         finally
@@ -178,136 +325,9 @@ public partial class GuildLedger : IDisposable
         _bulkBatch = await scope.ServiceProvider.GetRequiredService<ICurrencyBulkService>().GetAsync(GuildId, _bulkBatch.Id);
     }
 
-    protected override async Task OnParametersSetAsync()
-    {
-        if (State == AccessState.Ready && _supply is null && !string.IsNullOrWhiteSpace(_code))
-        {
-            await ReloadAsync();
-        }
-    }
-
-    private async Task ReloadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_code))
-        {
-            return;
-        }
-
-        _loading = true;
-        try
-        {
-            await using var scope = Scopes.CreateAsyncScope();
-            var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
-            _supply = await wallet.GetSupplyAsync(GuildId, _code);
-            _holders = await wallet.GetTopHoldersPageAsync(GuildId, _code, _holdersPage, PageSize);
-
-            var (from, to) = ResolveRange(_movePreset);
-            var sources = _moveSource is { } s ? new[] { s } : null;
-            _movement = await wallet.GetMovementsPageAsync(
-                GuildId, _code, _moveSearchBox, _moveSortKey, _moveDescending, _movePage, PageSize,
-                sources: sources, from: from, to: to);
-            _moveTotals = await wallet.GetMovementTotalsAsync(GuildId, _code, _moveSearchBox, sources, from, to);
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    private async Task OnCode(ChangeEventArgs e)
-    {
-        _code = (e.Value as string) ?? "";
-        _holdersPage = 1;
-        _movePage = 1;
-        await ReloadAsync();
-    }
-
-    private async Task DebouncedMoveSearchAsync()
-    {
-        _moveSearchDebounce?.Cancel();
-        var cts = _moveSearchDebounce = new CancellationTokenSource();
-        try
-        {
-            await Task.Delay(SearchDebounceMs, cts.Token);
-        }
-        catch (TaskCanceledException)
-        {
-            return;
-        }
-
-        if (!cts.IsCancellationRequested)
-        {
-            _movePage = 1;
-            await ReloadAsync();
-        }
-    }
-
-    private async Task OnMoveRange(ChangeEventArgs e)
-    {
-        _movePreset = (e.Value as string) ?? "";
-        _movePage = 1;
-        await ReloadAsync();
-    }
-
-    private async Task OnMoveSource(ChangeEventArgs e)
-    {
-        var raw = e.Value as string;
-        _moveSource = string.IsNullOrEmpty(raw) || !Enum.TryParse<CurrencyLedgerSource>(raw, out var v) ? null : v;
-        _movePage = 1;
-        await ReloadAsync();
-    }
-
-    private async Task SetMoveSort(string column)
-    {
-        _moveDescending = _moveSortKey == column ? !_moveDescending : true;
-        _moveSortKey = column;
-        _movePage = 1;
-        await ReloadAsync();
-    }
-
-    private async Task HoldersPrev()
-    {
-        if (_holdersPage > 1)
-        {
-            _holdersPage--;
-            await ReloadAsync();
-        }
-    }
-
-    private async Task HoldersNext()
-    {
-        if (_holdersPage < HoldersTotalPages)
-        {
-            _holdersPage++;
-            await ReloadAsync();
-        }
-    }
-
-    private async Task MovePrev()
-    {
-        if (_movePage > 1)
-        {
-            _movePage--;
-            await ReloadAsync();
-        }
-    }
-
-    private async Task MoveNext()
-    {
-        if (_movePage < MoveTotalPages)
-        {
-            _movePage++;
-            await ReloadAsync();
-        }
-    }
-
-    private string MoveInd(string column) => _moveSortKey == column ? (_moveDescending ? "▼" : "▲") : "";
-
-    private static string Medal(int rank) => rank switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => rank.ToString() };
-
     public void Dispose()
     {
-        _moveSearchDebounce?.Cancel();
-        _moveSearchDebounce?.Dispose();
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
     }
 }
