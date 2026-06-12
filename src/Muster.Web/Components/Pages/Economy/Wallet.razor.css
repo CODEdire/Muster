@@ -1,15 +1,16 @@
-/* Breadcrumb header — page-title sized, with a UserChip for the member */
-.wallet-crumb { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.1rem; font-size: 1.35rem; font-weight: 600; }
+/* Breadcrumb header — page-title sized, with a UserChip for the member; controls sit top-right and wrap */
+.wallet-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.wallet-controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.wallet-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
 .wallet-crumb a { color: var(--text-muted); font-weight: 600; }
 .wallet-crumb a:hover { color: var(--text); }
 .wallet-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
 .wallet-crumb ::deep .user-chip { gap: 0.5rem; }
 .wallet-crumb ::deep .user-chip .avatar-sm { width: 30px; height: 30px; font-size: 0.85rem; }
 .wallet-crumb ::deep .user-chip-name b { font-size: 1.35rem; font-weight: 600; }
-.wallet-crumb .an-link { margin-left: auto; font-size: 0.85rem; font-weight: 500; }
 
 /* Currency switcher (segmented pill) */
-.wallet-switch { display: inline-flex; gap: 0.25rem; padding: 0.3rem; margin-bottom: 1rem; border-radius: 0.6rem;
+.wallet-switch { display: inline-flex; gap: 0.25rem; padding: 0.3rem; border-radius: 0.6rem;
     background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); flex-wrap: wrap; }
 .cur-tab { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 1rem; border: none;
     background: transparent; color: var(--text-muted); border-radius: 0.45rem; cursor: pointer; font: inherit;

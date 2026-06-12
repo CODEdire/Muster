@@ -16,7 +16,7 @@
 }
 else if (State == AccessState.Ready)
 {
-    <div class="an-head">
+    <div class="an-head full-bleed">
         <nav class="wallet-crumb" aria-label="Breadcrumb">
             <a href="/guilds/@GuildId/wallet">Wallet</a>
             <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
@@ -51,26 +51,52 @@ else if (State == AccessState.Ready)
     </div>
 
     <div class="stat-grid">
-        <div class="stat glass">
-            <div class="label">Available</div>
-            <div class="num">@_kpis.Available.ToString("N0") <span class="unit">@SelUnit</span></div>
-            <p class="subtitle">of @_kpis.Balance.ToString("N0") total@(_kpis.Held > 0 ? $" · {_kpis.Held:N0} held" : "")</p>
-        </div>
-        <div class="stat glass">
-            <div class="label">Income</div>
-            <div class="num pos">+@_kpis.Earned.ToString("N0")</div>
-            <p class="subtitle">@(_earned.Count > 0 ? $"top: {SourceLabel(_earned[0].Source)}" : "—")</p>
-        </div>
-        <div class="stat glass">
-            <div class="label">Spending</div>
-            <div class="num neg">@(_kpis.Spent > 0 ? "−" : "")@_kpis.Spent.ToString("N0")</div>
-            <p class="subtitle">@(_spent.Count > 0 ? $"top: {SourceLabel(_spent[0].Source)}" : "—")</p>
-        </div>
-        <div class="stat glass">
-            <div class="label">Wealth rank</div>
-            <div class="num">@(_rank > 0 ? $"#{_rank}" : "—")</div>
-            <p class="subtitle">@(_holders > 0 ? $"of {_holders} holders" : "—")</p>
-        </div>
+        @if (IsScore)
+        {
+            <div class="stat an-kpi">
+                <div class="label">Season points</div>
+                <div class="num">@((_points?.Balance ?? _kpis.Balance).ToString("N0")) <span class="unit">@SelUnit</span></div>
+                <p class="subtitle">@((_points?.Seasonal ?? false) ? "current season" : "all time")</p>
+            </div>
+            <div class="stat an-kpi">
+                <div class="label">Earned</div>
+                <div class="num pos">+@_kpis.Earned.ToString("N0")</div>
+                <p class="subtitle">@(_earned.Count > 0 ? $"top: {SourceLabel(_earned[0].Source)}" : "—")</p>
+            </div>
+            <div class="stat an-kpi">
+                <div class="label">Points rank</div>
+                <div class="num">@(_rank > 0 ? $"#{_rank}" : "—")</div>
+                <p class="subtitle">@(_holders > 0 ? $"of {_holders} members" : "—")</p>
+            </div>
+            <div class="stat an-kpi">
+                <div class="label">Voice · season</div>
+                <div class="num">@Hm(_points?.Voice.SeasonMinutes ?? 0)</div>
+                <p class="subtitle">@((_points?.Voice.SeasonRank ?? 0) > 0 ? $"rank #{_points!.Voice.SeasonRank}" : "—")</p>
+            </div>
+        }
+        else
+        {
+            <div class="stat an-kpi">
+                <div class="label">Available</div>
+                <div class="num">@_kpis.Available.ToString("N0") <span class="unit">@SelUnit</span></div>
+                <p class="subtitle">of @_kpis.Balance.ToString("N0") total@(_kpis.Held > 0 ? $" · {_kpis.Held:N0} held" : "")</p>
+            </div>
+            <div class="stat an-kpi">
+                <div class="label">Income</div>
+                <div class="num pos">+@_kpis.Earned.ToString("N0")</div>
+                <p class="subtitle">@(_earned.Count > 0 ? $"top: {SourceLabel(_earned[0].Source)}" : "—")</p>
+            </div>
+            <div class="stat an-kpi">
+                <div class="label">Spending</div>
+                <div class="num neg">@(_kpis.Spent > 0 ? "−" : "")@_kpis.Spent.ToString("N0")</div>
+                <p class="subtitle">@(_spent.Count > 0 ? $"top: {SourceLabel(_spent[0].Source)}" : "—")</p>
+            </div>
+            <div class="stat an-kpi">
+                <div class="label">Wealth rank</div>
+                <div class="num">@(_rank > 0 ? $"#{_rank}" : "—")</div>
+                <p class="subtitle">@(_holders > 0 ? $"of {_holders} holders" : "—")</p>
+            </div>
+        }
     </div>
 
     <div class="an-card">

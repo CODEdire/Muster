@@ -35,6 +35,7 @@ public partial class WalletAnalytics
     private IReadOnlyList<MonthFlow> _months = [];
     private IReadOnlyList<SourceFlow> _earned = [];
     private IReadOnlyList<SourceFlow> _spent = [];
+    private PointsSnapshot? _points;
 
     // Candle chart (spendable currencies): per-month OHLC of balance, a close line and a regression trend line,
     // all pre-scaled to the 600x180 viewbox so the markup just draws them.
@@ -92,7 +93,8 @@ public partial class WalletAnalytics
         }
 
         await using var scope = Scopes.CreateAsyncScope();
-        var wallet = scope.ServiceProvider.GetRequiredService<WalletReadService>();
+        var sp = scope.ServiceProvider;
+        var wallet = sp.GetRequiredService<WalletReadService>();
         var (from, to) = Window();
 
         _kpis = await wallet.GetKpisAsync(GuildId, UserId, _sel, from, to);
@@ -105,7 +107,13 @@ public partial class WalletAnalytics
         var breakdown = await wallet.GetSourceBreakdownAsync(GuildId, UserId, _sel, from, to);
         _earned = breakdown.Where(s => s.Earned > 0).OrderByDescending(s => s.Earned).ToList();
         _spent = breakdown.Where(s => s.Spent > 0).OrderByDescending(s => s.Spent).ToList();
+
+        // Score currencies (POINTS) get a participation framing — season standing + voice, not money.
+        _points = IsScore ? await sp.GetRequiredService<PointsReadService>().GetSnapshotAsync(GuildId, UserId) : null;
     }
+
+    /// <summary>Voice minutes as a short "Xh Ym" (or "Ym") label.</summary>
+    private static string Hm(int minutes) => minutes >= 60 ? $"{minutes / 60}h {minutes % 60}m" : $"{minutes}m";
 
     private async Task SelectCurrency(string code)
     {

@@ -18,7 +18,8 @@
 .cur-tab.active { background: var(--card-bg); color: var(--text); font-weight: 600; }
 .cur-tab .star { font-size: 1rem; color: #fbbf24; }
 
-/* KPI tiles */
+/* KPI tiles — lighter subtle surface to match the wallet (no glass frame) */
+.an-kpi { background: rgba(255, 255, 255, 0.035); border-radius: var(--radius); }
 .stat .num .unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
 .stat .num.pos { color: #4ade80; }
 .stat .num.neg { color: var(--danger); }
