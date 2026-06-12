@@ -147,8 +147,8 @@ public class CurrencyService(
 
         // Two legs in one unit of work. Each leg's StageAsync pushes its external Debit/Credit first (External/Hybrid),
         // so a failed push aborts the whole transfer before commit.
-        await StageAsync(guildId, fromUserId, currency.Id, -amount, CurrencyLedgerSource.Transfer, outKey, reason, ct);
-        await StageAsync(guildId, toUserId, currency.Id, amount, CurrencyLedgerSource.Transfer, inKey, reason, ct);
+        await StageAsync(guildId, fromUserId, currency.Id, -amount, CurrencyLedgerSource.Transfer, outKey, reason, ct, counterpartyId: toUserId);
+        await StageAsync(guildId, toUserId, currency.Id, amount, CurrencyLedgerSource.Transfer, inKey, reason, ct, counterpartyId: fromUserId);
         await db.SaveChangesAsync(ct);
         return new CurrencyOperationResult(CurrencyOperationStatus.Ok, await CurrentBalanceAsync(guildId, code, fromUserId, ct));
     }
@@ -416,7 +416,7 @@ public class CurrencyService(
     /// </summary>
     private async Task<CurrencyLedgerEntry> StageAsync(
         ulong guildId, ulong userId, Guid currencyId, long amount,
-        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct)
+        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct, ulong? counterpartyId = null)
     {
         if (sourceId is not null)
         {
@@ -450,6 +450,7 @@ public class CurrencyService(
             Amount = amount,
             SourceType = sourceType,
             SourceId = sourceId,
+            CounterpartyId = counterpartyId,
             OccurredAt = DateTimeOffset.UtcNow,
             Reason = reason,
         };

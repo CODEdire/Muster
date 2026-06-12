@@ -25,6 +25,10 @@ public class CurrencyLedgerEntry
     /// <summary>Identifier of the originating record (mission id, muster id, etc.).</summary>
     public string? SourceId { get; set; }
 
+    /// <summary>The other party in a member-to-member movement (a transfer's recipient/sender). Null for system
+    /// awards (sessions, quests, musters, …) and shop/escrow legs — those are presented generically at read time.</summary>
+    public ulong? CounterpartyId { get; set; }
+
     public DateTimeOffset OccurredAt { get; set; }
     public string Reason { get; set; } = string.Empty;
 }
