@@ -22,6 +22,12 @@ public record MonthFlow(int Year, int Month, long Earned, long Spent);
 /// <summary>Earned/spent totals for one ledger source over a window — the by-source breakdowns.</summary>
 public record SourceFlow(CurrencyLedgerSource Source, long Earned, long Spent);
 
+/// <summary>One balance-bracket bucket for the wealth-distribution histogram.</summary>
+public record DistributionBracket(string Label, int Count);
+
+/// <summary>Wealth-distribution stats for a currency: holders, median/mean, top-10% share, Gini, and the histogram.</summary>
+public record DistributionView(int Holders, long Median, long Mean, int Top10Pct, double Gini, long Max, IReadOnlyList<DistributionBracket> Brackets);
+
 /// <summary>
 /// The Wallet surface: every currency in the guild <b>except POINTS</b>. POINTS lives behind
 /// <see cref="PointsReadService"/>. Filter is applied at SQL where possible (paged ledger reads); list reads
@@ -378,6 +384,65 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
         return points;
     }
+
+    /// <summary>Wealth-distribution stats for one currency: holder count, median/mean, the share held by the top 10%,
+    /// the Gini coefficient, and a balance-bracket histogram (6 linear buckets up to the richest holder).</summary>
+    public async Task<DistributionView> GetDistributionAsync(ulong guildId, string code, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new DistributionView(0, 0, 0, 0, 0, 0, []);
+        }
+
+        var balances = await db.GuildMemberBalancesAsync(guildId, scope.Id, scope.SeasonId, ct);
+        if (balances.Count == 0)
+        {
+            return new DistributionView(0, 0, 0, 0, 0, 0, []);
+        }
+
+        balances.Sort();
+        var n = balances.Count;
+        var total = balances.Sum();
+        var mean = total / n;
+        var median = n % 2 == 1 ? balances[n / 2] : (balances[n / 2 - 1] + balances[n / 2]) / 2;
+
+        var topCount = Math.Max(1, (int)Math.Ceiling(n * 0.1));
+        long topSum = 0;
+        for (var i = n - topCount; i < n; i++)
+        {
+            topSum += balances[i];
+        }
+
+        var top10 = total > 0 ? (int)(topSum * 100 / total) : 0;
+
+        double weighted = 0;
+        for (var i = 0; i < n; i++)
+        {
+            weighted += (i + 1) * (double)balances[i];
+        }
+
+        var gini = total > 0 ? Math.Round((2 * weighted) / (n * (double)total) - (n + 1.0) / n, 2) : 0;
+
+        const int buckets = 6;
+        var max = balances[^1];
+        var size = Math.Max(1, (long)Math.Ceiling(max / (double)buckets));
+        var counts = new int[buckets];
+        foreach (var b in balances)
+        {
+            counts[(int)Math.Min(buckets - 1, b / size)]++;
+        }
+
+        var brackets = new List<DistributionBracket>(buckets);
+        for (var i = 0; i < buckets; i++)
+        {
+            var lo = i * size;
+            brackets.Add(new DistributionBracket(i == buckets - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt((i + 1) * size)}", counts[i]));
+        }
+
+        return new DistributionView(n, median, mean, top10, gini, max, brackets);
+    }
+
+    private static string Kfmt(long v) => v >= 1000 ? $"{v / 1000.0:0.#}k" : v.ToString();
 
     /// <summary>Circulating supply (member-held) at the end of each day with movement in the window — the guild
     /// treasury supply-over-time / candle chart. Seeded from the opening circulating balance before the window.</summary>

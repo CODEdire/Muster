@@ -1,0 +1,99 @@
+@page "/guilds/{GuildIdRaw}/treasury/distribution"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+
+<PageTitle>Distribution — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="t-head">
+        <nav class="t-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/treasury">Treasury</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <span class="who">Distribution</span>
+        </nav>
+        @if (_currencies.Count > 1)
+        {
+            <div class="t-switch" role="tablist">
+                @foreach (var c in _currencies)
+                {
+                    <button type="button" role="tab" class="cur-tab @(c.Code == _code ? "active" : "")"
+                            aria-selected="@(c.Code == _code)" @onclick="() => SelectCurrency(c.Code)">
+                        @if (c.Primary)
+                        {
+                            <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
+                        }
+                        @c.Code
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    <TreasuryTabs GuildId="GuildId" Active="distribution" />
+
+    @if (_currencies.Count == 0)
+    {
+        <div class="panel glass empty">No wallet currencies are configured yet.</div>
+    }
+    else if (_dist is null || _dist.Holders == 0)
+    {
+        <div class="panel glass empty">No balances yet for @_code.</div>
+    }
+    else
+    {
+        <div class="stat-grid">
+            <div class="card glass stat"><span class="label">Top 10% hold</span><span class="num">@_dist.Top10Pct%</span><span class="subtitle">@Concentration(_dist.Top10Pct)</span></div>
+            <div class="card glass stat"><span class="label">Median</span><span class="num">@_dist.Median.ToString("N0")</span><span class="subtitle">mean @_dist.Mean.ToString("N0")</span></div>
+            <div class="card glass stat"><span class="label">Gini</span><span class="num">@_dist.Gini.ToString("0.00")</span><span class="subtitle">0 = equal · 1 = one whale</span></div>
+            <div class="card glass stat"><span class="label">Holders</span><span class="num">@_dist.Holders.ToString("N0")</span><span class="subtitle">with a balance</span></div>
+        </div>
+
+        <div class="d-card">
+            <div class="panel-head"><h2>Members by balance bracket</h2></div>
+            <svg class="d-hist" viewBox="0 0 600 160" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="135" x2="600" y2="135" class="axis" />
+                @{
+                    var n = _dist.Brackets.Count;
+                    var gw = 600.0 / n;
+                    var bw = gw * 0.62;
+                }
+                @for (var i = 0; i < n; i++)
+                {
+                    var b = _dist.Brackets[i];
+                    var h = b.Count * 120.0 / BracketMax;
+                    var x = i * gw + (gw - bw) / 2;
+                    <rect class="bar @(i == n - 1 ? "top" : "")" x="@x.ToString("0.#")" y="@((135 - h).ToString("0.#"))" width="@bw.ToString("0.#")" height="@h.ToString("0.#")" rx="2" />
+                }
+            </svg>
+            <div class="d-labels">
+                @foreach (var b in _dist.Brackets)
+                {
+                    <span>@b.Label<br /><span class="cnt">@b.Count</span></span>
+                }
+            </div>
+        </div>
+
+        <div class="d-card">
+            <div class="panel-head"><h2>Top holders</h2><a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/guild-ledger">Full ledger ↗</a></div>
+            @foreach (var h in _topHolders)
+            {
+                <div class="hold-row">
+                    <span class="rank">@h.Rank</span>
+                    <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
+                    <span class="hold-val">@h.Total.ToString("N0")</span>
+                </div>
+            }
+        </div>
+    }
+}

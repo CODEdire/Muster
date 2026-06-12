@@ -1,0 +1,30 @@
+/* Header (shared treasury look) */
+.t-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.t-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.t-crumb a { color: var(--text-muted); font-weight: 600; }
+.t-crumb a:hover { color: var(--text); }
+.t-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+.t-switch { display: inline-flex; gap: 0.25rem; padding: 0.3rem; border-radius: 0.6rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border); }
+.cur-tab { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.9rem; border: none; background: transparent; color: var(--text-muted); border-radius: 0.45rem; cursor: pointer; font: inherit; font-size: 0.88rem; }
+.cur-tab:hover { color: var(--text); }
+.cur-tab.active { background: var(--accent); color: #fff; font-weight: 600; }
+.cur-tab .star { font-size: 1rem; color: #fde047; }
+
+/* Frameless cards */
+.d-card { padding: 0.25rem 0.1rem 1rem; margin-bottom: 1.25rem; }
+.d-card .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.d-card h2 { margin: 0; }
+
+/* Histogram */
+.d-hist { width: 100%; height: 160px; display: block; }
+.d-hist .axis { stroke: var(--border); stroke-width: 1; }
+.d-hist .bar { fill: #378ADD; }
+.d-hist .bar.top { fill: #BA7517; }
+.d-labels { display: flex; justify-content: space-around; font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; text-align: center; }
+.d-labels span { flex: 1; }
+.d-labels .cnt { color: var(--text); font-weight: 600; }
+
+/* Holder rows */
+.hold-row { display: flex; align-items: center; gap: 0.6rem; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 0.9rem; }
+.hold-row .rank { width: 22px; color: var(--text-muted); flex: none; text-align: center; }
+.hold-row .hold-val { margin-left: auto; font-variant-numeric: tabular-nums; }

@@ -577,6 +577,16 @@ public static class CurrencyLedgerQueries
             .ToList();
     }
 
+    /// <summary>All positive member balances for a currency from the wallet cache (excludes the escrow account 0 and
+    /// burn sink 1) — the raw input for the wealth-distribution stats and histogram.</summary>
+    public static async Task<List<long>> GuildMemberBalancesAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, CancellationToken ct = default)
+        => await db.Wallets
+            .Where(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId
+                && w.Balance > 0 && w.UserId != 0 && w.UserId != 1)
+            .Select(w => w.Balance)
+            .ToListAsync(ct);
+
     /// <summary>Guild-wide earned (positive amounts) per ledger source for a currency, optionally season-scoped —
     /// the participation "points by source" chart. Excludes the escrow account 0 and burn sink 1.</summary>
     public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildSourceEarnedAsync(
