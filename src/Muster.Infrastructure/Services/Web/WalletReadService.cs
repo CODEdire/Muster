@@ -59,7 +59,7 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     public async Task<PagedResult<MemberLedgerRow>> GetHistoryPageAsync(
         ulong guildId, ulong userId, string? code, string? search, string sortKey, bool descending,
         int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken ct = default)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, CancellationToken ct = default)
     {
         // Resolve POINTS once so the wallet surface can never accidentally surface a points row.
         var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
@@ -88,7 +88,7 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
 
         var (rows, total) = await db.MemberLedgerPagedAsync(
             guildId, userId, currencyId, search, sortKey, descending, skip, size, ct,
-            excludeCurrencyId: pointsId, sources: sources, from: from, to: to);
+            excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign);
 
         var codes = await db.CurrencyCodeMapAsync(guildId, ct);
         var items = rows
@@ -96,6 +96,37 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
             .ToList();
 
         return new PagedResult<MemberLedgerRow>(items, p, size, total);
+    }
+
+    /// <summary>Σ in / Σ out for the same filter the ledger datagrid is showing (POINTS excluded; same code/sources/
+    /// window/search/direction). Powers the ledger footer totals.</summary>
+    public async Task<(long In, long Out)> GetHistoryTotalsAsync(
+        ulong guildId, ulong userId, string? code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, CancellationToken ct = default)
+    {
+        var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
+        var pointsId = points?.Id;
+
+        Guid? currencyId = null;
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            if (string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return (0, 0);
+            }
+
+            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            if (currency is null)
+            {
+                return (0, 0);
+            }
+
+            currencyId = currency.Id;
+        }
+
+        return await db.MemberLedgerTotalsAsync(
+            guildId, userId, currencyId, search, ct,
+            excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign);
     }
 
     /// <summary>Paged top holders for one wallet currency (escrow excluded). Empty for unknown or POINTS.</summary>

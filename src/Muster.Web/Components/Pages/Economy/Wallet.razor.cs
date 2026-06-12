@@ -55,6 +55,8 @@ public partial class Wallet : IDisposable
     // --- Ledger datagrid state ---
     private string _preset = "";
     private CurrencyLedgerSource? _source;
+    private int? _sign;
+    private (long In, long Out) _totals;
     private const int SearchDebounceMs = 350;
     private string? _searchBox;
     private CancellationTokenSource? _searchDebounce;
@@ -159,11 +161,20 @@ public partial class Wallet : IDisposable
             var (from, to) = ResolveRange(_preset);
             var sources = _source is { } s ? new[] { s } : null;
 
-            _activity = SelIsPoints
-                ? await sp.GetRequiredService<PointsReadService>().GetHistoryPageAsync(
-                    GuildId, UserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to)
-                : await sp.GetRequiredService<WalletReadService>().GetHistoryPageAsync(
-                    GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to);
+            if (SelIsPoints)
+            {
+                var points = sp.GetRequiredService<PointsReadService>();
+                _activity = await points.GetHistoryPageAsync(
+                    GuildId, UserId, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+                _totals = await points.GetHistoryTotalsAsync(GuildId, UserId, _searchBox, sources, from, to, _sign);
+            }
+            else
+            {
+                var wallet = sp.GetRequiredService<WalletReadService>();
+                _activity = await wallet.GetHistoryPageAsync(
+                    GuildId, UserId, _sel, _searchBox, _sortKey, _descending, _page, _size, sources: sources, from: from, to: to, sign: _sign);
+                _totals = await wallet.GetHistoryTotalsAsync(GuildId, UserId, _sel, _searchBox, sources, from, to, _sign);
+            }
         }
         finally
         {
@@ -240,6 +251,46 @@ public partial class Wallet : IDisposable
     }
 
     private string Ind(string column) => _sortKey == column ? (_descending ? "▼" : "▲") : "";
+
+    private async Task SetDirection(int? sign)
+    {
+        if (_sign == sign)
+        {
+            return;
+        }
+
+        _sign = sign;
+        _page = 1;
+        await ReloadLedgerAsync();
+    }
+
+    /// <summary>Day grouping only makes sense when the grid is date-ordered.</summary>
+    private bool Grouped => _sortKey == "when";
+
+    /// <summary>The current page's rows grouped by day (preserving the page's order), with each day's visible net.</summary>
+    private IReadOnlyList<(DateOnly Date, long Net, List<MemberLedgerRow> Rows)> LedgerGroups()
+    {
+        if (_activity is null)
+        {
+            return [];
+        }
+
+        return _activity.Items
+            .GroupBy(r => DateOnly.FromDateTime(r.OccurredAt.UtcDateTime))
+            .Select(g => (g.Key, g.Sum(x => x.Amount), g.ToList()))
+            .ToList();
+    }
+
+    private static string DateLabel(DateOnly d)
+    {
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        if (d == today)
+        {
+            return "Today";
+        }
+
+        return d == today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, d MMM");
+    }
 
     /// <summary>Balance sparkline as an SVG polyline points string over a 100×30 viewbox (empty when too few points).</summary>
     private string SparkPoints()

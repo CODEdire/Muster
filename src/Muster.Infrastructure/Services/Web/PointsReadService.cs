@@ -39,7 +39,7 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
     public async Task<PagedResult<MemberLedgerRow>> GetHistoryPageAsync(
         ulong guildId, ulong userId, string? search, string sortKey, bool descending,
         int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken ct = default)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, CancellationToken ct = default)
     {
         var points = await db.FindPointsAsync(guildId, ct);
         if (points is null)
@@ -53,13 +53,24 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
 
         var (rows, total) = await db.MemberLedgerPagedAsync(
             guildId, userId, points.Id, search, sortKey, descending, skip, size, ct,
-            sources: sources, from: from, to: to);
+            sources: sources, from: from, to: to, sign: sign);
 
         var items = rows
             .Select(r => new MemberLedgerRow(points.Code, r.Amount, r.SourceType, r.OccurredAt, r.Reason))
             .ToList();
 
         return new PagedResult<MemberLedgerRow>(items, p, size, total);
+    }
+
+    /// <summary>Σ in / Σ out for the POINTS ledger under the same filter — the datagrid footer totals.</summary>
+    public async Task<(long In, long Out)> GetHistoryTotalsAsync(
+        ulong guildId, ulong userId, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        return points is null
+            ? (0, 0)
+            : await db.MemberLedgerTotalsAsync(guildId, userId, points.Id, search, ct, sources: sources, from: from, to: to, sign: sign);
     }
 
     /// <summary>Supply analytics for POINTS (or null when POINTS isn't configured in this guild).</summary>

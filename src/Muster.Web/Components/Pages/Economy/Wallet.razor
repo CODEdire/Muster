@@ -202,6 +202,11 @@ else if (State == AccessState.Ready)
                         <option value="@s">@SourceLabel(s)</option>
                     }
                 </select>
+                <div class="dir-toggle" role="group" aria-label="Direction">
+                    <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
+                    <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">In</button>
+                    <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
+                </div>
                 <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
                 @if (_loading)
                 {
@@ -227,6 +232,24 @@ else if (State == AccessState.Ready)
                     @if (_activity is null || _activity.Items.Count == 0)
                     {
                         <tr class="dg-empty"><td colspan="4">@(_activity is null ? "Loading…" : "No activity matches these filters.")</td></tr>
+                    }
+                    else if (Grouped)
+                    {
+                        @foreach (var g in LedgerGroups())
+                        {
+                            <tr class="dg-group">
+                                <td colspan="4">@DateLabel(g.Date) <span class="grp-net @(g.Net >= 0 ? "pos" : "neg")">@(g.Net > 0 ? "+" : "")@g.Net.ToString("N0")</span></td>
+                            </tr>
+                            @foreach (var h in g.Rows)
+                            {
+                                <tr>
+                                    <td><LocalTime Value="h.OccurredAt" /></td>
+                                    <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
+                                    <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
+                                    <td>@h.Reason</td>
+                                </tr>
+                            }
+                        }
                     }
                     else
                     {
@@ -254,6 +277,9 @@ else if (State == AccessState.Ready)
                         <option value="50">50</option>
                         <option value="100">100</option>
                     </select>
+                </div>
+                <div class="dg-totals" title="Totals for the current filter">
+                    Σ <span class="pos">+@_totals.In.ToString("N0")</span> / <span class="neg">−@_totals.Out.ToString("N0")</span>
                 </div>
             </div>
             <div class="dg-pager">

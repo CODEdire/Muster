@@ -146,16 +146,12 @@ public static class CurrencyLedgerQueries
         return rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList();
     }
 
-    /// <summary>Paged + sortable variant of <see cref="MemberLedgerAsync"/> for the web wallet datagrid.
-    /// <paramref name="search"/> matches the reason field (case-insensitive via the SQL collation).
-    /// <paramref name="sortKey"/>: "amount" or anything else = newest first.
-    /// <paramref name="excludeCurrencyId"/> drops a currency at the SQL level — used by the wallet surface to keep
-    /// POINTS out without relying on every caller to remember to filter.
-    /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
-    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> MemberLedgerPagedAsync(
-        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
-        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    /// <summary>The shared filtered member-ledger query (currency, exclude-currency, sources, date window, reason
+    /// search, direction sign) used by both the paged read and the totals aggregate so they stay in lock-step.
+    /// <paramref name="sign"/>: 1 = credits (amount &gt; 0), -1 = debits (amount &lt; 0), null = both.</summary>
+    private static IQueryable<CurrencyLedgerEntry> MemberLedgerFiltered(
+        MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, Guid? excludeCurrencyId,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && e.UserId == userId && (currencyId == null || e.CurrencyId == currencyId));
@@ -180,11 +176,55 @@ public static class CurrencyLedgerQueries
             q = q.Where(e => e.OccurredAt < t);
         }
 
+        if (sign is 1)
+        {
+            q = q.Where(e => e.Amount > 0);
+        }
+        else if (sign is -1)
+        {
+            q = q.Where(e => e.Amount < 0);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
             q = q.Where(e => e.Reason.Contains(s));
         }
+
+        return q;
+    }
+
+    /// <summary>Credited (in) / debited (out, as a positive magnitude) totals for the same filter the member ledger
+    /// datagrid is showing — the Σ in / Σ out footer.</summary>
+    public static async Task<(long In, long Out)> MemberLedgerTotalsAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, CancellationToken ct = default,
+        Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+    {
+        var agg = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                In = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Out = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.In, agg.Out);
+    }
+
+    /// <summary>Paged + sortable variant of <see cref="MemberLedgerAsync"/> for the web wallet datagrid.
+    /// <paramref name="search"/> matches the reason field (case-insensitive via the SQL collation).
+    /// <paramref name="sortKey"/>: "amount" or anything else = newest first.
+    /// <paramref name="excludeCurrencyId"/> drops a currency at the SQL level — used by the wallet surface to keep
+    /// POINTS out without relying on every caller to remember to filter.
+    /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
+    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> MemberLedgerPagedAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null)
+    {
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign);
 
         var total = await q.CountAsync(ct);
 
