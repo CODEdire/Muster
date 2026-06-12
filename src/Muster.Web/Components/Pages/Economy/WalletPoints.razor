@@ -1,0 +1,130 @@
+@page "/guilds/{GuildIdRaw}/wallet/points"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@implements IDisposable
+@inject IServiceScopeFactory Scopes
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+<PageTitle>Points ledger — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="wallet-head">
+        <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/wallet">Wallet</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
+        </nav>
+        <div class="wp-bal">
+            <span class="material-symbols-outlined" aria-hidden="true">trophy</span>
+            <b>@_balance.ToString("N0")</b> points@(_seasonal && _seasonName is not null ? $" · {_seasonName}" : "")
+        </div>
+    </div>
+
+    <WalletTabs GuildId="GuildId" Active="points" HasPoints="_hasPoints" />
+
+    <LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">
+        <Filters>
+            <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+            <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+                <option value="">Any source</option>
+                @foreach (var s in AllSources)
+                {
+                    <option value="@s">@SourceLabel(s)</option>
+                }
+            </select>
+            <select class="dg-select" value="@_preset" @onchange="OnRange">
+                @foreach (var (val, lbl) in RangePresets)
+                {
+                    <option value="@val">@lbl</option>
+                }
+            </select>
+            @if (_loading)
+            {
+                <span class="dg-loading" aria-hidden="true"></span>
+            }
+        </Filters>
+        <Actions>
+            <div class="dir-toggle" role="group" aria-label="Direction">
+                <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
+                <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">In</button>
+                <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
+            </div>
+            <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
+        </Actions>
+        <ChildContent>
+            <table class="dg-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
+                        <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
+                        <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
+                        <th class="sortable" @onclick='() => SetSort("reason")'>Reason @Ind("reason")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_activity is null || _activity.Items.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="4">@(_activity is null ? "Loading…" : "No points activity matches these filters.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var line in Lines())
+                        {
+                            var r = line.Row;
+                            @if (line.Header is { } hh)
+                            {
+                                <tr class="dg-group">
+                                    <td colspan="4">@hh <span class="grp-net @(line.HeaderNet >= 0 ? "pos" : "neg")">@(line.HeaderNet > 0 ? "+" : "")@line.HeaderNet.ToString("N0")</span></td>
+                                </tr>
+                            }
+                            <tr class="led-row @(_expandedId == r.Id ? "open" : "")" @onclick="() => ToggleDetail(r.Id)">
+                                <td class="led-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == r.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="r.OccurredAt" /></td>
+                                <td class="num @(r.Amount < 0 ? "neg" : "pos")">@(r.Amount > 0 ? "+" : "")@r.Amount.ToString("N0")</td>
+                                <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(r.Source)</span>@SourceLabel(r.Source)</span></td>
+                                <td>@r.Reason</td>
+                            </tr>
+                            @if (_expandedId == r.Id)
+                            {
+                                <tr class="led-detail">
+                                    <td colspan="4">
+                                        <div class="ld-grid">
+                                            <div><span class="k">Reference</span><span class="v mono">@(string.IsNullOrEmpty(r.SourceId) ? "—" : r.SourceId)</span></div>
+                                            <div><span class="k">Source</span><span class="v">@SourceLabel(r.Source)</span></div>
+                                            <div><span class="k">Posted</span><span class="v"><LocalTime Value="r.OccurredAt" /></span></div>
+                                            <div><span class="k">Amount</span><span class="v @(r.Amount < 0 ? "neg" : "pos")">@(r.Amount > 0 ? "+" : "")@r.Amount.ToString("N0")</span></div>
+                                            <div class="ld-reason"><span class="k">Reason</span><span class="v">@r.Reason</span></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        </ChildContent>
+        <FooterLeft>
+            <div class="dg-pagesize">
+                Rows
+                <select class="dg-select" value="@_size" @onchange="OnSize">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <span class="dg-totals">Σ <span class="pos">+@_totals.In.ToString("N0")</span> / <span class="neg">−@_totals.Out.ToString("N0")</span></span>
+        </FooterLeft>
+    </LedgerFrame>
+}

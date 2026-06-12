@@ -19,6 +19,9 @@ public partial class Wallet : IDisposable
 {
     // --- Currencies + selection ---
     private IReadOnlyList<CurrencyInfo> _currencies = [];
+    // Account shows spendable wallet currencies only; points live in the dedicated Season + Points tabs.
+    private IReadOnlyList<CurrencyInfo> _walletCurrencies = [];
+    private bool _hasPoints;
     private string _sel = "";
     private string _displayName = "";
     private string? _avatarUrl;
@@ -90,10 +93,13 @@ public partial class Wallet : IDisposable
         _currencies = await currencies.GetCurrenciesAsync(GuildId);
         _recipients = await members.GetRecipientsAsync(GuildId, UserId);
 
-        // Open on the guild's primary/default currency; fall back to the first spendable, then any.
-        _sel = _currencies.FirstOrDefault(c => c.Primary)?.Code
-            ?? _currencies.FirstOrDefault(c => c.Spendable)?.Code
-            ?? _currencies.FirstOrDefault()?.Code
+        _hasPoints = _currencies.Any(c => string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase));
+        _walletCurrencies = _currencies.Where(c => !string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        // Open on the guild's primary/default wallet currency; fall back to the first spendable, then any.
+        _sel = _walletCurrencies.FirstOrDefault(c => c.Primary)?.Code
+            ?? _walletCurrencies.FirstOrDefault(c => c.Spendable)?.Code
+            ?? _walletCurrencies.FirstOrDefault()?.Code
             ?? "";
         Send.Currency ??= Sendable.FirstOrDefault()?.Code;
 

@@ -1,0 +1,34 @@
+@* Wallet section nav built on the shared TabBar. Account + Analytics always; the points Season + ledger tabs appear
+   when the server runs points. The selected wallet currency is carried across as ?cur= so it survives navigation. *@
+<TabBar Tabs="Items" Active="@Active" AriaLabel="Wallet sections" />
+
+@code {
+    [Parameter, EditorRequired] public ulong GuildId { get; set; }
+    [Parameter] public string Active { get; set; } = "account";
+
+    /// <summary>The selected wallet currency, carried across tabs as ?cur= so the choice survives navigation.</summary>
+    [Parameter] public string? Cur { get; set; }
+
+    /// <summary>Show the points Season + Points-ledger tabs (server runs a points score).</summary>
+    [Parameter] public bool HasPoints { get; set; }
+
+    private string Q => string.IsNullOrWhiteSpace(Cur) ? "" : $"?cur={Uri.EscapeDataString(Cur)}";
+
+    private IReadOnlyList<TabBar.TabItem> Items
+    {
+        get
+        {
+            var items = new List<TabBar.TabItem>
+            {
+                new("account", "Account", "account_balance_wallet", $"/guilds/{GuildId}/wallet{Q}"),
+                new("analytics", "Analytics", "monitoring", $"/guilds/{GuildId}/wallet/analytics{Q}"),
+            };
+            if (HasPoints)
+            {
+                items.Add(new("season", "Season", "local_fire_department", $"/guilds/{GuildId}/wallet/season"));
+                items.Add(new("points", "Points", "trophy", $"/guilds/{GuildId}/wallet/points"));
+            }
+            return items;
+        }
+    }
+}

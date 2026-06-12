@@ -17,6 +17,7 @@ public partial class WalletAnalytics
         ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     private IReadOnlyList<CurrencyInfo> _currencies = [];
+    private bool _hasPoints;
     private string _sel = "";
     private string _displayName = "";
     private string? _avatarUrl;
@@ -67,6 +68,7 @@ public partial class WalletAnalytics
         await using var scope = Scopes.CreateAsyncScope();
         var sp = scope.ServiceProvider;
         _currencies = await sp.GetRequiredService<ICurrencyReadService>().GetCurrenciesAsync(GuildId);
+        _hasPoints = _currencies.Any(c => string.Equals(c.Code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase));
         var detail = await sp.GetRequiredService<WebMemberService>().GetAsync(GuildId, UserId, historyCount: 1);
         _displayName = detail.DisplayName;
         _avatarUrl = detail.AvatarUrl;

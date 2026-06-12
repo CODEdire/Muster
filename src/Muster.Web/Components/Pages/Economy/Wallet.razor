@@ -29,15 +29,23 @@ else if (State == AccessState.Ready)
             <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" />
         </nav>
         <div class="wallet-controls">
-            <CurrencySwitcher Currencies="_currencies" Selected="@_sel" SelectedChanged="SelectCurrency" />
-            <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet/analytics"><span class="material-symbols-outlined" aria-hidden="true">monitoring</span> Analytics</a>
+            <CurrencySwitcher Currencies="_walletCurrencies" Selected="@_sel" SelectedChanged="SelectCurrency" />
         </div>
     </div>
+
+    <WalletTabs GuildId="GuildId" Active="account" Cur="@_sel" HasPoints="_hasPoints" />
 
     @if (Message is not null)
     {
         <p class="message">@Message</p>
     }
+
+    @if (_walletCurrencies.Count == 0)
+    {
+        <div class="panel glass empty">No spendable wallet currencies here yet. @(_hasPoints ? "Your points live in the Season and Points tabs." : "")</div>
+    }
+    else
+    {
 
     <div class="kpi-band">
         <div class="kpi-hero">
@@ -162,9 +170,13 @@ else if (State == AccessState.Ready)
                     <span class="subtitle"><span class="material-symbols-outlined held" aria-hidden="true">lock</span> @_kpis.Held.ToString("N0") held</span>
                 }
             </div>
-            @if (!Sendable.Any() || _recipients.Count == 0)
+            @if (_recipients.Count == 0)
             {
-                <p class="subtitle">Nothing to send here yet.</p>
+                <p class="subtitle">No one else here to send to yet.</p>
+            }
+            else if (!Sendable.Any())
+            {
+                <p class="subtitle">None of this server's currencies are transferable yet — an admin can turn on <em>Transferable</em> for a currency in <a href="/guilds/@GuildId/currencies">Admin · Currencies</a>. (Points can't be gifted.)</p>
             }
             else
             {
@@ -325,4 +337,5 @@ else if (State == AccessState.Ready)
                 </div>
         </FooterLeft>
     </LedgerFrame>
+    }
 }

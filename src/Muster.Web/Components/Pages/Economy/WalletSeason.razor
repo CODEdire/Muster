@@ -1,0 +1,106 @@
+@page "/guilds/{GuildIdRaw}/wallet/season"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildMemberComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+<PageTitle>Season — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You don't have access to this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="wallet-head">
+        <nav class="wallet-crumb" aria-label="Breadcrumb">
+            <a href="/guilds/@GuildId/wallet">Wallet</a>
+            <span class="material-symbols-outlined sep" aria-hidden="true">chevron_right</span>
+            <UserChip Name="@_displayName" AvatarUrl="@_avatarUrl" Href="@($"/guilds/{GuildId}/wallet")" />
+        </nav>
+    </div>
+
+    <WalletTabs GuildId="GuildId" Active="season" HasPoints="_hasPoints" />
+
+    @if (!_hasPoints)
+    {
+        <div class="panel glass empty">Points isn't configured in this server.</div>
+    }
+    else
+    {
+        <div class="stat-grid">
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">trophy</span>
+                <span class="label">Points</span><span class="num accent-amber">@_balance.ToString("N0")</span>
+                <span class="subtitle">@(_seasonal && _seasonName is not null ? _seasonName : "all time")</span>
+                @if (!string.IsNullOrEmpty(_balSpark))
+                {
+                    <svg class="pp-spark amber" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_balSpark" /></svg>
+                }
+            </div>
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">leaderboard</span>
+                <span class="label">Rank</span><span class="num">@(_rank > 0 ? $"#{_rank}" : "—")</span>
+                <span class="subtitle">@(_holders > 0 ? $"of {_holders:N0} holders" : "unranked")</span>
+            </div>
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+                <span class="label">Earned · 30d</span><span class="num accent-green">@_earned30d.ToString("N0")</span>
+                <span class="subtitle">this month</span>
+            </div>
+            <div class="card glass stat">
+                <span class="kpi-ico material-symbols-outlined" aria-hidden="true">history</span>
+                <span class="label">Lifetime</span><span class="num">@_lifetime.ToString("N0")</span>
+                <span class="subtitle">across @_seasonTotals.Count season@(_seasonTotals.Count == 1 ? "" : "s")</span>
+            </div>
+        </div>
+
+        <div class="pp-cols">
+            <div class="pp-card">
+                <div class="panel-head"><h2>Your points by season</h2></div>
+                @if (_seasonTotals.Count == 0)
+                {
+                    <p class="subtitle">No seasons yet.</p>
+                }
+                else
+                {
+                    <div class="pp-bars">
+                        @foreach (var s in _seasonTotals)
+                        {
+                            <div class="pp-bar-col"><div class="pp-bar" style="height:@(Math.Round(s.Total * 108.0 / SeasonMax))px"></div></div>
+                        }
+                    </div>
+                    <div class="pp-axis-labels">
+                        @foreach (var s in _seasonTotals)
+                        {
+                            <span>@s.Season.Name<br /><span class="cnt">@s.Total.ToString("N0")</span></span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="pp-card">
+                <div class="panel-head"><h2>Earned by source · 30d</h2></div>
+                @if (_earned.Count == 0)
+                {
+                    <p class="subtitle">No points earned in this window.</p>
+                }
+                else
+                {
+                    @foreach (var s in _earned)
+                    {
+                        <div class="pp-src">
+                            <span class="name"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(s.Source)</span>@SourceLabel(s.Source)</span>
+                            <div class="bar"><div class="fill" style="width:@(s.Earned * 100 / SourceMax)%"></div></div>
+                            <span class="val">+@s.Earned.ToString("N0")</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+}

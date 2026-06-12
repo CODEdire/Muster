@@ -103,6 +103,21 @@ public class PointsReadService(MusterDbContext db, ICurrencyReadService scores, 
         return seasons.OrderBy(s => s.StartsAt).Select(s => (s, totals.GetValueOrDefault(s.Id, 0L))).ToList();
     }
 
+    /// <summary>One member's points earned per season (oldest first) — the member Season tab's season-over-season bars.
+    /// Empty when POINTS isn't seasonal.</summary>
+    public async Task<IReadOnlyList<(SeasonInfo Season, long Total)>> GetMemberSeasonTotalsAsync(ulong guildId, ulong userId, CancellationToken ct = default)
+    {
+        var points = await db.FindPointsAsync(guildId, ct);
+        if (points is not { IsSeasonal: true })
+        {
+            return [];
+        }
+
+        var seasons = await db.SeasonsAsync(guildId, ct);
+        var totals = await db.MemberSeasonTotalsAsync(guildId, userId, points.Id, ct);
+        return seasons.OrderBy(s => s.StartsAt).Select(s => (s, totals.GetValueOrDefault(s.Id, 0L))).ToList();
+    }
+
     /// <summary>The Participation home aggregate: lifetime + per-season engagement (volume, participation rate,
     /// new vs returning earners, retention). Empty when POINTS isn't seasonal.</summary>
     public async Task<ParticipationHome> GetEngagementAsync(ulong guildId, CancellationToken ct = default)

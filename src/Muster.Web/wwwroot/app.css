@@ -1336,14 +1336,49 @@ img.avatar-sm { object-fit: cover; }
 .dg-table .led-when .exp { font-size: 1rem; vertical-align: -3px; margin-right: 0.15rem; color: var(--text-muted); }
 .dg-table .src-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
 .dg-table .src-chip .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); opacity: 1; }
-.dg-table ::deep .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
-.dg-table ::deep .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
+.dg-table .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
+.dg-table .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
 /* Direction toggle (All / In-Out / Debit-Credit) shared across the ledger toolbars. */
 .dir-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 0.55rem; overflow: hidden; }
 .dir-toggle button { appearance: none; background: transparent; border: none; border-left: 1px solid var(--border); color: var(--text-muted); font: inherit; font-size: 0.82rem; padding: 0.38rem 0.7rem; cursor: pointer; transition: background 0.12s, color 0.12s; }
 .dir-toggle button:first-child { border-left: none; }
 .dir-toggle button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
 .dir-toggle button.active { background: var(--accent); color: #fff; }
+
+/* Day-group header rows + per-day subtotal. */
+.dg-table tr.dg-group td { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 0.03em; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.grp-net { float: right; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.grp-net.pos, .grp-net .pos, .grp-net .credit { color: #4ade80; }
+.grp-net.neg, .grp-net .neg, .grp-net .debit { color: var(--danger); }
+
+/* Clickable rows + the transaction detail drawer. */
+.led-row { cursor: pointer; }
+.led-row.open > td { background: var(--surface); }
+.led-detail > td { background: rgba(255, 255, 255, 0.02); }
+.ld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem 1.5rem; padding: 0.6rem 0.4rem; white-space: normal; }
+.ld-grid > div { display: flex; flex-direction: column; gap: 0.1rem; }
+.ld-grid .ld-reason { grid-column: 1 / -1; }
+.ld-grid .k { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.ld-grid .v { font-size: 0.88rem; }
+.ld-grid .v.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; word-break: break-all; }
+.ld-grid .v.pos, .ld-grid .v.credit { color: #4ade80; }
+.ld-grid .v.neg, .ld-grid .v.debit { color: var(--danger); }
+
+/* Footer totals. */
+.dg-totals { font-size: 0.82rem; color: var(--text-muted); }
+.dg-totals .pos { color: #4ade80; }
+.dg-totals .neg { color: var(--danger); }
+
+/* Wallet/member page breadcrumb header (shared across the wallet tabs). */
+.wallet-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.wallet-controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.wallet-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.wallet-crumb a { color: var(--text-muted); font-weight: 600; }
+.wallet-crumb a:hover { color: var(--text); }
+.wallet-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+.wallet-crumb .user-chip .avatar-sm { width: 30px; height: 30px; font-size: 0.85rem; }
+.wallet-crumb .user-chip-name b { font-size: 1.35rem; font-weight: 600; }
 /* Make a standalone datagrid fill the viewport height (full-frame pages like shop disputes). */
 .dg-fill { min-height: 68vh; }
 
