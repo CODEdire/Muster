@@ -111,6 +111,10 @@ public partial class CurrencyAdminService(
             return CommandResult.Error($"A currency with code {code} already exists.");
         }
 
+        // Spendable currencies are transferable by default; if the guild has no default/primary currency yet, the
+        // first spendable one becomes it (the wallet opens on the primary).
+        var hasPrimary = await db.Currencies.AnyAsync(c => c.GuildId == guildId && c.IsPrimary, ct);
+
         db.Currencies.Add(new Currency
         {
             Id = Guid.NewGuid(),
@@ -119,6 +123,8 @@ public partial class CurrencyAdminService(
             Name = name.Trim(),
             IsSeasonal = isSeasonal,
             IsSpendable = isSpendable,
+            IsTransferable = isSpendable,
+            IsPrimary = isSpendable && !hasPrimary,
             Mode = mode,
         });
         await db.SaveChangesAsync(ct);

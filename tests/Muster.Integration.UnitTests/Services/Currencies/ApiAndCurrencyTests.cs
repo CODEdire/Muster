@@ -26,7 +26,7 @@ public class ApiAndCurrencyTests
 
     private static async Task<Currency> AddCoinAsync(MusterDbContext db, ulong guildId = 1, CurrencyMode mode = CurrencyMode.Internal)
     {
-        var coin = new Currency { Id = Guid.NewGuid(), GuildId = guildId, Code = "COIN", Name = "Coin", IsSpendable = true, Mode = mode };
+        var coin = new Currency { Id = Guid.NewGuid(), GuildId = guildId, Code = "COIN", Name = "Coin", IsSpendable = true, IsTransferable = true, Mode = mode };
         db.Currencies.Add(coin);
         await db.SaveChangesAsync();
         return coin;

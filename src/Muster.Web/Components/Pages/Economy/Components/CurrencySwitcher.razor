@@ -1,0 +1,65 @@
+@* Adaptive currency selector shared across the economy: 1 = read-only label, 2–4 = segmented toggles, 5+ = dropdown.
+   The guild-default currency is flagged with a star. *@
+@using Muster.Infrastructure.Services.Currencies
+
+@if (Currencies.Count == 0)
+{
+}
+else if (Currencies.Count == 1)
+{
+    <span class="cur-readonly">
+        @if (Currencies[0].Primary)
+        {
+            <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
+        }
+        @Currencies[0].Code
+    </span>
+}
+else if (Currencies.Count <= 4)
+{
+    <div class="cur-switch" role="tablist">
+        @foreach (var c in Currencies)
+        {
+            <button type="button" role="tab" class="cur-tab @(c.Code == Selected ? "active" : "")"
+                    aria-selected="@(c.Code == Selected)" @onclick="() => Pick(c.Code)">
+                @if (c.Primary)
+                {
+                    <span class="material-symbols-outlined star" title="Guild default" aria-hidden="true">star</span>
+                }
+                @c.Code
+            </button>
+        }
+    </div>
+}
+else
+{
+    <select class="dg-select cur-select" value="@Selected" @onchange="OnSelect">
+        @foreach (var c in Currencies)
+        {
+            <option value="@c.Code" selected="@(c.Code == Selected)">@c.Code@(c.Primary ? " ★" : "")</option>
+        }
+    </select>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<CurrencyInfo> Currencies { get; set; } = [];
+    [Parameter] public string Selected { get; set; } = "";
+    [Parameter] public EventCallback<string> SelectedChanged { get; set; }
+
+    private async Task Pick(string code)
+    {
+        if (code != Selected)
+        {
+            await SelectedChanged.InvokeAsync(code);
+        }
+    }
+
+    private async Task OnSelect(ChangeEventArgs e)
+    {
+        var code = e.Value as string ?? "";
+        if (code != Selected)
+        {
+            await SelectedChanged.InvokeAsync(code);
+        }
+    }
+}

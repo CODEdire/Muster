@@ -16,7 +16,7 @@ public record LeaderboardRow(int Rank, ulong UserId, string DisplayName, long To
 /// <see cref="Source"/> carries the typed source so the UI can pick an icon/label.</summary>
 public record MovementRow(
     ulong UserId, string DisplayName, string? AvatarUrl, string CurrencyCode, long Amount,
-    CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason);
+    CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason, string Account = "member");
 
 /// <summary>The admin currency overview for one currency: supply analytics + top holders + a recent-movement feed.</summary>
 public record CurrencyOverview(CurrencySupply Supply, IReadOnlyList<LeaderboardRow> TopHolders, IReadOnlyList<MovementRow> Recent);

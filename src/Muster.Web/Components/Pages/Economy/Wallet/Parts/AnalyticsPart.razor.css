@@ -1,0 +1,85 @@
+/* Header row: breadcrumb + controls */
+.an-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.an-controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+.wallet-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.wallet-crumb a { color: var(--text-muted); font-weight: 600; }
+.wallet-crumb a:hover { color: var(--text); }
+.wallet-crumb .sep { font-size: 1.4rem; color: var(--text-muted); opacity: 0.55; }
+.wallet-crumb .who { font-weight: 600; }
+.wallet-crumb ::deep .user-chip .avatar-sm { width: 28px; height: 28px; font-size: 0.8rem; }
+.wallet-crumb ::deep .user-chip-name b { font-size: 1.35rem; font-weight: 600; }
+
+/* Currency switcher (shared visual with the wallet) */
+.wallet-switch { display: flex; gap: 0.25rem; padding: 0.3rem; border-radius: 0.6rem; background: rgba(255, 255, 255, 0.04); flex-wrap: wrap; }
+.cur-tab { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.85rem; border: none; background: transparent;
+    color: var(--text-muted); border-radius: 0.45rem; cursor: pointer; font-size: 0.88rem; transition: background 0.1s, color 0.1s; }
+.cur-tab:hover { color: var(--text); }
+.cur-tab.active { background: var(--card-bg); color: var(--text); font-weight: 600; }
+.cur-tab .star { font-size: 1rem; color: #fbbf24; }
+
+/* KPI tiles — lighter subtle surface to match the wallet (no glass frame) */
+.an-kpi { background: rgba(255, 255, 255, 0.035); border-radius: var(--radius); }
+.stat .num .unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
+.stat .num.pos { color: #4ade80; }
+.stat .num.neg { color: var(--danger); }
+
+/* Balance-over-time line */
+.an-line { width: 100%; height: 150px; display: block; }
+.an-line .area { fill: rgba(96, 165, 250, 0.15); stroke: none; }
+.an-line .line { fill: none; stroke: #60a5fa; stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+/* Candle chart (balance OHLC per month + close line + trend) — fixed height, width fills (non-uniform scale,
+   so keep every stroke non-scaling to avoid distortion). */
+.an-candles { width: 100%; height: 200px; display: block; }
+.an-candles line, .an-candles polyline { vector-effect: non-scaling-stroke; }
+.an-candles .axis { stroke: var(--border); stroke-width: 1; }
+.an-candles .wick.up, .an-candles .body.up { stroke: #4ade80; fill: #4ade80; }
+.an-candles .wick.down, .an-candles .body.down { stroke: var(--danger); fill: var(--danger); }
+.an-candles .wick { stroke-width: 1.5; }
+.an-candles .close { fill: none; stroke: #60a5fa; stroke-width: 2; }
+.an-candles .trend { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+
+.an-mlabels { display: flex; justify-content: space-around; font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; }
+.an-mlabels span { flex: 1; text-align: center; }
+.legend { font-size: 0.8rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 0.3rem; }
+.legend .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.legend .sw.earned { background: #4ade80; }
+.legend .sw.spent { background: var(--danger); margin-left: 0.5rem; }
+.legend .ln { width: 14px; height: 0; display: inline-block; vertical-align: middle; margin-left: 0.5rem; }
+.legend .ln.close { border-top: 2px solid #60a5fa; }
+.legend .ln.trend { border-top: 2px dashed var(--text-muted); }
+
+/* Frameless chart/readout cards */
+.an-card { padding: 0.25rem 0.1rem 1rem; margin-bottom: 1.25rem; }
+.an-card .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.an-card h2 { margin: 0; }
+
+/* Two-up source breakdowns */
+.wallet-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem 1.5rem; margin-bottom: 1.25rem; align-items: start; }
+.wallet-cols.single { grid-template-columns: 1fr; }
+.wallet-cols .an-card { margin-bottom: 0; }
+@media (max-width: 720px) { .wallet-cols { grid-template-columns: 1fr; } }
+
+.src-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; font-size: 0.9rem; }
+.src-row .src-name { width: 92px; color: var(--text-muted); flex: none; }
+.src-row .src-bar { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
+.src-row .src-bar .fill.earned { height: 100%; background: #4ade80; }
+.src-row .src-bar .fill.spent { height: 100%; background: var(--danger); }
+.src-row .src-val { width: 70px; text-align: right; flex: none; }
+
+/* Season-over-season bars (clickable to scope the page to that season) */
+.season-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.4rem; border-radius: 0.4rem;
+    cursor: pointer; font-size: 0.9rem; }
+.season-row:hover { background: rgba(255, 255, 255, 0.04); }
+.season-row.sel { background: rgba(96, 165, 250, 0.12); }
+.season-row .season-name { width: 150px; flex: none; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.season-row.sel .season-name { color: var(--text); }
+.season-row .season-bar { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
+.season-row .season-bar .fill { height: 100%; background: #4ade80; }
+.season-row .season-val { width: 64px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+
+/* Trends / insights */
+.insight { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; font-size: 0.9rem; border-top: 1px solid var(--border); }
+.insight:first-of-type { border-top: none; }
+.insight .material-symbols-outlined { font-size: 1.1rem; color: var(--text-muted); }

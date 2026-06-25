@@ -1,0 +1,3 @@
+.wp-bal { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; color: var(--text-muted); }
+.wp-bal b { color: var(--text); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.wp-bal .material-symbols-outlined { color: #EF9F27; font-size: 1.2rem; }

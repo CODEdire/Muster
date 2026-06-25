@@ -1329,6 +1329,57 @@ img.avatar-sm { object-fit: cover; }
    with all four corners rounded. Strips the panel's own padding so dg-toolbar/footer borders span edge-to-edge. */
 .dg-frame { padding: 0; overflow: hidden; margin-bottom: 1rem; display: flex; flex-direction: column; min-height: 0; }
 .dg-frame .dg-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Flat, subtle frame shared by the economy ledger grids (LedgerFrame) — replaces the heavier .panel.glass look. */
+.ledger-frame { background: rgba(255, 255, 255, 0.018); border: 1px solid var(--glass-border); border-radius: var(--radius); }
+/* Shared ledger cell bits (treasury / participation / wallet grids). */
+.dg-table .led-when { color: var(--text-muted); font-size: 0.82rem; white-space: nowrap; }
+.dg-table .led-when .exp { font-size: 1rem; vertical-align: -3px; margin-right: 0.15rem; color: var(--text-muted); }
+.dg-table .src-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
+.dg-table .src-chip .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); opacity: 1; }
+.dg-table .user-chip .avatar-sm { width: 22px; height: 22px; font-size: 0.65rem; }
+.dg-table .user-chip-name b { font-weight: 500; font-size: 0.85rem; }
+/* Direction toggle (All / In-Out / Debit-Credit) shared across the ledger toolbars. */
+.dir-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 0.55rem; overflow: hidden; }
+.dir-toggle button { appearance: none; background: transparent; border: none; border-left: 1px solid var(--border); color: var(--text-muted); font: inherit; font-size: 0.82rem; padding: 0.38rem 0.7rem; cursor: pointer; transition: background 0.12s, color 0.12s; }
+.dir-toggle button:first-child { border-left: none; }
+.dir-toggle button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.dir-toggle button.active { background: var(--accent); color: #fff; }
+
+/* Day-group header rows + per-day subtotal. */
+.dg-table tr.dg-group td { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 0.03em; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.grp-net { float: right; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.grp-net.pos, .grp-net .pos, .grp-net .credit { color: #4ade80; }
+.grp-net.neg, .grp-net .neg, .grp-net .debit { color: var(--danger); }
+
+/* Clickable rows + the transaction detail drawer. */
+.led-row { cursor: pointer; }
+.led-row.open > td { background: var(--surface); }
+.led-detail > td { background: rgba(255, 255, 255, 0.02); }
+.ld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem 1.5rem; padding: 0.6rem 0.4rem; white-space: normal; }
+.ld-grid > div { display: flex; flex-direction: column; gap: 0.1rem; }
+.ld-grid .ld-reason { grid-column: 1 / -1; }
+.ld-grid .k { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.ld-grid .v { font-size: 0.88rem; }
+.ld-grid .v.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; word-break: break-all; }
+.ld-grid .v.pos, .ld-grid .v.credit { color: #4ade80; }
+.ld-grid .v.neg, .ld-grid .v.debit { color: var(--danger); }
+
+/* Footer totals. */
+.dg-totals { font-size: 0.82rem; color: var(--text-muted); }
+.dg-totals .pos { color: #4ade80; }
+.dg-totals .neg { color: var(--danger); }
+
+/* Wallet/member page breadcrumb header (shared across the wallet tabs). */
+.wallet-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.wallet-controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.wallet-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.wallet-crumb a { color: var(--text-muted); font-weight: 600; }
+.wallet-crumb a:hover { color: var(--text); }
+.wallet-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+.wallet-crumb .wallet-ico { font-size: 1.7rem; color: var(--accent); margin-right: 0.15rem; }
+.wallet-crumb .user-chip .avatar-sm { width: 30px; height: 30px; font-size: 0.85rem; }
+.wallet-crumb .user-chip-name b { font-size: 1.35rem; font-weight: 600; }
 /* Make a standalone datagrid fill the viewport height (full-frame pages like shop disputes). */
 .dg-fill { min-height: 68vh; }
 
@@ -1360,6 +1411,9 @@ img.avatar-sm { object-fit: cover; }
     }
     .app-main:has(.tabframe-fill) .tabframe { flex: 1 1 auto; min-height: 0; }
     .app-main:has(.dg-fill) .dg-fill { flex: 1 1 auto; min-height: 0; margin-bottom: 0; }
+    /* Width-only full-bleed: treasury read pages (overview/distribution/flow) drop the column cap but keep
+       natural page-height scrolling. Marked by the .t-wide sentinel on the page header. */
+    .app-main:has(.t-wide) { max-width: none; }
 }
 
 /* The strip overlaps the frame's top border by 1px; the active tab carries its own top/side borders +
@@ -1995,3 +2049,97 @@ a.user-chip-link:focus-visible { outline: 2px solid var(--accent, #2563eb); outl
 .audit-cat { display: inline-flex; font-size: .7rem; padding: .1rem .45rem; border-radius: 999px;
     border: 1px solid var(--border, rgba(127,127,127,.3)); background: rgba(127,127,127,.12); }
 
+
+/* ---- Participation parts (Overview / Season) ----------------------------- */
+/* KPI tiles reuse .stat-grid + .card.glass.stat; these add the watermark + sparkline + accents. */
+.card.glass.stat { position: relative; overflow: hidden; }
+.stat .kpi-ico { position: absolute; top: 0.3rem; right: 0.45rem; font-size: 3.6rem; opacity: 0.1; pointer-events: none; }
+.stat .num.accent-green { color: #4ade80; }
+.stat .num.accent-amber { color: #EF9F27; }
+.pp-spark { width: 100%; height: 24px; margin-top: 0.35rem; display: block; }
+.pp-spark polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.pp-spark.green polyline { stroke: #4ade80; }
+.pp-spark.amber polyline { stroke: #EF9F27; }
+.pp-spark.blue polyline { stroke: #60a5fa; }
+.pp-spark.violet polyline { stroke: #7F77DD; }
+
+/* Season sub-heading */
+.pp-seasonhead { display: flex; align-items: center; gap: 0.6rem; margin: 0.2rem 0 1rem; }
+.pp-seasonname { font-size: 1.05rem; font-weight: 600; }
+.pp-tag { font-size: 0.7rem; background: rgba(239, 159, 39, 0.18); color: #EF9F27; padding: 2px 8px; border-radius: 0.5rem;
+    text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* Frameless cards + 50/50 split */
+.pp-card { background: rgba(255, 255, 255, 0.025); border: 1px solid var(--glass-border); border-radius: var(--radius);
+    padding: 1rem 1.2rem; margin-bottom: 1rem; }
+.pp-card .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.9rem; }
+.pp-card h2 { margin: 0; font-size: 1rem; }
+.pp-rankctl { display: inline-flex; align-items: center; gap: 0.5rem; }
+.pp-card .legend { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--text-muted); flex-wrap: wrap; }
+.pp-card .legend > span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.pp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 760px) { .pp-cols { grid-template-columns: 1fr; } }
+
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.sw.bar { background: #1D9E75; }
+.sw.new { background: #1D9E75; }
+.sw.ret { background: #60a5fa; }
+.sw.churn { background: var(--danger); }
+.ln.rate { width: 14px; height: 2px; background: #EF9F27; }
+
+/* Engagement-by-season combo (bars + participation line) */
+.pp-combo { width: 100%; height: 168px; }
+.pp-combo .axis { stroke: rgba(255, 255, 255, 0.1); }
+.pp-combo .p-cbar { fill: #1D9E75; }
+.pp-combo .p-rate { fill: none; stroke: #EF9F27; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.pp-combo .p-dot { fill: #EF9F27; }
+.pp-axis-labels { display: flex; gap: 10px; margin-top: 6px; font-size: 0.72rem; color: var(--text-muted); text-align: center; }
+.pp-axis-labels > span { flex: 1; }
+.pp-axis-labels .cnt { color: var(--text-muted); opacity: 0.8; }
+
+/* Weekly velocity bars */
+.pp-bars { display: flex; align-items: flex-end; gap: 10px; height: 112px; }
+.pp-bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.pp-bar { width: 100%; max-width: 46px; background: #1D9E75; border-radius: 3px 3px 0 0; min-height: 2px; }
+
+/* Earner-movement stacked bars (new / returning / churned) */
+.pp-stack { width: 100%; height: 150px; }
+.pp-stack .axis { stroke: rgba(255, 255, 255, 0.12); }
+.pp-stack .s-new { fill: #1D9E75; }
+.pp-stack .s-ret { fill: #60a5fa; }
+.pp-stack .s-churn { fill: var(--danger); }
+.pp-stack .zero { stroke: rgba(255, 255, 255, 0.18); }
+
+/* Cumulative-reach / cumulative-points area */
+.pp-area { width: 100%; height: 150px; }
+.pp-area .axis { stroke: rgba(255, 255, 255, 0.1); }
+.pp-area .fill { fill: rgba(29, 158, 117, 0.18); stroke: none; }
+.pp-area .line { fill: none; stroke: #1D9E75; stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+/* Earner-mix donut */
+.pp-donut { display: flex; align-items: center; gap: 1.4rem; }
+.pp-donut-legend { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.88rem; min-width: 9rem; }
+.pp-donut-legend > div { display: flex; align-items: center; gap: 0.45rem; }
+.pp-donut-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.pp-dot { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; flex: 0 0 auto; }
+.pp-dot.new { background: #1D9E75; }
+.pp-dot.ret { background: #60a5fa; }
+.pp-dot.churn { background: var(--danger); }
+
+/* Source bars */
+.pp-src { display: flex; align-items: center; gap: 0.7rem; margin: 0.5rem 0; font-size: 0.88rem; }
+.pp-src .name { width: 120px; display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text); flex: none; }
+.pp-src .name .material-symbols-outlined { font-size: 1.05rem; color: var(--text-muted); }
+.pp-src .bar { flex: 1; height: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 5px; overflow: hidden; }
+.pp-src .bar .fill { height: 100%; background: #1D9E75; border-radius: 5px; }
+.pp-src .val { width: 60px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); flex: none; }
+
+/* Podium rows + medals */
+.pp-pod { display: flex; align-items: center; gap: 0.6rem; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 0.9rem; }
+.pp-pod .rank { width: 22px; color: var(--text-muted); flex: none; text-align: center; }
+.pp-pod .rank.gold, .pp-pod .rank.silver, .pp-pod .rank.bronze {
+    height: 22px; line-height: 22px; border-radius: 50%; font-weight: 700; font-size: 0.78rem; color: #1c1606; }
+.pp-pod .rank.gold { background: linear-gradient(145deg, #fde68a, #f59e0b); }
+.pp-pod .rank.silver { background: linear-gradient(145deg, #f1f5f9, #94a3b8); }
+.pp-pod .rank.bronze { background: linear-gradient(145deg, #f7c08a, #b45309); color: #fff; }
+.pp-pod .val { margin-left: auto; font-variant-numeric: tabular-nums; }

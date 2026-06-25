@@ -23,6 +23,7 @@ public enum CurrencyOperationStatus
     Ok,
     CurrencyNotFound,
     InsufficientFunds,
+    NotTransferable,
 }
 
 public record CurrencyOperationResult(CurrencyOperationStatus Status, long Balance);
@@ -118,6 +119,13 @@ public class CurrencyService(
             return new CurrencyOperationResult(CurrencyOperationStatus.CurrencyNotFound, 0);
         }
 
+        // Member-to-member moves require the currency to be transferable (non-transferable score currencies like
+        // POINTS can't be gifted). Escrow/awards bypass this path and stage ledger legs directly.
+        if (!currency.IsTransferable)
+        {
+            return new CurrencyOperationResult(CurrencyOperationStatus.NotTransferable, 0);
+        }
+
         // A retried transfer (same sourceId) must not move funds twice: if the debit leg already exists, no-op.
         var outKey = sourceId is null ? null : $"{sourceId}:out";
         var inKey = sourceId is null ? null : $"{sourceId}:in";
@@ -139,8 +147,8 @@ public class CurrencyService(
 
         // Two legs in one unit of work. Each leg's StageAsync pushes its external Debit/Credit first (External/Hybrid),
         // so a failed push aborts the whole transfer before commit.
-        await StageAsync(guildId, fromUserId, currency.Id, -amount, CurrencyLedgerSource.Transfer, outKey, reason, ct);
-        await StageAsync(guildId, toUserId, currency.Id, amount, CurrencyLedgerSource.Transfer, inKey, reason, ct);
+        await StageAsync(guildId, fromUserId, currency.Id, -amount, CurrencyLedgerSource.Transfer, outKey, reason, ct, counterpartyId: toUserId);
+        await StageAsync(guildId, toUserId, currency.Id, amount, CurrencyLedgerSource.Transfer, inKey, reason, ct, counterpartyId: fromUserId);
         await db.SaveChangesAsync(ct);
         return new CurrencyOperationResult(CurrencyOperationStatus.Ok, await CurrentBalanceAsync(guildId, code, fromUserId, ct));
     }
@@ -408,7 +416,7 @@ public class CurrencyService(
     /// </summary>
     private async Task<CurrencyLedgerEntry> StageAsync(
         ulong guildId, ulong userId, Guid currencyId, long amount,
-        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct)
+        CurrencyLedgerSource sourceType, string? sourceId, string reason, CancellationToken ct, ulong? counterpartyId = null)
     {
         if (sourceId is not null)
         {
@@ -442,6 +450,7 @@ public class CurrencyService(
             Amount = amount,
             SourceType = sourceType,
             SourceId = sourceId,
+            CounterpartyId = counterpartyId,
             OccurredAt = DateTimeOffset.UtcNow,
             Reason = reason,
         };

@@ -10,13 +10,17 @@ namespace Muster.Infrastructure.Services.Web;
 
 /// <summary>One ledger row for the wallet/points activity datagrid. <see cref="Source"/> is the typed enum so the
 /// UI can render the right icon/label without re-parsing.</summary>
-public record MemberLedgerRow(string Currency, long Amount, CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason);
+public record MemberLedgerRow(
+    string Currency, long Amount, CurrencyLedgerSource Source, DateTimeOffset OccurredAt, string Reason,
+    long? BalanceAfter = null, long Id = 0, string? SourceId = null,
+    ulong? CounterpartyId = null, string? CounterpartyName = null, string? CounterpartyAvatar = null);
 
 public record MemberDetailView(
     ulong UserId,
     string DisplayName,
     IReadOnlyList<WalletBalance> Wallets,
-    IReadOnlyList<MemberLedgerRow> History);
+    IReadOnlyList<MemberLedgerRow> History,
+    string? AvatarUrl = null);
 
 /// <summary>Header info for the MemberDetail page — identity strip + state badges.</summary>
 public record MemberSummary(
@@ -73,7 +77,7 @@ public class WebMemberService(MusterDbContext db, ICurrencyReadService scores)
         var user = await db.FindUserAsync(userId, ct);
         var name = member?.Nickname ?? user?.GlobalName ?? user?.Username ?? userId.ToString();
 
-        return new MemberDetailView(userId, name, wallets, history);
+        return new MemberDetailView(userId, name, wallets, history, DiscordCdn.AvatarUrl(userId, user?.AvatarHash));
     }
 
     /// <summary>The member's own tracking-privacy choice on this guild (defaults to <see cref="TrackingChoice.Default"/>).</summary>

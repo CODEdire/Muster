@@ -1,0 +1,204 @@
+@inherits ParticipationPart
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+@if (Home is { Current: { } cur } home)
+{
+    <div class="stat-grid">
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+            <span class="label">Lifetime awarded</span><span class="num">@home.LifetimeAwarded.ToString("N0")</span>
+            <span class="subtitle">across @home.Seasons.Count season@(home.Seasons.Count == 1 ? "" : "s")</span>
+            @if (!string.IsNullOrEmpty(_awardedSpark))
+            {
+                <svg class="pp-spark green" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_awardedSpark" /></svg>
+            }
+        </div>
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">groups</span>
+            <span class="label">Members ever earned</span><span class="num">@home.MembersEverEarned.ToString("N0")</span>
+            <span class="subtitle">@(home.MemberCount > 0 ? $"{home.MembersEverEarned * 100 / home.MemberCount}% of {home.MemberCount:N0}" : "members")</span>
+            @if (!string.IsNullOrEmpty(_reachSpark))
+            {
+                <svg class="pp-spark blue" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_reachSpark" /></svg>
+            }
+        </div>
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">bolt</span>
+            <span class="label">Participation now</span><span class="num accent-green">@cur.ParticipationPct%</span><span class="subtitle">@cur.Season.Name</span>
+            @if (!string.IsNullOrEmpty(_partSpark))
+            {
+                <svg class="pp-spark green" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_partSpark" /></svg>
+            }
+        </div>
+        <div class="card glass stat">
+            <span class="kpi-ico material-symbols-outlined" aria-hidden="true">cached</span>
+            <span class="label">Retention</span><span class="num accent-amber">@cur.RetentionPct%</span>
+            <span class="subtitle">@(home.Previous is { } pv ? $"{pv.Season.Name} → {cur.Season.Name}" : "no prior season")</span>
+            @if (!string.IsNullOrEmpty(_retSpark))
+            {
+                <svg class="pp-spark amber" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><polyline points="@_retSpark" /></svg>
+            }
+        </div>
+    </div>
+
+    <div class="pp-card">
+        <div class="panel-head">
+            <h2>Engagement by season</h2>
+            <span class="legend"><span><span class="sw bar"></span> points awarded</span><span><span class="ln rate"></span> participation rate</span></span>
+        </div>
+        @{
+            var seasons = Seasons;
+            var n = seasons.Count;
+            const double W = 600, H = 168, pb = 26, pt = 14;
+            var gw = W / n;
+            var bw = Math.Min(70.0, gw * 0.5);
+            var ratePts = new System.Text.StringBuilder();
+        }
+        <svg class="pp-combo" viewBox="0 0 600 168" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="0" y1="@(H - pb)" x2="600" y2="@(H - pb)" class="axis" />
+            @for (var i = 0; i < n; i++)
+            {
+                var s = seasons[i];
+                var cx = i * gw + gw / 2;
+                var bh = s.Awarded / (double)AwardedMax * (H - pb - pt);
+                var ry = pt + (1 - s.ParticipationPct / 100.0) * (H - pb - pt);
+                ratePts.Append(Fmt(cx)).Append(',').Append(Fmt(ry)).Append(' ');
+                <rect class="p-cbar" x="@Fmt(cx - bw / 2)" y="@Fmt(H - pb - bh)" width="@Fmt(bw)" height="@Fmt(bh)" rx="3" />
+            }
+            <polyline class="p-rate" points="@ratePts.ToString().Trim()" />
+            @for (var i = 0; i < n; i++)
+            {
+                var s = seasons[i];
+                var cx = i * gw + gw / 2;
+                var ry = pt + (1 - s.ParticipationPct / 100.0) * (H - pb - pt);
+                <circle class="p-dot" cx="@Fmt(cx)" cy="@Fmt(ry)" r="3.5" />
+            }
+        </svg>
+        <div class="pp-axis-labels">
+            @foreach (var s in seasons)
+            {
+                <span>@s.Season.Name<br /><span class="cnt">@s.Awarded.ToString("N0") · @s.ParticipationPct%</span></span>
+            }
+        </div>
+    </div>
+
+    <div class="pp-cols">
+        <div class="pp-card">
+            <div class="panel-head">
+                <h2>Earner movement</h2>
+                <span class="legend"><span><span class="sw ret"></span> returning</span><span><span class="sw new"></span> new</span><span><span class="sw churn"></span> churned</span></span>
+            </div>
+            @{
+                var ss = Seasons;
+                var sn = ss.Count;
+                var sgw = 600.0 / sn;
+                var sbw = Math.Min(54.0, sgw * 0.5);
+                const double baseY = 105;
+            }
+            <svg class="pp-stack" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="@baseY" x2="600" y2="@baseY" class="zero" />
+                @for (var i = 0; i < sn; i++)
+                {
+                    var s = ss[i];
+                    var cx = i * sgw + sgw / 2;
+                    var retH = s.ReturningEarners / (double)EarnerMax * 92;
+                    var newH = s.NewEarners / (double)EarnerMax * 92;
+                    var churnH = Churn(s) / (double)ChurnMax * 34;
+                    <rect class="s-ret" x="@Fmt(cx - sbw / 2)" y="@Fmt(baseY - retH)" width="@Fmt(sbw)" height="@Fmt(retH)" />
+                    <rect class="s-new" x="@Fmt(cx - sbw / 2)" y="@Fmt(baseY - retH - newH)" width="@Fmt(sbw)" height="@Fmt(newH)" />
+                    <rect class="s-churn" x="@Fmt(cx - sbw / 2)" y="@Fmt(baseY)" width="@Fmt(sbw)" height="@Fmt(churnH)" />
+                }
+            </svg>
+            <div class="pp-axis-labels">
+                @foreach (var s in ss)
+                {
+                    <span>@s.Season.Name<br /><span class="cnt">+@s.NewEarners · −@Churn(s)</span></span>
+                }
+            </div>
+        </div>
+
+        <div class="pp-card">
+            <div class="panel-head"><h2>Cumulative reach</h2><span class="legend">distinct members ever earned</span></div>
+            @{
+                var rc = _reachCum;
+                var rn = rc.Count;
+                var line = new System.Text.StringBuilder();
+                for (var i = 0; i < rn; i++)
+                {
+                    var x = rn == 1 ? 0 : i * (600.0 / (rn - 1));
+                    var y = 140 - rc[i] / (double)ReachMax * 122;
+                    line.Append(Fmt(x)).Append(',').Append(Fmt(y)).Append(' ');
+                }
+                var linePts = line.ToString().Trim();
+                var fillPts = rn > 0 ? $"0,140 {linePts} 600,140" : "";
+            }
+            <svg class="pp-area" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="140" x2="600" y2="140" class="axis" />
+                @if (rn > 1)
+                {
+                    <polygon class="fill" points="@fillPts" />
+                    <polyline class="line" points="@linePts" />
+                }
+            </svg>
+            <div class="pp-axis-labels">
+                @foreach (var (s, i) in Seasons.Select((s, i) => (s, i)))
+                {
+                    <span>@s.Season.Name<br /><span class="cnt">@(_reachCum.Count > i ? _reachCum[i].ToString("N0") : "0")</span></span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="pp-cols">
+        @SourcesCard("Where points come from", _sources, SourceMax)
+        @PodiumCard("Top earners · all time", _podium)
+    </div>
+}
+
+@code {
+    private RenderFragment SourcesCard(string title, IReadOnlyList<SourceEarned> list, long max) => __builder =>
+    {
+        <div class="pp-card">
+            <div class="panel-head"><h2>@title</h2></div>
+            @if (list.Count == 0)
+            {
+                <p class="subtitle">No points awarded in this scope.</p>
+            }
+            else
+            {
+                @foreach (var s in list)
+                {
+                    <div class="pp-src">
+                        <span class="name"><span class="material-symbols-outlined" aria-hidden="true">@SourceIcon(s.Source)</span>@SourceLabel(s.Source)</span>
+                        <div class="bar"><div class="fill" style="width:@(s.Total * 100 / max)%"></div></div>
+                        <span class="val">@s.Total.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment PodiumCard(string title, IReadOnlyList<LeaderboardRow> list) => __builder =>
+    {
+        <div class="pp-card">
+            <div class="panel-head"><h2>@title</h2></div>
+            @if (list.Count == 0)
+            {
+                <p class="subtitle">No earners yet.</p>
+            }
+            else
+            {
+                @foreach (var h in list)
+                {
+                    <div class="pp-pod">
+                        <span class="rank @RankClass(h.Rank)">@h.Rank</span>
+                        <UserChip Name="@h.DisplayName" AvatarUrl="@h.AvatarUrl" Href="@MusterLinks.MemberDetail(GuildId, h.UserId)" />
+                        <span class="val">@h.Total.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+    };
+}

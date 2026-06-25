@@ -9,6 +9,54 @@ using Muster.Persistence.Queries;
 
 namespace Muster.Infrastructure.Services.Web;
 
+/// <summary>Headline wallet figures for one currency over a window: <see cref="Available"/> = <see cref="Balance"/>
+/// − <see cref="Held"/> (shop escrow); <see cref="Net"/> = <see cref="Earned"/> − <see cref="Spent"/>.</summary>
+public record WalletKpis(long Balance, long Held, long Available, long Earned, long Spent, long Net);
+
+/// <summary>A point on the balance-over-time series (running balance at the end of <see cref="Date"/>).</summary>
+public record BalancePoint(DateTimeOffset Date, long Balance);
+
+/// <summary>Earned/spent totals for one calendar month — the cash-flow-by-month chart.</summary>
+public record MonthFlow(int Year, int Month, long Earned, long Spent);
+
+/// <summary>Earned/spent totals for one ledger source over a window — the by-source breakdowns.</summary>
+public record SourceFlow(CurrencyLedgerSource Source, long Earned, long Spent);
+
+/// <summary>One source's contribution to the faucets (mint) or sinks (burn) side of the flow view.</summary>
+public record FlowSource(CurrencyLedgerSource Source, long Total);
+
+/// <summary>Faucets vs sinks over a window: mint (net-new currency from system awards) by source, burn (currency
+/// destroyed in the sink) by source, the totals, net supply change and the resulting monthly inflation %.</summary>
+public record FlowView(
+    IReadOnlyList<FlowSource> Faucets, IReadOnlyList<FlowSource> Sinks,
+    long Minted, long Burned, long Net, long Circulating, double InflationPct);
+
+/// <summary>One month of mint/burn/net for the flow-over-time chart and KPI sparklines.</summary>
+public record FlowMonth(int Year, int Month, long Minted, long Burned, long Net);
+
+/// <summary>One posting in the accountant journal: the account it hit, the resolved counter-account (the other side of
+/// the double entry), the source, the signed amount (negative = debit/out, positive = credit/in) and a reference.</summary>
+public record JournalRow(
+    long Id, ulong AccountUserId, string AccountName, string? AccountAvatar, string AccountKind,
+    ulong CounterUserId, string CounterName, string? CounterAvatar, bool CounterIsMember,
+    CurrencyLedgerSource Source, long Amount, string? Reference, DateTimeOffset OccurredAt, string Reason);
+
+/// <summary>One balance-bracket bucket for the wealth-distribution histogram.</summary>
+public record DistributionBracket(string Label, int Count);
+
+/// <summary>Wealth-distribution stats for a currency: holders, median/mean, top-10% share, Gini, and the histogram
+/// (10 buckets, plus a merged 5-bucket version for narrow screens).</summary>
+public record DistributionView(
+    int Holders, long Median, long Mean, int Top10Pct, double Gini, long Max,
+    IReadOnlyList<DistributionBracket> Brackets, IReadOnlyList<DistributionBracket> Brackets5);
+
+/// <summary>One month-end's distribution: headline stats + per-bucket counts (buckets are fixed across the series).</summary>
+public record DistributionPoint(int Year, int Month, int Holders, int Top10Pct, double Gini, long Median, IReadOnlyList<int> Buckets);
+
+/// <summary>Distribution over time — fixed bucket labels plus a point per month (oldest first). Powers the KPI
+/// sparklines and the buckets-over-time chart.</summary>
+public record DistributionSeries(IReadOnlyList<string> BucketLabels, IReadOnlyList<DistributionPoint> Points);
+
 /// <summary>
 /// The Wallet surface: every currency in the guild <b>except POINTS</b>. POINTS lives behind
 /// <see cref="PointsReadService"/>. Filter is applied at SQL where possible (paged ledger reads); list reads
@@ -46,12 +94,14 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
     public async Task<PagedResult<MemberLedgerRow>> GetHistoryPageAsync(
         ulong guildId, ulong userId, string? code, string? search, string sortKey, bool descending,
         int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
-        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken ct = default)
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, bool withRunningBalance = false,
+        ulong? counterpartyId = null, CancellationToken ct = default)
     {
         // Resolve POINTS once so the wallet surface can never accidentally surface a points row.
         var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
         var pointsId = points?.Id;
 
+        Currency? currency = null;
         Guid? currencyId = null;
         if (!string.IsNullOrWhiteSpace(code))
         {
@@ -60,7 +110,7 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
                 return new PagedResult<MemberLedgerRow>([], page, pageSize, 0);
             }
 
-            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            currency = await db.FindCurrencyAsync(guildId, code, ct);
             if (currency is null)
             {
                 return new PagedResult<MemberLedgerRow>([], page, pageSize, 0);
@@ -72,17 +122,126 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
         var size = Math.Clamp(pageSize, 1, 100);
         var p = Math.Max(page, 1);
         var skip = (p - 1) * size;
+        var codes = await db.CurrencyCodeMapAsync(guildId, ct);
 
-        var (rows, total) = await db.MemberLedgerPagedAsync(
-            guildId, userId, currencyId, search, sortKey, descending, skip, size, ct,
-            excludeCurrencyId: pointsId, sources: sources, from: from, to: to);
+        // Running balance only makes sense scoped to a single non-seasonal currency (escrow account excluded).
+        var (rows, total) = withRunningBalance && currency is { IsSeasonal: false } && currencyId is { } cid
+            ? await db.MemberLedgerPagedWithBalanceAsync(
+                guildId, userId, cid, search, sortKey, descending, skip, size, ct,
+                sources: sources, from: from, to: to, sign: sign, counterpartyId: counterpartyId)
+            : await db.MemberLedgerPagedAsync(
+                guildId, userId, currencyId, search, sortKey, descending, skip, size, ct,
+                excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign, counterpartyId: counterpartyId);
+
+        return new PagedResult<MemberLedgerRow>(await ToRowsAsync(codes, rows, ct), p, size, total);
+    }
+
+    /// <summary>Map raw ledger projections to display rows, batch-resolving counterparty names/avatars.</summary>
+    private async Task<List<MemberLedgerRow>> ToRowsAsync(IReadOnlyDictionary<Guid, string> codes, List<MemberLedgerProjection> rows, CancellationToken ct)
+    {
+        var ids = rows.Where(r => r.CounterpartyId is not null).Select(r => r.CounterpartyId!.Value).Distinct().ToList();
+        var users = ids.Count > 0 ? await db.UserDisplayMapAsync(ids, ct) : [];
+
+        return rows.Select(r =>
+        {
+            string? name = null, avatar = null;
+            if (r.CounterpartyId is { } cid && users.TryGetValue(cid, out var u))
+            {
+                name = u.Name;
+                avatar = DiscordCdn.AvatarUrl(cid, u.AvatarHash);
+            }
+
+            return new MemberLedgerRow(
+                codes.GetValueOrDefault(r.CurrencyId, "?"), r.Amount, r.SourceType, r.OccurredAt, r.Reason,
+                r.BalanceAfter, r.Id, r.SourceId, r.CounterpartyId, name, avatar);
+        }).ToList();
+    }
+
+    /// <summary>The member's transfer partners for a currency (for the party filter), resolved to name + avatar.</summary>
+    public async Task<IReadOnlyList<(ulong UserId, string Name, string? AvatarUrl)>> GetCounterpartiesAsync(
+        ulong guildId, ulong userId, string? code, CancellationToken ct = default)
+    {
+        Guid? currencyId = null;
+        if (!string.IsNullOrWhiteSpace(code) && !string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+        {
+            currencyId = (await db.FindCurrencyAsync(guildId, code, ct))?.Id;
+        }
+
+        var ids = await db.MemberCounterpartiesAsync(guildId, userId, currencyId, ct);
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var users = await db.UserDisplayMapAsync(ids, ct);
+        return ids
+            .Select(id => (id, users.TryGetValue(id, out var u) ? u.Name : id.ToString(), users.TryGetValue(id, out var u2) ? DiscordCdn.AvatarUrl(id, u2.AvatarHash) : null))
+            .OrderBy(x => x.Item2)
+            .ToList();
+    }
+
+    /// <summary>All filtered wallet-ledger rows (POINTS excluded), capped, for a CSV export of the current view.</summary>
+    public async Task<IReadOnlyList<MemberLedgerRow>> GetHistoryForExportAsync(
+        ulong guildId, ulong userId, string? code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null, int cap = 10000, CancellationToken ct = default)
+    {
+        var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
+        var pointsId = points?.Id;
+
+        Guid? currencyId = null;
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            if (string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return [];
+            }
+
+            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            if (currency is null)
+            {
+                return [];
+            }
+
+            currencyId = currency.Id;
+        }
+
+        var rows = await db.MemberLedgerAllAsync(
+            guildId, userId, currencyId, search, cap, ct,
+            excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign, counterpartyId: counterpartyId);
 
         var codes = await db.CurrencyCodeMapAsync(guildId, ct);
-        var items = rows
-            .Select(r => new MemberLedgerRow(codes.GetValueOrDefault(r.CurrencyId, "?"), r.Amount, r.SourceType, r.OccurredAt, r.Reason))
-            .ToList();
+        return await ToRowsAsync(codes, rows, ct);
+    }
 
-        return new PagedResult<MemberLedgerRow>(items, p, size, total);
+    /// <summary>Σ in / Σ out for the same filter the ledger datagrid is showing (POINTS excluded; same code/sources/
+    /// window/search/direction). Powers the ledger footer totals.</summary>
+    public async Task<(long In, long Out)> GetHistoryTotalsAsync(
+        ulong guildId, ulong userId, string? code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null, CancellationToken ct = default)
+    {
+        var points = await db.FindCurrencyAsync(guildId, CurrencyCodes.PointsCode, ct);
+        var pointsId = points?.Id;
+
+        Guid? currencyId = null;
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            if (string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return (0, 0);
+            }
+
+            var currency = await db.FindCurrencyAsync(guildId, code, ct);
+            if (currency is null)
+            {
+                return (0, 0);
+            }
+
+            currencyId = currency.Id;
+        }
+
+        return await db.MemberLedgerTotalsAsync(
+            guildId, userId, currencyId, search, ct,
+            excludeCurrencyId: pointsId, sources: sources, from: from, to: to, sign: sign, counterpartyId: counterpartyId);
     }
 
     /// <summary>Paged top holders for one wallet currency (escrow excluded). Empty for unknown or POINTS.</summary>
@@ -152,20 +311,544 @@ public class WalletReadService(MusterDbContext db, ICurrencyReadService scores)
             sources: sources, from: from, to: to);
         var ids = rows.Select(r => r.UserId).Distinct().ToList();
         var users = await db.UserDisplayMapAsync(ids, ct);
-        string Name(ulong id) => id == CurrencyService.EscrowAccountUserId
-            ? "Escrow (house)"
-            : users.TryGetValue(id, out var u) ? u.Name : id.ToString();
-        string? Avatar(ulong id) => id == CurrencyService.EscrowAccountUserId
+        string Name(ulong id) => id switch
+        {
+            CurrencyService.EscrowAccountUserId => "Escrow (house)",
+            CurrencyService.BurnAccountUserId => "Burn (sink)",
+            _ => users.TryGetValue(id, out var u) ? u.Name : id.ToString(),
+        };
+        string? Avatar(ulong id) => id is CurrencyService.EscrowAccountUserId or CurrencyService.BurnAccountUserId
             ? null
             : users.TryGetValue(id, out var u) ? DiscordCdn.AvatarUrl(id, u.AvatarHash) : null;
+        static string Account(ulong id) => id switch
+        {
+            CurrencyService.EscrowAccountUserId => "escrow",
+            CurrencyService.BurnAccountUserId => "burn",
+            _ => "member",
+        };
 
         var codes = await db.CurrencyCodeMapAsync(guildId, ct);
         var items = rows
             .Select(r => new MovementRow(
                 r.UserId, Name(r.UserId), Avatar(r.UserId), codes.GetValueOrDefault(r.CurrencyId, "?"),
-                r.Amount, r.SourceType, r.OccurredAt, r.Reason))
+                r.Amount, r.SourceType, r.OccurredAt, r.Reason, Account(r.UserId)))
             .ToList();
 
         return new PagedResult<MovementRow>(items, p, size, total);
+    }
+
+    /// <summary>Σ minted / Σ burned for the guild-ledger movement filter — the books footer totals.</summary>
+    public async Task<(long In, long Out)> GetMovementTotalsAsync(
+        ulong guildId, string code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken ct = default)
+    {
+        if (string.Equals(code, CurrencyCodes.PointsCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return (0, 0);
+        }
+
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        return currency is null
+            ? (0, 0)
+            : await db.GuildLedgerTotalsAsync(guildId, currency.Id, search, ct, sources: sources, from: from, to: to);
+    }
+
+    /// <summary>The accountant journal: paged guild postings resolved to account + counter-account (double-entry), for
+    /// the new ledger page. Counters come from the stored counterparty (transfers) or are synthesised by source
+    /// (mint/issuance, shop/escrow, burn) at read time — no extra ledger writes.</summary>
+    public async Task<PagedResult<JournalRow>> GetJournalAsync(
+        ulong guildId, string code, string? search, int page, int pageSize, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null,
+        string sortKey = "when", bool descending = true, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new PagedResult<JournalRow>([], page, pageSize, 0);
+        }
+
+        var size = Math.Clamp(pageSize, 1, 100);
+        var p = Math.Max(page, 1);
+        var (rows, total) = await db.GuildJournalPagedAsync(
+            guildId, scope.Id, search, (p - 1) * size, size, ct, sources, from, to, sign, account, sortKey, descending);
+
+        return new PagedResult<JournalRow>(await BuildJournalRowsAsync(rows, ct), p, size, total);
+    }
+
+    /// <summary>All filtered journal rows (capped) for a CSV export of the current view.</summary>
+    public async Task<IReadOnlyList<JournalRow>> GetJournalForExportAsync(
+        ulong guildId, string code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null, int cap = 10000, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.GuildJournalAllAsync(guildId, scope.Id, search, cap, ct, sources, from, to, sign, account);
+        return await BuildJournalRowsAsync(rows, ct);
+    }
+
+    /// <summary>Resolve journal postings to display rows — account + (real or synthesised) counter-account.</summary>
+    private async Task<List<JournalRow>> BuildJournalRowsAsync(List<JournalPosting> rows, CancellationToken ct)
+    {
+        var ids = rows.Where(r => r.UserId is not 0 and not 1).Select(r => r.UserId)
+            .Concat(rows.Where(r => r.CounterpartyId is not null).Select(r => r.CounterpartyId!.Value))
+            .Distinct().ToList();
+        var users = ids.Count > 0 ? await db.UserDisplayMapAsync(ids, ct) : [];
+
+        string Name(ulong id) => users.TryGetValue(id, out var u) ? u.Name : id.ToString();
+        string? Avatar(ulong id) => users.TryGetValue(id, out var u) ? DiscordCdn.AvatarUrl(id, u.AvatarHash) : null;
+
+        var items = rows.Select(r =>
+        {
+            var (accName, accAvatar, kind) = r.UserId switch
+            {
+                CurrencyService.EscrowAccountUserId => ("Escrow (house)", (string?)null, "escrow"),
+                CurrencyService.BurnAccountUserId => ("Burn (sink)", null, "burn"),
+                _ => (Name(r.UserId), Avatar(r.UserId), "member"),
+            };
+
+            // The other side of the entry: a real member counterparty (transfers), else synthesised from the source.
+            string counterName;
+            string? counterAvatar = null;
+            ulong counterId = 0;
+            var counterIsMember = false;
+            if (r.CounterpartyId is { } cid)
+            {
+                counterName = Name(cid);
+                counterAvatar = Avatar(cid);
+                counterId = cid;
+                counterIsMember = true;
+            }
+            else if (r.SourceType is CurrencyLedgerSource.ShopFee)
+            {
+                counterName = "Burn sink";
+            }
+            else if (r.SourceType is CurrencyLedgerSource.Shop)
+            {
+                counterName = "Shop / escrow";
+            }
+            else if (r.UserId == CurrencyService.EscrowAccountUserId)
+            {
+                counterName = "Member / shop";
+            }
+            else if (r.UserId == CurrencyService.BurnAccountUserId)
+            {
+                counterName = "Escrow";
+            }
+            else if (MintSources.Contains(r.SourceType))
+            {
+                counterName = r.Amount >= 0 ? "Mint / issuance" : "Retired";
+            }
+            else
+            {
+                counterName = "System";
+            }
+
+            return new JournalRow(r.Id, r.UserId, accName, accAvatar, kind, counterId, counterName, counterAvatar, counterIsMember,
+                r.SourceType, r.Amount, r.SourceId, r.OccurredAt, r.Reason);
+        }).ToList();
+
+        return items;
+    }
+
+    /// <summary>Σ credited (in) / Σ debited (out) for the journal under the same filters — the footer totals.</summary>
+    public async Task<(long In, long Out)> GetJournalTotalsAsync(
+        ulong guildId, string code, string? search, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, string? account = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return (0, 0);
+        }
+
+        return await db.GuildJournalTotalsAsync(guildId, scope.Id, search, ct, sources, from, to, sign, account);
+    }
+
+    // --- Wallet analytics (KPIs, balance-over-time, cash flow, source breakdown, escrow split) ---
+
+    /// <summary>Resolve a currency code to its id + active-season scope. Null when the currency doesn't exist.</summary>
+    private async Task<(Guid Id, Guid? SeasonId)?> ResolveScopeAsync(ulong guildId, string code, CancellationToken ct, Guid? seasonOverride = null)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is null)
+        {
+            return null;
+        }
+
+        // Seasonal currencies scope to a chosen season (the season picker) or, by default, the active one.
+        Guid? seasonId = currency.IsSeasonal ? (seasonOverride ?? await db.ActiveSeasonIdAsync(guildId, ct)) : null;
+        return (currency.Id, seasonId);
+    }
+
+    /// <summary>Headline figures for one currency over <paramref name="from"/>..<paramref name="to"/>: balance,
+    /// shop-escrow held, available (= balance − held), and earned/spent/net for the window.</summary>
+    public async Task<WalletKpis> GetKpisAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
+        {
+            return new WalletKpis(0, 0, 0, 0, 0, 0);
+        }
+
+        var balance = await db.BalanceAsync(guildId, userId, scope.Id, scope.SeasonId, ct);
+        var held = await db.MemberHeldFundsAsync(guildId, userId, scope.Id, ct);
+        var (earned, spent) = await db.PeriodFlowAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+        return new WalletKpis(balance, held, balance - held, earned, spent, earned - spent);
+    }
+
+    /// <summary>How many open shop orders are holding this currency for the member (the "N open orders" hint).</summary>
+    public async Task<int> GetHeldOrderCountAsync(ulong guildId, ulong userId, string code, CancellationToken ct = default)
+        => await ResolveScopeAsync(guildId, code, ct) is { } scope
+            ? await db.MemberHeldOrderCountAsync(guildId, userId, scope.Id, ct)
+            : 0;
+
+    /// <summary>Balance-over-time: running balance at the end of each day that had movement in the window, seeded
+    /// from the opening balance just before <paramref name="from"/>.</summary>
+    public async Task<IReadOnlyList<BalancePoint>> GetBalanceSeriesAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
+        {
+            return [];
+        }
+
+        var running = await db.BalanceAsOfAsync(guildId, userId, scope.Id, scope.SeasonId, from, ct);
+        var daily = await db.DailyNetSeriesAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+
+        var points = new List<BalancePoint>(daily.Count);
+        foreach (var d in daily)
+        {
+            running += d.Net;
+            points.Add(new BalancePoint(new DateTimeOffset(d.Year, d.Month, d.Day, 0, 0, 0, TimeSpan.Zero), running));
+        }
+
+        return points;
+    }
+
+    /// <summary>Wealth-distribution stats for one currency: holder count, median/mean, the share held by the top 10%,
+    /// the Gini coefficient, and a balance-bracket histogram (6 linear buckets up to the richest holder).</summary>
+    public async Task<DistributionView> GetDistributionAsync(ulong guildId, string code, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new DistributionView(0, 0, 0, 0, 0, 0, [], []);
+        }
+
+        var balances = await db.GuildMemberBalancesAsync(guildId, scope.Id, scope.SeasonId, ct);
+        if (balances.Count == 0)
+        {
+            return new DistributionView(0, 0, 0, 0, 0, 0, [], []);
+        }
+
+        balances.Sort();
+        var n = balances.Count;
+        var total = balances.Sum();
+        var mean = total / n;
+        var median = n % 2 == 1 ? balances[n / 2] : (balances[n / 2 - 1] + balances[n / 2]) / 2;
+
+        var topCount = Math.Max(1, (int)Math.Ceiling(n * 0.1));
+        long topSum = 0;
+        for (var i = n - topCount; i < n; i++)
+        {
+            topSum += balances[i];
+        }
+
+        var top10 = total > 0 ? (int)(topSum * 100 / total) : 0;
+
+        double weighted = 0;
+        for (var i = 0; i < n; i++)
+        {
+            weighted += (i + 1) * (double)balances[i];
+        }
+
+        var gini = total > 0 ? Math.Round((2 * weighted) / (n * (double)total) - (n + 1.0) / n, 2) : 0;
+
+        // Always 10 buckets from 0 to the richest holder, so the histogram has a consistent shape even with a single
+        // member. The step auto-scales with the top balance; the last bucket is the "+" overflow.
+        const int buckets = 10;
+        var max = balances[^1];
+        var size = Math.Max(1, (long)Math.Ceiling(max / (double)buckets));
+        var counts = new int[buckets];
+        foreach (var b in balances)
+        {
+            counts[(int)Math.Min(buckets - 1, b / size)]++;
+        }
+
+        var brackets = new List<DistributionBracket>(buckets);
+        for (var i = 0; i < buckets; i++)
+        {
+            var lo = i * size;
+            brackets.Add(new DistributionBracket(i == buckets - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size)}", counts[i]));
+        }
+
+        // Merged 5-bucket view (double-width steps) for narrow screens.
+        var size2 = size * 2;
+        var counts5 = new int[5];
+        foreach (var b in balances)
+        {
+            counts5[(int)Math.Min(4, b / size2)]++;
+        }
+
+        var brackets5 = new List<DistributionBracket>(5);
+        for (var i = 0; i < 5; i++)
+        {
+            var lo = i * size2;
+            brackets5.Add(new DistributionBracket(i == 4 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size2)}", counts5[i]));
+        }
+
+        return new DistributionView(n, median, mean, top10, gini, max, brackets, brackets5);
+    }
+
+    private static string Kfmt(long v) => v >= 1000 ? $"{v / 1000.0:0.#}k" : v.ToString();
+
+    /// <summary>Median, top-10% share and Gini for an ascending-sorted balance list.</summary>
+    private static (long Median, int Top10, double Gini) Stats(List<long> b)
+    {
+        var n = b.Count;
+        var total = b.Sum();
+        var median = n % 2 == 1 ? b[n / 2] : (b[n / 2 - 1] + b[n / 2]) / 2;
+
+        var topCount = Math.Max(1, (int)Math.Ceiling(n * 0.1));
+        long topSum = 0;
+        for (var i = n - topCount; i < n; i++)
+        {
+            topSum += b[i];
+        }
+
+        var top10 = total > 0 ? (int)(topSum * 100 / total) : 0;
+
+        double weighted = 0;
+        for (var i = 0; i < n; i++)
+        {
+            weighted += (i + 1) * (double)b[i];
+        }
+
+        var gini = total > 0 ? Math.Round((2 * weighted) / (n * (double)total) - (n + 1.0) / n, 2) : 0;
+        return (median, top10, gini);
+    }
+
+    /// <summary>Distribution over the last <paramref name="months"/> month-ends: per-month holders / top-10% / Gini /
+    /// median plus per-bucket counts. Buckets are fixed (0..current max, 10 steps) so they line up across months.</summary>
+    public async Task<DistributionSeries> GetDistributionSeriesAsync(ulong guildId, string code, int months, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new DistributionSeries([], []);
+        }
+
+        var nowBalances = await db.GuildMemberBalancesAsync(guildId, scope.Id, scope.SeasonId, ct);
+        if (nowBalances.Count == 0)
+        {
+            return new DistributionSeries([], []);
+        }
+
+        const int buckets = 10;
+        var max = nowBalances.Max();
+        var size = Math.Max(1, (long)Math.Ceiling(max / (double)buckets));
+        var labels = new List<string>(buckets);
+        for (var i = 0; i < buckets; i++)
+        {
+            var lo = i * size;
+            labels.Add(i == buckets - 1 ? $"{Kfmt(lo)}+" : $"{Kfmt(lo)}–{Kfmt(lo + size)}");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var firstOfMonth = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var points = new List<DistributionPoint>(months);
+        for (var k = months - 1; k >= 0; k--)
+        {
+            var monthStart = firstOfMonth.AddMonths(-k);
+            var bal = await db.GuildMemberBalancesAsOfAsync(guildId, scope.Id, scope.SeasonId, monthStart.AddMonths(1), ct);
+            var counts = new int[buckets];
+            if (bal.Count == 0)
+            {
+                points.Add(new DistributionPoint(monthStart.Year, monthStart.Month, 0, 0, 0, 0, counts));
+                continue;
+            }
+
+            bal.Sort();
+            foreach (var v in bal)
+            {
+                counts[(int)Math.Min(buckets - 1, v / size)]++;
+            }
+
+            var (median, top10, gini) = Stats(bal);
+            points.Add(new DistributionPoint(monthStart.Year, monthStart.Month, bal.Count, top10, gini, median, counts));
+        }
+
+        return new DistributionSeries(labels, points);
+    }
+
+    /// <summary>Ledger-derived top holders for a currency (escrow/burn excluded), resolved to name + avatar — stays
+    /// correct even when the wallet cache is stale.</summary>
+    public async Task<IReadOnlyList<LeaderboardRow>> GetTopHoldersLedgerAsync(ulong guildId, string code, int take, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.GuildTopHoldersLedgerAsync(guildId, scope.Id, scope.SeasonId, take, ct);
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        var users = await db.UserDisplayMapAsync(rows.Select(r => r.UserId).ToList(), ct);
+        return rows
+            .Select((r, i) => new LeaderboardRow(
+                i + 1, r.UserId,
+                users.TryGetValue(r.UserId, out var u) ? u.Name : r.UserId.ToString(),
+                r.Total,
+                users.TryGetValue(r.UserId, out var u2) ? DiscordCdn.AvatarUrl(r.UserId, u2.AvatarHash) : null))
+            .ToList();
+    }
+
+    /// <summary>Mint sources — system awards that create net-new currency. Transfers and shop payouts are
+    /// redistribution (not minting); checkpoints are carry-forward openings; all are excluded from the faucet total.</summary>
+    private static readonly HashSet<CurrencyLedgerSource> MintSources =
+    [
+        CurrencyLedgerSource.TrackingSession, CurrencyLedgerSource.Quest, CurrencyLedgerSource.Muster,
+        CurrencyLedgerSource.Event, CurrencyLedgerSource.Background, CurrencyLedgerSource.ManualAward,
+        CurrencyLedgerSource.Connector, CurrencyLedgerSource.Adjustment,
+    ];
+
+    /// <summary>Faucets (minted, by source) vs sinks (burned, by source) over the window, with net supply change and
+    /// the resulting monthly inflation %. Net-new vs destroyed: redistribution (transfers, shop payouts) is excluded.</summary>
+    public async Task<FlowView> GetFlowAsync(ulong guildId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return new FlowView([], [], 0, 0, 0, 0, 0);
+        }
+
+        var mintMap = await db.GuildSourceEarnedAsync(guildId, scope.Id, scope.SeasonId, ct, from, to);
+        var faucets = mintMap
+            .Where(kv => MintSources.Contains(kv.Key))
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new FlowSource(kv.Key, kv.Value))
+            .ToList();
+
+        var burnMap = await db.GuildBurnBySourceAsync(guildId, scope.Id, from, to, ct);
+        var sinks = burnMap
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => new FlowSource(kv.Key, kv.Value))
+            .ToList();
+
+        var minted = faucets.Sum(f => f.Total);
+        var burned = sinks.Sum(s => s.Total);
+        var net = minted - burned;
+        var circulating = await db.GuildCirculatingAsOfAsync(guildId, scope.Id, scope.SeasonId, to, ct);
+        var prior = circulating - net;
+        var inflation = prior > 0 ? Math.Round(net * 100.0 / prior, 1) : 0;
+
+        return new FlowView(faucets, sinks, minted, burned, net, circulating, inflation);
+    }
+
+    /// <summary>Minted / burned / net per calendar month across the window (zero-filled) — the flow-over-time chart,
+    /// KPI sparklines and inflation-over-time line.</summary>
+    public async Task<IReadOnlyList<FlowMonth>> GetFlowSeriesAsync(ulong guildId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var mint = await db.GuildMonthlyMintedAsync(guildId, scope.Id, scope.SeasonId, from, to, MintSources, ct);
+        var burn = await db.GuildMonthlyBurnedAsync(guildId, scope.Id, from, to, ct);
+
+        var list = new List<FlowMonth>();
+        var cur = new DateTime(from.Year, from.Month, 1);
+        var end = new DateTime(to.Year, to.Month, 1);
+        while (cur <= end)
+        {
+            var m = mint.GetValueOrDefault((cur.Year, cur.Month), 0);
+            var b = burn.GetValueOrDefault((cur.Year, cur.Month), 0);
+            list.Add(new FlowMonth(cur.Year, cur.Month, m, b, m - b));
+            cur = cur.AddMonths(1);
+        }
+
+        return list;
+    }
+
+    /// <summary>Circulating supply (member-held) at the end of each day with movement in the window — the guild
+    /// treasury supply-over-time / candle chart. Seeded from the opening circulating balance before the window.</summary>
+    public async Task<IReadOnlyList<BalancePoint>> GetSupplySeriesAsync(
+        ulong guildId, string code, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct) is not { } scope)
+        {
+            return [];
+        }
+
+        var running = await db.GuildCirculatingAsOfAsync(guildId, scope.Id, scope.SeasonId, from, ct);
+        var daily = await db.GuildCirculatingDailyNetAsync(guildId, scope.Id, scope.SeasonId, from, to, ct);
+
+        var points = new List<BalancePoint>(daily.Count);
+        foreach (var d in daily)
+        {
+            running += d.Net;
+            points.Add(new BalancePoint(new DateTimeOffset(d.Year, d.Month, d.Day, 0, 0, 0, TimeSpan.Zero), running));
+        }
+
+        return points;
+    }
+
+    /// <summary>Earned/spent per calendar month over the window — the cash-flow-by-month chart.</summary>
+    public async Task<IReadOnlyList<MonthFlow>> GetCashFlowAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.MonthlyCashFlowAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+        return rows.Select(r => new MonthFlow(r.Year, r.Month, r.Earned, r.Spent)).ToList();
+    }
+
+    /// <summary>Earned/spent per ledger source over the window — the earned-by-source / spent-by-source breakdowns.</summary>
+    public async Task<IReadOnlyList<SourceFlow>> GetSourceBreakdownAsync(
+        ulong guildId, ulong userId, string code, DateTimeOffset from, DateTimeOffset to, Guid? season = null, CancellationToken ct = default)
+    {
+        if (await ResolveScopeAsync(guildId, code, ct, season) is not { } scope)
+        {
+            return [];
+        }
+
+        var rows = await db.SourceBreakdownAsync(guildId, userId, scope.Id, scope.SeasonId, from, to, ct);
+        return rows.Select(r => new SourceFlow(r.Source, r.Earned, r.Spent)).ToList();
+    }
+
+    /// <summary>A member's wealth rank for one currency (1-based) and the total holder count — the analytics
+    /// "wealth rank" tile. Returns (0, 0) when the currency doesn't exist.</summary>
+    public async Task<(int Rank, int Holders)> GetWealthRankAsync(ulong guildId, ulong userId, string code, Guid? season = null, CancellationToken ct = default)
+        => await ResolveScopeAsync(guildId, code, ct, season) is { } scope
+            ? await db.BalanceRankAsync(guildId, scope.Id, scope.SeasonId, userId, CurrencyService.EscrowAccountUserId, ct)
+            : (0, 0);
+
+    /// <summary>Seasons for the picker — empty unless the currency is seasonal (POINTS-style). Newest first.</summary>
+    public async Task<IReadOnlyList<SeasonInfo>> GetSeasonsAsync(ulong guildId, string code, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        return currency is { IsSeasonal: true } ? await db.SeasonsAsync(guildId, ct) : [];
+    }
+
+    /// <summary>A member's per-season totals for a seasonal currency (season-over-season chart), oldest season first.</summary>
+    public async Task<IReadOnlyList<(SeasonInfo Season, long Total)>> GetSeasonTotalsAsync(ulong guildId, ulong userId, string code, CancellationToken ct = default)
+    {
+        var currency = await db.FindCurrencyAsync(guildId, code, ct);
+        if (currency is not { IsSeasonal: true })
+        {
+            return [];
+        }
+
+        var seasons = await db.SeasonsAsync(guildId, ct);
+        var totals = await db.MemberSeasonTotalsAsync(guildId, userId, currency.Id, ct);
+        return seasons
+            .OrderBy(s => s.StartsAt)
+            .Select(s => (s, totals.GetValueOrDefault(s.Id, 0L)))
+            .ToList();
     }
 }

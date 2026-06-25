@@ -54,10 +54,16 @@ namespace Muster.Persistence.Migrations
                     b.Property<decimal>("GuildId")
                         .HasColumnType("decimal(20,0)");
 
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsSeasonal")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsSpendable")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsTransferable")
                         .HasColumnType("bit");
 
                     b.Property<int>("Mode")
@@ -143,6 +149,9 @@ namespace Muster.Persistence.Migrations
 
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
+
+                    b.Property<decimal?>("CounterpartyId")
+                        .HasColumnType("decimal(20,0)");
 
                     b.Property<Guid>("CurrencyId")
                         .HasColumnType("uniqueidentifier");

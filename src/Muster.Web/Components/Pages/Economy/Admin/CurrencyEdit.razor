@@ -1,0 +1,300 @@
+@page "/guilds/{GuildIdRaw}/currencies/new"
+@page "/guilds/{GuildIdRaw}/currencies/{CurrencyId}/edit"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject ICurrencyAdminService CurrencyAdmin
+@inject Muster.Infrastructure.Connectors.CurrencyConnectorSyncService Sync
+@inject Wolverine.IMessageBus Bus
+@using Muster.Contracts
+@using Muster.Domain.Entities
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+
+<PageTitle>@(IsEdit ? "Edit currency" : "New currency") — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="page-head">
+        <a class="back-link" href="/guilds/@GuildId/currencies">← Currencies</a>
+        <h1>@(IsEdit ? $"Edit {Input.Code}" : "New currency")</h1>
+        <p class="subtitle">Currency basics and, for External/Hybrid, the outbound connector (auth, signing,
+            Credit/Debit/Get-balance). Secrets are encrypted &amp; write-only — leave blank to keep current.</p>
+    </div>
+
+    @if (Message is not null)
+    {
+        <p class="message">@Message</p>
+    }
+
+    @if (_notFound)
+    {
+        <div class="panel glass empty">Currency not found.</div>
+    }
+    else
+    {
+        <div class="panel glass currency-edit-panel">
+            <nav class="tab-nav">
+                @foreach (var t in VisibleTabs)
+                {
+                    <button type="button" class="tab-btn @(_activeTab == t.Id ? "active" : "")"
+                            @onclick="() => _activeTab = t.Id">
+                        @t.Label
+                        @if (t.Badge is { } b)
+                        {
+                            <span class="tab-badge">@b</span>
+                        }
+                    </button>
+                }
+            </nav>
+
+            <div class="tab-body">
+                @if (_activeTab == "base")
+                {
+                    <div class="form-grid">
+                        <label>Code
+                            <input type="text" @bind="Input.Code" placeholder="COIN" disabled="@IsEdit" />
+                            @if (IsEdit) { <span class="subtitle">fixed at creation</span> }
+                        </label>
+                        <label>Name
+                            <input type="text" @bind="Input.Name" placeholder="Coin" />
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" @bind="Input.IsSpendable" />
+                            Spendable (wallet persists across seasons)
+                        </label>
+                        <label class="check">
+                            <input type="checkbox" @bind="Input.IsSeasonal" disabled="@IsEdit" />
+                            Seasonal (resets each season)
+                        </label>
+                        <label>Mode
+                            <select @bind="Input.Mode">
+                                <option value="@CurrencyMode.Internal">Internal — Muster owns the balance</option>
+                                <option value="@CurrencyMode.External">External — an outside system owns it</option>
+                                <option value="@CurrencyMode.Hybrid">Hybrid — Muster mints, external owns spend</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    @if (IsConnectorMode)
+                    {
+                        <fieldset class="field-group">
+                            <legend>Connector basics</legend>
+                            <div class="form-grid">
+                                <label class="check">
+                                    <input type="checkbox" @bind="Input.Enabled" />
+                                    Connector enabled
+                                </label>
+                                <label>Base URL
+                                    <input type="text" @bind="Input.BaseUrl" placeholder="https://loot.example" />
+                                </label>
+                                <label>Timeout (s)
+                                    <input type="number" @bind="Input.TimeoutSeconds" />
+                                </label>
+                                <label>Success codes
+                                    <input type="text" @bind="Input.SuccessCodes" placeholder="blank = any 2xx" />
+                                </label>
+                                <label>Idempotency header
+                                    <input type="text" @bind="Input.IdempotencyHeader" placeholder="X-Idempotency-Key" />
+                                </label>
+                                <label>Error message path
+                                    <input type="text" @bind="Input.ErrorPath" placeholder="error.message (JSON path)" />
+                                </label>
+                                <label>Periodic sync (min)
+                                    <input type="number" @bind="Input.SyncIntervalMinutes" />
+                                    <span class="subtitle">0 = off; sweep reconciles members older than this</span>
+                                </label>
+                            </div>
+                        </fieldset>
+                    }
+
+                    @if (IsEdit && _lastAttemptAt is not null)
+                    {
+                        <div class="last-delivery">
+                            <span class="material-symbols-outlined">history</span>
+                            Last delivery: <strong>@_lastStatus</strong> at @_lastAttemptAt?.ToString("u")
+                            @if (!string.IsNullOrEmpty(_lastError)) { <span class="err"> — @_lastError</span> }
+                        </div>
+                    }
+                }
+                else if (_activeTab == "auth")
+                {
+                    <div class="form-grid">
+                        <label>Scheme
+                            <select @bind="Input.AuthScheme">
+                                <option value="@ConnectorAuthScheme.None">None</option>
+                                <option value="@ConnectorAuthScheme.Basic">Basic</option>
+                                <option value="@ConnectorAuthScheme.Bearer">Bearer (static token)</option>
+                                <option value="@ConnectorAuthScheme.ApiKey">API key</option>
+                            </select>
+                        </label>
+                        @if (Input.AuthScheme == ConnectorAuthScheme.Basic)
+                        {
+                            <label>Username
+                                <input type="text" @bind="Input.AuthUsername" />
+                            </label>
+                        }
+                        @if (Input.AuthScheme is ConnectorAuthScheme.Basic or ConnectorAuthScheme.Bearer or ConnectorAuthScheme.ApiKey)
+                        {
+                            <label>Secret / token / key
+                                <input type="password" @bind="Input.AuthSecret" placeholder="@SecretPlaceholder(_authHasSecret)" />
+                            </label>
+                        }
+                        @if (Input.AuthScheme == ConnectorAuthScheme.ApiKey)
+                        {
+                            <label>API-key name
+                                <input type="text" @bind="Input.ApiKeyName" placeholder="x-api-key" />
+                            </label>
+                            <label>API-key in
+                                <select @bind="Input.ApiKeyIn">
+                                    <option value="@ApiKeyLocation.Header">Header</option>
+                                    <option value="@ApiKeyLocation.Query">Query string</option>
+                                </select>
+                            </label>
+                        }
+                    </div>
+                }
+                else if (_activeTab == "sec")
+                {
+                    <p class="subtitle">Optionally HMAC-sign the request body (independent of auth).</p>
+                    <div class="form-grid">
+                        <label>Algorithm
+                            <select @bind="Input.SignAlgorithm">
+                                <option value="@ConnectorSignAlgorithm.None">None</option>
+                                <option value="@ConnectorSignAlgorithm.HmacSha256">HMAC-SHA256</option>
+                                <option value="@ConnectorSignAlgorithm.HmacSha512">HMAC-SHA512</option>
+                            </select>
+                        </label>
+                        @if (Input.SignAlgorithm != ConnectorSignAlgorithm.None)
+                        {
+                            <label>Signature header
+                                <input type="text" @bind="Input.SignHeader" placeholder="X-Muster-Signature" />
+                            </label>
+                            <label>Timestamp header
+                                <input type="text" @bind="Input.SignTimestampHeader" placeholder="(blank = sign body only)" />
+                            </label>
+                            <label>Signing secret
+                                <input type="password" @bind="Input.SignSecret" placeholder="@SecretPlaceholder(_signHasSecret)" />
+                            </label>
+                        }
+                    </div>
+                }
+                else if (_activeTab is "credit" or "debit" or "balance")
+                {
+                    @ActionPanel(_activeTab)
+                }
+            </div>
+
+            <div class="btn-row tab-actions">
+                <button type="button" @onclick="SaveAsync" disabled="@_saving">
+                    @(_saving ? "Saving…" : IsEdit ? "Save changes" : "Create")
+                </button>
+                @if (IsEdit && IsConnectorMode)
+                {
+                    <button type="button" class="btn btn-ghost" @onclick="TestAsync" disabled="@_busy">
+                        @(_busy ? "Working…" : "Send test")
+                    </button>
+                    <button type="button" class="btn btn-ghost" @onclick="SyncAllAsync" disabled="@_busy">
+                        @(_busy ? "Working…" : "Sync all members")
+                    </button>
+                    @if (_backlog is { } bl)
+                    {
+                        <span class="sync-backlog" title="The full sync still has to reconcile the pending members.">
+                            <span class="material-symbols-outlined">@(bl.Pending > 0 ? "pending" : "task_alt")</span>
+                            @bl.Synced/@bl.Members synced · <strong>@bl.Pending</strong> pending
+                            @if (bl.OldestSync is { } o) { <span class="muted"> · oldest @o.ToString("u")</span> }
+                        </span>
+                    }
+                }
+                <a class="btn btn-ghost" href="/guilds/@GuildId/currencies">Cancel</a>
+                @if (IsEdit && !_isSystem)
+                {
+                    <button type="button" class="btn btn-ghost danger" style="margin-left:auto" @onclick="DeleteAsync" disabled="@_busy">
+                        <span class="material-symbols-outlined">delete</span> Delete currency
+                    </button>
+                }
+            </div>
+        </div>
+    }
+}
+
+@{
+    RenderFragment ActionPanel(string kind) => __builder =>
+    {
+        var (label, e, m, p, q, body, bf, rf, rp, enabledSetter) = kind switch
+        {
+            "credit" => ("Credit",
+                Input.CreditEnabled, Input.CreditMethod, Input.CreditPath, Input.CreditQuery,
+                Input.CreditBody, Input.CreditBodyFormat, Input.CreditResponseFormat, Input.CreditResponsePath,
+                (Action<bool>)(v => Input.CreditEnabled = v)),
+            "debit" => ("Debit",
+                Input.DebitEnabled, Input.DebitMethod, Input.DebitPath, Input.DebitQuery,
+                Input.DebitBody, Input.DebitBodyFormat, Input.DebitResponseFormat, Input.DebitResponsePath,
+                (Action<bool>)(v => Input.DebitEnabled = v)),
+            _ => ("Get balance",
+                Input.BalanceEnabled, Input.BalanceMethod, Input.BalancePath, Input.BalanceQuery,
+                Input.BalanceBody, Input.BalanceBodyFormat, Input.BalanceResponseFormat, Input.BalanceResponsePath,
+                (Action<bool>)(v => Input.BalanceEnabled = v)),
+        };
+        var description = kind switch
+        {
+            "credit" => "Request run when a ledger movement is positive (a credit).",
+            "debit" => "Request run when a ledger movement is negative (a debit). Leave disabled to use the Credit endpoint with a negative $amount if the target accepts it.",
+            _ => "Reads the external balance for reconciliation. May use a body (some APIs read balance via POST).",
+        };
+
+        <p class="subtitle">@description</p>
+        <label class="check">
+            <input type="checkbox" checked="@e" @onchange="(ChangeEventArgs ev) => enabledSetter((bool)ev.Value!)" />
+            Enabled
+        </label>
+
+        @if (e)
+        {
+            <div class="form-grid">
+                <label>Method
+                    <input type="text" value="@m" @oninput="@(args => SetActionField(kind, "Method", args.Value?.ToString()))" placeholder="@(kind == "balance" ? "GET" : "POST")" />
+                </label>
+                <label>Path
+                    <input type="text" value="@p" @oninput="@(args => SetActionField(kind, "Path", args.Value?.ToString()))" placeholder="@(kind switch { "credit" => "/currency/add", "debit" => "/currency/spend", _ => "/currency/balance/$userId" })" />
+                </label>
+                <label>Query
+                    <input type="text" value="@q" @oninput="@(args => SetActionField(kind, "Query", args.Value?.ToString()))" placeholder="@(kind == "balance" ? "user=$userId" : "key=value&m=$userId")" />
+                </label>
+                <label>Response format
+                    <select value="@rf.ToString()" @onchange="@(args => SetActionResponseFormat(kind, args.Value?.ToString()))">
+                        <option value="@ConnectorResponseFormat.None">None</option>
+                        <option value="@ConnectorResponseFormat.Json">JSON path</option>
+                        <option value="@ConnectorResponseFormat.Text">Plain text</option>
+                        <option value="@ConnectorResponseFormat.Regex">Regex capture</option>
+                    </select>
+                </label>
+                <label>Response value path
+                    <input type="text" value="@rp" @oninput="@(args => SetActionField(kind, "ResponsePath", args.Value?.ToString()))" placeholder="balance" />
+                </label>
+                <label>Body format
+                    <select value="@bf.ToString()" @onchange="@(args => SetActionBodyFormat(kind, args.Value?.ToString()))">
+                        <option value="@ConnectorBodyFormat.Json">JSON</option>
+                        <option value="@ConnectorBodyFormat.Form">Form (urlencoded)</option>
+                    </select>
+                </label>
+            </div>
+            <div class="field-block">
+                <label>Body (@(kind == "balance" ? "JSON, optional" : "JSON"))</label>
+                <textarea class="json-editor" rows="8"
+                          value="@body"
+                          @oninput="@(args => SetActionField(kind, "Body", args.Value?.ToString()))"
+                          placeholder='@(kind switch { "credit" => "{ \"member_id\": \"$userId\", \"display_name\": \"$displayName\", \"amount\": \"$amount\" }", "debit" => "{ \"member_id\": \"$userId\", \"amount\": \"$amount\" }", _ => "{ \"member_id\": \"$userId\" }" })'></textarea>
+            </div>
+            <p class="subtitle">@PlaceholderHelp</p>
+        }
+        else
+        {
+            <p class="subtitle">Enable to configure this request.</p>
+        }
+    };
+}

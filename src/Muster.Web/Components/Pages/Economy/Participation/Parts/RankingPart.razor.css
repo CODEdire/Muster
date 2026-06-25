@@ -1,0 +1,4 @@
+/* Flat, subtle grid frame (matches the treasury/ledger grids) so the footer pins to the bottom */
+.rk-grid { background: rgba(255, 255, 255, 0.018); border: 1px solid var(--glass-border); border-radius: var(--radius); }
+.rk-list { padding: 0.25rem 1rem; }
+.rk-empty { padding: 1.5rem 1rem; text-align: center; }

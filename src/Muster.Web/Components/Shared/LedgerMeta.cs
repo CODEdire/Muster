@@ -20,6 +20,8 @@ public static class LedgerMeta
         CurrencyLedgerSource.Adjustment => "Adjustment",
         CurrencyLedgerSource.Checkpoint => "Checkpoint",
         CurrencyLedgerSource.Background => "Background",
+        CurrencyLedgerSource.Shop => "Shop",
+        CurrencyLedgerSource.ShopFee => "Fee",
         _ => source.ToString(),
     };
 
@@ -36,6 +38,8 @@ public static class LedgerMeta
         CurrencyLedgerSource.Adjustment => "tune",
         CurrencyLedgerSource.Checkpoint => "flag",
         CurrencyLedgerSource.Background => "sensors",
+        CurrencyLedgerSource.Shop => "shopping_bag",
+        CurrencyLedgerSource.ShopFee => "percent",
         _ => "receipt_long",
     };
 
@@ -60,6 +64,15 @@ public static class LedgerMeta
             _ => (null, null),
         };
     }
+
+    /// <summary>Medal class for a leaderboard rank — gold/silver/bronze for the podium, empty for the rest.</summary>
+    public static string RankClass(int rank) => rank switch
+    {
+        1 => "gold",
+        2 => "silver",
+        3 => "bronze",
+        _ => "",
+    };
 
     /// <summary>Range preset options — dropdown source order.</summary>
     public static readonly IReadOnlyList<(string Value, string Label)> RangePresets =

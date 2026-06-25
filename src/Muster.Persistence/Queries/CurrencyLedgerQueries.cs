@@ -16,6 +16,18 @@ public record LedgerTotal(ulong UserId, Guid CurrencyId, Guid? SeasonId, long To
 /// <see cref="GrossCredited"/>/<see cref="GrossDebited"/> are all-time inflow/outflow (both non-negative).</summary>
 public record CurrencySupplyTotals(long GrossCredited, long GrossDebited, long Circulating, long Escrow, int Holders);
 
+/// <summary>One member-ledger row projected for the web datagrid (incl. id, source id, counterparty and an optional
+/// running balance) — richer than the plain history tuple so the grid can show "who" and drill into a transaction.</summary>
+public record MemberLedgerProjection(
+    long Id, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, string? SourceId, ulong? CounterpartyId,
+    DateTimeOffset OccurredAt, string Reason, long? BalanceAfter = null);
+
+/// <summary>One posting for the accountant journal — carries id, source id and counterparty so the read layer can
+/// resolve the account + counter-account and render the double-entry view.</summary>
+public record JournalPosting(
+    long Id, ulong UserId, long Amount, CurrencyLedgerSource SourceType, string? SourceId, ulong? CounterpartyId,
+    DateTimeOffset OccurredAt, string Reason);
+
 /// <summary>Read queries over the ledger (balances and leaderboards) plus the write-path's own lookups.</summary>
 public static class CurrencyLedgerQueries
 {
@@ -146,16 +158,13 @@ public static class CurrencyLedgerQueries
         return rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList();
     }
 
-    /// <summary>Paged + sortable variant of <see cref="MemberLedgerAsync"/> for the web wallet datagrid.
-    /// <paramref name="search"/> matches the reason field (case-insensitive via the SQL collation).
-    /// <paramref name="sortKey"/>: "amount" or anything else = newest first.
-    /// <paramref name="excludeCurrencyId"/> drops a currency at the SQL level — used by the wallet surface to keep
-    /// POINTS out without relying on every caller to remember to filter.
-    /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
-    public static async Task<(List<(Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> MemberLedgerPagedAsync(
-        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
-        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    /// <summary>The shared filtered member-ledger query (currency, exclude-currency, sources, date window, reason
+    /// search, direction sign) used by both the paged read and the totals aggregate so they stay in lock-step.
+    /// <paramref name="sign"/>: 1 = credits (amount &gt; 0), -1 = debits (amount &lt; 0), null = both.</summary>
+    private static IQueryable<CurrencyLedgerEntry> MemberLedgerFiltered(
+        MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, Guid? excludeCurrencyId,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign,
+        ulong? counterpartyId = null, Guid? seasonScope = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && e.UserId == userId && (currencyId == null || e.CurrencyId == currencyId));
@@ -163,6 +172,17 @@ public static class CurrencyLedgerQueries
         if (excludeCurrencyId is { } x)
         {
             q = q.Where(e => e.CurrencyId != x);
+        }
+
+        // Scope to one season (e.g. the active season for a seasonal points ledger). Null = no season filter.
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
+        }
+
+        if (counterpartyId is { } cp)
+        {
+            q = q.Where(e => e.CounterpartyId == cp);
         }
 
         if (sources is { Count: > 0 })
@@ -180,11 +200,58 @@ public static class CurrencyLedgerQueries
             q = q.Where(e => e.OccurredAt < t);
         }
 
+        if (sign is 1)
+        {
+            q = q.Where(e => e.Amount > 0);
+        }
+        else if (sign is -1)
+        {
+            q = q.Where(e => e.Amount < 0);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            q = q.Where(e => e.Reason.Contains(s));
+            // Match the reason or the counterparty's name (username / global name) so search covers the party too.
+            q = q.Where(e => e.Reason.Contains(s)
+                || db.Users.Any(u => u.Id == e.CounterpartyId && (u.Username.Contains(s) || (u.GlobalName != null && u.GlobalName.Contains(s)))));
         }
+
+        return q;
+    }
+
+    /// <summary>Credited (in) / debited (out, as a positive magnitude) totals for the same filter the member ledger
+    /// datagrid is showing — the Σ in / Σ out footer.</summary>
+    public static async Task<(long In, long Out)> MemberLedgerTotalsAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, CancellationToken ct = default,
+        Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null, Guid? seasonScope = null)
+    {
+        var agg = await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId, seasonScope)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                In = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Out = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.In, agg.Out);
+    }
+
+    /// <summary>Paged + sortable variant of <see cref="MemberLedgerAsync"/> for the web wallet datagrid.
+    /// <paramref name="search"/> matches the reason field (case-insensitive via the SQL collation).
+    /// <paramref name="sortKey"/>: "amount" or anything else = newest first.
+    /// <paramref name="excludeCurrencyId"/> drops a currency at the SQL level — used by the wallet surface to keep
+    /// POINTS out without relying on every caller to remember to filter.
+    /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
+    public static async Task<(List<MemberLedgerProjection> Rows, int Total)> MemberLedgerPagedAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, ulong? counterpartyId = null, Guid? seasonScope = null)
+    {
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId, seasonScope);
 
         var total = await q.CountAsync(ct);
 
@@ -192,6 +259,10 @@ public static class CurrencyLedgerQueries
         {
             ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
             ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            ("reason", true) => q.OrderByDescending(e => e.Reason).ThenByDescending(e => e.Id),
+            ("reason", false) => q.OrderBy(e => e.Reason).ThenBy(e => e.Id),
             (_, false) => q.OrderBy(e => e.Id),
             _ => q.OrderByDescending(e => e.Id),
         };
@@ -199,10 +270,74 @@ public static class CurrencyLedgerQueries
         var rows = await q
             .Skip(Math.Max(skip, 0))
             .Take(Math.Clamp(take, 1, 100))
-            .Select(e => new { e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .Select(e => new MemberLedgerProjection(e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
             .ToListAsync(ct);
 
-        return (rows.Select(e => (e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
+        return (rows, total);
+    }
+
+    /// <summary>Like <see cref="MemberLedgerPagedAsync"/> but also returns each row's <b>running balance</b> (the
+    /// member's balance for this currency after that entry), computed over the full history via a correlated sum so
+    /// display filters don't distort it. Single non-seasonal currency only (season scope is null).</summary>
+    public static async Task<(List<MemberLedgerProjection> Rows, int Total)> MemberLedgerPagedWithBalanceAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, ulong? counterpartyId = null)
+    {
+        var q = MemberLedgerFiltered(db, guildId, userId, currencyId, search, null, sources, from, to, sign, counterpartyId);
+        var total = await q.CountAsync(ct);
+
+        q = (sortKey, descending) switch
+        {
+            ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
+            ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            ("reason", true) => q.OrderByDescending(e => e.Reason).ThenByDescending(e => e.Id),
+            ("reason", false) => q.OrderBy(e => e.Reason).ThenBy(e => e.Id),
+            (_, false) => q.OrderBy(e => e.Id),
+            _ => q.OrderByDescending(e => e.Id),
+        };
+
+        var rows = await q
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new MemberLedgerProjection(
+                e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason,
+                db.CurrencyLedgerEntries
+                    .Where(x => x.GuildId == guildId && x.UserId == userId && x.CurrencyId == currencyId && x.SeasonId == null
+                        && (x.OccurredAt < e.OccurredAt || (x.OccurredAt == e.OccurredAt && x.Id <= e.Id)))
+                    .Sum(x => (long?)x.Amount) ?? 0))
+            .ToListAsync(ct);
+
+        return (rows, total);
+    }
+
+    /// <summary>All filtered member-ledger rows (newest first, capped) for an export. Same filter as the datagrid.</summary>
+    public static async Task<List<MemberLedgerProjection>> MemberLedgerAllAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, string? search, int cap, CancellationToken ct = default,
+        Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, int? sign = null, ulong? counterpartyId = null, Guid? seasonScope = null)
+        => await MemberLedgerFiltered(db, guildId, userId, currencyId, search, excludeCurrencyId, sources, from, to, sign, counterpartyId, seasonScope)
+            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
+            .Take(Math.Clamp(cap, 1, 50000))
+            .Select(e => new MemberLedgerProjection(e.Id, e.CurrencyId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
+            .ToListAsync(ct);
+
+    /// <summary>Distinct counterparty user ids a member has transacted with for a currency (their transfer partners) —
+    /// the party-filter dropdown. <paramref name="currencyId"/> null = across all currencies.</summary>
+    public static async Task<List<ulong>> MemberCounterpartiesAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid? currencyId, CancellationToken ct = default)
+    {
+        var ids = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CounterpartyId != null
+                && (currencyId == null || e.CurrencyId == currencyId))
+            .Select(e => e.CounterpartyId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return ids;
     }
 
     /// <summary>A user's most recent ledger entries across all currencies (newest first), projected for display.</summary>
@@ -229,10 +364,114 @@ public static class CurrencyLedgerQueries
     /// <summary>Paged + sortable variant of <see cref="GuildLedgerAsync"/> for the web Guild ledger datagrid.
     /// <paramref name="excludeCurrencyId"/> drops a currency at SQL level (the wallet surface uses this for POINTS).
     /// <paramref name="sources"/> + <paramref name="from"/>/<paramref name="to"/> narrow by source type and occurrence window.</summary>
-    public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason)> Rows, int Total)> GuildLedgerPagedAsync(
-        this MusterDbContext db, ulong guildId, Guid? currencyId, string? search,
-        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
-        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    /// <summary>Paged guild journal postings (newest first) with the journal filters: currency, search, sources,
+    /// window, direction sign and account kind ("member" / "escrow" / "burn").</summary>
+    private static IQueryable<CurrencyLedgerEntry> GuildJournalFiltered(
+        MusterDbContext db, ulong guildId, Guid currencyId, string? search,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources, DateTimeOffset? from, DateTimeOffset? to, int? sign, string? account)
+    {
+        var q = db.CurrencyLedgerEntries.Where(e => e.GuildId == guildId && e.CurrencyId == currencyId);
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (sign is 1)
+        {
+            q = q.Where(e => e.Amount > 0);
+        }
+        else if (sign is -1)
+        {
+            q = q.Where(e => e.Amount < 0);
+        }
+
+        q = account switch
+        {
+            "member" => q.Where(e => e.UserId != 0 && e.UserId != 1),
+            "escrow" => q.Where(e => e.UserId == 0),
+            "burn" => q.Where(e => e.UserId == 1),
+            _ => q,
+        };
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        return q;
+    }
+
+    private static IOrderedQueryable<CurrencyLedgerEntry> JournalOrder(IQueryable<CurrencyLedgerEntry> q, string sortKey, bool descending) =>
+        (sortKey, descending) switch
+        {
+            ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
+            ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            (_, false) => q.OrderBy(e => e.OccurredAt).ThenBy(e => e.Id),
+            _ => q.OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id),
+        };
+
+    public static async Task<(List<JournalPosting> Rows, int Total)> GuildJournalPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, int skip, int take, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, string? account = null, string sortKey = "when", bool descending = true)
+    {
+        var q = GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account);
+        var total = await q.CountAsync(ct);
+
+        var rows = await JournalOrder(q, sortKey, descending)
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(e => new JournalPosting(e.Id, e.UserId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
+            .ToListAsync(ct);
+
+        return (rows, total);
+    }
+
+    /// <summary>All filtered journal postings (newest first, capped) for an export.</summary>
+    public static async Task<List<JournalPosting>> GuildJournalAllAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, int cap, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, string? account = null)
+        => await GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account)
+            .OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id)
+            .Take(Math.Clamp(cap, 1, 50000))
+            .Select(e => new JournalPosting(e.Id, e.UserId, e.Amount, e.SourceType, e.SourceId, e.CounterpartyId, e.OccurredAt, e.Reason))
+            .ToListAsync(ct);
+
+    /// <summary>Σ credited (in) / Σ debited (out) for the journal under the same filters — the footer totals.</summary>
+    public static async Task<(long In, long Out)> GuildJournalTotalsAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, CancellationToken ct = default,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        int? sign = null, string? account = null)
+    {
+        var agg = await GuildJournalFiltered(db, guildId, currencyId, search, sources, from, to, sign, account)
+            .GroupBy(_ => 1)
+            .Select(g => new { In = g.Sum(x => x.Amount > 0 ? x.Amount : 0L), Out = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L) })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.In, agg.Out);
+    }
+
+    /// <summary>Minted (in) / removed (out, as a positive magnitude) totals for the guild ledger under the same
+    /// filter the movement grid shows — the Σ minted / Σ burned footer.</summary>
+    public static async Task<(long In, long Out)> GuildLedgerTotalsAsync(
+        this MusterDbContext db, ulong guildId, Guid? currencyId, string? search, CancellationToken ct = default,
+        Guid? excludeCurrencyId = null, IReadOnlyCollection<CurrencyLedgerSource>? sources = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, Guid? seasonScope = null)
     {
         var q = db.CurrencyLedgerEntries
             .Where(e => e.GuildId == guildId && (currencyId == null || e.CurrencyId == currencyId));
@@ -240,6 +479,59 @@ public static class CurrencyLedgerQueries
         if (excludeCurrencyId is { } x)
         {
             q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
+        }
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        var agg = await q
+            .GroupBy(_ => 1)
+            .Select(g => new { In = g.Sum(x => x.Amount > 0 ? x.Amount : 0L), Out = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L) })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.In, agg.Out);
+    }
+
+    public static async Task<(List<(ulong UserId, Guid CurrencyId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason, Guid? SeasonId)> Rows, int Total)> GuildLedgerPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid? currencyId, string? search,
+        string sortKey, bool descending, int skip, int take, CancellationToken ct = default, Guid? excludeCurrencyId = null,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        Guid? seasonScope = null)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && (currencyId == null || e.CurrencyId == currencyId));
+
+        if (excludeCurrencyId is { } x)
+        {
+            q = q.Where(e => e.CurrencyId != x);
+        }
+
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
         }
 
         if (sources is { Count: > 0 })
@@ -269,6 +561,10 @@ public static class CurrencyLedgerQueries
         {
             ("amount", true) => q.OrderByDescending(e => e.Amount).ThenByDescending(e => e.Id),
             ("amount", false) => q.OrderBy(e => e.Amount).ThenBy(e => e.Id),
+            ("source", true) => q.OrderByDescending(e => e.SourceType).ThenByDescending(e => e.Id),
+            ("source", false) => q.OrderBy(e => e.SourceType).ThenBy(e => e.Id),
+            ("reason", true) => q.OrderByDescending(e => e.Reason).ThenByDescending(e => e.Id),
+            ("reason", false) => q.OrderBy(e => e.Reason).ThenBy(e => e.Id),
             (_, false) => q.OrderBy(e => e.Id),
             _ => q.OrderByDescending(e => e.Id),
         };
@@ -276,10 +572,53 @@ public static class CurrencyLedgerQueries
         var rows = await q
             .Skip(Math.Max(skip, 0))
             .Take(Math.Clamp(take, 1, 100))
-            .Select(e => new { e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason })
+            .Select(e => new { e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId })
             .ToListAsync(ct);
 
-        return (rows.Select(e => (e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason)).ToList(), total);
+        return (rows.Select(e => (e.UserId, e.CurrencyId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId)).ToList(), total);
+    }
+
+    /// <summary>All filtered guild-ledger rows (capped) for a CSV export of the current movement view — same filters as
+    /// <see cref="GuildLedgerPagedAsync"/> but without paging.</summary>
+    public static async Task<List<(ulong UserId, long Amount, CurrencyLedgerSource SourceType, DateTimeOffset OccurredAt, string Reason, Guid? SeasonId)>> GuildLedgerExportAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, string? search, string sortKey, bool descending,
+        IReadOnlyCollection<CurrencyLedgerSource>? sources = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
+        Guid? seasonScope = null, int cap = 10000, CancellationToken ct = default)
+    {
+        var q = db.CurrencyLedgerEntries.Where(e => e.GuildId == guildId && e.CurrencyId == currencyId);
+
+        if (seasonScope is { } season)
+        {
+            q = q.Where(e => e.SeasonId == season);
+        }
+
+        if (sources is { Count: > 0 })
+        {
+            q = q.Where(e => sources.Contains(e.SourceType));
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Reason.Contains(s));
+        }
+
+        var rows = await JournalOrder(q, sortKey, descending)
+            .Take(Math.Clamp(cap, 1, 100000))
+            .Select(e => new { e.UserId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId })
+            .ToListAsync(ct);
+
+        return rows.Select(e => (e.UserId, e.Amount, e.SourceType, e.OccurredAt, e.Reason, e.SeasonId)).ToList();
     }
 
     /// <summary>Paged top holders for a currency/season scope, sorted by cached wallet balance (highest first).
@@ -351,5 +690,366 @@ public static class CurrencyLedgerQueries
             .ToListAsync(ct);
 
         return rows.Select(r => (r.UserId, r.Total)).ToList();
+    }
+
+    // --- Wallet analytics: per-member aggregates over a currency/season scope, summed from the ledger. ---
+
+    /// <summary>A member's running balance as of an instant (sum of amounts strictly before <paramref name="asOf"/>) —
+    /// the opening balance a balance-over-time series builds on.</summary>
+    public static async Task<long> BalanceAsOfAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId, DateTimeOffset asOf, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt < asOf)
+            .SumAsync(e => (long?)e.Amount, ct) ?? 0;
+
+    /// <summary>Earned (positive) and spent (absolute of negative) totals for a member over a window.</summary>
+    public static async Task<(long Earned, long Spent)> PeriodFlowAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var agg = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Earned = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Spent = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return agg is null ? (0, 0) : (agg.Earned, agg.Spent);
+    }
+
+    /// <summary>Net delta per day for a member over a window (days with no movement are omitted) — the caller adds the
+    /// opening balance from <see cref="BalanceAsOfAsync"/> and accumulates to plot balance-over-time.</summary>
+    public static async Task<List<(int Year, int Month, int Day, long Net)>> DailyNetSeriesAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month, e.OccurredAt.Day })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Net = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows
+            .OrderBy(r => r.Year).ThenBy(r => r.Month).ThenBy(r => r.Day)
+            .Select(r => (r.Year, r.Month, r.Day, r.Net))
+            .ToList();
+    }
+
+    /// <summary>Top member holders of a currency, summed straight from the ledger (excludes escrow 0 / burn 1) — the
+    /// ledger-derived leaderboard that stays correct even when the wallet cache is stale.</summary>
+    public static async Task<List<(ulong UserId, long Total)>> GuildTopHoldersLedgerAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, int take, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
+            .Where(x => x.Total > 0)
+            .OrderByDescending(x => x.Total)
+            .Take(Math.Clamp(take, 1, 100))
+            .ToListAsync(ct);
+
+        return rows.Select(r => (r.UserId, r.Total)).ToList();
+    }
+
+    /// <summary>Top member earners across every season (sum of positive amounts per member, all seasons combined) —
+    /// the all-time participation podium. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<List<(ulong UserId, long Total)>> GuildTopEarnersAllSeasonsAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, int take, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
+            .OrderByDescending(x => x.Total)
+            .Take(Math.Clamp(take, 1, 100))
+            .ToListAsync(ct);
+
+        return rows.Select(r => (r.UserId, r.Total)).ToList();
+    }
+
+    /// <summary>Paged all-time earners (cumulative positive amounts per member across every season) with the total
+    /// count — the "All-time" hall-of-fame ranking. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<(List<(ulong UserId, long Total)> Rows, int Total)> GuildTopEarnersAllSeasonsPagedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, int skip, int take, CancellationToken ct = default)
+    {
+        var grouped = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.Amount) })
+            .Where(x => x.Total > 0);
+
+        var total = await grouped.CountAsync(ct);
+        var rows = await grouped
+            .OrderByDescending(x => x.Total)
+            .Skip(Math.Max(skip, 0))
+            .Take(Math.Clamp(take, 1, 100))
+            .ToListAsync(ct);
+
+        return (rows.Select(r => (r.UserId, r.Total)).ToList(), total);
+    }
+
+    /// <summary>Every member's positive balance for a currency, summed straight from the ledger (excludes the escrow
+    /// account 0 and burn sink 1) — the raw input for the wealth-distribution stats and histogram. Ledger-derived so
+    /// it stays consistent with the rest of the treasury even when the wallet cache is stale.</summary>
+    public static async Task<List<long>> GuildMemberBalancesAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.UserId)
+            .Select(g => g.Sum(x => x.Amount))
+            .Where(sum => sum > 0)
+            .ToListAsync(ct);
+
+    /// <summary>Every member's positive balance for a currency as of <paramref name="asOf"/> (excludes escrow 0 /
+    /// burn 1) — for the distribution-over-time series (each month-end's wealth spread).</summary>
+    public static async Task<List<long>> GuildMemberBalancesAsOfAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, DateTimeOffset asOf, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.OccurredAt < asOf)
+            .GroupBy(e => e.UserId)
+            .Select(g => g.Sum(x => x.Amount))
+            .Where(sum => sum > 0)
+            .ToListAsync(ct);
+
+    /// <summary>Guild-wide earned (positive amounts) per ledger source for a currency, optionally season-scoped —
+    /// the participation "points by source" chart. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildSourceEarnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonScope, CancellationToken ct = default,
+        DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1);
+
+        if (seasonScope is { } s)
+        {
+            q = q.Where(e => e.SeasonId == s);
+        }
+
+        if (from is { } f)
+        {
+            q = q.Where(e => e.OccurredAt >= f);
+        }
+
+        if (to is { } t)
+        {
+            q = q.Where(e => e.OccurredAt < t);
+        }
+
+        var rows = await q
+            .GroupBy(e => e.SourceType)
+            .Select(g => new { Source = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.Source, r => r.Total);
+    }
+
+    /// <summary>Minted per calendar month over a window — positive member entries (excludes escrow 0 / burn 1)
+    /// whose source is one of <paramref name="mintSources"/>. The faucet side of the flow-over-time chart.</summary>
+    public static async Task<Dictionary<(int Year, int Month), long>> GuildMonthlyMintedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, DateTimeOffset from, DateTimeOffset to,
+        IReadOnlyCollection<CurrencyLedgerSource> mintSources, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.Amount > 0 && mintSources.Contains(e.SourceType)
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => (r.Year, r.Month), r => r.Total);
+    }
+
+    /// <summary>Burned per calendar month over a window — positive entries parked in the burn sink (UserId 1). The
+    /// sink side of the flow-over-time chart.</summary>
+    public static async Task<Dictionary<(int Year, int Month), long>> GuildMonthlyBurnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.UserId == 1 && e.Amount > 0
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => (r.Year, r.Month), r => r.Total);
+    }
+
+    /// <summary>Currency burned per source over a window — positive entries parked in the burn sink (UserId 1):
+    /// shop fees and guild-store consumes. The sink side of the faucets/sinks view.</summary>
+    public static async Task<Dictionary<CurrencyLedgerSource, long>> GuildBurnBySourceAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.UserId == 1 && e.Amount > 0
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => e.SourceType)
+            .Select(g => new { Source = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.Source, r => r.Total);
+    }
+
+    /// <summary>Guild-wide total earned per season for a currency (sum of positive amounts grouped by season) — the
+    /// season-over-season chart. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<Guid, long>> GuildSeasonEarnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId != null && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => e.SeasonId!.Value)
+            .Select(g => new { SeasonId = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.SeasonId, r => r.Total);
+    }
+
+    /// <summary>Distinct members who earned (positive amount) of a currency, optionally season-scoped — "active
+    /// earners". Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<int> GuildActiveEarnersAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonScope, CancellationToken ct = default)
+    {
+        var q = db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.Amount > 0 && e.UserId != 0 && e.UserId != 1);
+
+        if (seasonScope is { } s)
+        {
+            q = q.Where(e => e.SeasonId == s);
+        }
+
+        return await q.Select(e => e.UserId).Distinct().CountAsync(ct);
+    }
+
+    /// <summary>Distinct earner user-ids per season (members with a positive entry that season) — the basis for
+    /// new-vs-returning earner and retention math. Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<Guid, HashSet<ulong>>> GuildSeasonEarnerIdsAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId != null
+                && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .Select(e => new { Season = e.SeasonId!.Value, e.UserId })
+            .Distinct()
+            .ToListAsync(ct);
+
+        return rows.GroupBy(r => r.Season).ToDictionary(g => g.Key, g => g.Select(x => x.UserId).ToHashSet());
+    }
+
+    /// <summary>Positive points earned per calendar day within one season — bucketed into the weekly velocity chart.
+    /// Excludes the escrow account 0 and burn sink 1.</summary>
+    public static async Task<Dictionary<DateOnly, long>> GuildSeasonDailyEarnedAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid seasonId, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.Amount > 0 && e.UserId != 0 && e.UserId != 1)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month, e.OccurredAt.Day })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => new DateOnly(r.Year, r.Month, r.Day), r => r.Total);
+    }
+
+    /// <summary>Circulating supply (member-held only — excludes the escrow account 0 and burn sink 1) just before
+    /// <paramref name="asOf"/>: the opening point for the guild supply-over-time / candle chart.</summary>
+    public static async Task<long> GuildCirculatingAsOfAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, DateTimeOffset asOf, CancellationToken ct = default)
+        => await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.OccurredAt < asOf)
+            .SumAsync(e => (long?)e.Amount, ct) ?? 0;
+
+    /// <summary>Net change in circulating supply per day over a window (member-held only) — the caller seeds with
+    /// <see cref="GuildCirculatingAsOfAsync"/> and accumulates to plot circulating supply over time.</summary>
+    public static async Task<List<(int Year, int Month, int Day, long Net)>> GuildCirculatingDailyNetAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.UserId != 0 && e.UserId != 1 && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month, e.OccurredAt.Day })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Net = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+
+        return rows
+            .OrderBy(r => r.Year).ThenBy(r => r.Month).ThenBy(r => r.Day)
+            .Select(r => (r.Year, r.Month, r.Day, r.Net))
+            .ToList();
+    }
+
+    /// <summary>Earned/spent totals per calendar month for a member over a window — the cash-flow-by-month chart.</summary>
+    public static async Task<List<(int Year, int Month, long Earned, long Spent)>> MonthlyCashFlowAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => new { e.OccurredAt.Year, e.OccurredAt.Month })
+            .Select(g => new
+            {
+                g.Key.Year,
+                g.Key.Month,
+                Earned = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Spent = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .OrderBy(r => r.Year).ThenBy(r => r.Month)
+            .Select(r => (r.Year, r.Month, r.Earned, r.Spent))
+            .ToList();
+    }
+
+    /// <summary>Earned/spent totals per ledger source for a member over a window — the earned-by-source and
+    /// spent-by-source breakdowns. Transfers split naturally (in = positive amounts, out = negative).</summary>
+    public static async Task<List<(CurrencyLedgerSource Source, long Earned, long Spent)>> SourceBreakdownAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, Guid? seasonId,
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var rows = await db.CurrencyLedgerEntries
+            .Where(e => e.GuildId == guildId && e.UserId == userId && e.CurrencyId == currencyId && e.SeasonId == seasonId
+                && e.OccurredAt >= from && e.OccurredAt < to)
+            .GroupBy(e => e.SourceType)
+            .Select(g => new
+            {
+                Source = g.Key,
+                Earned = g.Sum(x => x.Amount > 0 ? x.Amount : 0L),
+                Spent = g.Sum(x => x.Amount < 0 ? -x.Amount : 0L),
+            })
+            .ToListAsync(ct);
+
+        return rows.Select(r => (r.Source, r.Earned, r.Spent)).ToList();
+    }
+
+    /// <summary>A member's wealth rank for a currency/season scope (1-based) plus the holder count, from the wallet
+    /// cache. Rank = members with a strictly higher balance, + 1; the escrow/house account is excluded.</summary>
+    public static async Task<(int Rank, int Holders)> BalanceRankAsync(
+        this MusterDbContext db, ulong guildId, Guid currencyId, Guid? seasonId, ulong userId, ulong escrowUserId, CancellationToken ct = default)
+    {
+        var mine = await db.Wallets
+            .Where(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId && w.UserId == userId)
+            .Select(w => (long?)w.Balance)
+            .FirstOrDefaultAsync(ct) ?? 0;
+
+        var higher = await db.Wallets
+            .CountAsync(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId
+                && w.UserId != escrowUserId && w.Balance > mine, ct);
+
+        var holders = await db.Wallets
+            .CountAsync(w => w.GuildId == guildId && w.CurrencyId == currencyId && w.SeasonId == seasonId
+                && w.UserId != escrowUserId && w.Balance > 0, ct);
+
+        return (higher + 1, holders);
     }
 }

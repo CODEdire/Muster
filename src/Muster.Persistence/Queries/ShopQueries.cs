@@ -206,4 +206,27 @@ public static class ShopQueries
             .Where(o => o.Status == ShopOrderStatus.Settled && !o.RatingsClosed
                 && o.RatingWindowClosesAt != null && o.RatingWindowClosesAt <= now)
             .ToListAsync(ct);
+
+    // --- Wallet escrow (available-vs-held) ---
+
+    /// <summary>Currency a member currently has locked in shop escrow for one currency — the sum of their open orders
+    /// (paid into escrow, not yet settled or refunded). Drives the wallet's available-vs-held split
+    /// (<c>available = balance − held</c>). Held states: pending delivery, delivered (awaiting confirm), disputed,
+    /// and binding offers awaiting the seller.</summary>
+    public static async Task<long> MemberHeldFundsAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, CancellationToken ct = default)
+        => await db.ShopOrders
+            .Where(o => o.GuildId == guildId && o.BuyerId == userId && o.CurrencyId == currencyId
+                && (o.Status == ShopOrderStatus.PendingDelivery || o.Status == ShopOrderStatus.Delivered
+                    || o.Status == ShopOrderStatus.Disputed || o.Status == ShopOrderStatus.OfferPending))
+            .SumAsync(o => (long?)o.Amount, ct) ?? 0;
+
+    /// <summary>Count of a member's open (held) shop orders for one currency — the "N open orders" hint next to held
+    /// funds in the wallet.</summary>
+    public static Task<int> MemberHeldOrderCountAsync(
+        this MusterDbContext db, ulong guildId, ulong userId, Guid currencyId, CancellationToken ct = default)
+        => db.ShopOrders
+            .CountAsync(o => o.GuildId == guildId && o.BuyerId == userId && o.CurrencyId == currencyId
+                && (o.Status == ShopOrderStatus.PendingDelivery || o.Status == ShopOrderStatus.Delivered
+                    || o.Status == ShopOrderStatus.Disputed || o.Status == ShopOrderStatus.OfferPending), ct);
 }

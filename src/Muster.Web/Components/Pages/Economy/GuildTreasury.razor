@@ -1,0 +1,68 @@
+@page "/guilds/{GuildIdRaw}/treasury"
+@page "/guilds/{GuildIdRaw}/treasury/{Tab}"
+@layout GuildLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits GuildAdminComponentBase
+@inject IServiceScopeFactory Scopes
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Web.Components.Shared
+@using Muster.Web.Components.Pages.Economy.Components
+@using Muster.Web.Components.Pages.Economy.Treasury.Parts
+
+<PageTitle>Treasury — Muster</PageTitle>
+
+@if (State == AccessState.Forbidden)
+{
+    <div class="panel glass empty">You need staff or admin access for this server.</div>
+}
+else if (State == AccessState.Ready)
+{
+    <div class="t-head t-wide">
+        <div class="p-title">
+            <span class="material-symbols-outlined" aria-hidden="true">account_balance</span>
+            <div>
+                <div class="p-name">Treasury</div>
+                <div class="p-sub">mint · audit · read the economy</div>
+            </div>
+        </div>
+        <div class="t-controls">
+            @if (_currencies.Count > 0)
+            {
+                <CurrencySwitcher Currencies="_currencies" Selected="@_code" SelectedChanged="SelectCurrency" />
+            }
+            @if (_canManage)
+            {
+                <button class="btn btn-ghost btn-sm" @onclick="() => _mintOpen = true"><span class="material-symbols-outlined" aria-hidden="true">add_card</span> Mint / adjust</button>
+            }
+        </div>
+    </div>
+
+    <TabBar Tabs="TabItems()" Active="@_tab" AriaLabel="Treasury sections" />
+
+    @if (_currencies.Count == 0)
+    {
+        <div class="panel glass empty">No wallet currencies are configured yet (Points has its own Participation section).</div>
+    }
+    else if (_tab == "ledger")
+    {
+        <LedgerPart GuildId="GuildId" Code="@_code" Revision="_revision" />
+    }
+    else if (_tab == "distribution")
+    {
+        <DistributionPart GuildId="GuildId" Code="@_code" Revision="_revision" />
+    }
+    else if (_tab == "flow")
+    {
+        <FlowPart GuildId="GuildId" Code="@_code" Revision="_revision" />
+    }
+    else
+    {
+        <OverviewPart GuildId="GuildId" Code="@_code" Revision="_revision" />
+    }
+
+    @if (_mintOpen)
+    {
+        <MintAdjustDialog GuildId="GuildId" ActorId="UserId" Code="@_code" Currencies="_currencies" AllowBulk="_isAdmin"
+                          OnClose="() => _mintOpen = false" OnApplied="OnMintApplied" />
+    }
+}

@@ -94,7 +94,6 @@
             var personal = new List<NavItem>
             {
                 new("Me", "person", $"/guilds/{_guildId}/me", "/me"),
-                new("Points", "trophy", $"/guilds/{_guildId}/points", "/points"),
                 new("Wallet", "account_balance_wallet", $"/guilds/{_guildId}/wallet", "/wallet"),
                 new("Settings", "settings", $"/guilds/{_guildId}/settings", "/settings"),
             };
@@ -118,10 +117,11 @@
             {
                 guild.Add(new("Musters", "groups", $"/guilds/{_guildId}/guild/musters", "/guild/musters"));
             }
-            if (_isAdmin)
+            // Treasury + Participation are read-mostly: economy managers (full) and auditors (ledger only) both qualify.
+            if (_isStaff)
             {
-                guild.Add(new("Guild points", "trophy", $"/guilds/{_guildId}/guild-points", "/guild-points"));
-                guild.Add(new("Guild ledger", "account_balance", $"/guilds/{_guildId}/guild-ledger", "/guild-ledger"));
+                guild.Add(new("Treasury", "account_balance", $"/guilds/{_guildId}/treasury", "/treasury"));
+                guild.Add(new("Participation", "trophy", $"/guilds/{_guildId}/participation", "/participation"));
             }
 
             var management = new List<NavItem>();
@@ -167,6 +167,7 @@
     }
 
     private bool _isAdmin;
+    private bool _isStaff;   // any staff tier (auditor-implied) — may read Treasury / Participation ledgers
     private bool _isParticipant;
     private bool _shopEnabled;
     private bool _questsEnabled;
@@ -203,6 +204,7 @@
 
             var auth = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Membership.GuildAuthorizationService>();
             _isParticipant = await auth.IsParticipantAsync(_guildId, userId.Value);
+            _isStaff = _isAdmin || await auth.IsAuditorAsync(_guildId, userId.Value);
 
             var gate = scope.ServiceProvider.GetRequiredService<Muster.Infrastructure.Services.Platform.IFeatureGate>();
             _shopEnabled = await gate.IsEnabledAsync(_guildId, Muster.Contracts.PlatformFeature.Shop);

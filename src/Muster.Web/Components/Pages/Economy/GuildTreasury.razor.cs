@@ -1,0 +1,104 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Muster.Infrastructure.Services.Currencies;
+using Muster.Infrastructure.Services.Membership;
+using Muster.Infrastructure.Services.Web;
+using Muster.Web.Components.Shared;
+
+namespace Muster.Web.Components.Pages.Economy;
+
+public partial class GuildTreasury
+{
+    // Read-only treasury shell — EconomyManager + Auditor. Admin passes implicitly. Hosts the header, currency
+    // switcher, mint/adjust and tab bar; each tab body is an embedded part that loads its own data.
+    protected override GuildAccessTier RequiredAccess =>
+        GuildAccessTier.EconomyManager | GuildAccessTier.Auditor;
+
+    [Parameter] public string? Tab { get; set; }
+    [SupplyParameterFromQuery(Name = "cur")] private string? Cur { get; set; }
+
+    private string _tab = "overview";
+    private IReadOnlyList<CurrencyInfo> _currencies = [];
+    private string _code = "";
+    private bool _isAdmin;
+    private bool _canManage;   // economy manager (admin implied) — may use the non-ledger tabs + mint/adjust
+    private bool _mintOpen;
+
+    // Bumped after a mint/adjust to force the active part to reload without changing currency.
+    private int _revision;
+
+    protected override async Task LoadAsync()
+    {
+        _isAdmin = await Auth.IsAdminAsync(GuildId, UserId);
+        _canManage = _isAdmin || await Auth.IsEconomyManagerAsync(GuildId, UserId);
+        await using var scope = Scopes.CreateAsyncScope();
+        _currencies = await scope.ServiceProvider.GetRequiredService<WalletReadService>().GetCurrenciesAsync(GuildId);
+        ResolveCode();
+        _tab = EffectiveTab(Tab);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (State != AccessState.Ready)
+        {
+            return;
+        }
+
+        _tab = EffectiveTab(Tab);
+        if (!string.IsNullOrWhiteSpace(Cur) && Cur != _code && _currencies.Any(c => c.Code == Cur))
+        {
+            _code = Cur!;
+        }
+    }
+
+    /// <summary>Auditors (read-only) are pinned to the Ledger tab regardless of the requested tab.</summary>
+    private string EffectiveTab(string? tab) => _canManage ? Normalize(tab) : "ledger";
+
+    /// <summary>Tab bar for the treasury sections — auditors see only the Ledger; the selected currency rides along
+    /// as ?cur= so the choice survives navigation.</summary>
+    private IReadOnlyList<TabBar.TabItem> TabItems()
+    {
+        var q = string.IsNullOrWhiteSpace(_code) ? "" : $"?cur={Uri.EscapeDataString(_code)}";
+        var ledger = new TabBar.TabItem("ledger", "Ledger", "receipt_long", $"/guilds/{GuildId}/treasury/ledger{q}");
+        if (!_canManage)
+        {
+            return [ledger];
+        }
+
+        return
+        [
+            new("overview", "Overview", "dashboard", $"/guilds/{GuildId}/treasury{q}"),
+            ledger,
+            new("distribution", "Distribution", "equalizer", $"/guilds/{GuildId}/treasury/distribution{q}"),
+            new("flow", "Flow", "swap_vert", $"/guilds/{GuildId}/treasury/flow{q}"),
+        ];
+    }
+
+    private void ResolveCode()
+    {
+        if (!string.IsNullOrWhiteSpace(Cur) && _currencies.Any(c => c.Code == Cur))
+        {
+            _code = Cur!;
+        }
+        else if (string.IsNullOrWhiteSpace(_code) || _currencies.All(c => c.Code != _code))
+        {
+            _code = _currencies.FirstOrDefault(c => c.Primary)?.Code ?? _currencies.FirstOrDefault()?.Code ?? "";
+        }
+    }
+
+    private static string Normalize(string? tab) => tab?.ToLowerInvariant() switch
+    {
+        "ledger" => "ledger",
+        "distribution" => "distribution",
+        "flow" => "flow",
+        _ => "overview",
+    };
+
+    private void SelectCurrency(string code) => _code = code;
+
+    private void OnMintApplied()
+    {
+        _mintOpen = false;
+        _revision++;
+    }
+}

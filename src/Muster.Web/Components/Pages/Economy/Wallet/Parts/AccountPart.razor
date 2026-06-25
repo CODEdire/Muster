@@ -1,0 +1,327 @@
+@inherits WalletPart
+@implements IDisposable
+@inject Wolverine.IMessageBus Bus
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
+@using Muster.Domain.Enums
+@using Muster.Infrastructure.Services.Currencies
+@using Muster.Infrastructure.Services.Web
+@using Muster.Web.Components.Shared
+@using static Muster.Web.Components.Shared.LedgerMeta
+
+@if (_message is not null)
+{
+    <p class="message">@_message</p>
+}
+
+<div class="kpi-band">
+        <div class="kpi-hero">
+            <div class="kpi-hero-top">
+                <div>
+                    <div class="label">Balance</div>
+                    <div class="hero-num">@_kpis.Balance.ToString("N0") <span class="unit">@SelUnit</span></div>
+                </div>
+                @if (TrendPct != 0)
+                {
+                    <span class="trend @(TrendPct >= 0 ? "up" : "down")">
+                        <span class="material-symbols-outlined" aria-hidden="true">@(TrendPct >= 0 ? "trending_up" : "trending_down")</span>
+                        @(TrendPct > 0 ? "+" : "")@TrendPct% · 30d
+                    </span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(SparkPoints()))
+            {
+                <svg class="hero-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+                    <polyline points="@SparkPoints()" />
+                </svg>
+            }
+            <div class="avail-bar" aria-hidden="true">
+                <div class="seg avail" style="width:@AvailPct%"></div>
+                <div class="seg held" style="width:@HeldPct%"></div>
+            </div>
+            <div class="avail-meta">
+                <span>available @_kpis.Available.ToString("N0")</span>
+                @if (_kpis.Held > 0)
+                {
+                    <span><span class="material-symbols-outlined" aria-hidden="true">lock</span> @_kpis.Held.ToString("N0") held · @_heldOrders order@(_heldOrders == 1 ? "" : "s")</span>
+                }
+            </div>
+        </div>
+
+        <div class="kpi-side">
+            <div class="kpi-flow">
+                <div class="flow-head">
+                    <span class="label">Net flow · 30d</span>
+                    <span class="flow-net @(_kpis.Net >= 0 ? "pos" : "neg")">@(_kpis.Net > 0 ? "+" : "")@_kpis.Net.ToString("N0")</span>
+                </div>
+                <div class="flow-row">
+                    <span class="dir">in</span>
+                    <div class="flow-bar"><div class="fill in" style="width:@(_kpis.Earned * 100 / FlowMax)%"></div></div>
+                    <span class="fv">@_kpis.Earned.ToString("N0")</span>
+                </div>
+                @if (!IsScore)
+                {
+                    <div class="flow-row">
+                        <span class="dir">out</span>
+                        <div class="flow-bar"><div class="fill out" style="width:@(_kpis.Spent * 100 / FlowMax)%"></div></div>
+                        <span class="fv">@_kpis.Spent.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+            <div class="kpi-mini-grid">
+                <div class="kpi-mini">
+                    <div class="label">Earned · 30d</div>
+                    <div class="mini-num">@_kpis.Earned.ToString("N0")
+                        @if (_prevEarned > 0)
+                        {
+                            <span class="delta @(EarnedDelta >= 0 ? "up" : "down")">@(EarnedDelta >= 0 ? "▲" : "▼")@Math.Abs(EarnedDelta)%</span>
+                        }
+                    </div>
+                </div>
+                @if (IsScore)
+                {
+                    <div class="kpi-mini">
+                        <div class="label">Rank</div>
+                        <div class="mini-num">@(_rank > 0 ? $"#{_rank}" : "—")
+                            @if (_holders > 0)
+                            {
+                                <span class="delta">of @_holders</span>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="kpi-mini">
+                        <div class="label">Spent · 30d</div>
+                        <div class="mini-num">@_kpis.Spent.ToString("N0")
+                            @if (_prevSpent > 0)
+                            {
+                                <span class="delta @(SpentDelta <= 0 ? "up" : "down")">@(SpentDelta >= 0 ? "▲" : "▼")@Math.Abs(SpentDelta)%</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="wallet-cols">
+        <div class="src-panel">
+            <div class="panel-head">
+                <h2>Earned by source · 30d</h2>
+                <a class="btn btn-ghost btn-sm" href="/guilds/@GuildId/wallet/analytics">Full analytics</a>
+            </div>
+            @if (_earned.Count == 0)
+            {
+                <p class="subtitle">No earnings in this window.</p>
+            }
+            else
+            {
+                @foreach (var s in _earned)
+                {
+                    <div class="src-row">
+                        <span class="src-name">@SourceLabel(s.Source)</span>
+                        <div class="src-bar"><div class="fill" style="width:@(s.Earned * 100 / EarnedMax)%"></div></div>
+                        <span class="src-val">+@s.Earned.ToString("N0")</span>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (!ViewingOther || CanManage)
+        {
+        <div class="panel glass">
+            @if (ViewingOther && CanManage)
+            {
+                <div class="panel-head"><h2>Mint / adjust</h2></div>
+                <p class="subtitle">Apply a signed correction to this member's <strong>@Code</strong> balance. Positive mints; negative deducts. Audited.</p>
+                <div class="send-amt">
+                    <label>Amount (signed) <input type="number" class="dg-select" @bind="_adjustAmount" /></label>
+                </div>
+                <label>Reason <input type="text" class="dg-search" @bind="_adjustReason" placeholder="e.g. correction, event prize" /></label>
+                <div class="btn-row">
+                    <button type="button" disabled="@_adjusting" @onclick="AdjustAsync">@(_adjustAmount >= 0 ? "Mint" : "Deduct") @(_adjustAmount == 0 ? "" : Math.Abs(_adjustAmount).ToString("N0"))</button>
+                </div>
+            }
+            else
+            {
+            <div class="panel-head">
+                <h2>Quick transfer</h2>
+                @if (_kpis.Held > 0)
+                {
+                    <span class="subtitle"><span class="material-symbols-outlined held" aria-hidden="true">lock</span> @_kpis.Held.ToString("N0") held</span>
+                }
+            </div>
+            @if (_recipients.Count == 0)
+            {
+                <p class="subtitle">No one else here to send to yet.</p>
+            }
+            else if (!Sendable.Any())
+            {
+                <p class="subtitle">None of this server's currencies are transferable yet — an admin can turn on <em>Transferable</em> for a currency in <a href="/guilds/@GuildId/currencies">Admin · Currencies</a>. (Points can't be gifted.)</p>
+            }
+            else
+            {
+                <EditForm class="form-grid" Model="Send" OnValidSubmit="SendAsync">
+                    <label>To
+                        <InputSelect @bind-Value="Send.RecipientId">
+                            <option value="0">— select —</option>
+                            @foreach (var r in _recipients)
+                            {
+                                <option value="@r.UserId">@r.DisplayName</option>
+                            }
+                        </InputSelect>
+                    </label>
+                    <div class="send-amt">
+                        <label>Currency
+                            <InputSelect @bind-Value="Send.Currency">
+                                @foreach (var c in Sendable)
+                                {
+                                    <option value="@c.Code">@c.Code</option>
+                                }
+                            </InputSelect>
+                        </label>
+                        <label>Amount <InputNumber @bind-Value="Send.Amount" /></label>
+                    </div>
+                    <label>Note <InputText @bind-Value="Send.Reason" placeholder="optional" /></label>
+                    <div class="btn-row"><button type="submit" disabled="@_sending">Send</button></div>
+                </EditForm>
+            }
+            }
+        </div>
+        }
+    </div>
+
+    <LedgerFrame Page="_page" TotalPages="TotalPages" OnPrev="Prev" OnNext="Next" PagerText="@PagerLabel">
+        <Filters>
+                <input type="search" class="dg-search" placeholder="Search reason…" @bind="_searchBox" @bind:event="oninput" @bind:after="DebouncedSearchAsync" />
+                <select class="dg-select" value="@(_source?.ToString() ?? "")" @onchange="OnSource">
+                    <option value="">Any source</option>
+                    @foreach (var s in AllSources)
+                    {
+                        <option value="@s">@SourceLabel(s)</option>
+                    }
+                </select>
+                <select class="dg-select" value="@_preset" @onchange="OnRange">
+                    @foreach (var (val, lbl) in RangePresets)
+                    {
+                        <option value="@val">@lbl</option>
+                    }
+                </select>
+                @if (_parties.Count > 0)
+                {
+                    <select class="dg-select" value="@(_party?.ToString() ?? "")" @onchange="OnParty">
+                        <option value="">Anyone</option>
+                        @foreach (var pp in _parties)
+                        {
+                            <option value="@pp.UserId">@pp.Name</option>
+                        }
+                    </select>
+                }
+                @if (_loading)
+                {
+                    <span class="dg-loading" aria-hidden="true"></span>
+                }
+        </Filters>
+        <Actions>
+                <div class="dir-toggle" role="group" aria-label="Direction">
+                    <button type="button" class="@(_sign is null ? "active" : "")" @onclick="() => SetDirection(null)">All</button>
+                    <button type="button" class="@(_sign == 1 ? "active" : "")" @onclick="() => SetDirection(1)">In</button>
+                    <button type="button" class="@(_sign == -1 ? "active" : "")" @onclick="() => SetDirection(-1)">Out</button>
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost" @onclick="ExportCsvAsync"><span class="material-symbols-outlined" aria-hidden="true">download</span> Export</button>
+                @if (Selected?.External == true)
+                {
+                    <button type="button" class="btn btn-sm btn-ghost" disabled="@_syncing" @onclick="ForceSyncAsync">Sync</button>
+                }
+        </Actions>
+        <ChildContent>
+            <table class="dg-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick='() => SetSort("when")'>When @Ind("when")</th>
+                        <th class="sortable" @onclick='() => SetSort("source")'>Source @Ind("source")</th>
+                        <th>Party</th>
+                        <th class="num sortable" @onclick='() => SetSort("amount")'>Amount @Ind("amount")</th>
+                        @if (ShowBalanceCol)
+                        {
+                            <th class="num">Balance</th>
+                        }
+                        <th class="sortable" @onclick='() => SetSort("reason")'>Reason @Ind("reason")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_activity is null || _activity.Items.Count == 0)
+                    {
+                        <tr class="dg-empty"><td colspan="@LedgerCols">@(_activity is null ? "Loading…" : "No activity matches these filters.")</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var line in LedgerLines())
+                        {
+                            var h = line.Row;
+                            @if (line.GroupLabel is not null)
+                            {
+                                <tr class="dg-group">
+                                    <td colspan="@LedgerCols">@line.GroupLabel <span class="grp-net @(line.GroupNet >= 0 ? "pos" : "neg")">@(line.GroupNet > 0 ? "+" : "")@line.GroupNet.ToString("N0")</span></td>
+                                </tr>
+                            }
+                            <tr class="led-row @(_expandedId == h.Id ? "open" : "")" @onclick="() => ToggleDetail(h.Id)">
+                                <td class="led-when"><span class="material-symbols-outlined exp" aria-hidden="true">@(_expandedId == h.Id ? "expand_more" : "chevron_right")</span><LocalTime Value="h.OccurredAt" /></td>
+                                <td><span class="src-chip"><span class="material-symbols-outlined">@SourceIcon(h.Source)</span>@SourceLabel(h.Source)</span></td>
+                                <td class="party">
+                                    @if (h.CounterpartyName is not null)
+                                    {
+                                        <UserChip Name="@h.CounterpartyName" AvatarUrl="@h.CounterpartyAvatar" />
+                                    }
+                                    else
+                                    {
+                                        <span class="party-sys">@PartyLabel(h)</span>
+                                    }
+                                </td>
+                                <td class="num @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</td>
+                                @if (ShowBalanceCol)
+                                {
+                                    <td class="num bal">@(h.BalanceAfter?.ToString("N0"))</td>
+                                }
+                                <td>@h.Reason</td>
+                            </tr>
+                            @if (_expandedId == h.Id)
+                            {
+                                <tr class="led-detail">
+                                    <td colspan="@LedgerCols">
+                                        <div class="ld-grid">
+                                            <div><span class="k">Reference</span><span class="v mono">@(string.IsNullOrEmpty(h.SourceId) ? "—" : h.SourceId)</span></div>
+                                            <div><span class="k">Counterparty</span><span class="v">@(h.CounterpartyName ?? PartyLabel(h))</span></div>
+                                            <div><span class="k">Posted</span><span class="v"><LocalTime Value="h.OccurredAt" /></span></div>
+                                            @if (h.BalanceAfter is { } b)
+                                            {
+                                                <div><span class="k">Balance after</span><span class="v">@b.ToString("N0") @SelUnit</span></div>
+                                            }
+                                            <div><span class="k">Source</span><span class="v">@SourceLabel(h.Source)</span></div>
+                                            <div><span class="k">Amount</span><span class="v @(h.Amount < 0 ? "neg" : "pos")">@(h.Amount > 0 ? "+" : "")@h.Amount.ToString("N0")</span></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        </ChildContent>
+        <FooterLeft>
+                <div class="dg-pagesize">
+                    Rows
+                    <select class="dg-select" value="@_size" @onchange="OnSize">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div class="dg-totals" title="Totals for the current filter">
+                    Σ <span class="pos">+@_totals.In.ToString("N0")</span> / <span class="neg">−@_totals.Out.ToString("N0")</span>
+                </div>
+        </FooterLeft>
+    </LedgerFrame>

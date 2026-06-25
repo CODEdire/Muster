@@ -1,0 +1,97 @@
+/* Header */
+.t-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.t-crumb { display: flex; align-items: center; gap: 0.5rem; font-size: 1.35rem; font-weight: 600; }
+.t-crumb a { color: var(--text-muted); font-weight: 600; }
+.t-crumb a:hover { color: var(--text); }
+.t-crumb .sep { font-size: 1.5rem; color: var(--text-muted); opacity: 0.55; }
+
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---- Top summary: trial balance + composition + supply trend (3-up) ---- */
+.jr-summary { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; align-items: stretch; }
+/* Tablet: drop the trend tile. Narrow: keep only the trial balance. */
+@media (max-width: 1100px) { .jr-summary { grid-template-columns: 1.3fr 1fr; } .jr-summary .opt ~ .opt { display: none; } }
+@media (max-width: 760px) { .jr-summary { grid-template-columns: 1fr; } .jr-summary .opt { display: none; } }
+.jr-card { background: rgba(255, 255, 255, 0.025); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 1rem 1.15rem; display: flex; flex-direction: column; }
+.jr-card .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; }
+.jr-card h2 { margin: 0; font-size: 1rem; }
+
+.tb-ok, .tb-off { font-size: 0.78rem; font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.55rem; border-radius: 1rem; }
+.tb-ok { color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+.tb-off { color: var(--danger); background: rgba(220, 38, 38, 0.12); }
+.tb-ok .material-symbols-outlined, .tb-off .material-symbols-outlined { font-size: 1rem; }
+
+.jr-auditlink { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+.jr-auditlink:hover { color: var(--text); }
+
+/* Trial-balance table */
+.jr-tb { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.jr-tb td { padding: 7px 0; border-top: 0.5px solid var(--border); }
+.jr-tb tr:first-child td { border-top: none; }
+.jr-tb td.num { text-align: right; }
+.jr-tb tr.tb-total td { border-top: 1px solid var(--border); font-weight: 600; }
+
+/* Supply-composition donut — centred in the remaining card height */
+.comp { flex: 1; display: flex; align-items: center; justify-content: center; gap: 1.4rem; }
+.comp svg { flex: 0 0 auto; }
+.comp-legend { display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.88rem; min-width: 9.5rem; }
+.comp-legend > div { display: flex; align-items: center; gap: 0.45rem; }
+.comp-legend b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dot { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; flex: 0 0 auto; }
+.dot.circ { background: #1D9E75; }
+.dot.escrow { background: #EF9F27; }
+.dot.burned { background: #888780; }
+
+/* Supply-trend mini panel */
+.tr-win { font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tr-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.tr-net { font-size: 1.7rem; font-weight: 600; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 0.5rem; }
+.tr-net.pos { color: #4ade80; }
+.tr-net.neg { color: var(--danger); }
+.tr-pct { font-size: 0.85rem; font-weight: 500; opacity: 0.85; }
+.tr-cap { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; }
+.tr-spark { width: 100%; height: 42px; margin-top: 0.6rem; }
+.tr-spark polyline { fill: none; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.tr-spark.pos polyline { stroke: #4ade80; }
+.tr-spark.neg polyline { stroke: var(--danger); }
+
+/* Journal table */
+.jr-table td.num.debit { color: var(--danger); }
+.jr-table td.num.credit { color: #4ade80; }
+
+/* Day group header + daily subtotals */
+.jr-table tr.dg-group td { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 0.03em; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.grp-net { float: right; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.grp-net .debit { color: var(--danger); }
+.grp-net .credit { color: #4ade80; }
+
+/* Clickable rows + detail drawer (mirrors Wallet ledger) */
+.led-row { cursor: pointer; }
+.led-row.open > td { background: var(--surface); }
+.led-detail > td { background: rgba(255, 255, 255, 0.02); }
+.ld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem 1.5rem; padding: 0.6rem 0.4rem; white-space: normal; }
+.ld-grid > div { display: flex; flex-direction: column; gap: 0.1rem; }
+.ld-grid .ld-reason { grid-column: 1 / -1; }
+.ld-grid .k { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.ld-grid .v { font-size: 0.88rem; }
+.ld-grid .v.mono { font-size: 0.8rem; word-break: break-all; }
+.ld-grid .v.debit { color: var(--danger); }
+.ld-grid .v.credit { color: #4ade80; }
+
+/* Account chips (escrow / burn / system counter) */
+.acct { font-size: 0.72rem; padding: 2px 8px; border-radius: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.acct-escrow { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+.acct-burn { background: rgba(220, 38, 38, 0.14); color: var(--danger); }
+.acct-sys { color: var(--text-muted); }
+
+/* Footer totals */
+.dg-footer-left { display: flex; align-items: center; gap: 1rem; }
+.jr-totals { font-size: 0.82rem; color: var(--text-muted); }
+.jr-totals .debit { color: var(--danger); }
+.jr-totals .credit { color: #4ade80; }
+
+/* Bulk award (collapsible) */
+.jr-bulk { padding: 0.5rem 1.25rem 1.25rem; }
+.jr-bulk > summary { cursor: pointer; padding: 0.6rem 0; font-weight: 500; display: flex; align-items: center; gap: 0.4rem; }
+.jr-bulk > summary .material-symbols-outlined { font-size: 1.15rem; }
